@@ -16,7 +16,7 @@
 | Compilers | MSVC 2022 (primary), Clang/GCC (Linux), Android NDK Clang |
 | Build system | CMake ≥ 3.25 with `CMakePresets.json`, Ninja generator |
 | Build configurations | `Debug`, `RelWithDebInfo`, `Release` |
-| Code style | clang-format ≥ 17 (`.clang-format`), warnings as errors via `meow2_set_warnings()` — see [docs/wiki/CodeStyle.md](docs/wiki/CodeStyle.md) |
+| Code style | clang-format ≥ 17 (`.clang-format`), `.editorconfig` for all text files, warnings as errors via `meow2_set_warnings()` — see [docs/wiki/CodeStyle.md](docs/wiki/CodeStyle.md) |
 | Tests | CTest + GoogleTest (`meow2_add_test_suite()`), see [docs/wiki/Testing.md](docs/wiki/Testing.md) |
 | Dependencies | Git submodules in `external/`, pinned to release tags (see §4). Exceptions: Qt (installer), Vulkan SDK (installer), DXC (prebuilt binaries) |
 
