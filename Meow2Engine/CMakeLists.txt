@@ -17,9 +17,18 @@ target_sources(Meow2Engine
             include
             "${meow2GeneratedDir}"
         FILES
+            include/Meow2/Core/Platform.h
             "${meow2GeneratedDir}/Meow2/Core/Version.h")
 
 target_include_directories(Meow2Engine PRIVATE src)
+
+# Build configuration for Meow2/Core/Platform.h. PUBLIC: everything linking the
+# engine sees the same values. $<CONFIG:...> is evaluated per configuration, so
+# this also works with multi-config generators (Visual Studio).
+target_compile_definitions(Meow2Engine PUBLIC
+    MEOW2_CONFIG_DEBUG=$<CONFIG:Debug>
+    MEOW2_CONFIG_RELWITHDEBINFO=$<CONFIG:RelWithDebInfo>
+    MEOW2_CONFIG_RELEASE=$<CONFIG:Release,MinSizeRel>)
 target_compile_features(Meow2Engine PUBLIC cxx_std_20)
 meow2_set_warnings(Meow2Engine)
 

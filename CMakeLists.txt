@@ -16,6 +16,16 @@ project(Meow2
     DESCRIPTION "Modular C++20 game engine"
     LANGUAGES CXX)
 
+# ---- Build type -------------------------------------------------------------
+# Single-config generators (Ninja, Makefiles) build with no optimisation *and*
+# no debug info when CMAKE_BUILD_TYPE is empty, and Meow2/Core/Platform.h would
+# reject it. Default to Debug. (Presets always set it; multi-config IDEs pick per build.)
+get_property(meow2IsMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(NOT meow2IsMultiConfig AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type: Debug, RelWithDebInfo or Release" FORCE)
+    message(STATUS "CMAKE_BUILD_TYPE not set, defaulting to Debug")
+endif()
+
 # ---- Language ---------------------------------------------------------------
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)  # error instead of silently using an older standard
