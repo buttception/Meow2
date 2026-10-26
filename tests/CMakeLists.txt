@@ -2,7 +2,7 @@
 
 if(MEOW2_WARNINGS_AS_ERRORS)
     # EXCLUDE_FROM_ALL: never built by a normal build — only by the test below.
-    add_executable(Meow2WarningProbe EXCLUDE_FROM_ALL Build/WarningProbe.cpp)
+    add_executable(Meow2WarningProbe EXCLUDE_FROM_ALL BuildChecks/WarningProbe.cpp)
     meow2_set_warnings(Meow2WarningProbe)
 
     add_test(NAME Build.Warnings.AreErrors
