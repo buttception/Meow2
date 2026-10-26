@@ -16,6 +16,7 @@
 | Compilers | MSVC 2022 (primary), Clang/GCC (Linux), Android NDK Clang |
 | Build system | CMake ≥ 3.25 with `CMakePresets.json`, Ninja generator |
 | Build configurations | `Debug`, `RelWithDebInfo`, `Release` |
+| Code style | clang-format ≥ 17 (`.clang-format`), warnings as errors via `meow2_set_warnings()` — see [docs/wiki/CodeStyle.md](docs/wiki/CodeStyle.md) |
 | Tests | CTest + GoogleTest (`meow2_add_test_suite()`), see [docs/wiki/Testing.md](docs/wiki/Testing.md) |
 | Dependencies | Git submodules in `external/`, pinned to release tags (see §4). Exceptions: Qt (installer), Vulkan SDK (installer), DXC (prebuilt binaries) |
 
@@ -278,3 +279,4 @@ See [milestones.md](milestones.md).
 - 2026-10-26 — Dropped the `_` prefix for locals (plain camelCase); SDL3 chosen for windowing (dockable windows planned); build-time selection for all subsystems except the RHI, which is runtime hot-swappable (Vulkan ↔ D3D12); glTF 2.0 only (`.gltf` + `.glb`), sample assets fetched on demand; milestones are general and work follows owner requests.
 - 2026-10-26 — Roadmap moved to milestones.md.
 - 2026-10-26 — Test framework: GoogleTest v1.17.0 (submodule).
+- 2026-10-26 — Code style: clang-format + warnings-as-errors.

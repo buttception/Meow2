@@ -100,7 +100,8 @@ Verdict: SOUND / NEEDS CHANGES
 
 ### Checked
 - [ ] matches the issue's scope (no extras)
-- [ ] naming conventions (techstack.md §16)
+- [ ] naming conventions (techstack.md §16); `Format.Check` passes
+- [ ] new targets call `meow2_set_warnings`; zero warnings on GCC and Clang
 - [ ] interfaces respected — no module includes another module's implementation headers
 - [ ] interface policy (techstack.md §3): build-time selection, virtuals only in the RHI / `IAllocator`
 - [ ] ownership/lifetimes clear, no leaks, RAII
@@ -119,8 +120,8 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 
 - C++20, follow `techstack.md` §16 naming exactly:
   PascalCase types, camelCase functions, parameters and locals, `m_member`, `s_static`, `c_constOrConstexpr` (precedence `c_` > `s_` > `m_`), `I` prefix only for runtime-virtual interfaces. No leading underscores.
-- `.clang-format` (once added) is authoritative. Run it on changed files.
-- Warnings as errors (`/W4 /WX`, `-Wall -Wextra -Werror`).
+- `.clang-format` is authoritative. Before committing run `cmake --build --preset <p> --target format`; the `Format.Check` test must pass.
+- Every Meow2 target (library, executable, test suite) calls `meow2_set_warnings(<target>)`. Warnings are errors. Never call it on third-party targets, and never silence a warning with a pragma without a comment explaining why.
 - Public headers in `include/Meow2/<Module>/`, private code in `src/<Module>/`.
 - Every subsystem is reached through its public header. Backends are chosen at build time (pimpl + CMake option); only the RHI uses virtual interfaces and runtime selection.
 - Third-party headers (SDL3, spdlog, Jolt, vulkan.h, d3d12.h, Qt) must **not** leak into public engine headers, except DirectXMath in `Meow2/Math`.
@@ -169,3 +170,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-26 — Removed the `_` prefix for locals (plain camelCase); interface policy = build-time selection except the RHI (runtime hot swap), no caching backend handles above the RHI; work only on owner-requested features and flag ordering problems; glTF assets fetched on demand.
 - 2026-10-26 — PRs must include a "Why it's done this way" section (concepts, decisions, alternatives, pitfalls, references); roadmap moved to milestones.md, which every PR keeps up to date.
 - 2026-10-26 — GoogleTest chosen: `meow2_add_test_suite` / `meow2_add_smoke_test` rules and labels; Environments rewritten (agents build/test in the cloud workspace, the owner's VM has no network and is only used for syncing).
+- 2026-10-26 — Code rules: run the `format` target / `Format.Check`; every Meow2 target uses `meow2_set_warnings`; review checklist covers both.

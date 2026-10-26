@@ -43,6 +43,7 @@ function(meow2_add_test_suite)
 
     add_executable(${arg_TARGET} ${arg_SOURCES})
     target_link_libraries(${arg_TARGET} PRIVATE GTest::gtest_main Meow2::Engine ${arg_LIBRARIES})
+    meow2_set_warnings(${arg_TARGET})
 
     # TEST(Version, MatchesProjectVersion) in MODULE Core becomes the CTest test
     # "Core.Version.MatchesProjectVersion" (AGENTS.md naming: <Module>.<Unit>.<Behaviour>).
