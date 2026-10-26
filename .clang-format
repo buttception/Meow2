@@ -1,0 +1,48 @@
+# Meow2 code style — see docs/wiki/CodeStyle.md.
+# Needs clang-format 17 or newer (Visual Studio 2022 ships one).
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+
+# Layout
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+BreakBeforeBraces: Allman
+NamespaceIndentation: None
+AccessModifierOffset: -4
+IndentCaseLabels: true
+PointerAlignment: Left
+ReferenceAlignment: Left
+InsertNewlineAtEOF: true
+
+# One statement per line; no short one-liners except empty functions
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortLambdasOnASingleLine: Inline
+InsertBraces: true
+
+# Templates, constructors, namespaces
+AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeComma
+PackConstructorInitializers: Never
+FixNamespaceComments: true
+
+# Includes: own header first (automatic), then "local", <Meow2/...>, third-party, standard library
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^"'
+    Priority: 1
+  - Regex: '^<Meow2/'
+    Priority: 2
+  - Regex: '^<[a-z_]+>$'
+    Priority: 4
+  - Regex: '.*'
+    Priority: 3
+...

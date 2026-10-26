@@ -61,7 +61,9 @@ Labels: `milestone:M<n>`, `module:<Module>`, `feature` / `bug` / `chore`.
 
 ### 2.4 Tests (must pass before a PR)
 - Every test case in the issue is implemented and registered with CTest.
-- Tests are named `<Module>.<Unit>.<Behaviour>` and labelled (`unit`, `integration`, `gpu`, `windows`).
+- Unit tests use GoogleTest. Add them with `meow2_add_test_suite(TARGET … MODULE … SOURCES …)` (see `docs/wiki/Testing.md`); `TEST(Unit, Behaviour)` in module `Module` becomes the CTest test `Module.Unit.Behaviour`.
+- Every executable gets a smoke test (`meow2_add_smoke_test`).
+- Labels: `unit`, `smoke`, `integration`, `gpu`, `visual`, `windows`.
 - Required before opening a PR:
   ```
   cmake --preset <preset>
@@ -71,7 +73,7 @@ Labels: `milestone:M<n>`, `module:<Module>`, `feature` / `bug` / `chore`.
   **All tests green, including pre-existing ones.** Run at least `Debug`; run `RelWithDebInfo` too when the change touches optimisation-sensitive code (math, memory, threading).
 - Visual (golden-image) tests: never update a golden image to make a test pass. Golden updates go in their own commit, with before/after images in the PR, and need the owner's sign-off.
 - **⚠ The owner is still deciding how agents should handle test cases.** Until this section is updated, follow the rules above.
-- If a test cannot run in the agent's environment (e.g. `windows`/`gpu` tests on the Linux VM), say so explicitly in the PR and ask the owner to run them. **Never claim a test passed that was not run.**
+- If a test cannot run in the agent's environment (e.g. `windows`/`gpu` tests in the Linux cloud workspace), say so explicitly in the PR and ask the owner to run them. **Never claim a test passed that was not run.**
 
 ### 2.5 Pull request
 The PR description must contain:
@@ -98,7 +100,8 @@ Verdict: SOUND / NEEDS CHANGES
 
 ### Checked
 - [ ] matches the issue's scope (no extras)
-- [ ] naming conventions (techstack.md §16)
+- [ ] naming conventions (techstack.md §16); `Format.Check` passes
+- [ ] new targets call `meow2_set_warnings`; zero warnings on GCC and Clang
 - [ ] interfaces respected — no module includes another module's implementation headers
 - [ ] interface policy (techstack.md §3): build-time selection, virtuals only in the RHI / `IAllocator`
 - [ ] ownership/lifetimes clear, no leaks, RAII
@@ -117,8 +120,8 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 
 - C++20, follow `techstack.md` §16 naming exactly:
   PascalCase types, camelCase functions, parameters and locals, `m_member`, `s_static`, `c_constOrConstexpr` (precedence `c_` > `s_` > `m_`), `I` prefix only for runtime-virtual interfaces. No leading underscores.
-- `.clang-format` (once added) is authoritative. Run it on changed files.
-- Warnings as errors (`/W4 /WX`, `-Wall -Wextra -Werror`).
+- `.clang-format` is authoritative. Before committing run `cmake --build --preset <p> --target format`; the `Format.Check` test must pass.
+- Every Meow2 target (library, executable, test suite) calls `meow2_set_warnings(<target>)`. Warnings are errors. Never call it on third-party targets, and never silence a warning with a pragma without a comment explaining why.
 - Public headers in `include/Meow2/<Module>/`, private code in `src/<Module>/`.
 - Every subsystem is reached through its public header. Backends are chosen at build time (pimpl + CMake option); only the RHI uses virtual interfaces and runtime selection.
 - Third-party headers (SDL3, spdlog, Jolt, vulkan.h, d3d12.h, Qt) must **not** leak into public engine headers, except DirectXMath in `Meow2/Math`.
@@ -142,8 +145,9 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 
 ## 5. Environments
 
-- Agents on the owner's machine may run in a **Linux VM** that sees the repo folder. They can build and test the platform-independent subset there (once the owner has approved installing CMake etc.).
-- Windows-only code (D3D12, minidumps, Win32) and GPU tests must be built/run on Windows by the owner or by Windows CI. Mark them as such in the PR.
+- **Agent workspace (where agents build and test):** the agent's cloud workspace — Ubuntu 24.04, CMake 3.28, Ninja, GCC 13, Clang 18, clang-format 18 — with a clone of the GitHub repo. Agents push branches from there.
+- **Owner's folder (`F:\Meow2`):** the owner's working copy. The agent's shell on the owner's PC (a Linux VM) has **no network access**, so it is only used to read the folder and to sync commits into it (via a git bundle). Nothing is built there.
+- **Windows (MSVC), D3D12, minidumps, GPU and visual tests** can't run in the agent workspace. They are run by the owner, or by CI on the owner's machine (self-hosted runner, if set up). Mark them as not run in the PR.
 
 ## 6. Checklist per feature (in order)
 
@@ -165,3 +169,5 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-26 — Dependencies as git submodules (adding/bumping needs permission); golden-image approval rule; run tests in Debug (+ RelWithDebInfo for sensitive code); MSVC + Clang; coordinate rule; `external/` read-only; test strategy pending owner decision.
 - 2026-10-26 — Removed the `_` prefix for locals (plain camelCase); interface policy = build-time selection except the RHI (runtime hot swap), no caching backend handles above the RHI; work only on owner-requested features and flag ordering problems; glTF assets fetched on demand.
 - 2026-10-26 — PRs must include a "Why it's done this way" section (concepts, decisions, alternatives, pitfalls, references); roadmap moved to milestones.md, which every PR keeps up to date.
+- 2026-10-26 — GoogleTest chosen: `meow2_add_test_suite` / `meow2_add_smoke_test` rules and labels; Environments rewritten (agents build/test in the cloud workspace, the owner's VM has no network and is only used for syncing).
+- 2026-10-26 — Code rules: run the `format` target / `Format.Check`; every Meow2 target uses `meow2_set_warnings`; review checklist covers both.

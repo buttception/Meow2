@@ -22,21 +22,34 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 
 ## Building
 
-> Not available yet. The CMake skeleton arrives in milestone M0.
+Requirements (Windows): Visual Studio 2022 (C++ workload), CMake ≥ 3.25, Ninja (both ship with Visual Studio). Later milestones add the Vulkan SDK and Qt 6.8 (editor only).
 
 ```
 git clone --recurse-submodules https://github.com/buttception/Meow2.git
-cmake --preset windows-msvc-debug          # or -relwithdebinfo / -release
-cmake --build --preset windows-msvc-debug
+cd Meow2
+cmake --workflow --preset windows-msvc-debug     # configure + build + test in one go
 ```
 
-Requires Visual Studio 2022, CMake ≥ 3.25, Ninja, the Vulkan SDK, and Qt 6.8 (editor only).
+On Windows, run this from a **Developer PowerShell / Command Prompt for VS 2022** (or open the folder in Visual Studio, which picks up the presets automatically).
+
+| Preset | Use |
+|---|---|
+| `windows-msvc-debug` / `linux-clang-debug` | day-to-day development |
+| `windows-msvc-relwithdebinfo` / `linux-clang-relwithdebinfo` | optimised + debug info: profiling, crash dumps |
+| `windows-msvc-release` / `linux-clang-release` | shipping builds (LTO on) |
+
+Step by step: `cmake --preset <p>`, `cmake --build --preset <p>`. Output: `build/<preset>/bin/`.
 
 ## Running tests
 
 ```
-ctest --preset windows-msvc-debug --output-on-failure
+ctest --preset windows-msvc-debug              # all tests
+ctest --preset windows-msvc-debug -L unit      # by label (unit, smoke, ...)
 ```
+
+More detail: [Building](docs/wiki/Building.md), [Testing](docs/wiki/Testing.md).
+
+Forgot `--recurse-submodules`? Run `git submodule update --init --recursive`.
 
 ## License
 
