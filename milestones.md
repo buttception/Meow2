@@ -21,8 +21,9 @@ Issues are labelled `milestone:M<n>` on GitHub.
 | `CMakePresets.json`: Debug / RelWithDebInfo / Release | 🟨 | #6 / PR #10 |
 | Test framework + CTest integration | 🟨 | #7 / PR #11 |
 | `.clang-format`, warnings-as-errors | 🟨 | #8 / PR #12 |
+| CI: GitHub Actions (hosted Linux + self-hosted Windows runner) | 🟨 | #13 / PR #17 |
 
-**Done when:** `cmake --preset … && cmake --build … && ctest …` succeeds on Windows for all three configs.
+**Done when:** `cmake --preset … && cmake --build … && ctest …` succeeds on Windows for all three configs, and CI runs it on every PR.
 
 ## M1 — Core & Memory ⬜
 **Goal:** the low-level building blocks everything else uses.

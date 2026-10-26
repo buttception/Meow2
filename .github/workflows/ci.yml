@@ -1,0 +1,112 @@
+# Meow2 CI — see docs/wiki/CI.md
+#
+# Safety rules for this file (the repo is public and one runner is the owner's PC):
+#   - Windows jobs run on the self-hosted runner ONLY for code from this repository
+#     (push to main, PRs from branches in this repo, manual runs). PRs from forks
+#     never reach the self-hosted runner.
+#   - Never use `pull_request_target`, never add secrets to self-hosted jobs, and
+#     never paste untrusted `${{ github.event.* }}` text (titles, branch names)
+#     into `run:` scripts.
+#   - Third-party actions are pinned to a full commit SHA, not a movable tag.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# The GITHUB_TOKEN can only read the repo — it can't push, comment or approve.
+permissions:
+  contents: read
+
+# A new push to the same PR cancels the older, now pointless, run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (${{ matrix.name }})
+    runs-on: ubuntu-24.04            # GitHub-hosted: safe for any PR, including forks
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Clang Debug
+            preset: linux-clang-debug
+          - name: Clang Release
+            preset: linux-clang-release
+          - name: GCC Debug
+            preset: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build clang-18 clang-format-18
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
+
+      - name: Build and test (preset)
+        if: matrix.preset != ''
+        run: |
+          set -o pipefail
+          cmake --workflow --preset ${{ matrix.preset }} 2>&1 | tee ci.log
+
+      - name: Build and test (GCC)
+        if: matrix.preset == ''
+        run: |
+          set -o pipefail
+          {
+            cmake -S . -B build/gcc-debug -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug &&
+            cmake --build build/gcc-debug &&
+            ctest --test-dir build/gcc-debug --output-on-failure --no-tests=error
+          } 2>&1 | tee ci.log
+
+      # Show the end of the log as an annotation on the PR, so the failure is visible
+      # in the PR's "Files changed"/"Checks" view without opening the raw log.
+      - name: Report failure
+        if: failure()
+        run: |
+          tail -n 60 ci.log | sed -e 's/%/%25/g' -e 's/\r//g' | awk 'BEGIN{ORS="%0A"}{print}' > tail.txt
+          echo "::error title=Build/test failed (last 60 lines)::$(cat tail.txt)"
+
+  windows:
+    name: Windows (MSVC ${{ matrix.config }})
+    # Only code from this repository may run on the owner's PC.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, windows, x64, meow2]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [debug, release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          submodules: recursive
+          persist-credentials: false   # don't leave a token in .git/config on the PC
+          clean: true
+
+      - name: Build and test
+        # cmd, not PowerShell: PowerShell's execution policy (e.g. AllSigned) blocks the
+        # unsigned temporary .ps1 that Actions generates for each step. Batch files are not
+        # subject to that policy, so this works without weakening the PC's settings.
+        shell: cmd
+        run: |
+          rem Find Visual Studio 2022 with the x64 C++ tools and load its developer environment
+          rem (puts cl.exe, cmake and ninja on PATH), the same as a "Developer Command Prompt".
+          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+          if not defined VSDIR (echo ::error::Visual Studio 2022 with the C++ x64 tools was not found on this runner. & exit /b 1)
+          call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat"
+          where cl >nul 2>nul || (echo ::error::cl.exe not on PATH after vcvars64.bat & exit /b 1)
+
+          cmake --workflow --preset windows-msvc-${{ matrix.config }}

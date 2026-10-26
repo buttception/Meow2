@@ -6,7 +6,7 @@
 # Formats only Meow2's own code (Meow2*/, tests/), never external/ or build/.
 
 find_program(MEOW2_CLANG_FORMAT
-    NAMES clang-format
+    NAMES clang-format clang-format-20 clang-format-19 clang-format-18 clang-format-17
     HINTS
         # Visual Studio 2022's copies (the Developer Prompt sets these variables)
         "$ENV{VCINSTALLDIR}Tools/Llvm/x64/bin"

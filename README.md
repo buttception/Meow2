@@ -1,5 +1,7 @@
 # Meow2
 
+[![CI](https://github.com/buttception/Meow2/actions/workflows/ci.yml/badge.svg)](https://github.com/buttception/Meow2/actions/workflows/ci.yml)
+
 A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (switchable at runtime). Windows first; Linux and Android planned.
 
 | Project | Type | What it is |
@@ -47,7 +49,7 @@ ctest --preset windows-msvc-debug              # all tests
 ctest --preset windows-msvc-debug -L unit      # by label (unit, smoke, ...)
 ```
 
-More detail: [Building](docs/wiki/Building.md), [Testing](docs/wiki/Testing.md).
+More detail: [Building](docs/wiki/Building.md), [Testing](docs/wiki/Testing.md), [CI](docs/wiki/CI.md).
 
 Forgot `--recurse-submodules`? Run `git submodule update --init --recursive`.
 
