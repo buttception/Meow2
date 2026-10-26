@@ -1,0 +1,44 @@
+# Line-ending and binary rules for Meow2.
+# Goal: the repository (index) always stores LF, every working tree is checked
+# out with LF, so Windows, the Linux VM and future Linux/Android builds all see
+# byte-identical text. Only files that Windows tools require as CRLF are CRLF.
+
+# Default: let git detect text vs binary; store and check out text as LF.
+*               text=auto eol=lf
+
+# Windows-only files whose tools expect CRLF.
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+*.ps1           text eol=crlf
+*.sln           text eol=crlf
+*.vcxproj       text eol=crlf
+*.vcxproj.filters text eol=crlf
+*.props         text eol=crlf
+
+# Shell scripts must be LF or they fail on Linux/Android ("bad interpreter").
+*.sh            text eol=lf
+
+# Binary formats: never diff, merge or convert.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.ktx           binary
+*.ktx2          binary
+*.dds           binary
+*.hdr           binary
+*.exr           binary
+*.glb           binary
+*.bin           binary
+*.ttf           binary
+*.otf           binary
+*.ico           binary
+*.zip           binary
+*.7z            binary
+*.dxil          binary
+*.spv           binary
+*.cso           binary
+*.dmp           binary
+*.pdb           binary
+*.exe           binary
+*.dll           binary
+*.lib           binary
