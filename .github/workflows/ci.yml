@@ -96,16 +96,17 @@ jobs:
           clean: true
 
       - name: Build and test
-        shell: powershell
+        # cmd, not PowerShell: PowerShell's execution policy (e.g. AllSigned) blocks the
+        # unsigned temporary .ps1 that Actions generates for each step. Batch files are not
+        # subject to that policy, so this works without weakening the PC's settings.
+        shell: cmd
         run: |
-          $ErrorActionPreference = 'Stop'
-          # Find Visual Studio 2022 with the x64 C++ tools and enter its developer environment
-          # (puts cl.exe, cmake and ninja on PATH) — the same thing a "Developer PowerShell" does.
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if (-not $vs) { throw 'Visual Studio 2022 with the C++ x64 tools was not found on this runner.' }
-          Import-Module (Join-Path $vs 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
-          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
+          rem Find Visual Studio 2022 with the x64 C++ tools and load its developer environment
+          rem (puts cl.exe, cmake and ninja on PATH), the same as a "Developer Command Prompt".
+          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+          if not defined VSDIR (echo ::error::Visual Studio 2022 with the C++ x64 tools was not found on this runner. & exit /b 1)
+          call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat"
+          where cl >nul 2>nul || (echo ::error::cl.exe not on PATH after vcvars64.bat & exit /b 1)
 
           cmake --workflow --preset windows-msvc-${{ matrix.config }}
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

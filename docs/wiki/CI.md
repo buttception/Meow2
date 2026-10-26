@@ -89,6 +89,12 @@ icacls F:\ /deny "meow2-runner:(OI)(CI)(M)"
    The labels `self-hosted, Windows, X64` are added automatically; `meow2` is what the workflow asks for.
 4. The runner now shows as **Idle** under Settings → Actions → Runners.
 
+## How the Windows job finds Visual Studio
+
+The step runs as a **batch (`cmd`) script**: `vswhere.exe` (always installed with Visual Studio) finds the newest VS 2022 with the x64 C++ tools, and `vcvars64.bat` loads its developer environment (`cl`, `cmake`, `ninja` on PATH), exactly like a *Developer Command Prompt for VS 2022*. Then it runs `cmake --workflow --preset windows-msvc-<config>`.
+
+Why not PowerShell: Actions writes every step to an unsigned temporary `.ps1`. If the PC's execution policy is `AllSigned` (or set by Group Policy), PowerShell refuses to run it (`… is not digitally signed`). Batch files aren't covered by the execution policy, so the job works without loosening that setting.
+
 ## Day-to-day
 
 - **Turn it off when you don't want builds:** `Stop-Service "actions.runner.*"` (or Services → *GitHub Actions Runner* → Stop / Startup type *Manual*). Windows jobs then wait in the queue (up to 24 h) until you start it again.
