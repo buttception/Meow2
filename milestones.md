@@ -23,6 +23,7 @@ Issues are labelled `milestone:M<n>` on GitHub.
 | `.clang-format`, warnings-as-errors | 🟨 | #8 / PR #12 |
 | CI: GitHub Actions (hosted Linux + self-hosted Windows runner) | 🟨 | #13 / PR #17 |
 | Architecture rules: dependency injection, no globals, threading | 🟨 | #14 / PR #18 |
+| Platform/config header (`Meow2/Core/Platform.h`) | 🟨 | #15 / PR #19 |
 
 **Done when:** `cmake --preset … && cmake --build … && ctest …` succeeds on Windows for all three configs, and CI runs it on every PR.
 

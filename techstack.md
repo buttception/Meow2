@@ -93,7 +93,7 @@ ctest --preset windows-msvc-debug -L unit
 
 | Module | Interface(s) | Implementation | Notes |
 |---|---|---|---|
-| Core | — | asserts, `Result<T>`, handles, containers | No third-party deps |
+| Core | — | `Platform.h` (platform/compiler/arch/config macros), asserts, `Result<T>`, handles, containers | No third-party deps |
 | Memory | `IAllocator` — the one virtual allocator interface, used where allocators are passed around (+ `std::pmr::memory_resource` adapter) | linear/arena, frame (N-buffered), pool, stack, tracking/debug | See §6 |
 | Log | `Logger`, `LogSink` | spdlog | §7 |
 | Crash | `CrashHandler` | Win32 minidumps; Linux/Android later (e.g. crashpad/breakpad) | §8 |

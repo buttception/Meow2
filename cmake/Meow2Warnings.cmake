@@ -35,7 +35,8 @@ function(meow2_set_warnings target)
             -Wnull-dereference
             -Wdouble-promotion       # float silently promoted to double
             -Wformat=2               # printf-style format checks
-            -Wimplicit-fallthrough)  # switch case falls through without [[fallthrough]]
+            -Wimplicit-fallthrough   # switch case falls through without [[fallthrough]]
+            -Wundef)                 # #if on an undefined (e.g. misspelled) macro
         if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             target_compile_options(${target} PRIVATE
                 -Wduplicated-cond -Wduplicated-branches -Wlogical-op)
