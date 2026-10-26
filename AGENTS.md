@@ -147,7 +147,8 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 
 - **Agent workspace (where agents build and test):** the agent's cloud workspace — Ubuntu 24.04, CMake 3.28, Ninja, GCC 13, Clang 18, clang-format 18 — with a clone of the GitHub repo. Agents push branches from there.
 - **Owner's folder (`F:\Meow2`):** the owner's working copy. The agent's shell on the owner's PC (a Linux VM) has **no network access**, so it is only used to read the folder and to sync commits into it (via a git bundle). Nothing is built there.
-- **Windows (MSVC), D3D12, minidumps, GPU and visual tests** can't run in the agent workspace. They are run by the owner, or by CI on the owner's machine (self-hosted runner, if set up). Mark them as not run in the PR.
+- **Windows (MSVC), D3D12, minidumps, GPU and visual tests** can't run in the agent workspace. CI runs Windows jobs on the owner's self-hosted runner (see `docs/wiki/CI.md`). Agents read the PR's check results via the API and report them; if the runner is offline, say the Windows checks are pending.
+- **CI safety (public repo + runner on the owner's PC):** never let a self-hosted job run code from forks, never use `pull_request_target`, never add secrets to self-hosted jobs, never interpolate untrusted `${{ github.event.* }}` text into `run:` scripts, and pin every third-party action to a full commit SHA. Any change under `.github/` must call this out in the PR.
 
 ## 6. Checklist per feature (in order)
 
@@ -171,3 +172,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-26 — PRs must include a "Why it's done this way" section (concepts, decisions, alternatives, pitfalls, references); roadmap moved to milestones.md, which every PR keeps up to date.
 - 2026-10-26 — GoogleTest chosen: `meow2_add_test_suite` / `meow2_add_smoke_test` rules and labels; Environments rewritten (agents build/test in the cloud workspace, the owner's VM has no network and is only used for syncing).
 - 2026-10-26 — Code rules: run the `format` target / `Format.Check`; every Meow2 target uses `meow2_set_warnings`; review checklist covers both.
+- 2026-10-26 — CI: agents report CI results (Windows via the self-hosted runner); CI safety rules for workflow changes.
