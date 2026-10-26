@@ -17,14 +17,15 @@ Issues are labelled `milestone:M<n>` on GitHub.
 |---|---|---|
 | `.gitattributes` (line endings) | ✅ | #1 / PR #3 |
 | Planning docs (techstack, AGENTS, milestones, README, wiki home) | ✅ | #2 / PR #4 |
-| CMake skeleton: `Meow2Engine` (static), `Meow2Renderer`, `Meow2Editor`, `Meow2Player`, tests | 🟨 | #5 / PR #9 |
-| `CMakePresets.json`: Debug / RelWithDebInfo / Release | 🟨 | #6 / PR #10 |
-| Test framework + CTest integration | 🟨 | #7 / PR #11 |
-| `.clang-format`, warnings-as-errors | 🟨 | #8 / PR #12 |
-| CI: GitHub Actions (hosted Linux + self-hosted Windows runner) | 🟨 | #13 / PR #17 |
-| Architecture rules: dependency injection, no globals, threading | 🟨 | #14 / PR #18 |
-| Platform/config header (`Meow2/Core/Platform.h`) | 🟨 | #15 / PR #19 |
-| `.editorconfig` + text-file lint test | 🟨 | #16 / PR #20 |
+| CMake skeleton: `Meow2Engine` (static), `Meow2Renderer`, `Meow2Editor`, `Meow2Player`, tests | ✅ | #5 / PR #9 |
+| `CMakePresets.json`: Debug / RelWithDebInfo / Release | ✅ | #6 / PR #10 (landed via PR #21) |
+| Test framework + CTest integration | ✅ | #7 / PR #11 (landed via PR #21) |
+| `.clang-format`, warnings-as-errors | ✅ | #8 / PR #12 (landed via PR #21) |
+| CI: GitHub Actions (hosted Linux + self-hosted Windows runner) | ✅ | #13 / PR #17 |
+| Architecture rules: dependency injection, no globals, threading | ✅ | #14 / PR #18 |
+| Platform/config header (`Meow2/Core/Platform.h`) | ✅ | #15 / PR #19 |
+| `.editorconfig` + text-file lint test | ✅ | #16 / PR #20 |
+| Claude Code setup: `CLAUDE.md`, worktree workflow, Environments rewrite | 🟨 | #22 / PR #23 |
 
 **Done when:** `cmake --preset … && cmake --build … && ctest …` succeeds on Windows for all three configs, and CI runs it on every PR.
 

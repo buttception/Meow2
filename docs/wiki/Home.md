@@ -10,5 +10,6 @@ Feature documentation for Meow2. Each module gets a page as it is implemented.
 | Code style & warnings | [CodeStyle](CodeStyle.md) | 🟨 M0 |
 | CI (GitHub Actions) | [CI](CI.md) | 🟨 M0 |
 | Architecture (DI, globals, threading) | [Architecture](Architecture.md) | 🟨 M0 |
+| Working with AI agents (Claude Code, worktrees) | [AgentWorkflow](AgentWorkflow.md) | 🟨 M0 |
 
 See also: [techstack.md](../../techstack.md), [AGENTS.md](../../AGENTS.md).
