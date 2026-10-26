@@ -17,7 +17,7 @@
 | Build system | CMake ≥ 3.25 with `CMakePresets.json`, Ninja generator |
 | Build configurations | `Debug`, `RelWithDebInfo`, `Release` |
 | Tests | CTest. Framework **⚠ OPEN** (owner deciding how tests are handled) |
-| Dependencies | Git submodules in `external/`, pinned to release tags (see §4). Exceptions: Qt (installer), Vulkan SDK (installer) |
+| Dependencies | Git submodules in `external/`, pinned to release tags (see §4). Exceptions: Qt (installer), Vulkan SDK (installer), DXC (prebuilt binaries) |
 
 **Portability rules** (so Linux/Android stay possible later):
 - Platform-specific code only in `src/Platform/<Win32|Linux|Android>/`, behind interfaces.
@@ -173,7 +173,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated.
 
 ## 7. Logging
 
-- spdlog behind `ILogger`. Named loggers per subsystem.
+- spdlog behind `Logger`. Named loggers per subsystem.
 - Macros `MEOW2_LOG_{TRACE,DEBUG,INFO,WARN,ERROR,CRITICAL}(category, fmt, ...)`; levels compiled out per config (§5).
 - Sinks:
   - **File** — rotating file sink to a configurable path.
@@ -183,7 +183,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated.
 
 ## 8. Crash dumps (Windows)
 
-- `ICrashHandler::install()` hooks `SetUnhandledExceptionFilter`, `_set_purecall_handler`, `_set_invalid_parameter_handler`, `std::set_terminate`, and `SIGABRT`.
+- `CrashHandler::install()` hooks `SetUnhandledExceptionFilter`, `_set_purecall_handler`, `_set_invalid_parameter_handler`, `std::set_terminate`, and `SIGABRT`.
 - `MiniDumpWriteDump` runs on a pre-created watchdog thread. Output: `<dump dir>/Meow2_<app>_<timestamp>.dmp`.
 - GPU faults: D3D12 DRED, Vulkan `VK_EXT_device_fault` where available. Logged on device loss.
 
@@ -221,7 +221,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated.
 ## 12. Shaders
 
 - Authored in **HLSL**. Compiled with **DXC** → DXIL (D3D12) and SPIR-V (Vulkan).
-- `IShaderCompiler` takes source + entry + stage + defines and returns bytecode + reflection. DXC is one implementation, so a **future custom shader language** can either compile to HLSL (and reuse DXC) or produce SPIR-V/DXIL directly.
+- `ShaderCompiler` takes source + entry + stage + defines and returns bytecode + reflection. DXC is one implementation, so a **future custom shader language** can either compile to HLSL (and reuse DXC) or produce SPIR-V/DXIL directly.
 - Offline compilation via a CMake step. Runtime hot reload in Meow2Renderer.
 
 ## 13. Rendering verification (glTF sample scenes)
