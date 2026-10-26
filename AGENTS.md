@@ -70,7 +70,8 @@ Labels: `milestone:M<n>`, `module:<Module>`, `feature` / `bug` / `chore`.
   cmake --build --preset <preset>
   ctest --preset <preset> --output-on-failure
   ```
-  **All tests green, including pre-existing ones.** Run at least `Debug`; run `RelWithDebInfo` too when the change touches optimisation-sensitive code (math, memory, threading).
+  **All tests green, including pre-existing ones.**
+- Run the final check from a **clean clone** of the branch (`git clone --no-local . <tmp> -b <branch>` + `git submodule update --init`), not just the working folder. Untracked or git-ignored files (e.g. a file matched by a `.gitignore` rule) make local runs pass while CI fails. Also check `git status --ignored` for anything that should have been committed. Run at least `Debug`; run `RelWithDebInfo` too when the change touches optimisation-sensitive code (math, memory, threading).
 - Visual (golden-image) tests: never update a golden image to make a test pass. Golden updates go in their own commit, with before/after images in the PR, and need the owner's sign-off.
 - **⚠ The owner is still deciding how agents should handle test cases.** Until this section is updated, follow the rules above.
 - If a test cannot run in the agent's environment (e.g. `windows`/`gpu` tests in the Linux cloud workspace), say so explicitly in the PR and ask the owner to run them. **Never claim a test passed that was not run.**
@@ -128,6 +129,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - **Dependency injection (techstack.md §18):** classes get every dependency through their constructor (references; a `<Name>Deps` struct when there are more than ~3). Subsystems are created and owned only by the composition root (each executable's `main`/`Application`).
 - **No mutable globals**: no singletons, service locators, mutable globals or mutable `static`s. Any unavoidable exception gets a `// GLOBAL: <why>` comment and is called out in the PR.
 - **Threading (techstack.md §19):** every class header states its thread safety (not thread-safe / immutable after construction / thread-safe + how). No locks held while calling into other subsystems or callbacks.
+- **Editor (techstack.md §20):** every editor feature is implemented as a command (execute + undo + parameter schema) registered in `EditorCommandRegistry`; UI code only issues commands. A feature is done only when it works through MCP too and has a test for it.
 - Every subsystem is reached through its public header. Backends are chosen at build time (pimpl + CMake option); only the RHI uses virtual interfaces and runtime selection.
 - Third-party headers (SDL3, spdlog, Jolt, vulkan.h, d3d12.h, Qt) must **not** leak into public engine headers, except DirectXMath in `Meow2/Math`.
 - Above the RHI, never cache backend-native handles (needed for the Vulkan ↔ D3D12 hot swap).
@@ -179,3 +181,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-26 — Code rules: run the `format` target / `Format.Check`; every Meow2 target uses `meow2_set_warnings`; review checklist covers both.
 - 2026-10-26 — CI: agents report CI results (Windows via the self-hosted runner); CI safety rules for workflow changes.
 - 2026-10-26 — Code rules: dependency injection + composition root, no mutable globals (`// GLOBAL:` exceptions), thread-safety documentation; review checklist updated.
+- 2026-10-26 — Tests must also pass from a clean clone (lesson from a git-ignored file that broke CI); editor features = commands exposed over MCP.

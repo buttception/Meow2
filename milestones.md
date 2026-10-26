@@ -107,13 +107,16 @@ Issues are labelled `milestone:M<n>` on GitHub.
 - Debug draw through the renderer
 
 ## M10 — Editor ⬜
-**Goal:** a Qt 6.8 editor with a live viewport.
+**Goal:** a Qt 6.8 editor with a live viewport, fully drivable by AI agents over MCP.
 **Depends on:** M6, M2
 
-- Qt shell, dock layout
+- Command system: every editor action is an undoable command in `EditorCommandRegistry` (techstack §20)
+- Qt shell, dock layout (UI only issues commands)
 - Viewport widget (swapchain on the Qt native window)
 - Log console dock
 - Scene hierarchy, inspector, undo/redo
+- **MCP server**: commands/queries as MCP tools, viewport screenshot, localhost + token, `--mcp`
+- Headless mode (`--headless`) + MCP integration tests in CI
 
 ## M11 — Game UI ⬜
 **Goal:** the built-in UI used by exported games.

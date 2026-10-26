@@ -34,7 +34,7 @@
 |---|---|---|---|
 | `Meow2Engine` | static lib | All runtime code | `external/` libs |
 | `Meow2Renderer` | exe | Lightweight app to test rendering & shaders and **showcase engine capabilities**. Dev UI: Dear ImGui (docking). Loads glTF sample scenes. | `Meow2Engine`, imgui |
-| `Meow2Editor` | exe | Qt 6.8 editor: scene editing, asset import, game export | `Meow2Engine`, Qt6 |
+| `Meow2Editor` | exe | Qt 6.8 editor: scene editing, asset import, game export. **Fully drivable through an MCP server** (§20), so AI agents can build in it | `Meow2Engine`, Qt6 |
 | `Meow2Player` | exe | Standalone game runtime the editor bundles on export. Uses the built-in UI. No ImGui, no Qt. | `Meow2Engine` |
 | `*Tests` | exe | One GoogleTest executable per module (e.g. `Meow2EngineCoreTests`), registered with CTest | `Meow2Engine`, `GTest::gtest_main` |
 
@@ -314,6 +314,25 @@ The engine starts single-threaded but every module is written so it can run on w
 - No mutable globals (§18) is the main threading rule: shared mutable state that isn't visible in a constructor is where data races hide.
 - **Sanitizers (M1):** presets with AddressSanitizer/UndefinedBehaviorSanitizer and ThreadSanitizer run the tests on Linux to catch memory errors and data races.
 
+## 20. Editor automation: commands + MCP server
+
+Requirement: **anything a user can do in the editor, an AI agent can do through MCP** (Model Context Protocol), so agents can build scenes and games in it.
+
+**Command architecture (the foundation)**
+- Every editor action is a **command**: a name, a parameter schema (JSON Schema), `execute()` and `undo()`. Examples: `scene.createEntity`, `entity.addComponent`, `component.setProperty`, `asset.import`, `project.export`.
+- Menus, toolbar buttons, shortcuts, drag-and-drop, the inspector, undo/redo **and** MCP all go through the same `EditorCommandRegistry`. **No editor UI may change editor state directly**; it must issue a command. That's what guarantees MCP covers *everything* the user can do: a feature that exists in the UI exists as a command, so it exists as an MCP tool.
+- Read-only **queries** (scene hierarchy, selection, component values, asset list, log, project settings) are registered the same way and exposed as MCP tools/resources. A **viewport screenshot** query returns an image, so an agent can *see* the result.
+
+**MCP server**
+- Built into Meow2Editor; exposes `tools/list` (generated from the registry's names, descriptions and schemas) and `tools/call` (→ `execute`). Agent changes are undoable and appear live in the UI.
+- Transport: MCP *Streamable HTTP* on **127.0.0.1 only** (never other interfaces), **off by default**, enabled per session from the editor or with `--mcp`; requires a per-session token; validates the `Origin` header (DNS-rebinding protection, as the MCP spec requires).
+- File access through commands is limited to the open project folder.
+- Threading (§19): requests arrive on a network thread and are executed on the editor's main thread (Qt queued invocation); the HTTP thread never touches editor state.
+- **Headless mode** (`Meow2Editor --headless --mcp`): no window, off-screen viewport. Lets agents and CI drive the editor on a machine without a desktop (e.g. Linux CI, an agent's cloud workspace).
+- Libraries (**⚠ OPEN**, decided in M10 with owner permission): JSON (nlohmann/json, MIT) and a small HTTP server (cpp-httplib, MIT). Qt's own `QHttpServer` is avoided because it's GPL/commercial-licensed, not LGPL.
+
+**Testing:** every command has unit tests (execute + undo round-trip). An integration test starts the headless editor, lists tools, calls commands over MCP and checks the resulting scene.
+
 ---
 
 ## Changelog
@@ -324,3 +343,4 @@ The engine starts single-threaded but every module is written so it can run on w
 - 2026-10-26 — Test framework: GoogleTest v1.17.0 (submodule).
 - 2026-10-26 — Code style: clang-format + warnings-as-errors.
 - 2026-10-26 — Architecture rules (§18: dependency injection, composition root, no globals) and threading rules (§19); logger injected, no global logger.
+- 2026-10-26 — §20: editor command architecture + built-in MCP server (localhost-only, token, headless mode).
