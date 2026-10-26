@@ -20,6 +20,22 @@ Editors: Visual Studio and VS Code (C/C++ extension) pick up `.clang-format` aut
 
 Needs **clang-format 17 or newer**. CMake finds it on `PATH` or inside Visual Studio 2022; if it's missing (or too old) the format targets and `Format.Check` are skipped, with a message at configure time. Different clang-format versions can format a few edge cases differently, so if `Format.Check` passes for an agent but fails for you (or the reverse), tell the agent which version you have.
 
+## EditorConfig (all text files)
+
+`.editorconfig` gives every editor the same basics for **all** files, including CMake, JSON, YAML and Markdown that clang-format never touches:
+
+| Setting | Value |
+|---|---|
+| charset | UTF-8 |
+| line endings | LF (CRLF for `.bat/.cmd/.ps1/.sln/.vcxproj/.props`, matching `.gitattributes`) |
+| indentation | 4 spaces (2 for YAML; tabs only in `.gitmodules`, which git writes itself) |
+| final newline | always |
+| trailing whitespace | trimmed |
+
+Visual Studio, Rider and CLion support it natively. VS Code needs the *EditorConfig for VS Code* extension.
+
+The test `Lint.EditorConfig.TextFilesFollowRules` (label `lint`) checks every text file tracked by git (outside `external/`) for a final newline, trailing whitespace, tab indentation and CR characters, and reports `file:line` for each problem.
+
 ## Warnings
 
 Every Meow2 target calls `meow2_set_warnings(<target>)` (see `cmake/Meow2Warnings.cmake`):

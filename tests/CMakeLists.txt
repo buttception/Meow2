@@ -13,3 +13,16 @@ if(MEOW2_WARNINGS_AS_ERRORS)
             -P "${PROJECT_SOURCE_DIR}/cmake/BuildShouldFail.cmake")
     set_tests_properties(Build.Warnings.AreErrors PROPERTIES LABELS "integration")
 endif()
+
+# .editorconfig basics for every tracked text file (needs git to list them).
+find_package(Git QUIET)
+if(GIT_FOUND)
+    add_test(NAME Lint.EditorConfig.TextFilesFollowRules
+        COMMAND ${CMAKE_COMMAND}
+            "-DMEOW2_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DMEOW2_GIT=${GIT_EXECUTABLE}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckTextFiles.cmake")
+    set_tests_properties(Lint.EditorConfig.TextFilesFollowRules PROPERTIES LABELS "lint")
+else()
+    message(STATUS "git not found: Lint.EditorConfig.TextFilesFollowRules disabled")
+endif()
