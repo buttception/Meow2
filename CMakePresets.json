@@ -1,0 +1,376 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "description": "Shared settings: Ninja, one build folder per preset.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}"
+        },
+        {
+            "name": "windows-msvc",
+            "description": "Windows (MSVC, x64). Run from Visual Studio 2022 or a VS Developer Prompt.",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            },
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "toolset": {
+                "value": "host=x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "cl"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "hostOS": [
+                        "Windows"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "linux-clang",
+            "description": "Linux (Clang).",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            },
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "clang++"
+            }
+        },
+        {
+            "name": "config-debug",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "config-relwithdebinfo",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+            }
+        },
+        {
+            "name": "config-release",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON"
+            }
+        },
+        {
+            "name": "windows-msvc-debug",
+            "displayName": "windows-msvc Debug",
+            "inherits": [
+                "windows-msvc",
+                "config-debug"
+            ]
+        },
+        {
+            "name": "windows-msvc-relwithdebinfo",
+            "displayName": "windows-msvc RelWithDebInfo",
+            "inherits": [
+                "windows-msvc",
+                "config-relwithdebinfo"
+            ]
+        },
+        {
+            "name": "windows-msvc-release",
+            "displayName": "windows-msvc Release",
+            "inherits": [
+                "windows-msvc",
+                "config-release"
+            ]
+        },
+        {
+            "name": "linux-clang-debug",
+            "displayName": "linux-clang Debug",
+            "inherits": [
+                "linux-clang",
+                "config-debug"
+            ]
+        },
+        {
+            "name": "linux-clang-relwithdebinfo",
+            "displayName": "linux-clang RelWithDebInfo",
+            "inherits": [
+                "linux-clang",
+                "config-relwithdebinfo"
+            ]
+        },
+        {
+            "name": "linux-clang-release",
+            "displayName": "linux-clang Release",
+            "inherits": [
+                "linux-clang",
+                "config-release"
+            ]
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "windows-msvc-build",
+            "hidden": true,
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "linux-clang-build",
+            "hidden": true,
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "windows-msvc-debug",
+            "configurePreset": "windows-msvc-debug",
+            "inherits": "windows-msvc-build"
+        },
+        {
+            "name": "windows-msvc-relwithdebinfo",
+            "configurePreset": "windows-msvc-relwithdebinfo",
+            "inherits": "windows-msvc-build"
+        },
+        {
+            "name": "windows-msvc-release",
+            "configurePreset": "windows-msvc-release",
+            "inherits": "windows-msvc-build"
+        },
+        {
+            "name": "linux-clang-debug",
+            "configurePreset": "linux-clang-debug",
+            "inherits": "linux-clang-build"
+        },
+        {
+            "name": "linux-clang-relwithdebinfo",
+            "configurePreset": "linux-clang-relwithdebinfo",
+            "inherits": "linux-clang-build"
+        },
+        {
+            "name": "linux-clang-release",
+            "configurePreset": "linux-clang-release",
+            "inherits": "linux-clang-build"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "windows-msvc-test",
+            "hidden": true,
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "linux-clang-test",
+            "hidden": true,
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "windows-msvc-debug",
+            "configurePreset": "windows-msvc-debug",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "inherits": "windows-msvc-test"
+        },
+        {
+            "name": "windows-msvc-relwithdebinfo",
+            "configurePreset": "windows-msvc-relwithdebinfo",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "inherits": "windows-msvc-test"
+        },
+        {
+            "name": "windows-msvc-release",
+            "configurePreset": "windows-msvc-release",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "inherits": "windows-msvc-test"
+        },
+        {
+            "name": "linux-clang-debug",
+            "configurePreset": "linux-clang-debug",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "inherits": "linux-clang-test"
+        },
+        {
+            "name": "linux-clang-relwithdebinfo",
+            "configurePreset": "linux-clang-relwithdebinfo",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "inherits": "linux-clang-test"
+        },
+        {
+            "name": "linux-clang-release",
+            "configurePreset": "linux-clang-release",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "inherits": "linux-clang-test"
+        }
+    ],
+    "workflowPresets": [
+        {
+            "name": "windows-msvc-debug",
+            "description": "Configure, build and test (windows-msvc Debug)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "windows-msvc-debug"
+                },
+                {
+                    "type": "build",
+                    "name": "windows-msvc-debug"
+                },
+                {
+                    "type": "test",
+                    "name": "windows-msvc-debug"
+                }
+            ]
+        },
+        {
+            "name": "windows-msvc-relwithdebinfo",
+            "description": "Configure, build and test (windows-msvc RelWithDebInfo)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "windows-msvc-relwithdebinfo"
+                },
+                {
+                    "type": "build",
+                    "name": "windows-msvc-relwithdebinfo"
+                },
+                {
+                    "type": "test",
+                    "name": "windows-msvc-relwithdebinfo"
+                }
+            ]
+        },
+        {
+            "name": "windows-msvc-release",
+            "description": "Configure, build and test (windows-msvc Release)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "windows-msvc-release"
+                },
+                {
+                    "type": "build",
+                    "name": "windows-msvc-release"
+                },
+                {
+                    "type": "test",
+                    "name": "windows-msvc-release"
+                }
+            ]
+        },
+        {
+            "name": "linux-clang-debug",
+            "description": "Configure, build and test (linux-clang Debug)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "linux-clang-debug"
+                },
+                {
+                    "type": "build",
+                    "name": "linux-clang-debug"
+                },
+                {
+                    "type": "test",
+                    "name": "linux-clang-debug"
+                }
+            ]
+        },
+        {
+            "name": "linux-clang-relwithdebinfo",
+            "description": "Configure, build and test (linux-clang RelWithDebInfo)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "linux-clang-relwithdebinfo"
+                },
+                {
+                    "type": "build",
+                    "name": "linux-clang-relwithdebinfo"
+                },
+                {
+                    "type": "test",
+                    "name": "linux-clang-relwithdebinfo"
+                }
+            ]
+        },
+        {
+            "name": "linux-clang-release",
+            "description": "Configure, build and test (linux-clang Release)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "linux-clang-release"
+                },
+                {
+                    "type": "build",
+                    "name": "linux-clang-release"
+                },
+                {
+                    "type": "test",
+                    "name": "linux-clang-release"
+                }
+            ]
+        }
+    ]
+}

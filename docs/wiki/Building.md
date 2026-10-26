@@ -26,6 +26,33 @@ Build output goes to `<build dir>/bin` (executables) and `<build dir>/lib` (libr
 
 The engine library is always built.
 
+## Presets
+
+`CMakePresets.json` defines one preset per platform × configuration. Each preset builds into its own folder, `build/<preset>/`.
+
+| Platform | Debug | RelWithDebInfo | Release |
+|---|---|---|---|
+| Windows (MSVC x64, Ninja) | `windows-msvc-debug` | `windows-msvc-relwithdebinfo` | `windows-msvc-release` |
+| Linux (Clang, Ninja) | `linux-clang-debug` | `linux-clang-relwithdebinfo` | `linux-clang-release` |
+
+| Config | What it's for |
+|---|---|
+| Debug | No optimisation, full debug info. Day-to-day debugging. |
+| RelWithDebInfo | Optimised, with debug info. Profiling, and analysing crash dumps from optimised code. |
+| Release | Fully optimised, with link-time optimisation (`CMAKE_INTERPROCEDURAL_OPTIMIZATION`). Exported games. |
+
+```
+cmake --workflow --preset windows-msvc-debug   # configure + build + test
+# or step by step
+cmake --preset windows-msvc-debug
+cmake --build --preset windows-msvc-debug
+ctest --preset windows-msvc-debug
+```
+
+- Windows presets only appear on Windows, and Linux presets only on Linux. (Workflow presets are listed everywhere, because CMake doesn't support conditions on them; running one for the other OS fails with "disabled configure preset".)
+- MSVC needs the Visual Studio environment: use a *Developer PowerShell for VS 2022*, or open the folder in Visual Studio 2022 (it reads the presets and sets that environment up for you).
+- Personal tweaks (other compilers, extra cache variables) go in `CMakeUserPresets.json`, which is git-ignored and can `inherit` from the shared presets.
+
 ## Building by hand (without presets)
 
 ```

@@ -18,7 +18,7 @@ Issues are labelled `milestone:M<n>` on GitHub.
 | `.gitattributes` (line endings) | ✅ | #1 / PR #3 |
 | Planning docs (techstack, AGENTS, milestones, README, wiki home) | ✅ | #2 / PR #4 |
 | CMake skeleton: `Meow2Engine` (static), `Meow2Renderer`, `Meow2Editor`, `Meow2Player`, tests | 🟨 | #5 / PR #9 |
-| `CMakePresets.json`: Debug / RelWithDebInfo / Release | ⬜ | |
+| `CMakePresets.json`: Debug / RelWithDebInfo / Release | 🟨 | #6 / PR #10 |
 | Test framework + CTest integration | ⬜ | |
 | `.clang-format`, warnings-as-errors | ⬜ | |
 
