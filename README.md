@@ -44,10 +44,12 @@ Step by step: `cmake --preset <p>`, `cmake --build --preset <p>`. Output: `build
 
 ```
 ctest --preset windows-msvc-debug              # all tests
-ctest --preset windows-msvc-debug -L smoke     # by label
+ctest --preset windows-msvc-debug -L unit      # by label (unit, smoke, ...)
 ```
 
-More detail: [docs/wiki/Building.md](docs/wiki/Building.md).
+More detail: [Building](docs/wiki/Building.md), [Testing](docs/wiki/Testing.md).
+
+Forgot `--recurse-submodules`? Run `git submodule update --init --recursive`.
 
 ## License
 

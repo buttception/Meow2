@@ -21,3 +21,7 @@ target_sources(Meow2Engine
 
 target_include_directories(Meow2Engine PRIVATE src)
 target_compile_features(Meow2Engine PUBLIC cxx_std_20)
+
+if(MEOW2_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

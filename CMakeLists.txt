@@ -28,6 +28,7 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 option(MEOW2_BUILD_EDITOR   "Build Meow2Editor"   ON)
 option(MEOW2_BUILD_PLAYER   "Build Meow2Player"   ON)
 option(MEOW2_BUILD_RENDERER "Build Meow2Renderer" ON)
+option(MEOW2_BUILD_TESTS    "Build unit tests (needs the googletest submodule)" ON)
 
 # ---- Output layout ----------------------------------------------------------
 # All executables (and later DLLs such as Qt's) land in one bin/ folder so they
@@ -41,6 +42,9 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 # CDash dashboard targets that include(CTest) would add.
 enable_testing()
 include(Meow2SmokeTest)
+if(MEOW2_BUILD_TESTS)
+    include(Meow2Tests)
+endif()
 
 # ---- Projects ---------------------------------------------------------------
 add_subdirectory(Meow2Engine)

@@ -16,7 +16,7 @@
 | Compilers | MSVC 2022 (primary), Clang/GCC (Linux), Android NDK Clang |
 | Build system | CMake ≥ 3.25 with `CMakePresets.json`, Ninja generator |
 | Build configurations | `Debug`, `RelWithDebInfo`, `Release` |
-| Tests | CTest. Framework **⚠ OPEN** (owner deciding how tests are handled) |
+| Tests | CTest + GoogleTest (`meow2_add_test_suite()`), see [docs/wiki/Testing.md](docs/wiki/Testing.md) |
 | Dependencies | Git submodules in `external/`, pinned to release tags (see §4). Exceptions: Qt (installer), Vulkan SDK (installer), DXC (prebuilt binaries) |
 
 **Portability rules** (so Linux/Android stay possible later):
@@ -35,7 +35,7 @@
 | `Meow2Renderer` | exe | Lightweight app to test rendering & shaders and **showcase engine capabilities**. Dev UI: Dear ImGui (docking). Loads glTF sample scenes. | `Meow2Engine`, imgui |
 | `Meow2Editor` | exe | Qt 6.8 editor: scene editing, asset import, game export | `Meow2Engine`, Qt6 |
 | `Meow2Player` | exe | Standalone game runtime the editor bundles on export. Uses the built-in UI. No ImGui, no Qt. | `Meow2Engine` |
-| `*Tests` | exe | Tests registered with CTest | `Meow2Engine` + test framework |
+| `*Tests` | exe | One GoogleTest executable per module (e.g. `Meow2EngineCoreTests`), registered with CTest | `Meow2Engine`, `GTest::gtest_main` |
 
 The rendering code (RHI, render graph, passes) lives in `Meow2Engine`. `Meow2Renderer` only drives and displays it.
 
@@ -137,7 +137,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | D3D12MemoryAllocator | D3D12 memory | MIT | submodule |
 | DirectX-Headers / Agility SDK | D3D12 headers, newer features | MIT / MS | submodule / NuGet package (**⚠ OPEN**) |
 | glTF loader (**⚠ OPEN**) | asset import | MIT | submodule |
-| test framework (**⚠ OPEN**) | tests | — | submodule |
+| GoogleTest v1.17.0 | unit tests (gmock off) | BSD-3 | submodule |
 | **Not submodules** | | | |
 | Qt 6.8 LTS | Meow2Editor | LGPLv3 (link dynamically) | Qt online installer; `CMAKE_PREFIX_PATH` |
 | Vulkan SDK | validation layers, tools | — | LunarG installer (dev machines only) |
@@ -277,3 +277,4 @@ See [milestones.md](milestones.md).
 - 2026-10-26 — Qt 6.8 LTS; Jolt first (PhysX/Box3D-ready); planned Linux/Wine/Android; windowing options; submodules for deps; custom memory arenas; reversed infinite Z; Debug/RelWithDebInfo/Release; glTF sample scenes + visual regression; `_` = all locals; DXC + room for a custom shader language.
 - 2026-10-26 — Dropped the `_` prefix for locals (plain camelCase); SDL3 chosen for windowing (dockable windows planned); build-time selection for all subsystems except the RHI, which is runtime hot-swappable (Vulkan ↔ D3D12); glTF 2.0 only (`.gltf` + `.glb`), sample assets fetched on demand; milestones are general and work follows owner requests.
 - 2026-10-26 — Roadmap moved to milestones.md.
+- 2026-10-26 — Test framework: GoogleTest v1.17.0 (submodule).

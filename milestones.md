@@ -19,7 +19,7 @@ Issues are labelled `milestone:M<n>` on GitHub.
 | Planning docs (techstack, AGENTS, milestones, README, wiki home) | ✅ | #2 / PR #4 |
 | CMake skeleton: `Meow2Engine` (static), `Meow2Renderer`, `Meow2Editor`, `Meow2Player`, tests | 🟨 | #5 / PR #9 |
 | `CMakePresets.json`: Debug / RelWithDebInfo / Release | 🟨 | #6 / PR #10 |
-| Test framework + CTest integration | ⬜ | |
+| Test framework + CTest integration | 🟨 | #7 / PR #11 |
 | `.clang-format`, warnings-as-errors | ⬜ | |
 
 **Done when:** `cmake --preset … && cmake --build … && ctest …` succeeds on Windows for all three configs.
