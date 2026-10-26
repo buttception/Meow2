@@ -34,7 +34,7 @@
 |---|---|---|---|
 | `Meow2Engine` | static lib | All runtime code | `external/` libs |
 | `Meow2Renderer` | exe | Lightweight app to test rendering & shaders and **showcase engine capabilities**. Dev UI: Dear ImGui (docking). Loads glTF sample scenes. | `Meow2Engine`, imgui |
-| `Meow2Editor` | exe | Qt 6.8 editor: scene editing, asset import, game export | `Meow2Engine`, Qt6 |
+| `Meow2Editor` | exe | Qt 6.8 editor: scene editing, asset import, game export. **Fully drivable through an MCP server** (§20), so AI agents can build in it | `Meow2Engine`, Qt6 |
 | `Meow2Player` | exe | Standalone game runtime the editor bundles on export. Uses the built-in UI. No ImGui, no Qt. | `Meow2Engine` |
 | `*Tests` | exe | One GoogleTest executable per module (e.g. `Meow2EngineCoreTests`), registered with CTest | `Meow2Engine`, `GTest::gtest_main` |
 
@@ -174,8 +174,8 @@ PDBs are kept for every build, so crash dumps can be symbolicated.
 
 ## 7. Logging
 
-- spdlog behind `Logger`. Named loggers per subsystem.
-- Macros `MEOW2_LOG_{TRACE,DEBUG,INFO,WARN,ERROR,CRITICAL}(category, fmt, ...)`; levels compiled out per config (§5).
+- spdlog behind `Logger`. **No global/default logger** (spdlog's global registry is not used): the composition root creates the `Logger`, and subsystems receive it (or a per-subsystem `LogChannel`) by injection (§18).
+- Macros take the logger explicitly: `MEOW2_LOG_{TRACE,DEBUG,INFO,WARN,ERROR,CRITICAL}(m_log, fmt, ...)`; levels compiled out per config (§5).
 - Sinks:
   - **File** — rotating file sink to a configurable path.
   - **In-app console** — thread-safe ring buffer (`ConsoleRingSink`), shown as an ImGui window in Meow2Renderer and a Qt dock in Meow2Editor. Qt widgets are updated only on the GUI thread (queued connection).
@@ -271,6 +271,68 @@ PDBs are kept for every build, so crash dumps can be symbolicated.
 
 See [milestones.md](milestones.md).
 
+## 18. Architecture: dependency injection, ownership, no globals
+
+Goal: the dependency graph is **visible in the code**: what a class needs is exactly what its constructor takes.
+
+**Dependency injection (constructor injection)**
+- A class receives everything it uses through its **constructor**: other subsystems, allocators, the logger, configuration. It never reaches out to a global, a singleton or a service locator.
+- Few dependencies → plain parameters: `Window(Logger& logger, const WindowDesc& desc)`.
+  More than ~3 → a `<Name>Deps` struct of references, so call sites stay readable:
+  `Renderer(const RendererDeps& deps)` with `RendererDeps{ .m_logger = …, .m_device = …, .m_window = … }`.
+- Injected dependencies are stored as **references** (`Logger& m_logger;`): non-null, non-owning, can't be re-pointed. Use a pointer only when the dependency is genuinely optional.
+- Build-time-selected backends (§3) are still injected: the *type* is chosen by CMake, the *instance* is passed in.
+
+**Composition root**
+- Each executable (`Meow2Player`, `Meow2Renderer`, `Meow2Editor`, test fixtures) has **one place**, its `main()`/`Application` class, that creates every subsystem in dependency order and wires them together. Nothing else creates subsystems.
+- The composition root **owns** subsystems (by value or `std::unique_ptr`). Everyone else holds non-owning references.
+- **Lifetime rule:** a dependency must outlive everything that references it. Construct in dependency order; destruction runs in reverse automatically (locals, or members of an `Application` class, which are constructed in **declaration order**, so declare members in dependency order).
+
+**Globals**
+- Not allowed: mutable global/namespace-scope variables, singletons (`Foo::get()`), mutable `static` members, mutable function-local `static`s, service locators.
+- Allowed: `constexpr`/`const` constants (`c_` prefix); stateless free functions.
+- **Exceptions** need a `// GLOBAL: <why>` comment and a mention in the PR. Known ones:
+  - OS callbacks with no user-data parameter (e.g. `SetUnhandledExceptionFilter` in the crash handler): one `s_` pointer, set and cleared by the composition root.
+  - Per-thread scratch data inside the job system/allocators (`thread_local`), behind their APIs.
+  - Third-party libraries with process-global state (SDL3 init, the Vulkan loader): wrapped by one owning object created by the composition root.
+
+## 19. Threading
+
+The engine starts single-threaded but every module is written so it can run on worker threads later.
+
+- **Main thread** owns the OS window and the event loop (SDL3 requires event handling on the main thread).
+- **Planned (M1):** a job system: a fixed pool of worker threads (`std::jthread` + `std::stop_token`), jobs with dependencies, `waitFor(handle)`. Long-lived threads are only created by the job system or the composition root.
+- **Every class states its thread safety** in its header comment, one of:
+  - *Not thread-safe*: use from one thread at a time (the default for most objects);
+  - *Immutable after construction*: any thread may read;
+  - *Thread-safe*: internally synchronised (say how).
+- Prefer, in this order: **immutable data**, **data owned by one thread** (e.g. a frame arena per worker), **message passing/queues**, and only then shared data with locks.
+- Locks: `std::mutex` / `std::shared_mutex` with `std::scoped_lock`; never call into another subsystem or user callback while holding a lock; lock order documented where two locks are taken.
+- Atomics: `std::atomic` with the default (sequentially consistent) ordering unless a profiler shows a need, and then with a comment explaining the weaker ordering.
+- Logging is thread-safe (spdlog multi-threaded sinks); the Qt console sink marshals to the GUI thread.
+- RHI: command lists are recorded on any thread (one list per thread), submitted from one thread; resource creation on the device is thread-safe.
+- No mutable globals (§18) is the main threading rule: shared mutable state that isn't visible in a constructor is where data races hide.
+- **Sanitizers (M1):** presets with AddressSanitizer/UndefinedBehaviorSanitizer and ThreadSanitizer run the tests on Linux to catch memory errors and data races.
+
+## 20. Editor automation: commands + MCP server
+
+Requirement: **anything a user can do in the editor, an AI agent can do through MCP** (Model Context Protocol), so agents can build scenes and games in it.
+
+**Command architecture (the foundation)**
+- Every editor action is a **command**: a name, a parameter schema (JSON Schema), `execute()` and `undo()`. Examples: `scene.createEntity`, `entity.addComponent`, `component.setProperty`, `asset.import`, `project.export`.
+- Menus, toolbar buttons, shortcuts, drag-and-drop, the inspector, undo/redo **and** MCP all go through the same `EditorCommandRegistry`. **No editor UI may change editor state directly**; it must issue a command. That's what guarantees MCP covers *everything* the user can do: a feature that exists in the UI exists as a command, so it exists as an MCP tool.
+- Read-only **queries** (scene hierarchy, selection, component values, asset list, log, project settings) are registered the same way and exposed as MCP tools/resources. A **viewport screenshot** query returns an image, so an agent can *see* the result.
+
+**MCP server**
+- Built into Meow2Editor; exposes `tools/list` (generated from the registry's names, descriptions and schemas) and `tools/call` (→ `execute`). Agent changes are undoable and appear live in the UI.
+- Transport: MCP *Streamable HTTP* on **127.0.0.1 only** (never other interfaces), **off by default**, enabled per session from the editor or with `--mcp`; requires a per-session token; validates the `Origin` header (DNS-rebinding protection, as the MCP spec requires).
+- File access through commands is limited to the open project folder.
+- Threading (§19): requests arrive on a network thread and are executed on the editor's main thread (Qt queued invocation); the HTTP thread never touches editor state.
+- **Headless mode** (`Meow2Editor --headless --mcp`): no window, off-screen viewport. Lets agents and CI drive the editor on a machine without a desktop (e.g. Linux CI, an agent's cloud workspace).
+- Libraries (**⚠ OPEN**, decided in M10 with owner permission): JSON (nlohmann/json, MIT) and a small HTTP server (cpp-httplib, MIT). Qt's own `QHttpServer` is avoided because it's GPL/commercial-licensed, not LGPL.
+
+**Testing:** every command has unit tests (execute + undo round-trip). An integration test starts the headless editor, lists tools, calls commands over MCP and checks the resulting scene.
+
 ---
 
 ## Changelog
@@ -280,3 +342,5 @@ See [milestones.md](milestones.md).
 - 2026-10-26 — Roadmap moved to milestones.md.
 - 2026-10-26 — Test framework: GoogleTest v1.17.0 (submodule).
 - 2026-10-26 — Code style: clang-format + warnings-as-errors.
+- 2026-10-26 — Architecture rules (§18: dependency injection, composition root, no globals) and threading rules (§19); logger injected, no global logger.
+- 2026-10-26 — §20: editor command architecture + built-in MCP server (localhost-only, token, headless mode).

@@ -22,6 +22,7 @@ Issues are labelled `milestone:M<n>` on GitHub.
 | Test framework + CTest integration | 🟨 | #7 / PR #11 |
 | `.clang-format`, warnings-as-errors | 🟨 | #8 / PR #12 |
 | CI: GitHub Actions (hosted Linux + self-hosted Windows runner) | 🟨 | #13 / PR #17 |
+| Architecture rules: dependency injection, no globals, threading | 🟨 | #14 / PR #18 |
 
 **Done when:** `cmake --preset … && cmake --build … && ctest …` succeeds on Windows for all three configs, and CI runs it on every PR.
 
@@ -33,6 +34,8 @@ Issues are labelled `milestone:M<n>` on GitHub.
 - `IAllocator` + `std::pmr` adapter
 - Linear arena, frame arena (per frame in flight), pool allocator, stack allocator
 - Tracking allocator with memory tags and a leak report
+- Job system: worker thread pool (`std::jthread`), jobs with dependencies, wait handles
+- Sanitizer presets: `linux-clang-asan` (Address + UndefinedBehavior), `linux-clang-tsan` (Thread), run in CI
 
 ## M2 — Logging & Crash ⬜
 **Goal:** see what the engine is doing, and get a `.dmp` when it dies.
@@ -104,13 +107,16 @@ Issues are labelled `milestone:M<n>` on GitHub.
 - Debug draw through the renderer
 
 ## M10 — Editor ⬜
-**Goal:** a Qt 6.8 editor with a live viewport.
+**Goal:** a Qt 6.8 editor with a live viewport, fully drivable by AI agents over MCP.
 **Depends on:** M6, M2
 
-- Qt shell, dock layout
+- Command system: every editor action is an undoable command in `EditorCommandRegistry` (techstack §20)
+- Qt shell, dock layout (UI only issues commands)
 - Viewport widget (swapchain on the Qt native window)
 - Log console dock
 - Scene hierarchy, inspector, undo/redo
+- **MCP server**: commands/queries as MCP tools, viewport screenshot, localhost + token, `--mcp`
+- Headless mode (`--headless`) + MCP integration tests in CI
 
 ## M11 — Game UI ⬜
 **Goal:** the built-in UI used by exported games.
