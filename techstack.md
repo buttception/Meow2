@@ -174,8 +174,8 @@ PDBs are kept for every build, so crash dumps can be symbolicated.
 
 ## 7. Logging
 
-- spdlog behind `Logger`. Named loggers per subsystem.
-- Macros `MEOW2_LOG_{TRACE,DEBUG,INFO,WARN,ERROR,CRITICAL}(category, fmt, ...)`; levels compiled out per config (§5).
+- spdlog behind `Logger`. **No global/default logger** (spdlog's global registry is not used): the composition root creates the `Logger`, and subsystems receive it (or a per-subsystem `LogChannel`) by injection (§18).
+- Macros take the logger explicitly: `MEOW2_LOG_{TRACE,DEBUG,INFO,WARN,ERROR,CRITICAL}(m_log, fmt, ...)`; levels compiled out per config (§5).
 - Sinks:
   - **File** — rotating file sink to a configurable path.
   - **In-app console** — thread-safe ring buffer (`ConsoleRingSink`), shown as an ImGui window in Meow2Renderer and a Qt dock in Meow2Editor. Qt widgets are updated only on the GUI thread (queued connection).
@@ -271,6 +271,49 @@ PDBs are kept for every build, so crash dumps can be symbolicated.
 
 See [milestones.md](milestones.md).
 
+## 18. Architecture: dependency injection, ownership, no globals
+
+Goal: the dependency graph is **visible in the code**: what a class needs is exactly what its constructor takes.
+
+**Dependency injection (constructor injection)**
+- A class receives everything it uses through its **constructor**: other subsystems, allocators, the logger, configuration. It never reaches out to a global, a singleton or a service locator.
+- Few dependencies → plain parameters: `Window(Logger& logger, const WindowDesc& desc)`.
+  More than ~3 → a `<Name>Deps` struct of references, so call sites stay readable:
+  `Renderer(const RendererDeps& deps)` with `RendererDeps{ .m_logger = …, .m_device = …, .m_window = … }`.
+- Injected dependencies are stored as **references** (`Logger& m_logger;`): non-null, non-owning, can't be re-pointed. Use a pointer only when the dependency is genuinely optional.
+- Build-time-selected backends (§3) are still injected: the *type* is chosen by CMake, the *instance* is passed in.
+
+**Composition root**
+- Each executable (`Meow2Player`, `Meow2Renderer`, `Meow2Editor`, test fixtures) has **one place**, its `main()`/`Application` class, that creates every subsystem in dependency order and wires them together. Nothing else creates subsystems.
+- The composition root **owns** subsystems (by value or `std::unique_ptr`). Everyone else holds non-owning references.
+- **Lifetime rule:** a dependency must outlive everything that references it. Construct in dependency order; destruction runs in reverse automatically (locals, or members of an `Application` class, which are constructed in **declaration order**, so declare members in dependency order).
+
+**Globals**
+- Not allowed: mutable global/namespace-scope variables, singletons (`Foo::get()`), mutable `static` members, mutable function-local `static`s, service locators.
+- Allowed: `constexpr`/`const` constants (`c_` prefix); stateless free functions.
+- **Exceptions** need a `// GLOBAL: <why>` comment and a mention in the PR. Known ones:
+  - OS callbacks with no user-data parameter (e.g. `SetUnhandledExceptionFilter` in the crash handler): one `s_` pointer, set and cleared by the composition root.
+  - Per-thread scratch data inside the job system/allocators (`thread_local`), behind their APIs.
+  - Third-party libraries with process-global state (SDL3 init, the Vulkan loader): wrapped by one owning object created by the composition root.
+
+## 19. Threading
+
+The engine starts single-threaded but every module is written so it can run on worker threads later.
+
+- **Main thread** owns the OS window and the event loop (SDL3 requires event handling on the main thread).
+- **Planned (M1):** a job system: a fixed pool of worker threads (`std::jthread` + `std::stop_token`), jobs with dependencies, `waitFor(handle)`. Long-lived threads are only created by the job system or the composition root.
+- **Every class states its thread safety** in its header comment, one of:
+  - *Not thread-safe*: use from one thread at a time (the default for most objects);
+  - *Immutable after construction*: any thread may read;
+  - *Thread-safe*: internally synchronised (say how).
+- Prefer, in this order: **immutable data**, **data owned by one thread** (e.g. a frame arena per worker), **message passing/queues**, and only then shared data with locks.
+- Locks: `std::mutex` / `std::shared_mutex` with `std::scoped_lock`; never call into another subsystem or user callback while holding a lock; lock order documented where two locks are taken.
+- Atomics: `std::atomic` with the default (sequentially consistent) ordering unless a profiler shows a need, and then with a comment explaining the weaker ordering.
+- Logging is thread-safe (spdlog multi-threaded sinks); the Qt console sink marshals to the GUI thread.
+- RHI: command lists are recorded on any thread (one list per thread), submitted from one thread; resource creation on the device is thread-safe.
+- No mutable globals (§18) is the main threading rule: shared mutable state that isn't visible in a constructor is where data races hide.
+- **Sanitizers (M1):** presets with AddressSanitizer/UndefinedBehaviorSanitizer and ThreadSanitizer run the tests on Linux to catch memory errors and data races.
+
 ---
 
 ## Changelog
@@ -280,3 +323,4 @@ See [milestones.md](milestones.md).
 - 2026-10-26 — Roadmap moved to milestones.md.
 - 2026-10-26 — Test framework: GoogleTest v1.17.0 (submodule).
 - 2026-10-26 — Code style: clang-format + warnings-as-errors.
+- 2026-10-26 — Architecture rules (§18: dependency injection, composition root, no globals) and threading rules (§19); logger injected, no global logger.

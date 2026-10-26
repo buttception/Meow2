@@ -104,6 +104,8 @@ Verdict: SOUND / NEEDS CHANGES
 - [ ] new targets call `meow2_set_warnings`; zero warnings on GCC and Clang
 - [ ] interfaces respected — no module includes another module's implementation headers
 - [ ] interface policy (techstack.md §3): build-time selection, virtuals only in the RHI / `IAllocator`
+- [ ] dependencies injected via constructor; no new globals/singletons/mutable statics (or `// GLOBAL:` justified)
+- [ ] thread safety documented for new classes; no lock held across calls into other code
 - [ ] ownership/lifetimes clear, no leaks, RAII
 - [ ] thread safety stated where relevant
 - [ ] errors handled / logged
@@ -123,6 +125,9 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - `.clang-format` is authoritative. Before committing run `cmake --build --preset <p> --target format`; the `Format.Check` test must pass.
 - Every Meow2 target (library, executable, test suite) calls `meow2_set_warnings(<target>)`. Warnings are errors. Never call it on third-party targets, and never silence a warning with a pragma without a comment explaining why.
 - Public headers in `include/Meow2/<Module>/`, private code in `src/<Module>/`.
+- **Dependency injection (techstack.md §18):** classes get every dependency through their constructor (references; a `<Name>Deps` struct when there are more than ~3). Subsystems are created and owned only by the composition root (each executable's `main`/`Application`).
+- **No mutable globals**: no singletons, service locators, mutable globals or mutable `static`s. Any unavoidable exception gets a `// GLOBAL: <why>` comment and is called out in the PR.
+- **Threading (techstack.md §19):** every class header states its thread safety (not thread-safe / immutable after construction / thread-safe + how). No locks held while calling into other subsystems or callbacks.
 - Every subsystem is reached through its public header. Backends are chosen at build time (pimpl + CMake option); only the RHI uses virtual interfaces and runtime selection.
 - Third-party headers (SDL3, spdlog, Jolt, vulkan.h, d3d12.h, Qt) must **not** leak into public engine headers, except DirectXMath in `Meow2/Math`.
 - Above the RHI, never cache backend-native handles (needed for the Vulkan ↔ D3D12 hot swap).
@@ -173,3 +178,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-26 — GoogleTest chosen: `meow2_add_test_suite` / `meow2_add_smoke_test` rules and labels; Environments rewritten (agents build/test in the cloud workspace, the owner's VM has no network and is only used for syncing).
 - 2026-10-26 — Code rules: run the `format` target / `Format.Check`; every Meow2 target uses `meow2_set_warnings`; review checklist covers both.
 - 2026-10-26 — CI: agents report CI results (Windows via the self-hosted runner); CI safety rules for workflow changes.
+- 2026-10-26 — Code rules: dependency injection + composition root, no mutable globals (`// GLOBAL:` exceptions), thread-safety documentation; review checklist updated.

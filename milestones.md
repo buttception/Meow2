@@ -22,6 +22,7 @@ Issues are labelled `milestone:M<n>` on GitHub.
 | Test framework + CTest integration | 🟨 | #7 / PR #11 |
 | `.clang-format`, warnings-as-errors | 🟨 | #8 / PR #12 |
 | CI: GitHub Actions (hosted Linux + self-hosted Windows runner) | 🟨 | #13 / PR #17 |
+| Architecture rules: dependency injection, no globals, threading | 🟨 | #14 / PR #18 |
 
 **Done when:** `cmake --preset … && cmake --build … && ctest …` succeeds on Windows for all three configs, and CI runs it on every PR.
 
@@ -33,6 +34,8 @@ Issues are labelled `milestone:M<n>` on GitHub.
 - `IAllocator` + `std::pmr` adapter
 - Linear arena, frame arena (per frame in flight), pool allocator, stack allocator
 - Tracking allocator with memory tags and a leak report
+- Job system: worker thread pool (`std::jthread`), jobs with dependencies, wait handles
+- Sanitizer presets: `linux-clang-asan` (Address + UndefinedBehavior), `linux-clang-tsan` (Thread), run in CI
 
 ## M2 — Logging & Crash ⬜
 **Goal:** see what the engine is doing, and get a `.dmp` when it dies.
