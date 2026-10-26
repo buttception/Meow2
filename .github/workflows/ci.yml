@@ -55,14 +55,27 @@ jobs:
 
       - name: Build and test (preset)
         if: matrix.preset != ''
-        run: cmake --workflow --preset ${{ matrix.preset }}
+        run: |
+          set -o pipefail
+          cmake --workflow --preset ${{ matrix.preset }} 2>&1 | tee ci.log
 
       - name: Build and test (GCC)
         if: matrix.preset == ''
         run: |
-          cmake -S . -B build/gcc-debug -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build/gcc-debug
-          ctest --test-dir build/gcc-debug --output-on-failure --no-tests=error
+          set -o pipefail
+          {
+            cmake -S . -B build/gcc-debug -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug &&
+            cmake --build build/gcc-debug &&
+            ctest --test-dir build/gcc-debug --output-on-failure --no-tests=error
+          } 2>&1 | tee ci.log
+
+      # Show the end of the log as an annotation on the PR, so the failure is visible
+      # in the PR's "Files changed"/"Checks" view without opening the raw log.
+      - name: Report failure
+        if: failure()
+        run: |
+          tail -n 60 ci.log | sed -e 's/%/%25/g' -e 's/\r//g' | awk 'BEGIN{ORS="%0A"}{print}' > tail.txt
+          echo "::error title=Build/test failed (last 60 lines)::$(cat tail.txt)"
 
   windows:
     name: Windows (MSVC ${{ matrix.config }})
