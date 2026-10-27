@@ -95,6 +95,17 @@ icacls F:\ /deny "meow2-runner:(OI)(CI)(M)"
    The labels `self-hosted, Windows, X64` are added automatically; `meow2` is what the workflow asks for.
 4. The runner now shows as **Idle** under Settings → Actions → Runners.
 
+## API docs on GitHub Pages
+
+Workflow: [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml). On every push to `main` (and on manual runs), it publishes the Doxygen reference to **https://buttception.github.io/Meow2/**.
+
+1. **Build** (hosted Ubuntu, read-only token): configure with `-DMEOW2_BUILD_TESTS=OFF` (so no submodules are needed), build the `docs` target, and upload `docs/html` as a Pages artifact.
+2. **Deploy** (hosted Ubuntu): `actions/deploy-pages` publishes the artifact. This is the only job with write permissions (`pages: write`, plus `id-token: write`, which proves to Pages that the upload came from this workflow). It runs no repository code.
+
+**One-time setup (owner):** Settings → Pages → Build and deployment → Source: **GitHub Actions**. The first run after that creates the `github-pages` environment. Until it's set, the deploy job fails with "Pages not enabled". Re-run it from the Actions tab after enabling.
+
+It never runs for pull requests: a PR can't publish anything. Docs mistakes are caught earlier by `Docs.PublicApi.IsDocumented` in the normal CI jobs.
+
 ## How the Windows job finds Visual Studio
 
 The step runs as a **batch (`cmd`) script**: `vswhere.exe` (always installed with Visual Studio) finds the newest VS 2022 with the x64 C++ tools, and `vcvars64.bat` loads its developer environment (`cl`, `cmake`, `ninja` on PATH), exactly like a *Developer Command Prompt for VS 2022*. Then it runs `cmake --workflow --preset windows-msvc-<config>`.

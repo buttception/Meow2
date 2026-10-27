@@ -1,0 +1,76 @@
+# Publishes the Doxygen API reference to GitHub Pages: https://buttception.github.io/Meow2/
+# See docs/wiki/CI.md ("API docs on GitHub Pages").
+#
+# Safety: runs only for pushes to main (code that was already reviewed and merged) and manual
+# runs, never for pull requests. Only the deploy job gets write permissions (Pages + OIDC token),
+# and everything runs on GitHub-hosted runners, never on the self-hosted Windows runner.
+# Actions are GitHub-made and pinned to full commit SHAs.
+name: API docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time; a newer push waits instead of cancelling a deploy halfway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build API reference
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false   # no submodules: tests are off, so googletest isn't needed
+
+      # Same packages and cache key as ci.yml, so both workflows share the downloaded .debs.
+      - name: Cache apt packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/apt-cache
+          key: apt-ubuntu-24.04-v1-ninja-clang18-clangformat19-doxygen
+
+      - name: Install tools
+        run: |
+          mkdir -p ~/apt-cache/partial
+          sudo apt-get update -o Acquire::Retries=3
+          # clang-format is needed too: in CI (CI=true) configure fails without the pinned version.
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
+            -o Dir::Cache::Archives="$HOME/apt-cache" \
+            ninja-build clang-18 clang-format-19 doxygen
+          sudo chown -R "$(id -u):$(id -g)" ~/apt-cache
+
+      - name: Generate HTML
+        run: |
+          cmake -S . -B build/pages -G Ninja -DMEOW2_BUILD_TESTS=OFF
+          cmake --build build/pages --target docs
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: build/pages/docs/html
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The only job with write access, and it runs no repository code: it publishes the artifact.
+    permissions:
+      pages: write      # publish the site
+      id-token: write   # prove to Pages that the deployment comes from this workflow (OIDC)
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

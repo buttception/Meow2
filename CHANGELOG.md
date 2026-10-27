@@ -13,6 +13,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - Asserts: `MEOW2_ASSERT`, `MEOW2_ASSERT_SLOW`, `MEOW2_VERIFY` with a replaceable failure handler (`setAssertHandler`), and `isDebuggerAttached()` (#36).
 - This changelog (#36).
 - README: step-by-step instructions for generating the API reference (#36).
+- The API reference is published to GitHub Pages on every merge to `main`: https://buttception.github.io/Meow2/ (#38).
 
 ### Changed
 - M1 rescoped as "Core runtime" and M2 as "Platform"; design decisions for memory, logging, input, events, game loop and releases recorded in techstack.md (#32).

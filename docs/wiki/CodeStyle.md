@@ -54,7 +54,7 @@ const char* getVersionString();
 - Macros selected with `#if` (as in `Platform.h`) get an explicit `/// @def NAME` block.
 - Private code (`src/`) uses the same style for classes and non-trivial functions, plus `//` comments explaining *why*.
 
-Generate the reference (needs [Doxygen](https://www.doxygen.nl) ≥ 1.9.8, e.g. `winget install DimitriVanHeesch.Doxygen`):
+The reference for `main` is online at **https://buttception.github.io/Meow2/** (rebuilt by the `API docs` workflow on every merge). To preview your own changes, generate it locally (needs [Doxygen](https://www.doxygen.nl) ≥ 1.9.8, e.g. `winget install DimitriVanHeesch.Doxygen`):
 
 ```
 cmake --build build/vs2022 --config Debug --target docs     # or: --preset windows-msvc-debug --target docs

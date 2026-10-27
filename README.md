@@ -73,6 +73,10 @@ Forgot `--recurse-submodules`? Run `git submodule update --init --recursive`.
 
 ## API documentation
 
+**Read it online: https://buttception.github.io/Meow2/** (the API reference for `main`, rebuilt on every merge).
+
+To generate it yourself, for example to preview your own changes:
+
 The engine's public API (`Meow2Engine/include/Meow2/`) is documented with Doxygen comments, and you can generate a browsable HTML reference from it:
 
 1. Install [Doxygen](https://www.doxygen.nl) ≥ 1.9.8 once, then open a **new** command prompt so it's on `PATH`:
