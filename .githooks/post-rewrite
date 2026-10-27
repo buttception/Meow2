@@ -1,0 +1,7 @@
+#!/bin/sh
+# Runs after `git pull --rebase` / `git rebase` ($1 = "rebase") and `git commit --amend` ($1 = "amend").
+# Only rebases can bring in other people's changes; ORIG_HEAD is the commit before the rebase.
+if [ "$1" = "rebase" ]; then
+    exec "$(dirname "$0")/regenerate-vs-solution.sh" ORIG_HEAD HEAD
+fi
+exit 0

@@ -9,10 +9,14 @@ configure_file(src/Core/Version.h.in "${meow2GeneratedDir}/Meow2/Core/Version.h"
 target_sources(Meow2Engine
     PRIVATE
         src/Core/Assert.cpp
+        src/Core/Log/AssertLogging.cpp
+        src/Core/Log/Logger.cpp
+        src/Core/Log/LoggerImpl.h
+        src/Core/Log/LogSystem.cpp
         src/Core/Version.cpp
     PUBLIC
         # A header FILE_SET makes the base dirs PUBLIC include directories and
-        # lists the headers in IDEs. Public headers go in include/Meow2/<Module>/.
+        # lists the headers in IDEs. Public headers go in include/Meow2/<Subsystem>/[<Module>/].
         FILE_SET HEADERS
         BASE_DIRS
             include
@@ -20,18 +24,29 @@ target_sources(Meow2Engine
         FILES
             include/Meow2/Core/Assert.h
             include/Meow2/Core/Debugger.h
+            include/Meow2/Core/Log/AssertLogging.h
+            include/Meow2/Core/Log/Logger.h
+            include/Meow2/Core/Log/LogSystem.h
             include/Meow2/Core/Platform.h
+            include/Meow2/Core/Process.h
             "${meow2GeneratedDir}/Meow2/Core/Version.h")
 
-# OS-specific implementations (AGENTS.md: only in src/<Module>/Win32|Linux|Android/).
+# OS-specific implementations (AGENTS.md: only in Win32/Linux/Android backend folders).
 # Android uses the Linux sources: same kernel interfaces (/proc).
 if(WIN32)
-    target_sources(Meow2Engine PRIVATE src/Core/Win32/DebuggerWin32.cpp)
+    target_sources(Meow2Engine PRIVATE
+        src/Core/Win32/DebuggerWin32.cpp
+        src/Core/Win32/ProcessWin32.cpp)
 else()
-    target_sources(Meow2Engine PRIVATE src/Core/Linux/DebuggerLinux.cpp)
+    target_sources(Meow2Engine PRIVATE
+        src/Core/Linux/DebuggerLinux.cpp
+        src/Core/Linux/ProcessLinux.cpp)
 endif()
 
 target_include_directories(Meow2Engine PRIVATE src)
+
+# Third-party libraries are PRIVATE: none of their headers appear in Meow2's public headers.
+target_link_libraries(Meow2Engine PRIVATE spdlog::spdlog)
 
 # Build configuration for Meow2/Core/Platform.h. PUBLIC: everything linking the
 # engine sees the same values. $<CONFIG:...> is evaluated per configuration, so

@@ -48,7 +48,7 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 | API reference published to GitHub Pages (`docs.yml`) | §16.1 | ✅ | #37 / PR #38 |
 | Visual Studio workflow: `windows-vs2022` presets (incl. regenerate-only), filters by Subsystem/Module/Backend, solution folders | §2 | ✅ | #37 / PR #38 |
 | `Result<T>` = `tl::expected` (submodule; swap to `std::expected` with C++23) | §3, §4 | ⬜ | |
-| Logging: spdlog, levels debug/info/warn/error/fatal, `[hh:mm:ss.ms]<level> Name: msg`, `Engine` + per-app loggers, file sink (log folder) + console sink (Debug/RWDI), `fatal` flushes and crashes | §7 | ⬜ | |
+| Logging: spdlog, levels debug/info/warn/error/fatal, `[hh:mm:ss.ms]<level> Name: msg`, `Engine` + per-app loggers, file sink (log folder) + console sink (Debug/RWDI), `fatal` flushes and crashes | §7 | ✅ | #39 / PR #41 |
 | Release exes use the Windows GUI subsystem (no console window) | §5, §7 | ⬜ | |
 | Crash dumps: minidump on crash in **all configs**, log flush, skipped under a debugger, child-process crash test | §8 | ⬜ | |
 | Config: TOML via toml++, defaults → `config.toml` → command line, write-back | §3, §4 | ⬜ | |
@@ -63,6 +63,7 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 | Build metadata: git commit in the version string (`0.1.0+g1a2b3c4`) | §21 | ⬜ | |
 | API docs: Doxyfile + `docs` CMake target (skipped if Doxygen isn't installed), existing headers converted to Doxygen comments, CI job that fails on undocumented public API | §16.1 | ✅ | #33 / PR #34 |
 | Release packaging: CMake install rules + CPack ZIP (exes, PDBs, MSVC runtime DLLs), `release.yml` builds it on a `v*` tag and publishes a GitHub Release | §21 | ⬜ | |
+| Git hooks: regenerate the Visual Studio solution after pull/rebase/branch switch when CMake files change | §2 | ✅ | #40 / PR #41 |
 | Closing PR bumps the version to **0.2.0** (tag `v0.2.0`, first release zip) | §21 | ⬜ | |
 
 **Done when:** an app logs to file and console, writes a `.dmp` on a forced crash in every config, reports leaks by tag at exit, runs jobs on all cores visible in Tracy, and the ASan/UBSan/TSan CI jobs are green.

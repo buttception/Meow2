@@ -90,6 +90,23 @@ ctest --test-dir build/vs2022 -C Debug --output-on-failure
 
 Source files are listed explicitly in `CMakeLists.txt` (no globbing), so creating a `.cpp` on disk changes nothing until it's added to a `target_sources()` list. That edit is what triggers the regeneration.
 
+### Automatic regeneration after `git pull` (git hooks)
+
+The repository has git hooks in `.githooks/`. When you configure, CMake points git at them (`git config core.hooksPath .githooks`) unless you've set a different hooks path. After that, when Visual Studio has the solution open:
+
+| You run | Hook | What happens |
+|---|---|---|
+| `git pull` (merge), `git merge` | `post-merge` | if any `CMakeLists.txt`, `*.cmake`, `*.in` or `CMakePresets.json` changed, it runs `cmake --build --preset windows-vs2022-regenerate` |
+| `git pull --rebase`, `git rebase` | `post-rewrite` | same, once at the end of the rebase |
+| `git switch` / `git checkout <branch>` | `post-checkout` | same, comparing the old and new branch |
+
+Visual Studio then sees the rewritten `.sln`/`.vcxproj` files and shows its **reload** prompt. Nothing is compiled. If only `.cpp`/`.h` files changed, or there's no `build/vs2022` solution, the hooks do nothing. They never fail the git command; they only print what they did, or what to run by hand.
+
+- It works for pulls from the command line, from Visual Studio's Git window, and from other git tools: they all run the hooks.
+- `-DMEOW2_GIT_HOOKS=OFF` stops CMake from setting the hooks path, and `git config --unset core.hooksPath` removes it.
+- CI never sets it (`CI` environment variable), so build machines' checkouts aren't modified.
+- It's local to your clone (`.git/config`) and shared by its worktrees.
+
 ### Filters and solution folders
 
 `cmake/Meow2SourceGroups.cmake` makes Solution Explorer mirror the disk:
