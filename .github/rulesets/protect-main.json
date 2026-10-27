@@ -40,12 +40,6 @@
             "context": "Linux (Clang Debug)"
           },
           {
-            "context": "Linux (Clang RelWithDebInfo)"
-          },
-          {
-            "context": "Linux (Clang Release)"
-          },
-          {
             "context": "Linux (GCC Debug)"
           },
           {

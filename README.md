@@ -73,12 +73,21 @@ Forgot `--recurse-submodules`? Run `git submodule update --init --recursive`.
 
 ## API documentation
 
-The public API is documented with Doxygen comments. With [Doxygen](https://www.doxygen.nl) installed (`winget install DimitriVanHeesch.Doxygen`), generate the HTML reference with:
+The engine's public API (`Meow2Engine/include/Meow2/`) is documented with Doxygen comments, and you can generate a browsable HTML reference from it:
 
-```
-cmake --build build/vs2022 --config Debug --target docs
-```
-Then open `build/vs2022/docs/html/index.html`. See [CodeStyle](docs/wiki/CodeStyle.md#documentation-comments-doxygen) for the comment rules.
+1. Install [Doxygen](https://www.doxygen.nl) ≥ 1.9.8 once, then open a **new** command prompt so it's on `PATH`:
+   ```
+   winget install DimitriVanHeesch.Doxygen
+   ```
+2. Configure as in [Building](#building), or re-run the configure step if you configured before installing Doxygen. It should print `-- Doxygen <version>: …`.
+3. Build the `docs` target:
+   ```
+   cmake --build build/vs2022 --config Debug --target docs        # Visual Studio solution
+   cmake --build --preset windows-msvc-debug --target docs         # or: presets (developer prompt)
+   ```
+4. Open **`build/vs2022/docs/html/index.html`** (or `build/<preset>/docs/html/index.html`) in a browser.
+
+Without Doxygen everything else still builds; only the `docs` target and the `Docs.PublicApi.IsDocumented` test are skipped. The comment rules are in [CodeStyle](docs/wiki/CodeStyle.md#documentation-comments-doxygen).
 
 ## Profiling
 

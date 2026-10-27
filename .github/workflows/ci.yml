@@ -33,13 +33,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Linux checks portability (Clang: also the Android compiler; GCC: its own warnings and
+        # stricter front end). Optimised builds are covered by the MSVC RelWithDebInfo/Release jobs.
         include:
           - name: Clang Debug
             preset: linux-clang-debug
-          - name: Clang RelWithDebInfo
-            preset: linux-clang-relwithdebinfo
-          - name: Clang Release
-            preset: linux-clang-release
           - name: GCC Debug
             preset: ""
     steps:
@@ -49,12 +47,25 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
+      # Hosted runners sometimes get a very slow Ubuntu mirror (minutes per run). The downloaded
+      # .deb files are cached, so most runs only install them. Bump "v1" to drop the cache.
+      - name: Cache apt packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/apt-cache
+          key: apt-ubuntu-24.04-v1-ninja-clang18-clangformat19-doxygen
+
       - name: Install tools
         run: |
-          sudo apt-get update
+          mkdir -p ~/apt-cache/partial
+          sudo apt-get update -o Acquire::Retries=3
           # clang-format is pinned to major 19 (cmake/Meow2Format.cmake), the version VS 2022 ships.
           # doxygen: the Docs.PublicApi.IsDocumented test (cmake/Meow2Docs.cmake); configure fails in CI without it.
-          sudo apt-get install -y --no-install-recommends ninja-build clang-18 clang-format-19 doxygen
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
+            -o Dir::Cache::Archives="$HOME/apt-cache" \
+            ninja-build clang-18 clang-format-19 doxygen
+          # apt runs as root; give the files back to the runner user so the cache step can save them.
+          sudo chown -R "$(id -u):$(id -g)" ~/apt-cache
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
 
       - name: Build and test (preset)

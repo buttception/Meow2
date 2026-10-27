@@ -479,6 +479,7 @@ Requirement: **anything a user can do in the editor, an AI agent can do through 
 - **Releases (from v0.2.0):** every MINOR (and PATCH) tag gets a GitHub Release with a zip that **runs out of the box** on a Windows PC:
   - `Meow2-<version>-windows-x64.zip`, containing the Release build of the executables, their **PDBs** (so `.dmp` files from that version can be read), the MSVC runtime DLLs (app-local, via CMake's `InstallRequiredSystemLibraries`), and any third-party DLLs.
   - Built with CMake install rules + CPack (`ZIP` generator).
+  - **Release notes = that version's section of [`CHANGELOG.md`](CHANGELOG.md)** ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format). Every PR adds its lines under `[Unreleased]`; the milestone-closing PR renames that section to the new version.
   - A `release.yml` workflow triggered by a `v*` tag: the self-hosted Windows runner builds, tests and packages, and uploads the zip as an artifact. A separate job on a GitHub-hosted runner, the only one with `contents: write`, creates the Release and attaches the zip, so no write token ever reaches the owner's PC (§ CI safety in AGENTS.md §5).
   - The editor joins the zip once it uses Qt (needs `windeployqt`, M9).
 
@@ -568,3 +569,4 @@ void Application::tick()
   - milestone references renumbered.
 - 2026-10-27 — §16.1: documentation comments in Doxygen syntax (`///`, mandatory on all public API, thread safety paragraph); Doxygen listed as a tool (installed on request, M1).
 - 2026-10-27 — §16.1 enforcement implemented: `docs` target, `Docs.PublicApi.IsDocumented` test, `@def` for `#if`-selected macros; Doxygen ≥ 1.9.8 required in CI.
+- 2026-10-27 — §21: release notes come from `CHANGELOG.md`. Asserts implemented (§3 Core).

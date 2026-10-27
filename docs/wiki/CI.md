@@ -4,7 +4,7 @@ Every PR and every push to `main` builds and tests Meow2 automatically:
 
 | Job | Runs on | When |
 |---|---|---|
-| `Linux (Clang Debug)`, `Linux (Clang RelWithDebInfo)`, `Linux (Clang Release)`, `Linux (GCC Debug)` | GitHub-hosted Ubuntu 24.04 (free for public repos) | every PR (including forks), push to `main` |
+| `Linux (Clang Debug)`, `Linux (GCC Debug)` | GitHub-hosted Ubuntu 24.04 (free for public repos) | every PR (including forks), push to `main` |
 | `Windows (MSVC debug)`, `Windows (MSVC relwithdebinfo)`, `Windows (MSVC release)` | **your PC** (self-hosted runner, label `meow2`) | push to `main`, PRs from branches **in this repo**, manual runs. **Never for PRs from forks.** |
 
 Workflow: [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). Each job runs the same thing you run locally: `cmake --workflow --preset …`.
@@ -40,10 +40,14 @@ GitHub → **Settings → Rules → Rulesets → New ruleset → New branch rule
 - Leave **Bypass list** empty
 - **Create**
 
-**After the CI PR is merged** (the checks only exist from then on), add required checks. Easiest: **Rulesets → ⋯ → Import a ruleset** with [`.github/rulesets/protect-main.json`](../../.github/rulesets/protect-main.json) (delete the old one first). Or edit the ruleset → ✅ **Require status checks to pass** → add `Linux (Clang Debug)`, `Linux (Clang RelWithDebInfo)`, `Linux (Clang Release)`, `Linux (GCC Debug)`, `Windows (MSVC debug)`, `Windows (MSVC relwithdebinfo)`, `Windows (MSVC release)`.
+**After the CI PR is merged** (the checks only exist from then on), add required checks. Easiest: **Rulesets → ⋯ → Import a ruleset** with [`.github/rulesets/protect-main.json`](../../.github/rulesets/protect-main.json) (delete the old one first). Or edit the ruleset → ✅ **Require status checks to pass** → add `Linux (Clang Debug)`, `Linux (GCC Debug)`, `Windows (MSVC debug)`, `Windows (MSVC relwithdebinfo)`, `Windows (MSVC release)`.
 (Don't add required checks before that: open PRs without the workflow would be unmergeable. The same goes for every new job: add it to the required checks only after the PR that adds the job is merged.)
 
-The three configs cover different things. **Debug** catches logic errors with asserts on. **RelWithDebInfo** is optimised but keeps asserts and debug info, so it catches bugs that only show up when the optimiser reorders or removes code (uninitialised reads, undefined behaviour, missing `volatile`/atomics). **Release** adds LTO and turns asserts off, which is what exported games ship.
+**Why only Debug on Linux:** the Linux jobs check *portability*: Clang (also the compiler for Android) and GCC (its own warnings, such as `-Wduplicated-cond` and `-Wlogical-op`, and a stricter front end) must both accept the code. Optimiser-dependent bugs are caught by the MSVC RelWithDebInfo and Release jobs, and later by the sanitizer jobs. Building takes about 15 s. What can be slow is installing packages, so the downloaded `.deb` files are cached between runs (`actions/cache`).
+
+If the ruleset was imported with older check names (e.g. `Linux (Clang Release)`), untick or re-import after this change, otherwise PRs wait forever for checks that no longer run.
+
+The three Windows configs cover different things. **Debug** catches logic errors with asserts on. **RelWithDebInfo** is optimised but keeps asserts and debug info, so it catches bugs that only show up when the optimiser reorders or removes code (uninitialised reads, undefined behaviour, missing `volatile`/atomics). **Release** adds LTO and turns asserts off, which is what exported games ship.
 
 ## Step 2 — Lock down Actions settings
 

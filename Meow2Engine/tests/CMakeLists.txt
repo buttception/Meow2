@@ -3,6 +3,7 @@ meow2_add_test_suite(
     TARGET  Meow2EngineCoreTests
     MODULE  Core
     SOURCES
+        Core/AssertTests.cpp
         Core/PlatformTests.cpp
         Core/VersionTests.cpp)
 
