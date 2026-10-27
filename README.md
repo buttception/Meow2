@@ -71,6 +71,15 @@ More detail: [Building](docs/wiki/Building.md), [Testing](docs/wiki/Testing.md),
 
 Forgot `--recurse-submodules`? Run `git submodule update --init --recursive`.
 
+## API documentation
+
+The public API is documented with Doxygen comments. With [Doxygen](https://www.doxygen.nl) installed (`winget install DimitriVanHeesch.Doxygen`), generate the HTML reference with:
+
+```
+cmake --build build/vs2022 --config Debug --target docs
+```
+Then open `build/vs2022/docs/html/index.html`. See [CodeStyle](docs/wiki/CodeStyle.md#documentation-comments-doxygen) for the comment rules.
+
 ## Profiling
 
 Meow2 is instrumented for the [Tracy](https://github.com/wolfpld/tracy) profiler (from M1): CPU zones, worker threads, locks, memory by tag, and later GPU timings for Vulkan and D3D12.

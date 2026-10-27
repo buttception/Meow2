@@ -52,8 +52,9 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          # clang-format is pinned to major 19 (cmake/Meow2Format.cmake), the version VS 2022 ships
-          sudo apt-get install -y --no-install-recommends ninja-build clang-18 clang-format-19
+          # clang-format is pinned to major 19 (cmake/Meow2Format.cmake), the version VS 2022 ships.
+          # doxygen: the Docs.PublicApi.IsDocumented test (cmake/Meow2Docs.cmake); configure fails in CI without it.
+          sudo apt-get install -y --no-install-recommends ninja-build clang-18 clang-format-19 doxygen
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
 
       - name: Build and test (preset)

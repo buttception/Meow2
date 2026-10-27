@@ -32,6 +32,12 @@ target_compile_definitions(Meow2Engine PUBLIC
 target_compile_features(Meow2Engine PUBLIC cxx_std_20)
 meow2_set_warnings(Meow2Engine)
 
+# API reference over the public headers (incl. the generated ones): `docs` target and
+# the Docs.PublicApi.IsDocumented test (cmake/Meow2Docs.cmake).
+meow2_add_api_docs(
+    INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/include" "${meow2GeneratedDir}"
+    STRIP "${CMAKE_CURRENT_SOURCE_DIR}/include" "${meow2GeneratedDir}")
+
 if(MEOW2_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
