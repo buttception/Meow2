@@ -18,7 +18,10 @@ ctest --preset windows-msvc-debug -L lint                        # Format.Check 
 
 Editors: Visual Studio and VS Code (C/C++ extension) pick up `.clang-format` automatically. Turn on *format on save* to never think about it.
 
-Needs **clang-format 17 or newer**. CMake finds it on `PATH` or inside Visual Studio 2022; if it's missing (or too old) the format targets and `Format.Check` are skipped, with a message at configure time. Different clang-format versions can format a few edge cases differently, so if `Format.Check` passes for an agent but fails for you (or the reverse), tell the agent which version you have.
+Needs **clang-format 19** (pinned). Different major versions format a few edge cases differently, so a range like "17 or newer" let `Format.Check` pass on one machine and fail on another. 19 is what Visual Studio 2022 ships (Individual components → *C++ Clang tools for Windows*), and CI installs `clang-format-19` on Linux.
+CMake looks for `clang-format-19` or `clang-format` on `PATH` and inside Visual Studio 2022. With a missing or different version, the format targets and `Format.Check` are skipped locally, with a message at configure time. In CI (`CI` environment variable set) the configure step fails instead, so the check can't silently disappear.
+
+To bump the version later: change `meow2ClangFormatRequiredMajor` in `cmake/Meow2Format.cmake` and the package in `.github/workflows/ci.yml`, run the `format` target, and commit the reformatted files in the same PR.
 
 ## EditorConfig (all text files)
 

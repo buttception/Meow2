@@ -36,6 +36,8 @@ jobs:
         include:
           - name: Clang Debug
             preset: linux-clang-debug
+          - name: Clang RelWithDebInfo
+            preset: linux-clang-relwithdebinfo
           - name: Clang Release
             preset: linux-clang-release
           - name: GCC Debug
@@ -50,7 +52,8 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build clang-18 clang-format-18
+          # clang-format is pinned to major 19 (cmake/Meow2Format.cmake), the version VS 2022 ships
+          sudo apt-get install -y --no-install-recommends ninja-build clang-18 clang-format-19
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
 
       - name: Build and test (preset)
@@ -86,7 +89,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config: [debug, release]
+        config: [debug, relwithdebinfo, release]
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0

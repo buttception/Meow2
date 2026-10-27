@@ -13,7 +13,7 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 
 ## Status
 
-🚧 Pre-alpha. M0 (foundation) in progress: the CMake skeleton builds an empty engine and apps. See [milestones.md](milestones.md).
+🚧 Pre-alpha. M0 (foundation) is done: the CMake skeleton builds an empty engine and apps in all three configs, with tests and CI. Next: M1 (core & memory). See [milestones.md](milestones.md).
 
 ## Documentation
 

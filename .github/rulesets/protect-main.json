@@ -40,6 +40,9 @@
             "context": "Linux (Clang Debug)"
           },
           {
+            "context": "Linux (Clang RelWithDebInfo)"
+          },
+          {
             "context": "Linux (Clang Release)"
           },
           {
@@ -47,6 +50,9 @@
           },
           {
             "context": "Windows (MSVC debug)"
+          },
+          {
+            "context": "Windows (MSVC relwithdebinfo)"
           },
           {
             "context": "Windows (MSVC release)"

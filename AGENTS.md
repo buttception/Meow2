@@ -122,7 +122,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 ## 3. Code rules
 
 - C++20, follow `techstack.md` §16 naming exactly:
-  PascalCase types, camelCase functions, parameters and locals, `m_member`, `s_static`, `c_constOrConstexpr` (precedence `c_` > `s_` > `m_`), `I` prefix only for runtime-virtual interfaces. No leading underscores.
+  PascalCase types, camelCase functions, parameters and locals, `m_member`, `s_static`, `c_constOrConstexpr` (precedence `c_` > `s_` > `m_`), `I` prefix only for runtime-virtual interfaces. No leading underscores. Fields of plain data structs (data only, no behaviour, e.g. `Transform`, `<Name>Deps`) are plain camelCase without `m_`.
 - `.clang-format` is authoritative. Before committing run `cmake --build --preset <p> --target format`; the `Format.Check` test must pass.
 - Every Meow2 target (library, executable, test suite) calls `meow2_set_warnings(<target>)`. Warnings are errors. Never call it on third-party targets, and never silence a warning with a pragma without a comment explaining why.
 - Public headers in `include/Meow2/<Module>/`, private code in `src/<Module>/`.
@@ -185,3 +185,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-26 — Code rules: dependency injection + composition root, no mutable globals (`// GLOBAL:` exceptions), thread-safety documentation; review checklist updated.
 - 2026-10-26 — Tests must also pass from a clean clone (lesson from a git-ignored file that broke CI); editor features = commands exposed over MCP.
 - 2026-10-27 — Moved to Claude Code on the owner's Windows PC: `CLAUDE.md` imports this file; Environments rewritten (local MSVC builds, one worktree per session under `.claude/worktrees/`, `cmd` + `vcvars64` because of `AllSigned`, `gh` for GitHub); §1 allows worktrees and the session scratchpad.
+- 2026-10-27 — §3 naming: plain data struct fields drop `m_`. CI also runs RelWithDebInfo; clang-format pinned to 19.
