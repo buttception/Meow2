@@ -119,6 +119,12 @@ Verdict: SOUND / NEEDS CHANGES
 
 Fix NEEDS CHANGES items before handing to the owner. The owner then approves and merges.
 
+### 2.7 Versioning (techstack.md §21)
+- **Feature PRs never change `project(Meow2 VERSION …)`.**
+- The PR that **closes a milestone** bumps MINOR (`0.<milestone+1>.0`, e.g. closing M1 → `0.2.0`) and says so in its description.
+- After that PR is merged, an annotated tag `vX.Y.Z` goes on its merge commit on `main`. Agents create or push tags only with the owner's go-ahead; tags are never moved or deleted.
+- PATCH changes only in a `fix/` PR against a `release/0.Y` branch, for a bug in an already-tagged release.
+
 ## 3. Code rules
 
 - C++20, follow `techstack.md` §16 naming exactly:
@@ -186,3 +192,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-26 — Tests must also pass from a clean clone (lesson from a git-ignored file that broke CI); editor features = commands exposed over MCP.
 - 2026-10-27 — Moved to Claude Code on the owner's Windows PC: `CLAUDE.md` imports this file; Environments rewritten (local MSVC builds, one worktree per session under `.claude/worktrees/`, `cmd` + `vcvars64` because of `AllSigned`, `gh` for GitHub); §1 allows worktrees and the session scratchpad.
 - 2026-10-27 — §3 naming: plain data struct fields drop `m_`. CI also runs RelWithDebInfo; clang-format pinned to 19.
+- 2026-10-27 — §2.7 Versioning: only milestone-closing PRs bump the version (MINOR), tag `vX.Y.Z` after merge with the owner's go-ahead, PATCH only for fixes to tagged releases.

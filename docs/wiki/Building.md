@@ -98,3 +98,17 @@ meow2_add_smoke_test(Smoke.MyApp.Runs MyApp "MyApp.*${PROJECT_VERSION}")
 `project(Meow2 VERSION x.y.z)` in the top-level `CMakeLists.txt` is the single source of the version. It is written into the generated `Meow2/Core/Version.h`:
 - `Meow2::c_versionMajor/Minor/Patch`, `Meow2::c_versionString` — the version the *caller was compiled against*
 - `Meow2::getVersionString()` — the version of the *library actually linked*
+
+### How the version changes
+
+| Version | Released when | Tag |
+|---|---|---|
+| 0.1.0 | M0 (foundation) done | `v0.1.0` |
+| 0.2.0 | M1 (core & memory) done | `v0.2.0` |
+| 0.N+1.0 | milestone N done | `v0.N+1.0` |
+| 0.Y.Z (Z > 0) | a fix to the already-released 0.Y | `v0.Y.Z` |
+
+- Only the PR that closes a milestone changes `VERSION`. Normal feature PRs never touch it, so they never conflict on that line.
+- While M1 is being worked on, `main` still says 0.1.0. To tell such builds apart, the version string will carry the git commit as build metadata, e.g. `0.1.0+g1a2b3c4` (planned for M1).
+- `git describe --tags` shows where a checkout is relative to the last release, e.g. `v0.1.0-12-g1a2b3c4` = 12 commits after 0.1.0.
+- Full rules: [techstack.md §21](../../techstack.md) and [AGENTS.md §2.7](../../AGENTS.md).

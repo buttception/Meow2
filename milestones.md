@@ -29,6 +29,9 @@ Issues are labelled `milestone:M<n>` on GitHub.
 | CI: RelWithDebInfo jobs (Windows MSVC + Linux Clang) | ✅ | #24 / PR #26 |
 | Naming: plain data struct fields without `m_`; clang-format pinned to 19 | ✅ | #25 / PR #26 |
 | README: build from a standard prompt (Visual Studio solution) | ✅ | #27 / PR #28 |
+| Versioning rule (MINOR per milestone, tags, PATCH for release fixes) | ✅ | #29 / PR #30 |
+
+**Released as `v0.1.0`.** Each milestone ends with a version bump in its closing PR (techstack.md §21).
 
 **Done when:** `cmake --preset … && cmake --build … && ctest …` succeeds on Windows for all three configs, and CI runs it on every PR.
 
@@ -42,6 +45,8 @@ Issues are labelled `milestone:M<n>` on GitHub.
 - Tracking allocator with memory tags and a leak report
 - Job system: worker thread pool (`std::jthread`), jobs with dependencies, wait handles
 - Sanitizer presets: `linux-clang-asan` (Address + UndefinedBehavior), `linux-clang-tsan` (Thread), run in CI
+- Build metadata: git commit in the version string (`0.1.0+g1a2b3c4`, techstack.md §21)
+- Closing PR bumps the version to **0.2.0** (tag `v0.2.0`)
 
 ## M2 — Logging & Crash ⬜
 **Goal:** see what the engine is doing, and get a `.dmp` when it dies.

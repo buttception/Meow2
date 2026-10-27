@@ -335,6 +335,21 @@ Requirement: **anything a user can do in the editor, an AI agent can do through 
 
 **Testing:** every command has unit tests (execute + undo round-trip). An integration test starts the headless editor, lists tools, calls commands over MCP and checks the resulting scene.
 
+## 21. Versioning
+
+[Semantic Versioning](https://semver.org) `MAJOR.MINOR.PATCH`. The single source is `project(Meow2 VERSION x.y.z)` in the top-level `CMakeLists.txt`, which is written into `Meow2/Core/Version.h` (see [docs/wiki/Building.md](docs/wiki/Building.md#engine-version)).
+
+| Part | Changes when | Who |
+|---|---|---|
+| MAJOR | stays **0** until the public API and the game package format are promised stable (M12 at the earliest). Under 0.x, any MINOR may break things. | owner decides |
+| MINOR | **once per milestone.** The PR that closes a milestone sets `0.<milestone+1>.0`: M0 → 0.1.0, M1 → 0.2.0, M2 → 0.3.0, … | the milestone-closing PR |
+| PATCH | **only for a fix to an already-tagged release**, e.g. a bug in `v0.2.0` shipped as 0.2.1 before the next milestone is done. Normal feature PRs never touch it. | a `fix/` PR on a release branch |
+
+- **Feature PRs don't change the version.** Every one would edit the same `VERSION` line, so any two open PRs would conflict, and a number that moves with every merge says no more than the commit hash.
+- **Tags:** after the milestone-closing PR is merged, its merge commit on `main` gets an annotated tag `vX.Y.Z` (e.g. `v0.1.0`). Tags are never moved or deleted.
+- **Patch releases:** branch `release/0.Y` from the tag `v0.Y.0`, fix there (or cherry-pick the fix from `main`), bump PATCH, tag `v0.Y.Z`. `main` keeps going towards the next MINOR.
+- **Builds between releases** are identified by the git commit: the version string gets SemVer build metadata, `0.1.0+g1a2b3c4` (`+g` + short hash, `.dirty` if the tree had local changes), so logs and crash dumps say exactly what was built. (Planned for M1; until then the string is just `x.y.z`.)
+
 ---
 
 ## Changelog
@@ -347,3 +362,4 @@ Requirement: **anything a user can do in the editor, an AI agent can do through 
 - 2026-10-26 — Architecture rules (§18: dependency injection, composition root, no globals) and threading rules (§19); logger injected, no global logger.
 - 2026-10-26 — §20: editor command architecture + built-in MCP server (localhost-only, token, headless mode).
 - 2026-10-27 — §16: fields of plain data structs (incl. `<Name>Deps`) drop the `m_` prefix; clang-format pinned to major version 19.
+- 2026-10-27 — §21 Versioning: MINOR per milestone (bumped by the milestone-closing PR, tagged `vX.Y.Z`), PATCH only for fixes to a tagged release, git hash as build metadata.
