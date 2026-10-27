@@ -1,24 +1,23 @@
 # Publishes the Doxygen API reference to GitHub Pages: https://buttception.github.io/Meow2/
 # See docs/wiki/CI.md ("API docs on GitHub Pages").
 #
-# Safety: runs only for pushes to main (code that was already reviewed and merged) and manual
-# runs, never for pull requests. Only the deploy job gets write permissions (Pages + OIDC token),
-# and everything runs on GitHub-hosted runners, never on the self-hosted Windows runner.
+# Pull requests run only the build job, so a broken docs build shows up as a failed check on the
+# PR instead of on main after merging. Publishing happens only for pushes to main (reviewed,
+# merged code) and manual runs.
+#
+# Safety: only the deploy job gets write permissions (Pages + OIDC token), and it never runs for
+# pull requests. Everything runs on GitHub-hosted runners, never on the self-hosted Windows runner.
 # Actions are GitHub-made and pinned to full commit SHAs.
 name: API docs
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
-
-# One deployment at a time; a newer push waits instead of cancelling a deploy halfway.
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   build:
@@ -29,7 +28,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          persist-credentials: false   # no submodules: tests are off, so googletest isn't needed
+          # Submodules are needed even with tests off: configuring requires the engine's libraries
+          # (e.g. spdlog). Without them, configure stops with "spdlog is missing".
+          submodules: recursive
+          persist-credentials: false
 
       # Same packages and cache key as ci.yml, so both workflows share the downloaded .debs.
       - name: Cache apt packages
@@ -61,7 +63,12 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build
+    if: github.event_name != 'pull_request'   # pull requests only check that the docs build
     runs-on: ubuntu-24.04
+    # One deployment at a time; a newer push waits instead of cancelling a deploy halfway.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     timeout-minutes: 10
     # The only job with write access, and it runs no repository code: it publishes the artifact.
     permissions:
