@@ -67,5 +67,8 @@ vcpkg_installed/
 Testing/
 .cache/
 
+# Runtime logs and crash dumps (runs from the VS solution log to <repo>/logs)
+logs/
+
 # Personal CMake presets (not shared)
 CMakeUserPresets.json

@@ -39,6 +39,6 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 
 ## Roadmap
 
-M0 (foundation) is done. Next up is M1: core and memory (asserts, allocators, job system, sanitizers). The full roadmap is in [milestones.md](../../milestones.md).
+M0 (foundation) is done (`v0.1.0`). Next up is **M1, core runtime**: asserts, logging, crash dumps, config, memory (arenas, tracking by tag), events, job system (enkiTS), Tracy profiling, sanitizers and release zips. After that, **M2, platform**: SDL3 window, game loop and input. The full roadmap is in [milestones.md](../../milestones.md).
 
 See also: [techstack.md](../../techstack.md) (stack and conventions), [AGENTS.md](../../AGENTS.md) (how agents work on this repo).

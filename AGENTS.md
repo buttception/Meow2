@@ -104,7 +104,7 @@ Verdict: SOUND / NEEDS CHANGES
 - [ ] naming conventions (techstack.md §16); `Format.Check` passes
 - [ ] new targets call `meow2_set_warnings`; zero warnings on GCC and Clang
 - [ ] interfaces respected — no module includes another module's implementation headers
-- [ ] interface policy (techstack.md §3): build-time selection, virtuals only in the RHI / `IAllocator`
+- [ ] interface policy (techstack.md §3): build-time selection, virtuals only in the RHI / `std::pmr::memory_resource` implementations
 - [ ] dependencies injected via constructor; no new globals/singletons/mutable statics (or `// GLOBAL:` justified)
 - [ ] thread safety documented for new classes; no lock held across calls into other code
 - [ ] ownership/lifetimes clear, no leaks, RAII
@@ -124,6 +124,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - The PR that **closes a milestone** bumps MINOR (`0.<milestone+1>.0`, e.g. closing M1 → `0.2.0`) and says so in its description.
 - After that PR is merged, an annotated tag `vX.Y.Z` goes on its merge commit on `main`. Agents create or push tags only with the owner's go-ahead; tags are never moved or deleted.
 - PATCH changes only in a `fix/` PR against a `release/0.Y` branch, for a bug in an already-tagged release.
+- Every version tag gets a **GitHub Release** with the `Meow2-<version>-windows-x64.zip` (executables, PDBs, runtime DLLs; runs out of the box). From v0.2.0 the `release.yml` workflow builds it on the tag. Check that the zip runs on a clean folder before announcing the release.
 
 ## 3. Code rules
 
@@ -139,7 +140,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - Every subsystem is reached through its public header. Backends are chosen at build time (pimpl + CMake option); only the RHI uses virtual interfaces and runtime selection.
 - Third-party headers (SDL3, spdlog, Jolt, vulkan.h, d3d12.h, Qt) must **not** leak into public engine headers, except DirectXMath in `Meow2/Math`.
 - Above the RHI, never cache backend-native handles (needed for the Vulkan ↔ D3D12 hot swap).
-- No raw `new`/`delete` in engine code. Use `std::unique_ptr`, engine handles, or an engine allocator (`IAllocator`).
+- No raw `new`/`delete` in engine code. Use `std::unique_ptr`, engine handles, or an engine allocator (a `std::pmr::memory_resource`, techstack.md §6). Allocations get a `MemTag` (arena tag, library hook tag, or a `MemTagScope`).
 - Engine code must compile with both MSVC and Clang (future Linux/Android).
 - Coordinate system: left-handed, +X right, +Y up, +Z forward; reversed infinite-far Z, depth 0..1 (techstack.md §10).
 - OS-specific code lives only in `src/<Module>/Win32|Linux|Android/`, guarded by `MEOW2_PLATFORM_*`.
@@ -193,3 +194,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-27 — Moved to Claude Code on the owner's Windows PC: `CLAUDE.md` imports this file; Environments rewritten (local MSVC builds, one worktree per session under `.claude/worktrees/`, `cmd` + `vcvars64` because of `AllSigned`, `gh` for GitHub); §1 allows worktrees and the session scratchpad.
 - 2026-10-27 — §3 naming: plain data struct fields drop `m_`. CI also runs RelWithDebInfo; clang-format pinned to 19.
 - 2026-10-27 — §2.7 Versioning: only milestone-closing PRs bump the version (MINOR), tag `vX.Y.Z` after merge with the owner's go-ahead, PATCH only for fixes to tagged releases.
+- 2026-10-27 — `IAllocator` replaced by `std::pmr::memory_resource` (review checklist, code rules) and allocations carry a `MemTag`; §2.7: every version tag gets a GitHub Release zip.
