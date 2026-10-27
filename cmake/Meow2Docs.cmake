@@ -75,6 +75,7 @@ function(meow2_add_api_docs)
         "${PROJECT_SOURCE_DIR}/docs/api/MainPage.md"
         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
         COMMENT "Generating the Meow2 API reference (Doxygen)")
+    set_target_properties(docs PROPERTIES FOLDER "Tools") # IDE solution folder
 
     # Same Doxyfile as the target: warnings (undocumented API, bad @param, …) fail the test.
     add_test(NAME Docs.PublicApi.IsDocumented

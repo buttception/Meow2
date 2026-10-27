@@ -33,15 +33,24 @@ Works from a **standard** cmd or PowerShell window, with no developer prompt and
 ```
 git clone --recurse-submodules https://github.com/buttception/Meow2.git
 cd Meow2
-cmake -S . -B build/vs2022 -G "Visual Studio 17 2022" -A x64
-cmake --build build/vs2022 --config Debug
-ctest --test-dir build/vs2022 -C Debug --output-on-failure
+cmake --preset windows-vs2022                   # generate the solution
+cmake --build --preset windows-vs2022-debug     # build
+ctest --preset windows-vs2022-debug             # run the tests
 ```
 
 - The first command generates the solution, **`build/vs2022/Meow2.sln`**. Open it in Visual Studio if you want the IDE; set a project (e.g. `Meow2Renderer`) as startup project to run or debug it.
+  - In Solution Explorer, projects are grouped into **Apps, Engine, Tests, External, Tools**, and each project's **filters mirror the folders** on disk (`Core`, `Core\Win32`, later `Graphics\Rhi\D3D12`, …; see [techstack.md §2](techstack.md)).
 - The second builds everything. Executables land in **`build/vs2022/bin/Debug/`** (`Meow2Renderer.exe`, `Meow2Editor.exe`, `Meow2Player.exe`, the test executables).
 - The third runs all tests.
-- For another configuration, use `--config Release` / `-C Release` (or `RelWithDebInfo`). One solution holds all three, so there's no need to regenerate.
+- Other configurations: `windows-vs2022-relwithdebinfo` and `windows-vs2022-release`. One solution holds all three.
+- Without presets the same is `cmake -S . -B build/vs2022 -G "Visual Studio 17 2022" -A x64`, `cmake --build build/vs2022 --config Debug`, `ctest --test-dir build/vs2022 -C Debug`.
+
+**Updating the solution without building.** After you change a `CMakeLists.txt` (e.g. add a source file), pull changes, or switch branches, refresh `Meow2.sln` and the `.vcxproj` files without compiling anything:
+```
+cmake --build --preset windows-vs2022-regenerate   # re-runs CMake only if CMake files changed; compiles nothing
+cmake --preset windows-vs2022                       # always re-runs CMake (also picks up new options/tools)
+```
+Visual Studio then asks to **reload** the changed projects. (A normal build also regenerates automatically first, through the `ZERO_CHECK` project; these commands do it without the build.) Source files are listed explicitly in `CMakeLists.txt`, so a new `.cpp` on disk appears only after you add it there.
 
 ### Presets (Ninja; developer prompt)
 
@@ -62,7 +71,7 @@ Step by step: `cmake --preset <p>`, `cmake --build --preset <p>`. Output: `build
 ## Running tests
 
 ```
-ctest --test-dir build/vs2022 -C Debug                 # Visual Studio solution, any prompt
+ctest --preset windows-vs2022-debug                    # Visual Studio solution, any prompt
 ctest --preset windows-msvc-debug                      # presets, developer prompt
 ctest --preset windows-msvc-debug -L unit              # by label (unit, smoke, lint, ...)
 ```
@@ -86,7 +95,7 @@ The engine's public API (`Meow2Engine/include/Meow2/`) is documented with Doxyge
 2. Configure as in [Building](#building), or re-run the configure step if you configured before installing Doxygen. It should print `-- Doxygen <version>: …`.
 3. Build the `docs` target:
    ```
-   cmake --build build/vs2022 --config Debug --target docs        # Visual Studio solution
+   cmake --build --preset windows-vs2022-debug --target docs      # Visual Studio solution
    cmake --build --preset windows-msvc-debug --target docs         # or: presets (developer prompt)
    ```
 4. Open **`build/vs2022/docs/html/index.html`** (or `build/<preset>/docs/html/index.html`) in a browser.

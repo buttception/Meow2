@@ -21,7 +21,7 @@
 | Dependencies | Git submodules in `external/`, pinned to release tags (see §4). Exceptions: Qt (installer), Vulkan SDK (installer), DXC (prebuilt binaries) |
 
 **Portability rules** (so Linux/Android stay possible later):
-- Platform-specific code only in `src/Platform/<Win32|Linux|Android>/`, behind interfaces.
+- Platform-specific code only in `Win32`/`Linux`/`Android` backend folders under `src/` (e.g. `src/Core/Win32/`, `src/Platform/Window/Win32/`), behind an engine API (§2 "Engine folders").
 - No `<windows.h>` outside Win32 files. No MSVC-only extensions in shared code.
 - Paths go through the VFS (§3), never hard-coded `\` separators.
 - D3D12 is Windows-only. Vulkan is the cross-platform backend and must never depend on Win32 types.
@@ -49,9 +49,9 @@ Meow2/
 ├─ cmake/                    # Meow2Warnings.cmake, Meow2Tests.cmake, Meow2Shaders.cmake, ...
 ├─ external/                 # git submodules, pinned (see §4)
 ├─ Meow2Engine/
-│  ├─ include/Meow2/<Module>/...
-│  ├─ src/<Module>/...
-│  └─ tests/<Module>/...
+│  ├─ include/Meow2/<Subsystem>/[<Module>/]...         public headers
+│  ├─ src/<Subsystem>/[<Module>/][<Backend>/]...       private code; backends/OS code in the last level
+│  └─ tests/<Subsystem>/[<Module>/]...
 ├─ Meow2Renderer/
 ├─ Meow2Editor/
 ├─ Meow2Player/
@@ -63,6 +63,36 @@ Meow2/
 ├─ techstack.md
 └─ AGENTS.md
 ```
+
+### Engine folders: Subsystem / Module / Backend
+
+Engine code is grouped by **subsystem**, then **module**, then (in `src/` only) **backend or OS**. That's at most **three folder levels** below `include/Meow2/`, `src/` and `tests/`. The Visual Studio filters mirror these folders exactly (`cmake/Meow2SourceGroups.cmake`), so Solution Explorer and the disk always look the same.
+
+| Subsystem | Modules (folder) | Backends / OS folders (in `src/`) |
+|---|---|---|
+| `Core` | files directly in `Core/` (Platform, Version, Assert, Debugger), `Memory`, `Log`, `Crash`, `Config`, `Time`, `Events`, `Jobs`, `Profiling` | `Win32`, `Linux`, `Android`; library wrappers such as `Spdlog`, `Enkits`, `Tracy` |
+| `Platform` | `Window`, `Input`, `FileSystem` | `Sdl`, `Win32`, `Linux`, `Android` |
+| `Math` | files directly in `Math/` | — |
+| `Graphics` | `Rhi`, `Shader`, `Renderer` | `Vulkan`, `D3D12` (Rhi), `Dxc` (Shader) |
+| `Assets` | `Gltf`, `Registry` | — |
+| `Physics` | files directly in `Physics/` | `Jolt` (later `PhysX`, `Box3D`) |
+| `GameUi` | files directly in `GameUi/` | — |
+| `Packaging` | files directly in `Packaging/` | — |
+
+Examples:
+
+| File | Include / filter |
+|---|---|
+| `include/Meow2/Core/Assert.h` | `#include <Meow2/Core/Assert.h>`, filter `Core` |
+| `src/Core/Win32/DebuggerWin32.cpp` | filter `Core\Win32` |
+| `include/Meow2/Core/Memory/BlockArena.h` | `#include <Meow2/Core/Memory/BlockArena.h>`, filter `Core\Memory` |
+| `include/Meow2/Graphics/Rhi/IRhiDevice.h` | filter `Graphics\Rhi` |
+| `src/Graphics/Rhi/D3D12/RhiDeviceD3D12.cpp` | filter `Graphics\Rhi\D3D12` |
+
+- A module's headers and sources share one filter (no "Header Files"/"Source Files" split).
+- Namespaces follow subsystem/module where it helps (`Meow2::Memory`, `Meow2::Rhi`). They don't have to repeat every folder level.
+- Don't go deeper than three levels. If a module grows, split it into two modules.
+- Targets are grouped in **solution folders**: `Engine`, `Apps`, `Tests`, `External`, `Tools`.
 
 ### CMake options
 
@@ -119,7 +149,7 @@ ctest --preset windows-msvc-debug -L unit
 | Subsystem | Selected | Mechanism |
 |---|---|---|
 | RHI (Vulkan / D3D12) | **at runtime**, hot-swappable | Virtual `IRhi*` interfaces, both backends compiled in, factory `createRhiDevice(RhiBackend, desc)` (§11) |
-| Everything else (window, physics, logging, crash, filesystem, shader compiler, asset importers, memory) | **at build time** | One public header per subsystem declares a concrete class (e.g. `Meow2::Physics::PhysicsWorld`) with a private `Impl` (pimpl). A CMake option (`MEOW2_PHYSICS_BACKEND=Jolt`) chooses which `src/<Module>/<Backend>/` sources are compiled. No virtual calls. |
+| Everything else (window, physics, logging, crash, filesystem, shader compiler, asset importers, memory) | **at build time** | One public header per subsystem declares a concrete class (e.g. `Meow2::Physics::PhysicsWorld`) with a private `Impl` (pimpl). A CMake option (`MEOW2_PHYSICS_BACKEND=Jolt`) chooses which `src/<Subsystem>/<Module>/<Backend>/` sources are compiled. No virtual calls. |
 
 - Backend contracts are written down in the header, and enforced by shared "contract" tests that every backend must pass.
 - Tests that need a fake build with a `Null`/`Fake` backend (e.g. `MEOW2_PHYSICS_BACKEND=Null`), instead of mocking through virtuals.
@@ -570,3 +600,4 @@ void Application::tick()
 - 2026-10-27 — §16.1: documentation comments in Doxygen syntax (`///`, mandatory on all public API, thread safety paragraph); Doxygen listed as a tool (installed on request, M1).
 - 2026-10-27 — §16.1 enforcement implemented: `docs` target, `Docs.PublicApi.IsDocumented` test, `@def` for `#if`-selected macros; Doxygen ≥ 1.9.8 required in CI.
 - 2026-10-27 — §21: release notes come from `CHANGELOG.md`. Asserts implemented (§3 Core).
+- 2026-10-27 — §2: engine folders Subsystem/Module/Backend (subsystem table), Visual Studio filters and solution folders mirror them; `windows-vs2022` presets (solution from any prompt, regenerate-only build preset).

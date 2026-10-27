@@ -27,7 +27,7 @@ ctest --preset windows-msvc-debug --rerun-failed
 
 ## Adding unit tests
 
-1. Put the test file next to the module's other tests: `Meow2Engine/tests/<Module>/<Thing>Tests.cpp`.
+1. Put the test file next to the module's other tests: `Meow2Engine/tests/<Subsystem>/[<Module>/]<Thing>Tests.cpp`.
 2. Write tests:
    ```cpp
    #include <Meow2/Core/Version.h>

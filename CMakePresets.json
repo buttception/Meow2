@@ -103,6 +103,22 @@
             ]
         },
         {
+            "name": "windows-vs2022",
+            "displayName": "Visual Studio 2022 solution",
+            "description": "Generates build/vs2022/Meow2.sln (all configurations in one solution). Works from any command prompt: MSBuild finds the compiler, no developer prompt needed.",
+            "generator": "Visual Studio 17 2022",
+            "binaryDir": "${sourceDir}/build/vs2022",
+            "architecture": {
+                "value": "x64",
+                "strategy": "set"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
             "name": "linux-clang-debug",
             "displayName": "linux-clang Debug",
             "inherits": [
@@ -159,6 +175,35 @@
         {
             "name": "windows-msvc-release",
             "configurePreset": "windows-msvc-release",
+            "inherits": "windows-msvc-build"
+        },
+        {
+            "name": "windows-vs2022-debug",
+            "configurePreset": "windows-vs2022",
+            "configuration": "Debug",
+            "inherits": "windows-msvc-build"
+        },
+        {
+            "name": "windows-vs2022-regenerate",
+            "displayName": "Regenerate the solution if CMake files changed (builds nothing)",
+            "description": "Runs only the ZERO_CHECK target: re-runs CMake when a CMakeLists.txt, .cmake or configured file changed since the last run, and updates the .sln/.vcxproj files. Compiles nothing.",
+            "configurePreset": "windows-vs2022",
+            "configuration": "Debug",
+            "targets": [
+                "ZERO_CHECK"
+            ],
+            "inherits": "windows-msvc-build"
+        },
+        {
+            "name": "windows-vs2022-relwithdebinfo",
+            "configurePreset": "windows-vs2022",
+            "configuration": "RelWithDebInfo",
+            "inherits": "windows-msvc-build"
+        },
+        {
+            "name": "windows-vs2022-release",
+            "configurePreset": "windows-vs2022",
+            "configuration": "Release",
             "inherits": "windows-msvc-build"
         },
         {
@@ -221,6 +266,42 @@
         {
             "name": "windows-msvc-release",
             "configurePreset": "windows-msvc-release",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "inherits": "windows-msvc-test"
+        },
+        {
+            "name": "windows-vs2022-debug",
+            "configurePreset": "windows-vs2022",
+            "configuration": "Debug",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "inherits": "windows-msvc-test"
+        },
+        {
+            "name": "windows-vs2022-relwithdebinfo",
+            "configurePreset": "windows-vs2022",
+            "configuration": "RelWithDebInfo",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "inherits": "windows-msvc-test"
+        },
+        {
+            "name": "windows-vs2022-release",
+            "configurePreset": "windows-vs2022",
+            "configuration": "Release",
             "output": {
                 "outputOnFailure": true
             },
