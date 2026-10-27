@@ -99,12 +99,12 @@ icacls F:\ /deny "meow2-runner:(OI)(CI)(M)"
 
 Workflow: [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml). On every push to `main` (and on manual runs), it publishes the Doxygen reference to **https://buttception.github.io/Meow2/**.
 
-1. **Build** (hosted Ubuntu, read-only token): configure with `-DMEOW2_BUILD_TESTS=OFF` (so no submodules are needed), build the `docs` target, and upload `docs/html` as a Pages artifact.
+1. **Build** (hosted Ubuntu, read-only token): check out **with submodules** (configuring needs the engine's libraries, e.g. spdlog, even with tests off), configure with `-DMEOW2_BUILD_TESTS=OFF`, build the `docs` target, and upload `docs/html` as a Pages artifact.
 2. **Deploy** (hosted Ubuntu): `actions/deploy-pages` publishes the artifact. This is the only job with write permissions (`pages: write`, plus `id-token: write`, which proves to Pages that the upload came from this workflow). It runs no repository code.
 
-**One-time setup (owner):** Settings → Pages → Build and deployment → Source: **GitHub Actions**. The first run after that creates the `github-pages` environment. Until it's set, the deploy job fails with "Pages not enabled". Re-run it from the Actions tab after enabling.
+**On pull requests, only the build runs** (check "Build API reference"), and the deploy job is skipped, so a PR can't publish anything. A change that breaks the docs build is caught on the PR, not after merging. (That's how #41 broke it: spdlog became required at configure time, and the docs workflow didn't check out submodules. Fixed in #43.)
 
-It never runs for pull requests: a PR can't publish anything. Docs mistakes are caught earlier by `Docs.PublicApi.IsDocumented` in the normal CI jobs.
+**One-time setup (owner):** Settings → Pages → Build and deployment → Source: **GitHub Actions**. The first run after that creates the `github-pages` environment. Until it's set, the deploy job fails with `Failed to create deployment (status: 404) … Ensure GitHub Pages has been enabled`. Re-run it from the Actions tab after enabling.
 
 ## How the Windows job finds Visual Studio
 
