@@ -1,17 +1,37 @@
 #pragma once
 
-// What is this code being compiled for? Include this instead of testing
-// compiler-specific macros (_WIN32, __clang__, NDEBUG, ...) directly.
-//
-// Every MEOW2_* macro here is ALWAYS defined, as 0 or 1. Test them with #if,
-// never #ifdef:
-//     #if MEOW2_PLATFORM_WINDOWS      // correct
-//     #ifdef MEOW2_PLATFORM_WINDOWS   // WRONG: always true, the macro is defined as 0 or 1
-// A misspelled name in #if is caught by -Wundef (GCC/Clang).
-//
-// Thread safety: compile-time constants only.
+/// @file
+/// @brief What the code is being compiled for: platform, compiler, CPU architecture and build configuration.
+///
+/// Include this instead of testing compiler-specific macros (`_WIN32`, `__clang__`, `NDEBUG`, …) directly.
+///
+/// Every `MEOW2_*` macro here is **always defined, as 0 or 1**. Test them with `#if`, never `#ifdef`:
+/// @code
+/// #if MEOW2_PLATFORM_WINDOWS      // correct
+/// #ifdef MEOW2_PLATFORM_WINDOWS   // WRONG: always true, the macro is defined as 0 or 1
+/// @endcode
+/// A misspelled name in `#if` is caught by `-Wundef` (GCC/Clang).
+///
+/// The build-configuration macros `MEOW2_CONFIG_DEBUG`, `MEOW2_CONFIG_RELWITHDEBINFO` and `MEOW2_CONFIG_RELEASE`
+/// are not defined here: CMake defines them (0 or 1) on the `Meow2::Engine` target, so anything linking the engine
+/// gets them. Exactly one of them is 1; this header stops the build with `#error` otherwise.
+///
+/// @note The generated API documentation shows the values for Windows, MSVC, x64, Debug.
+/// @par Thread safety
+/// Compile-time constants only.
 
 // ---- Platform ----------------------------------------------------------------
+
+/// @def MEOW2_PLATFORM_WINDOWS
+/// @brief 1 when compiling for Windows (32- or 64-bit), otherwise 0.
+
+/// @def MEOW2_PLATFORM_ANDROID
+/// @brief 1 when compiling for Android, otherwise 0.
+
+/// @def MEOW2_PLATFORM_LINUX
+/// @brief 1 when compiling for desktop Linux, otherwise 0. Android is excluded, although the compiler also defines
+///        `__linux__` there.
+
 #if defined(_WIN32)
 #define MEOW2_PLATFORM_WINDOWS 1
 #else
@@ -36,6 +56,16 @@
 #endif
 
 // ---- Compiler ----------------------------------------------------------------
+
+/// @def MEOW2_COMPILER_CLANG
+/// @brief 1 when compiling with Clang, including clang-cl on Windows, otherwise 0.
+
+/// @def MEOW2_COMPILER_MSVC
+/// @brief 1 when compiling with Microsoft's `cl.exe`, otherwise 0. clang-cl counts as Clang.
+
+/// @def MEOW2_COMPILER_GCC
+/// @brief 1 when compiling with GCC, otherwise 0.
+
 // Check Clang first: clang-cl on Windows also defines _MSC_VER, and Clang
 // defines __GNUC__ everywhere.
 #if defined(__clang__)
@@ -55,6 +85,13 @@
 #endif
 
 // ---- CPU architecture --------------------------------------------------------
+
+/// @def MEOW2_ARCH_X64
+/// @brief 1 when compiling for 64-bit x86 (x64 / AMD64), otherwise 0.
+
+/// @def MEOW2_ARCH_ARM64
+/// @brief 1 when compiling for 64-bit ARM (arm64 / AArch64), otherwise 0.
+
 #if defined(_M_X64) || defined(__x86_64__)
 #define MEOW2_ARCH_X64 1
 #define MEOW2_ARCH_ARM64 0
@@ -79,7 +116,13 @@
 #endif
 
 // ---- Helpers -----------------------------------------------------------------
-// Stops in the debugger (or crashes with a breakpoint/trap signal when none is attached).
+
+/// @def MEOW2_DEBUG_BREAK()
+/// @brief Stops in the debugger at this line.
+///
+/// Without a debugger attached, the program crashes with a breakpoint exception (Windows) or a `SIGTRAP` signal
+/// (Linux/Android). Used by asserts and fatal errors.
+
 #if MEOW2_COMPILER_MSVC
 #define MEOW2_DEBUG_BREAK() __debugbreak()
 #elif MEOW2_COMPILER_CLANG
@@ -89,23 +132,33 @@
 #define MEOW2_DEBUG_BREAK() std::raise(SIGTRAP)
 #endif
 
-// Ask the compiler to inline even when its heuristics say no. Use sparingly:
-// only for tiny hot functions where a profiler showed the call overhead.
+/// @def MEOW2_FORCE_INLINE
+/// @brief Asks the compiler to inline a function even when its heuristics say no.
+///
+/// Use sparingly: only for tiny hot functions where a profiler showed the call overhead matters.
+
 #if MEOW2_COMPILER_MSVC
 #define MEOW2_FORCE_INLINE __forceinline
 #else
 #define MEOW2_FORCE_INLINE inline __attribute__((always_inline))
 #endif
 
+/// @brief Root namespace of the Meow2 engine.
 namespace Meow2
 {
-// The same information as values, for logs and `if constexpr`.
+/// @brief Name of the target platform (`"Windows"`, `"Linux"` or `"Android"`), for logs and `if constexpr`.
 inline constexpr const char* c_platformName = MEOW2_PLATFORM_WINDOWS ? "Windows"
                                               : MEOW2_PLATFORM_LINUX ? "Linux"
                                                                      : "Android";
+
+/// @brief Name of the compiler (`"MSVC"`, `"Clang"` or `"GCC"`), for logs and `if constexpr`.
 inline constexpr const char* c_compilerName = MEOW2_COMPILER_MSVC ? "MSVC" : MEOW2_COMPILER_CLANG ? "Clang" : "GCC";
+
+/// @brief Name of the build configuration (`"Debug"`, `"RelWithDebInfo"` or `"Release"`).
 inline constexpr const char* c_configName = MEOW2_CONFIG_DEBUG            ? "Debug"
                                             : MEOW2_CONFIG_RELWITHDEBINFO ? "RelWithDebInfo"
                                                                           : "Release";
+
+/// @brief `true` in Debug builds (no optimisation, all asserts), `false` in RelWithDebInfo and Release.
 inline constexpr bool c_isDebugBuild = MEOW2_CONFIG_DEBUG == 1;
 } // namespace Meow2

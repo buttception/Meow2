@@ -1,3 +1,7 @@
+/// @file
+/// @brief Meow2Editor entry point (composition root). For now it prints its name and the engine version, which the
+///        smoke test checks.
+
 #include <Meow2/Core/Platform.h>
 #include <Meow2/Core/Version.h>
 

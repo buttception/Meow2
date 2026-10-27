@@ -39,6 +39,30 @@ Visual Studio, Rider and CLion support it natively. VS Code needs the *EditorCon
 
 The test `Lint.EditorConfig.TextFilesFollowRules` (label `lint`) checks every text file tracked by git (outside `external/`) for a final newline, trailing whitespace, tab indentation and CR characters, and reports `file:line` for each problem.
 
+## Documentation comments (Doxygen)
+
+All code is documented. Every public declaration under `Meow2Engine/include/Meow2/` gets a Doxygen comment, so an HTML API reference can be generated. The full rules are in [techstack.md §16.1](../../techstack.md); in short:
+
+```cpp
+/// @brief Returns the version of the engine library that is actually linked into the program.
+/// @return "MAJOR.MINOR.PATCH" of the linked library. Never null.
+const char* getVersionString();
+```
+
+- `///` comments directly above the declaration; `///<` after struct fields and enum values.
+- `@brief` everywhere, `@param`/`@return` on functions, a `@par Thread safety` paragraph on every class, and `@file` at the top of every header.
+- Macros selected with `#if` (as in `Platform.h`) get an explicit `/// @def NAME` block.
+- Private code (`src/`) uses the same style for classes and non-trivial functions, plus `//` comments explaining *why*.
+
+Generate the reference (needs [Doxygen](https://www.doxygen.nl) ≥ 1.9.8, e.g. `winget install DimitriVanHeesch.Doxygen`):
+
+```
+cmake --build build/vs2022 --config Debug --target docs     # or: --preset windows-msvc-debug --target docs
+```
+Then open `<build dir>/docs/html/index.html`.
+
+The test **`Docs.PublicApi.IsDocumented`** (label `lint`) runs Doxygen with warnings as errors, so a missing comment or a wrong `@param` name fails the build's tests with `Platform.h(165): error: Member … is not documented`. Without Doxygen installed, the target and the test are skipped locally. CI always has it.
+
 ## Warnings
 
 Every Meow2 target calls `meow2_set_warnings(<target>)` (see `cmake/Meow2Warnings.cmake`):

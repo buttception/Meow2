@@ -154,7 +154,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | Qt 6.8 LTS | Meow2Editor | LGPLv3 (link dynamically) | Qt online installer; `CMAKE_PREFIX_PATH` |
 | Vulkan SDK | validation layers, tools | — | LunarG installer (dev machines only) |
 | DXC | shader compiler | NCSA/MIT | prebuilt release binaries from Microsoft (or the copy in the Vulkan SDK) — not built from source |
-| Doxygen | API documentation (`docs` target, §16.1) | GPL-2.0 (tool only, not linked) | installer / `winget` on dev machines and CI (M1, with owner permission); optional: the `docs` target is skipped if it's missing |
+| Doxygen ≥ 1.9.8 | API documentation (`docs` target, §16.1) | GPL-2.0 (tool only, not linked) | `winget install DimitriVanHeesch.Doxygen` (Windows), `apt install doxygen` (Linux CI). Optional locally: the `docs` target and test are skipped if it's missing; required in CI |
 
 Clone with: `git clone --recurse-submodules`. glTF sample assets are **not** submodules — they are fetched on demand (§13).
 
@@ -377,7 +377,9 @@ public:
 } // namespace Meow2::Memory
 ```
 
-- **Enforcement (with the `docs` target in M1):** the Doxyfile sets `WARN_IF_UNDOCUMENTED = YES` and `WARN_AS_ERROR = FAIL_ON_WARNINGS` for `include/Meow2`, and a CI step fails on undocumented public API. Until then, review checks it (AGENTS.md §2.6).
+- **Enforcement:** `cmake/Meow2Docs.cmake` generates the Doxyfile with `WARN_IF_UNDOCUMENTED`, `WARN_NO_PARAMDOC`, `WARN_IF_INCOMPLETE_DOC` and `WARN_AS_ERROR = FAIL_ON_WARNINGS` for the public headers. The test **`Docs.PublicApi.IsDocumented`** (label `lint`) runs it, and fails with `file(line): error: Member … is not documented`. CI installs Doxygen and fails at configure time if it's missing; locally, the target and test are skipped without Doxygen. Review also checks private code (AGENTS.md §2.6).
+- **Macros chosen by `#if`** (e.g. `Platform.h`): document each one with an explicit `/// @def NAME` block. Doxygen preprocesses as Windows/MSVC/x64/Debug (`PREDEFINED`), so the active branch defines every macro exactly once.
+- **Output:** `cmake --build --preset <p> --target docs` → `<build dir>/docs/html/index.html`. The main page is `docs/api/MainPage.md`.
 
 ## 17. Roadmap
 
@@ -565,3 +567,4 @@ void Application::tick()
   - new libraries tl::expected, toml++, enkiTS, Tracy;
   - milestone references renumbered.
 - 2026-10-27 — §16.1: documentation comments in Doxygen syntax (`///`, mandatory on all public API, thread safety paragraph); Doxygen listed as a tool (installed on request, M1).
+- 2026-10-27 — §16.1 enforcement implemented: `docs` target, `Docs.PublicApi.IsDocumented` test, `@def` for `#if`-selected macros; Doxygen ≥ 1.9.8 required in CI.

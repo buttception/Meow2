@@ -57,6 +57,7 @@ if(MEOW2_BUILD_TESTS)
     include(Meow2Tests)
 endif()
 include(Meow2Format)
+include(Meow2Docs)
 
 # ---- Projects ---------------------------------------------------------------
 add_subdirectory(Meow2Engine)
