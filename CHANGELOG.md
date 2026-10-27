@@ -15,6 +15,8 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - README: step-by-step instructions for generating the API reference (#36).
 - The API reference is published to GitHub Pages on every merge to `main`: https://buttception.github.io/Meow2/ (#38).
 - `windows-vs2022` presets: generate the Visual Studio solution, build and test from any command prompt; `windows-vs2022-regenerate` refreshes the `.sln`/`.vcxproj` files after CMake changes without compiling (#38).
+- Logging: `LogSystem` / `Logger` over spdlog v1.17.0 with five levels (`debug` compiled out of Release, `fatal` flushes and aborts), `[hh:mm:ss.ms]<level> Name: message` lines, a log file per run next to the exe (the repo's `logs/` when started from Visual Studio, `--log-dir` to override), console output in Debug/RelWithDebInfo, and failed asserts written to the log; `executablePath()` (#41).
+- Git hooks (`.githooks/`, enabled by CMake): after `git pull`, a rebase or a branch switch that changes CMake files, the Visual Studio solution is regenerated and Visual Studio offers to reload (#41).
 - Visual Studio filters mirror the engine folders (Subsystem\Module\Backend), and projects are grouped into solution folders (Engine, Apps, Tests, External, Tools) (#38).
 
 ### Changed

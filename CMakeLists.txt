@@ -53,12 +53,14 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 # enable_testing() (not include(CTest)) — we only need add_test/ctest, not the
 # CDash dashboard targets that include(CTest) would add.
 enable_testing()
+include(Meow2External)
 include(Meow2SmokeTest)
 if(MEOW2_BUILD_TESTS)
     include(Meow2Tests)
 endif()
 include(Meow2Format)
 include(Meow2Docs)
+include(Meow2GitHooks)
 
 # ---- Projects ---------------------------------------------------------------
 add_subdirectory(Meow2Engine)

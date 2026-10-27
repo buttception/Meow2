@@ -1,0 +1,3 @@
+#!/bin/sh
+# Runs after `git pull` (merge mode) and `git merge`. ORIG_HEAD is the commit before the merge.
+exec "$(dirname "$0")/regenerate-vs-solution.sh" ORIG_HEAD HEAD

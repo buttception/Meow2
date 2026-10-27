@@ -52,6 +52,10 @@ cmake --preset windows-vs2022                       # always re-runs CMake (also
 ```
 Visual Studio then asks to **reload** the changed projects. (A normal build also regenerates automatically first, through the `ZERO_CHECK` project; these commands do it without the build.) Source files are listed explicitly in `CMakeLists.txt`, so a new `.cpp` on disk appears only after you add it there.
 
+**After `git pull` this happens automatically:** configuring once points git at the repo's hooks (`.githooks/`). After a pull, rebase or branch switch that changes CMake files, they run the regenerate step, and Visual Studio offers to reload. Details and how to turn it off: [Building](docs/wiki/Building.md#automatic-regeneration-after-git-pull-git-hooks).
+
+**Logs:** every app writes `logs/Meow2<App>_<date>_<time>.log` next to its `.exe`. Started from Visual Studio, logs go to the repository's `logs/` folder instead. See [Logging](docs/wiki/Logging.md).
+
 ### Presets (Ninja; developer prompt)
 
 The presets are what CI uses. They build with Ninja (faster incremental builds, one folder per configuration), but Ninja needs the compiler on `PATH`, so run them from a **Developer PowerShell / Command Prompt for VS 2022** (or open the folder in Visual Studio, which picks up the presets automatically):

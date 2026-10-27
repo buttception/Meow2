@@ -1,0 +1,17 @@
+#!/bin/sh
+# Runs after `git switch` / `git checkout`. $1 = previous HEAD, $2 = new HEAD,
+# $3 = 1 for a branch checkout (0 for checking out single files, which is ignored).
+#
+# A rebase also checks out commits internally; post-rewrite handles it once at the end,
+# so skip while a rebase is in progress. (The rebase's very first checkout has
+# old = new commit, which regenerate-vs-solution.sh already ignores.)
+for state in rebase-merge rebase-apply; do
+    if [ -d "$(git rev-parse --git-path "$state")" ]; then
+        exit 0
+    fi
+done
+
+if [ "$3" = "1" ]; then
+    exec "$(dirname "$0")/regenerate-vs-solution.sh" "$1" "$2"
+fi
+exit 0

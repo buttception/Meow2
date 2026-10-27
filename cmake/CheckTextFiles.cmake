@@ -19,7 +19,7 @@ if(NOT gitResult EQUAL 0)
 endif()
 string(REPLACE "\n" ";" trackedFiles "${trackedFiles}")
 
-set(textExtensions .h .hpp .cpp .inl .in .cmake .txt .md .json .yml .yaml)
+set(textExtensions .h .hpp .cpp .inl .in .cmake .txt .md .json .yml .yaml .sh)
 set(textNames .gitignore .gitattributes .gitmodules .editorconfig .clang-format LICENSE)
 set(crlfExtensions .bat .cmd .ps1 .sln .vcxproj .props)
 

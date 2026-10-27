@@ -167,7 +167,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 |---|---|---|---|
 | SDL3 | window, input, gamepad | zlib | submodule |
 | DirectXMath | math | MIT | submodule (header-only; needs a `sal.h` shim off Windows) |
-| spdlog | logging (bundled fmt) | MIT | submodule |
+| spdlog v1.17.0 | logging (bundled fmt; static library, no default logger, wchar file names on Windows) | MIT | submodule |
 | JoltPhysics | physics | MIT | submodule |
 | Dear ImGui (docking branch) | Meow2Renderer UI | MIT | submodule |
 | Vulkan-Headers, volk | Vulkan headers + loader-less function loading | Apache-2.0 / MIT | submodule |
@@ -251,6 +251,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
   - Android `logcat` sink later.
 - **Log folder:** `logs/` **next to the executable** by default. A `--log-dir <path>` command-line option (or `log.dir` in the config) overrides it. When the executable is launched from the Visual Studio solution, CMake sets the debugger's command arguments (`VS_DEBUGGER_COMMAND_ARGUMENTS`) to `--log-dir <repo>/logs`, so runs from the IDE log into the repo's `logs/` folder (git-ignored). Run directly, the same exe logs next to itself.
 - Loggers are thread-safe (`_mt` sinks). The crash handler flushes all loggers.
+- **Implemented (M1):** `Meow2/Core/Log/` — `LogSystem` (sinks, `createLogger`), `Logger` (`std::format` messages, `[[noreturn]] fatal`), `ScopedAssertLogging` (failed asserts → `error` + flush). Messages are formatted with `std::format` and passed to spdlog as plain text; `warn` and above flush immediately. See [docs/wiki/Logging.md](docs/wiki/Logging.md).
 
 ## 8. Crash dumps (Windows)
 
