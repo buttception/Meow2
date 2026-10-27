@@ -8,7 +8,7 @@ When this file changes, the agent that changed it must tell the owner what chang
 
 ## 1. Scope & permissions
 
-1. Work **only inside the repository folder** (`Meow2/`). Do not read, search, or write outside it.
+1. Work **only inside the repository folder** (`Meow2/`, including its worktrees under `.claude/worktrees/`). Do not read, search, or write outside it. One exception: the temporary scratchpad folder Claude Code gives each session, for throwaway files only (helper scripts, logs); nothing in it may be needed by a commit.
 2. **Ask the owner before installing anything.** This covers system packages, SDKs, pip/npm packages, prebuilt tools (DXC, Agility SDK), **adding/bumping a git submodule**, and initialising the large glTF sample-asset submodules.
 3. **Ask the owner before starting any subagent.** Keep the number small. The default is one agent per task, and never one agent per file.
 4. **Work only on what the owner asks for.** Milestones in milestones.md are a map, not a to-do list. If the requested feature's order doesn't make sense (it depends on something missing), say so before starting.
@@ -74,7 +74,7 @@ Labels: `milestone:M<n>`, `module:<Module>`, `feature` / `bug` / `chore`.
 - Run the final check from a **clean clone** of the branch (`git clone --no-local . <tmp> -b <branch>` + `git submodule update --init`), not just the working folder. Untracked or git-ignored files (e.g. a file matched by a `.gitignore` rule) make local runs pass while CI fails. Also check `git status --ignored` for anything that should have been committed. Run at least `Debug`; run `RelWithDebInfo` too when the change touches optimisation-sensitive code (math, memory, threading).
 - Visual (golden-image) tests: never update a golden image to make a test pass. Golden updates go in their own commit, with before/after images in the PR, and need the owner's sign-off.
 - **⚠ The owner is still deciding how agents should handle test cases.** Until this section is updated, follow the rules above.
-- If a test cannot run in the agent's environment (e.g. `windows`/`gpu` tests in the Linux cloud workspace), say so explicitly in the PR and ask the owner to run them. **Never claim a test passed that was not run.**
+- If a test cannot run in the agent's environment (e.g. the Linux/Clang presets on the Windows PC), say so explicitly in the PR and ask the owner to run them. **Never claim a test passed that was not run.**
 
 ### 2.5 Pull request
 The PR description must contain:
@@ -152,9 +152,11 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 
 ## 5. Environments
 
-- **Agent workspace (where agents build and test):** the agent's cloud workspace — Ubuntu 24.04, CMake 3.28, Ninja, GCC 13, Clang 18, clang-format 18 — with a clone of the GitHub repo. Agents push branches from there.
-- **Owner's folder (`F:\Meow2`):** the owner's working copy. The agent's shell on the owner's PC (a Linux VM) has **no network access**, so it is only used to read the folder and to sync commits into it (via a git bundle). Nothing is built there.
-- **Windows (MSVC), D3D12, minidumps, GPU and visual tests** can't run in the agent workspace. CI runs Windows jobs on the owner's self-hosted runner (see `docs/wiki/CI.md`). Agents read the PR's check results via the API and report them; if the runner is offline, say the Windows checks are pending.
+- **Agent workspace:** Claude Code (desktop app) on the owner's Windows 11 PC, in the repo at `F:\Meow2`. Agents build and run the **Windows (MSVC) presets locally**, push with the owner's git credentials, and use `gh` for issues, PRs and CI results. Details: `docs/wiki/AgentWorkflow.md`.
+- **One worktree per session/feature:** each Claude Code session works in its own git worktree under `F:\Meow2\.claude\worktrees\` (git-excluded, so lint and format never see it), started from a freshly fetched `origin/main` (§2.2). Each worktree has its own `build/` and its own submodule checkout (`git submodule update --init --recursive` after creating it). A branch can be checked out in only one worktree at a time. Parallel worktrees don't relax §2.3: features touching the same files still wait or stack.
+- **Visual Studio environment:** MSVC builds need `vcvars64.bat`. The owner's PowerShell execution policy is `AllSigned`, so don't write unsigned `.ps1` helpers; run builds through `cmd` (`call vcvars64.bat && cmake --workflow --preset …`).
+- **Not available locally:** the Linux presets (Clang/GCC) and sanitizers. The hosted Linux CI job covers them; report its result from the PR checks. GPU and visual tests (later milestones) can run locally once they exist; say in the PR whether they ran.
+- **CI:** Linux on GitHub-hosted runners, Windows on the owner's self-hosted runner (see `docs/wiki/CI.md`). Agents read the PR's checks with `gh pr checks` and report them; if the runner is offline, say the Windows checks are pending.
 - **CI safety (public repo + runner on the owner's PC):** never let a self-hosted job run code from forks, never use `pull_request_target`, never add secrets to self-hosted jobs, never interpolate untrusted `${{ github.event.* }}` text into `run:` scripts, and pin every third-party action to a full commit SHA. Any change under `.github/` must call this out in the PR.
 
 ## 6. Checklist per feature (in order)
@@ -182,3 +184,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-26 — CI: agents report CI results (Windows via the self-hosted runner); CI safety rules for workflow changes.
 - 2026-10-26 — Code rules: dependency injection + composition root, no mutable globals (`// GLOBAL:` exceptions), thread-safety documentation; review checklist updated.
 - 2026-10-26 — Tests must also pass from a clean clone (lesson from a git-ignored file that broke CI); editor features = commands exposed over MCP.
+- 2026-10-27 — Moved to Claude Code on the owner's Windows PC: `CLAUDE.md` imports this file; Environments rewritten (local MSVC builds, one worktree per session under `.claude/worktrees/`, `cmd` + `vcvars64` because of `AllSigned`, `gh` for GitHub); §1 allows worktrees and the session scratchpad.
