@@ -24,15 +24,32 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 
 ## Building
 
-Requirements (Windows): Visual Studio 2022 (C++ workload), CMake ≥ 3.25, Ninja (both ship with Visual Studio). Later milestones add the Vulkan SDK and Qt 6.8 (editor only).
+Requirements (Windows): Visual Studio 2022 with the *Desktop development with C++* workload, CMake ≥ 3.25 on `PATH`, and Git. Later milestones add the Vulkan SDK and Qt 6.8 (editor only).
+
+### Quick start: any command prompt (Visual Studio solution)
+
+Works from a **standard** cmd or PowerShell window, with no developer prompt and no `vcvars`. CMake's Visual Studio generator finds the compiler itself.
 
 ```
 git clone --recurse-submodules https://github.com/buttception/Meow2.git
 cd Meow2
-cmake --workflow --preset windows-msvc-debug     # configure + build + test in one go
+cmake -S . -B build/vs2022 -G "Visual Studio 17 2022" -A x64
+cmake --build build/vs2022 --config Debug
+ctest --test-dir build/vs2022 -C Debug --output-on-failure
 ```
 
-On Windows, run this from a **Developer PowerShell / Command Prompt for VS 2022** (or open the folder in Visual Studio, which picks up the presets automatically).
+- The first command generates the solution, **`build/vs2022/Meow2.sln`**. Open it in Visual Studio if you want the IDE; set a project (e.g. `Meow2Renderer`) as startup project to run or debug it.
+- The second builds everything. Executables land in **`build/vs2022/bin/Debug/`** (`Meow2Renderer.exe`, `Meow2Editor.exe`, `Meow2Player.exe`, the test executables).
+- The third runs all tests.
+- For another configuration, use `--config Release` / `-C Release` (or `RelWithDebInfo`). One solution holds all three, so there's no need to regenerate.
+
+### Presets (Ninja; developer prompt)
+
+The presets are what CI uses. They build with Ninja (faster incremental builds, one folder per configuration), but Ninja needs the compiler on `PATH`, so run them from a **Developer PowerShell / Command Prompt for VS 2022** (or open the folder in Visual Studio, which picks up the presets automatically):
+
+```
+cmake --workflow --preset windows-msvc-debug     # configure + build + test in one go
+```
 
 | Preset | Use |
 |---|---|
@@ -45,8 +62,9 @@ Step by step: `cmake --preset <p>`, `cmake --build --preset <p>`. Output: `build
 ## Running tests
 
 ```
-ctest --preset windows-msvc-debug              # all tests
-ctest --preset windows-msvc-debug -L unit      # by label (unit, smoke, ...)
+ctest --test-dir build/vs2022 -C Debug                 # Visual Studio solution, any prompt
+ctest --preset windows-msvc-debug                      # presets, developer prompt
+ctest --preset windows-msvc-debug -L unit              # by label (unit, smoke, lint, ...)
 ```
 
 More detail: [Building](docs/wiki/Building.md), [Testing](docs/wiki/Testing.md), [CI](docs/wiki/CI.md).
