@@ -39,13 +39,17 @@ Things to know:
 
 ## Building from an agent shell
 
-MSVC needs the Visual Studio environment (`vcvars64.bat`). The owner's PowerShell execution policy is `AllSigned`, which refuses unsigned `.ps1` scripts. Agents therefore run builds through `cmd`:
+MSVC needs the Visual Studio environment (`vcvars64.bat`). The owner's PowerShell execution policy is `AllSigned`, which refuses unsigned `.ps1` scripts. Agents therefore run builds through `cmd`. From PowerShell (`""` is an escaped quote there; the path is for VS 2022 Community):
 
 ```
 cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"" && cmake --workflow --preset windows-msvc-debug"
 ```
 
 The Windows CI job on the self-hosted runner does the same thing (see [CI](CI.md)).
+
+Gotchas:
+- **Path length (MAX_PATH).** MSVC fails with `C1083: Cannot open compiler generated file: '': Invalid argument` when build paths get longer than 260 characters, for example a clean clone under `%TEMP%`. Put the clean clone (AGENTS.md §2.4) in a short, git-ignored folder inside the worktree instead: `git clone --no-local . build-clean -b <branch>` (`build-*/` is in `.gitignore`).
+- **Visual Studio Installer updates.** While the installer is updating VS, `vcvars64.bat` can be missing for a while ("is not recognized"). Wait for the installer to finish; don't change the build.
 
 ## What runs where
 
