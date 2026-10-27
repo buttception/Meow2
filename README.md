@@ -13,7 +13,7 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 
 ## Status
 
-🚧 Pre-alpha. M0 (foundation) is done: the CMake skeleton builds an empty engine and apps in all three configs, with tests and CI. Next: M1 (core & memory). See [milestones.md](milestones.md).
+🚧 Pre-alpha. M0 (foundation) is done: the CMake skeleton builds an empty engine and apps in all three configs, with tests and CI. Next: M1 (core runtime: logging, crash dumps, memory, jobs, profiling). See [milestones.md](milestones.md).
 
 ## Documentation
 
@@ -70,6 +70,12 @@ ctest --preset windows-msvc-debug -L unit              # by label (unit, smoke, 
 More detail: [Building](docs/wiki/Building.md), [Testing](docs/wiki/Testing.md), [CI](docs/wiki/CI.md).
 
 Forgot `--recurse-submodules`? Run `git submodule update --init --recursive`.
+
+## Profiling
+
+Meow2 is instrumented for the [Tracy](https://github.com/wolfpld/tracy) profiler (from M1): CPU zones, worker threads, locks, memory by tag, and later GPU timings for Vulkan and D3D12.
+- Instrumentation is compiled into **Debug** and **RelWithDebInfo** builds and removed from Release. It listens on localhost only, and only when a viewer connects.
+- The Tracy **viewer is not included in this repo.** Download `tracy-profiler` from [Tracy's releases](https://github.com/wolfpld/tracy/releases), using the **same version** as the `external/tracy` submodule (see [techstack.md](techstack.md) §4), start the app, and click *Connect*.
 
 ## License
 

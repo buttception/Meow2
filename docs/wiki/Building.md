@@ -104,7 +104,7 @@ meow2_add_smoke_test(Smoke.MyApp.Runs MyApp "MyApp.*${PROJECT_VERSION}")
 | Version | Released when | Tag |
 |---|---|---|
 | 0.1.0 | M0 (foundation) done | `v0.1.0` |
-| 0.2.0 | M1 (core & memory) done | `v0.2.0` |
+| 0.2.0 | M1 (core runtime) done | `v0.2.0` |
 | 0.N+1.0 | milestone N done | `v0.N+1.0` |
 | 0.Y.Z (Z > 0) | a fix to the already-released 0.Y | `v0.Y.Z` |
 
