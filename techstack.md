@@ -16,7 +16,7 @@
 | Compilers | MSVC 2022 (primary), Clang/GCC (Linux), Android NDK Clang |
 | Build system | CMake ≥ 3.25 with `CMakePresets.json`, Ninja generator |
 | Build configurations | `Debug`, `RelWithDebInfo`, `Release` |
-| Code style | clang-format ≥ 17 (`.clang-format`), `.editorconfig` for all text files, warnings as errors via `meow2_set_warnings()` — see [docs/wiki/CodeStyle.md](docs/wiki/CodeStyle.md) |
+| Code style | clang-format 19 (`.clang-format`; pinned, see [CodeStyle](docs/wiki/CodeStyle.md)), `.editorconfig` for all text files, warnings as errors via `meow2_set_warnings()` — see [docs/wiki/CodeStyle.md](docs/wiki/CodeStyle.md) |
 | Tests | CTest + GoogleTest (`meow2_add_test_suite()`), see [docs/wiki/Testing.md](docs/wiki/Testing.md) |
 | Dependencies | Git submodules in `external/`, pinned to release tags (see §4). Exceptions: Qt (installer), Vulkan SDK (installer), DXC (prebuilt binaries) |
 
@@ -256,6 +256,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated.
 | Parameters | camelCase | `frameIndex` |
 | Local variables | camelCase | `viewMatrix` |
 | Member variables | `m_` + camelCase | `m_frameIndex` |
+| Fields of plain data structs | camelCase, **no** `m_` | `transform.position` |
 | Static variables (members, locals, file scope) | `s_` + camelCase | `s_instanceCount` |
 | `const` / `constexpr` variables | `c_` + camelCase | `c_maxFramesInFlight` |
 | Enum values | PascalCase | `RhiBackend::Vulkan` |
@@ -264,6 +265,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated.
 | Files | PascalCase matching the main type | `RhiDevice.h` |
 
 - Prefix precedence: `c_` > `s_` > `m_`. A `const` local is `c_`; a `static constexpr` member is `c_`.
+- **Plain data structs** hold only data: a `struct` with public non-static data members, no member functions (defaulted comparison operators are fine) and no invariant to protect. Their fields drop `m_`: `struct Transform { XMFLOAT3 position; XMFLOAT4 orientation; XMFLOAT3 scale; };` is used as `transform.position`. `<Name>Deps` structs (§18) are plain data too. As soon as a type gets a member function, private data or an invariant, it's class-like and its members use `m_`. `static`/`const` members of a plain data struct still use `s_`/`c_`.
 - Loop counters `i`, `j`, `k` are exempt.
 - No leading underscores on any identifier.
 
@@ -279,7 +281,7 @@ Goal: the dependency graph is **visible in the code**: what a class needs is exa
 - A class receives everything it uses through its **constructor**: other subsystems, allocators, the logger, configuration. It never reaches out to a global, a singleton or a service locator.
 - Few dependencies → plain parameters: `Window(Logger& logger, const WindowDesc& desc)`.
   More than ~3 → a `<Name>Deps` struct of references, so call sites stay readable:
-  `Renderer(const RendererDeps& deps)` with `RendererDeps{ .m_logger = …, .m_device = …, .m_window = … }`.
+  `Renderer(const RendererDeps& deps)` with `RendererDeps{ .logger = …, .device = …, .window = … }` (a plain data struct, so no `m_`, §16).
 - Injected dependencies are stored as **references** (`Logger& m_logger;`): non-null, non-owning, can't be re-pointed. Use a pointer only when the dependency is genuinely optional.
 - Build-time-selected backends (§3) are still injected: the *type* is chosen by CMake, the *instance* is passed in.
 
@@ -344,3 +346,4 @@ Requirement: **anything a user can do in the editor, an AI agent can do through 
 - 2026-10-26 — Code style: clang-format + warnings-as-errors.
 - 2026-10-26 — Architecture rules (§18: dependency injection, composition root, no globals) and threading rules (§19); logger injected, no global logger.
 - 2026-10-26 — §20: editor command architecture + built-in MCP server (localhost-only, token, headless mode).
+- 2026-10-27 — §16: fields of plain data structs (incl. `<Name>Deps`) drop the `m_` prefix; clang-format pinned to major version 19.

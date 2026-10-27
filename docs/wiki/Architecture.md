@@ -63,10 +63,11 @@ private:
 };
 
 // Many dependencies? Group them so call sites stay readable.
+// Plain data struct (no behaviour), so its fields don't use m_.
 struct RendererDeps
 {
-    Logger& m_logger;
-    Window& m_window;
+    Logger& logger;
+    Window& window;
 };
 
 // Thread safety: not thread-safe.
@@ -74,8 +75,8 @@ class Renderer
 {
 public:
     explicit Renderer(const RendererDeps& deps)
-        : m_logger(deps.m_logger)
-        , m_window(deps.m_window)
+        : m_logger(deps.logger)
+        , m_window(deps.window)
     {
     }
 
@@ -98,7 +99,7 @@ int main()
 {
     Meow2::Logger logger;                                               // 1. no dependencies
     Meow2::Window window{logger};                                       // 2. needs Logger
-    Meow2::Renderer renderer{{.m_logger = logger, .m_window = window}}; // 3. needs both
+    Meow2::Renderer renderer{{.logger = logger, .window = window}};     // 3. needs both
 
     renderer.renderFrame();
     return 0;
@@ -108,7 +109,7 @@ int main()
 That's the whole pattern:
 1. **Constructor = dependency list.** `Renderer` needs a `Logger` and a `Window`, and you can read that in one line.
 2. **References, not owners.** `Logger& m_logger;` says "I use it, someone else owns it". References can't be null and can't be re-pointed, so no `if (m_logger)` checks are needed.
-3. **`<Name>Deps` struct** when the list gets long: designated initialisers (`.m_logger = …`) keep the call site readable.
+3. **`<Name>Deps` struct** when the list gets long: designated initialisers (`.logger = …`) keep the call site readable. A `Deps` struct is plain data (no behaviour), so its fields have no `m_` prefix (techstack.md §16).
 4. **One composition root.** `main()` (later an `Application` class) creates everything in dependency order and owns it. Nothing else calls `new Renderer`.
 
 ### Lifetimes

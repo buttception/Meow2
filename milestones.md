@@ -9,7 +9,7 @@ Issues are labelled `milestone:M<n>` on GitHub.
 
 ---
 
-## M0 — Foundation 🟨
+## M0 — Foundation ✅
 **Goal:** a repo that builds an empty engine, editor, renderer and player in all three configs and runs tests from the CLI.
 **Depends on:** —
 
@@ -25,7 +25,9 @@ Issues are labelled `milestone:M<n>` on GitHub.
 | Architecture rules: dependency injection, no globals, threading | ✅ | #14 / PR #18 |
 | Platform/config header (`Meow2/Core/Platform.h`) | ✅ | #15 / PR #19 |
 | `.editorconfig` + text-file lint test | ✅ | #16 / PR #20 |
-| Claude Code setup: `CLAUDE.md`, worktree workflow, Environments rewrite | 🟨 | #22 / PR #23 |
+| Claude Code setup: `CLAUDE.md`, worktree workflow, Environments rewrite | ✅ | #22 / PR #23 |
+| CI: RelWithDebInfo jobs (Windows MSVC + Linux Clang) | ✅ | #24 / PR #26 |
+| Naming: plain data struct fields without `m_`; clang-format pinned to 19 | ✅ | #25 / PR #26 |
 
 **Done when:** `cmake --preset … && cmake --build … && ctest …` succeeds on Windows for all three configs, and CI runs it on every PR.
 
