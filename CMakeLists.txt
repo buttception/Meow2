@@ -33,6 +33,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)        # -std=c++20, not -std=gnu++20
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # compile_commands.json for clangd/clang-tidy
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+include(Meow2SourceGroups)
 include(Meow2Warnings)
 
 # ---- Options ----------------------------------------------------------------

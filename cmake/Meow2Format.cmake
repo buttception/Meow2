@@ -69,6 +69,7 @@ add_custom_target(format-check
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     COMMENT "Checking Meow2 source formatting"
     VERBATIM)
+set_target_properties(format format-check PROPERTIES FOLDER "Tools") # IDE solution folder
 
 add_test(NAME Format.Check
     COMMAND "${MEOW2_CLANG_FORMAT}" --dry-run --Werror ${meow2FormatFiles}

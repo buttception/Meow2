@@ -4,6 +4,8 @@ if(MEOW2_WARNINGS_AS_ERRORS)
     # EXCLUDE_FROM_ALL: never built by a normal build — only by the test below.
     add_executable(Meow2WarningProbe EXCLUDE_FROM_ALL BuildChecks/WarningProbe.cpp)
     meow2_set_warnings(Meow2WarningProbe)
+    set_target_properties(Meow2WarningProbe PROPERTIES FOLDER "Tests")
+    meow2_source_groups(Meow2WarningProbe)
 
     add_test(NAME Build.Warnings.AreErrors
         COMMAND ${CMAKE_COMMAND}

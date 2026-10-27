@@ -10,8 +10,9 @@
 | `Meow2Player` | executable | `Meow2Player/` | `Meow2::Engine` |
 
 Inside `Meow2Engine/`:
-- `include/Meow2/<Module>/` — public headers, included as `#include <Meow2/Core/Version.h>`
-- `src/<Module>/` — private sources (and templates for generated headers)
+- `include/Meow2/<Subsystem>/[<Module>/]` — public headers, included as `#include <Meow2/Core/Version.h>`
+- `src/<Subsystem>/[<Module>/][<Backend>/]` — private sources (and templates for generated headers); OS- and library-specific code in the last level (`src/Core/Win32/`)
+- At most three folder levels; the subsystem list is in [techstack.md §2](../../techstack.md).
 - generated headers (e.g. `Meow2/Core/Version.h`) are written to the build folder at configure time
 
 Build output goes to `<build dir>/bin` (executables) and `<build dir>/lib` (libraries).
@@ -73,6 +74,28 @@ ctest --test-dir build/vs2022 -C Debug --output-on-failure
 - `-A x64` matters: without it the generator may pick the 32-bit platform.
 - Multi-config generators need `--config` when building and `-C` when testing; without `-C`, `ctest` can't find the test executables.
 - `Format.Check` also runs here: CMake looks for clang-format inside the Visual Studio installation the generator chose (`CMAKE_GENERATOR_INSTANCE`).
+
+### Presets for the solution
+
+`CMakePresets.json` has the same thing as presets, so you don't have to remember the flags:
+
+| Command | Does |
+|---|---|
+| `cmake --preset windows-vs2022` | generate/refresh `build/vs2022/Meow2.sln` (always re-runs CMake) |
+| `cmake --build --preset windows-vs2022-regenerate` | re-run CMake **only if** a CMake file changed, and update the `.sln`/`.vcxproj`; **compiles nothing** |
+| `cmake --build --preset windows-vs2022-debug` (`-relwithdebinfo`, `-release`) | build one configuration |
+| `ctest --preset windows-vs2022-debug` (…) | run the tests of that configuration |
+
+**How regeneration works:** CMake records every file it read while configuring (`CMakeLists.txt`, `cmake/*.cmake`, `Version.h.in`, …). The Visual Studio generator adds a small project, **`ZERO_CHECK`**, that compares those files' timestamps with the last run and re-runs CMake if any changed. Every normal build runs `ZERO_CHECK` first. The `regenerate` preset builds **only** `ZERO_CHECK`, so it refreshes the solution without compiling. CMake only rewrites a `.vcxproj` whose content actually changes, so Visual Studio asks to reload just those projects.
+
+Source files are listed explicitly in `CMakeLists.txt` (no globbing), so creating a `.cpp` on disk changes nothing until it's added to a `target_sources()` list. That edit is what triggers the regeneration.
+
+### Filters and solution folders
+
+`cmake/Meow2SourceGroups.cmake` makes Solution Explorer mirror the disk:
+- **Filters:** each file's filter is its folder below `include/Meow2/`, `src/` or `tests/`, so `Core\Assert.h` and `Core\Assert.cpp` sit together under `Core`, and `src/Core/Win32/DebuggerWin32.cpp` is under `Core\Win32`. There are at most three levels (Subsystem\Module\Backend); anything deeper is shown at the third level. Generated headers (e.g. `Version.h` in the build folder) go to their module's filter too.
+- **Solution folders:** `Engine` (Meow2Engine), `Apps` (Renderer, Editor, Player), `Tests` (test executables, warning probe), `External` (googletest), `Tools` (`format`, `format-check`, `docs`). CMake's own `ALL_BUILD`, `ZERO_CHECK` and `RUN_TESTS` are in `CMakePredefinedTargets`.
+- New targets call `meow2_source_groups(<target>)` at the end of their `CMakeLists.txt` and set `FOLDER` (AGENTS.md §3).
 - Personal tweaks (other compilers, extra cache variables) go in `CMakeUserPresets.json`, which is git-ignored and can `inherit` from the shared presets.
 
 ## Building by hand (without presets)

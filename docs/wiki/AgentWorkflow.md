@@ -50,6 +50,7 @@ The Windows CI job on the self-hosted runner does the same thing (see [CI](CI.md
 Gotchas:
 - **Path length (MAX_PATH).** MSVC fails with `C1083: Cannot open compiler generated file: '': Invalid argument` when build paths get longer than 260 characters, for example a checkout under `%TEMP%`. That's why the clean check below uses a short, git-ignored folder inside the worktree (`build-*/` is in `.gitignore`).
 - **Visual Studio Installer updates.** While the installer is updating VS, `vcvars64.bat` can be missing for a while ("is not recognized"). Wait for the installer to finish; don't change the build.
+- **"Permission denied" when removing a temporary worktree** right after an MSVC build: the PDB server (`mspdbsrv.exe`) keeps `.pdb` files open for a few seconds. Wait briefly and delete the folder again, then run `git worktree prune`. Don't kill `mspdbsrv`: the owner's Visual Studio may be using it.
 
 ## The clean check before a PR
 

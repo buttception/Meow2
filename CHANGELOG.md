@@ -13,6 +13,9 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - Asserts: `MEOW2_ASSERT`, `MEOW2_ASSERT_SLOW`, `MEOW2_VERIFY` with a replaceable failure handler (`setAssertHandler`), and `isDebuggerAttached()` (#36).
 - This changelog (#36).
 - README: step-by-step instructions for generating the API reference (#36).
+- The API reference is published to GitHub Pages on every merge to `main`: https://buttception.github.io/Meow2/ (#38).
+- `windows-vs2022` presets: generate the Visual Studio solution, build and test from any command prompt; `windows-vs2022-regenerate` refreshes the `.sln`/`.vcxproj` files after CMake changes without compiling (#38).
+- Visual Studio filters mirror the engine folders (Subsystem\Module\Backend), and projects are grouped into solution folders (Engine, Apps, Tests, External, Tools) (#38).
 
 ### Changed
 - M1 rescoped as "Core runtime" and M2 as "Platform"; design decisions for memory, logging, input, events, game loop and releases recorded in techstack.md (#32).

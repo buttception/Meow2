@@ -42,6 +42,8 @@ target_compile_definitions(Meow2Engine PUBLIC
     MEOW2_CONFIG_RELEASE=$<CONFIG:Release,MinSizeRel>)
 target_compile_features(Meow2Engine PUBLIC cxx_std_20)
 meow2_set_warnings(Meow2Engine)
+set_target_properties(Meow2Engine PROPERTIES FOLDER "Engine")
+meow2_source_groups(Meow2Engine) # after all target_sources()
 
 # API reference over the public headers (incl. the generated ones): `docs` target and
 # the Docs.PublicApi.IsDocumented test (cmake/Meow2Docs.cmake).

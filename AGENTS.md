@@ -143,7 +143,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
   PascalCase types, camelCase functions, parameters and locals, `m_member`, `s_static`, `c_constOrConstexpr` (precedence `c_` > `s_` > `m_`), `I` prefix only for runtime-virtual interfaces. No leading underscores. Fields of plain data structs (data only, no behaviour, e.g. `Transform`, `<Name>Deps`) are plain camelCase without `m_`.
 - `.clang-format` is authoritative. Before committing run `cmake --build --preset <p> --target format`; the `Format.Check` test must pass.
 - Every Meow2 target (library, executable, test suite) calls `meow2_set_warnings(<target>)`. Warnings are errors. Never call it on third-party targets, and never silence a warning with a pragma without a comment explaining why.
-- Public headers in `include/Meow2/<Module>/`, private code in `src/<Module>/`.
+- Public headers in `include/Meow2/<Subsystem>/[<Module>/]`, private code in `src/<Subsystem>/[<Module>/][<Backend>/]`: at most three folder levels (techstack.md §2 "Engine folders"). Every Meow2 target calls `meow2_source_groups(<target>)` at the end of its `CMakeLists.txt` and sets a solution `FOLDER`, so the Visual Studio filters mirror the folders.
 - **Dependency injection (techstack.md §18):** classes get every dependency through their constructor (references; a `<Name>Deps` struct when there are more than ~3). Subsystems are created and owned only by the composition root (each executable's `main`/`Application`).
 - **No mutable globals**: no singletons, service locators, mutable globals or mutable `static`s. Any unavoidable exception gets a `// GLOBAL: <why>` comment and is called out in the PR.
 - **Threading (techstack.md §19):** every class header states its thread safety (not thread-safe / immutable after construction / thread-safe + how). No locks held while calling into other subsystems or callbacks.
@@ -155,7 +155,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - No raw `new`/`delete` in engine code. Use `std::unique_ptr`, engine handles, or an engine allocator (a `std::pmr::memory_resource`, techstack.md §6). Allocations get a `MemTag` (arena tag, library hook tag, or a `MemTagScope`).
 - Engine code must compile with both MSVC and Clang (future Linux/Android).
 - Coordinate system: left-handed, +X right, +Y up, +Z forward; reversed infinite-far Z, depth 0..1 (techstack.md §10).
-- OS-specific code lives only in `src/<Module>/Win32|Linux|Android/`, guarded by `MEOW2_PLATFORM_*`.
+- OS-specific code lives only in `Win32`/`Linux`/`Android` backend folders under `src/` (e.g. `src/Core/Win32/`), selected by CMake per OS or guarded by `MEOW2_PLATFORM_*`.
 - Code must compile in all three configs: Debug, RelWithDebInfo, Release.
 - glTF sample assets are fetched on demand (techstack.md §13), never committed.
 - Third-party code under `external/` is never edited. Fix issues via wrapper code or an upstream tag bump.
@@ -210,3 +210,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-27 — `IAllocator` replaced by `std::pmr::memory_resource` (review checklist, code rules) and allocations carry a `MemTag`; §2.7: every version tag gets a GitHub Release zip.
 - 2026-10-27 — §3 + review checklist: all code is documented; public API in Doxygen syntax (techstack.md §16.1).
 - 2026-10-27 — §2.4 clean check uses a temporary git worktree; `CHANGELOG.md` added: every PR adds to `[Unreleased]` (§2.5, §4, §6), milestone-closing PRs turn it into the version's section, which becomes the GitHub Release notes (§2.7).
+- 2026-10-27 — §3: engine folders are Subsystem/Module/Backend (max three levels); every target calls `meow2_source_groups` and sets a solution `FOLDER`; OS-code rule reworded to match.

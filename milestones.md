@@ -45,6 +45,8 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 |---|---|---|---|
 | Asserts: `MEOW2_ASSERT` (off in Release), `MEOW2_VERIFY` (always evaluates), debug break, failure handler | §3 | ✅ | #35 / PR #36 |
 | `CHANGELOG.md` (Keep a Changelog), used as release notes | §21 | ✅ | #35 / PR #36 |
+| API reference published to GitHub Pages (`docs.yml`) | §16.1 | ✅ | #37 / PR #38 |
+| Visual Studio workflow: `windows-vs2022` presets (incl. regenerate-only), filters by Subsystem/Module/Backend, solution folders | §2 | ✅ | #37 / PR #38 |
 | `Result<T>` = `tl::expected` (submodule; swap to `std::expected` with C++23) | §3, §4 | ⬜ | |
 | Logging: spdlog, levels debug/info/warn/error/fatal, `[hh:mm:ss.ms]<level> Name: msg`, `Engine` + per-app loggers, file sink (log folder) + console sink (Debug/RWDI), `fatal` flushes and crashes | §7 | ⬜ | |
 | Release exes use the Windows GUI subsystem (no console window) | §5, §7 | ⬜ | |
