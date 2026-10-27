@@ -25,6 +25,8 @@ find_program(MEOW2_CLANG_FORMAT
         # Visual Studio 2022's copies (the Developer Prompt sets these variables)
         "$ENV{VCINSTALLDIR}Tools/Llvm/x64/bin"
         "$ENV{DevEnvDir}VC/vcpackages"
+        # Visual Studio generator from a plain prompt: the VS installation it selected
+        "${CMAKE_GENERATOR_INSTANCE}/VC/Tools/Llvm/x64/bin"
     DOC "clang-format executable")
 
 if(NOT MEOW2_CLANG_FORMAT)

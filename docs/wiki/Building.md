@@ -50,7 +50,29 @@ ctest --preset windows-msvc-debug
 ```
 
 - Windows presets only appear on Windows, and Linux presets only on Linux. (Workflow presets are listed everywhere, because CMake doesn't support conditions on them; running one for the other OS fails with "disabled configure preset".)
-- MSVC needs the Visual Studio environment: use a *Developer PowerShell for VS 2022*, or open the folder in Visual Studio 2022 (it reads the presets and sets that environment up for you).
+- MSVC needs the Visual Studio environment: use a *Developer PowerShell for VS 2022*, or open the folder in Visual Studio 2022 (it reads the presets and sets that environment up for you). To build from a standard prompt instead, see the next section.
+
+## Visual Studio solution (any command prompt)
+
+The presets use the **Ninja** generator. Ninja just runs whatever `cl.exe` is on `PATH`, which is why it needs a developer prompt (`vcvars64.bat` puts the compiler, linker and Windows SDK paths into the environment). CMake's **Visual Studio generator** works differently: it writes a `.sln`/`.vcxproj` and lets MSBuild find the toolchain through the Visual Studio installation. So it works from a plain cmd or PowerShell window:
+
+```
+cmake -S . -B build/vs2022 -G "Visual Studio 17 2022" -A x64
+cmake --build build/vs2022 --config Debug
+ctest --test-dir build/vs2022 -C Debug --output-on-failure
+```
+
+| | Ninja presets | Visual Studio solution |
+|---|---|---|
+| Needs a developer prompt | yes | no |
+| Configurations | one per build folder (`build/<preset>/`) | all in one (`--config` / `-C` picks one) |
+| Output | `build/<preset>/bin/` | `build/vs2022/bin/<Config>/` |
+| IDE | open the folder in VS | open `build/vs2022/Meow2.sln` |
+| Used by CI | yes | no |
+
+- `-A x64` matters: without it the generator may pick the 32-bit platform.
+- Multi-config generators need `--config` when building and `-C` when testing; without `-C`, `ctest` can't find the test executables.
+- `Format.Check` also runs here: CMake looks for clang-format inside the Visual Studio installation the generator chose (`CMAKE_GENERATOR_INSTANCE`).
 - Personal tweaks (other compilers, extra cache variables) go in `CMakeUserPresets.json`, which is git-ignored and can `inherit` from the shared presets.
 
 ## Building by hand (without presets)
