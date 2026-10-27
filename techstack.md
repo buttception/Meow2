@@ -154,6 +154,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | Qt 6.8 LTS | Meow2Editor | LGPLv3 (link dynamically) | Qt online installer; `CMAKE_PREFIX_PATH` |
 | Vulkan SDK | validation layers, tools | — | LunarG installer (dev machines only) |
 | DXC | shader compiler | NCSA/MIT | prebuilt release binaries from Microsoft (or the copy in the Vulkan SDK) — not built from source |
+| Doxygen | API documentation (`docs` target, §16.1) | GPL-2.0 (tool only, not linked) | installer / `winget` on dev machines and CI (M1, with owner permission); optional: the `docs` target is skipped if it's missing |
 
 Clone with: `git clone --recurse-submodules`. glTF sample assets are **not** submodules — they are fetched on demand (§13).
 
@@ -333,6 +334,50 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Plain data structs** hold only data: a `struct` with public non-static data members, no member functions (defaulted comparison operators are fine) and no invariant to protect. Their fields drop `m_`: `struct Transform { XMFLOAT3 position; XMFLOAT4 orientation; XMFLOAT3 scale; };` is used as `transform.position`. `<Name>Deps` structs (§18) are plain data too. As soon as a type gets a member function, private data or an invariant, it's class-like and its members use `m_`. `static`/`const` members of a plain data struct still use `s_`/`c_`.
 - Loop counters `i`, `j`, `k` are exempt.
 - No leading underscores on any identifier.
+
+### 16.1 Documentation comments (Doxygen)
+
+All code is documented, and the public API (`include/Meow2/**`) is documented in **Doxygen** syntax, so an API reference can be generated (`docs` target, M1).
+
+- **Style:** `///` line comments (C++ style; clang-format keeps them aligned) with `@`-commands. A comment goes **directly above** what it documents; `///<` is for trailing comments on struct fields and enum values.
+- **Required on every public declaration:**
+  - **File:** `@file` plus `@brief`, with what the header is for.
+  - **Class/struct:** `@brief` (one sentence), then details. A **`@par Thread safety`** paragraph is mandatory (§19), and so is ownership or lifetime when it matters (who owns it, what it must outlive).
+  - **Function:** `@brief`, `@param` for each parameter (with `[in]`/`[out]` when it isn't obvious), `@return`, `@pre` and `@post` for contracts that are checked by asserts, plus `@note` or `@warning` for pitfalls.
+  - **Fields, enum values, constants, macros:** a `@brief` or a trailing `///<`.
+  - Template parameters: `@tparam`.
+- **Content:** say what it does and why, and its units and ranges (seconds, pixels, bytes, 0..1), not a restatement of the name. `@see` links to related APIs or techstack sections.
+- **Private code** (`src/`): the same style for classes and non-trivial functions (Doxygen can be run with `EXTRACT_PRIVATE` for internal docs), and `//` comments for the *why* of non-obvious code.
+- **Generated headers** (`Version.h.in`) and macros (`Platform.h`) are documented too.
+
+```cpp
+/// @file
+/// @brief Fixed-block bump allocator for short-lived allocations.
+
+namespace Meow2::Memory
+{
+/// @brief Arena that hands out memory by bumping a pointer through size-class block lists.
+///
+/// Individual deallocations are no-ops; all memory is reclaimed at once by reset().
+/// @par Thread safety
+/// Not thread-safe. Use one arena per thread (see FrameArena).
+/// @see techstack.md §6
+class BlockArena final : public std::pmr::memory_resource
+{
+public:
+    /// @brief Creates an empty arena; no memory is allocated until the first request.
+    /// @param upstream Resource the blocks are allocated from. Must outlive the arena.
+    /// @param tag      Memory tag the blocks are counted under.
+    BlockArena(std::pmr::memory_resource& upstream, MemTag tag);
+
+    /// @brief Rewinds all block lists to their first block. Keeps the blocks for reuse.
+    /// @warning Every container using this arena must be gone or unused afterwards.
+    void reset();
+};
+} // namespace Meow2::Memory
+```
+
+- **Enforcement (with the `docs` target in M1):** the Doxyfile sets `WARN_IF_UNDOCUMENTED = YES` and `WARN_AS_ERROR = FAIL_ON_WARNINGS` for `include/Meow2`, and a CI step fails on undocumented public API. Until then, review checks it (AGENTS.md §2.6).
 
 ## 17. Roadmap
 
@@ -519,3 +564,4 @@ void Application::tick()
   - new §22 Events, §23 Game loop & time;
   - new libraries tl::expected, toml++, enkiTS, Tracy;
   - milestone references renumbered.
+- 2026-10-27 — §16.1: documentation comments in Doxygen syntax (`///`, mandatory on all public API, thread safety paragraph); Doxygen listed as a tool (installed on request, M1).

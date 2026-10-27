@@ -58,6 +58,7 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 | Profiler: Tracy client (Debug/RWDI, localhost, on demand), zones in engine code, memory events from `TrackingAllocator`, enkiTS thread names | §3, §4 | ⬜ | |
 | Sanitizer presets + CI jobs: `linux-clang-asan` (ASan + UBSan) from the start, `linux-clang-tsan` with the job system | §19 | ⬜ | |
 | Build metadata: git commit in the version string (`0.1.0+g1a2b3c4`) | §21 | ⬜ | |
+| API docs: Doxyfile + `docs` CMake target (skipped if Doxygen isn't installed), existing headers converted to Doxygen comments, CI job that fails on undocumented public API | §16.1 | ⬜ | |
 | Release packaging: CMake install rules + CPack ZIP (exes, PDBs, MSVC runtime DLLs), `release.yml` builds it on a `v*` tag and publishes a GitHub Release | §21 | ⬜ | |
 | Closing PR bumps the version to **0.2.0** (tag `v0.2.0`, first release zip) | §21 | ⬜ | |
 

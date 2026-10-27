@@ -107,6 +107,7 @@ Verdict: SOUND / NEEDS CHANGES
 - [ ] interface policy (techstack.md §3): build-time selection, virtuals only in the RHI / `std::pmr::memory_resource` implementations
 - [ ] dependencies injected via constructor; no new globals/singletons/mutable statics (or `// GLOBAL:` justified)
 - [ ] thread safety documented for new classes; no lock held across calls into other code
+- [ ] every public declaration has a Doxygen comment (techstack.md §16.1); non-obvious private code has a comment saying *why*
 - [ ] ownership/lifetimes clear, no leaks, RAII
 - [ ] thread safety stated where relevant
 - [ ] errors handled / logged
@@ -136,6 +137,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - **Dependency injection (techstack.md §18):** classes get every dependency through their constructor (references; a `<Name>Deps` struct when there are more than ~3). Subsystems are created and owned only by the composition root (each executable's `main`/`Application`).
 - **No mutable globals**: no singletons, service locators, mutable globals or mutable `static`s. Any unavoidable exception gets a `// GLOBAL: <why>` comment and is called out in the PR.
 - **Threading (techstack.md §19):** every class header states its thread safety (not thread-safe / immutable after construction / thread-safe + how). No locks held while calling into other subsystems or callbacks.
+- **Document all code (techstack.md §16.1):** every public header and every declaration in it (classes, structs and their fields, functions, enums and their values, macros, constants) gets a **Doxygen comment** (`///` style with `@brief`, `@param`, `@return`, …), so the API reference can be generated with Doxygen. Private code (`src/`) is documented the same way for classes and non-trivial functions, plus `//` comments explaining *why* wherever the code isn't obvious. Code without these comments isn't done.
 - **Editor (techstack.md §20):** every editor feature is implemented as a command (execute + undo + parameter schema) registered in `EditorCommandRegistry`; UI code only issues commands. A feature is done only when it works through MCP too and has a test for it.
 - Every subsystem is reached through its public header. Backends are chosen at build time (pimpl + CMake option); only the RHI uses virtual interfaces and runtime selection.
 - Third-party headers (SDL3, spdlog, Jolt, vulkan.h, d3d12.h, Qt) must **not** leak into public engine headers, except DirectXMath in `Meow2/Math`.
@@ -195,3 +197,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-27 — §3 naming: plain data struct fields drop `m_`. CI also runs RelWithDebInfo; clang-format pinned to 19.
 - 2026-10-27 — §2.7 Versioning: only milestone-closing PRs bump the version (MINOR), tag `vX.Y.Z` after merge with the owner's go-ahead, PATCH only for fixes to tagged releases.
 - 2026-10-27 — `IAllocator` replaced by `std::pmr::memory_resource` (review checklist, code rules) and allocations carry a `MemTag`; §2.7: every version tag gets a GitHub Release zip.
+- 2026-10-27 — §3 + review checklist: all code is documented; public API in Doxygen syntax (techstack.md §16.1).
