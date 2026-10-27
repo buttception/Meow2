@@ -8,6 +8,7 @@ configure_file(src/Core/Version.h.in "${meow2GeneratedDir}/Meow2/Core/Version.h"
 
 target_sources(Meow2Engine
     PRIVATE
+        src/Core/Assert.cpp
         src/Core/Version.cpp
     PUBLIC
         # A header FILE_SET makes the base dirs PUBLIC include directories and
@@ -17,8 +18,18 @@ target_sources(Meow2Engine
             include
             "${meow2GeneratedDir}"
         FILES
+            include/Meow2/Core/Assert.h
+            include/Meow2/Core/Debugger.h
             include/Meow2/Core/Platform.h
             "${meow2GeneratedDir}/Meow2/Core/Version.h")
+
+# OS-specific implementations (AGENTS.md: only in src/<Module>/Win32|Linux|Android/).
+# Android uses the Linux sources: same kernel interfaces (/proc).
+if(WIN32)
+    target_sources(Meow2Engine PRIVATE src/Core/Win32/DebuggerWin32.cpp)
+else()
+    target_sources(Meow2Engine PRIVATE src/Core/Linux/DebuggerLinux.cpp)
+endif()
 
 target_include_directories(Meow2Engine PRIVATE src)
 

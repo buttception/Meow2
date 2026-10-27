@@ -48,8 +48,27 @@ cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxili
 The Windows CI job on the self-hosted runner does the same thing (see [CI](CI.md)).
 
 Gotchas:
-- **Path length (MAX_PATH).** MSVC fails with `C1083: Cannot open compiler generated file: '': Invalid argument` when build paths get longer than 260 characters, for example a clean clone under `%TEMP%`. Put the clean clone (AGENTS.md §2.4) in a short, git-ignored folder inside the worktree instead: `git clone --no-local . build-clean -b <branch>` (`build-*/` is in `.gitignore`).
+- **Path length (MAX_PATH).** MSVC fails with `C1083: Cannot open compiler generated file: '': Invalid argument` when build paths get longer than 260 characters, for example a checkout under `%TEMP%`. That's why the clean check below uses a short, git-ignored folder inside the worktree (`build-*/` is in `.gitignore`).
 - **Visual Studio Installer updates.** While the installer is updating VS, `vcvars64.bat` can be missing for a while ("is not recognized"). Wait for the installer to finish; don't change the build.
+
+## The clean check before a PR
+
+Tests must pass on exactly what's committed (AGENTS.md §2.4), not on a working folder that may contain untracked or git-ignored files. Agents check this with a **temporary git worktree** at the branch tip:
+
+```
+git worktree add --detach build-clean HEAD
+git -C build-clean submodule update --init --recursive
+cmake -S build-clean -B build-clean/build/vs2022 -G "Visual Studio 17 2022" -A x64
+cmake --build build-clean/build/vs2022 --config Debug
+ctest --test-dir build-clean/build/vs2022 -C Debug --output-on-failure
+git worktree remove --force build-clean
+```
+
+Why a worktree and not one of the alternatives:
+- **`git clone --no-local`** gives the same clean state, but copies the whole object database.
+- **`git clean -fdx`** in the working folder doesn't revert uncommitted edits, and it deletes every ignored file, including build folders, `CMakeUserPresets.json` and `.vs/`. It also leaves submodules alone.
+
+A temporary worktree shares the objects, contains only committed files, and leaves the working folder untouched. `--force` on removal is needed because the build output inside it is untracked.
 
 ## What runs where
 

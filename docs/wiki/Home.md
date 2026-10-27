@@ -32,6 +32,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Build system | [Building](Building.md) | ✅ M0 |
 | Testing | [Testing](Testing.md) | ✅ M0 |
 | Platform & config header | [Platform](Platform.md) | ✅ M0 |
+| Asserts & debugger detection | [Asserts](Asserts.md) | ✅ M1 |
 | Code style & warnings | [CodeStyle](CodeStyle.md) | ✅ M0 |
 | CI (GitHub Actions) | [CI](CI.md) | ✅ M0 |
 | Architecture (DI, globals, threading) | [Architecture](Architecture.md) | ✅ M0 |

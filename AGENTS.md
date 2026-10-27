@@ -71,7 +71,14 @@ Labels: `milestone:M<n>`, `module:<Module>`, `feature` / `bug` / `chore`.
   ctest --preset <preset> --output-on-failure
   ```
   **All tests green, including pre-existing ones.**
-- Run the final check from a **clean clone** of the branch (`git clone --no-local . <tmp> -b <branch>` + `git submodule update --init`), not just the working folder. Untracked or git-ignored files (e.g. a file matched by a `.gitignore` rule) make local runs pass while CI fails. Also check `git status --ignored` for anything that should have been committed. Run at least `Debug`; run `RelWithDebInfo` too when the change touches optimisation-sensitive code (math, memory, threading).
+- Run the final check on a **clean checkout** of the committed branch, not just the working folder. Use a temporary git worktree at a short path inside the repo:
+  ```
+  git worktree add --detach build-clean HEAD
+  git -C build-clean submodule update --init --recursive
+  (configure, build and ctest inside build-clean)
+  git worktree remove --force build-clean
+  ```
+  It contains exactly what's committed, and shares the object database, so nothing is copied. Keep the path short: MSVC fails on paths longer than 260 characters, e.g. under `%TEMP%`. Untracked or git-ignored files (e.g. a file matched by a `.gitignore` rule) make local runs pass while CI fails. Also check `git status --ignored` for anything that should have been committed. Run at least `Debug`; run `RelWithDebInfo` too when the change touches optimisation-sensitive code (math, memory, threading).
 - Visual (golden-image) tests: never update a golden image to make a test pass. Golden updates go in their own commit, with before/after images in the PR, and need the owner's sign-off.
 - **⚠ The owner is still deciding how agents should handle test cases.** Until this section is updated, follow the rules above.
 - If a test cannot run in the agent's environment (e.g. the Linux/Clang presets on the Windows PC), say so explicitly in the PR and ask the owner to run them. **Never claim a test passed that was not run.**
@@ -91,6 +98,8 @@ The PR description must contain:
 6. **Tests** — the test table and the actual `ctest` output summary (passed/failed/not run + why).
 7. **Wiki / docs** — page(s) added/updated in `docs/wiki/`; feature status updated in `milestones.md`.
 8. **Follow-ups** — anything deliberately left out.
+
+Every PR also adds its line(s) to **`CHANGELOG.md`** under `[Unreleased]` (group `Added`/`Changed`/`Fixed`/…, ending with the PR number), written for someone reading the release notes.
 
 ### 2.6 Code review (by the agent, on its own PR)
 After opening the PR, the agent reviews the diff and **posts the review as a PR comment**:
@@ -125,7 +134,8 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - The PR that **closes a milestone** bumps MINOR (`0.<milestone+1>.0`, e.g. closing M1 → `0.2.0`) and says so in its description.
 - After that PR is merged, an annotated tag `vX.Y.Z` goes on its merge commit on `main`. Agents create or push tags only with the owner's go-ahead; tags are never moved or deleted.
 - PATCH changes only in a `fix/` PR against a `release/0.Y` branch, for a bug in an already-tagged release.
-- Every version tag gets a **GitHub Release** with the `Meow2-<version>-windows-x64.zip` (executables, PDBs, runtime DLLs; runs out of the box). From v0.2.0 the `release.yml` workflow builds it on the tag. Check that the zip runs on a clean folder before announcing the release.
+- The milestone-closing PR also turns `CHANGELOG.md`'s `[Unreleased]` section into `[0.Y.0] — <date>` and starts a new empty `[Unreleased]`.
+- Every version tag gets a **GitHub Release** with the `Meow2-<version>-windows-x64.zip` (executables, PDBs, runtime DLLs; runs out of the box). **Its description is that version's section of `CHANGELOG.md`.** From v0.2.0 the `release.yml` workflow builds the zip and the notes on the tag. Check that the zip runs on a clean folder before announcing the release.
 
 ## 3. Code rules
 
@@ -158,6 +168,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
   `docs/wiki/` is the source of truth. It is published to the GitHub wiki (`Meow2.wiki.git`) when the agent has repo access; otherwise the owner publishes it.
 - **techstack.md** — update it when a stack decision changes, and add a Changelog line.
 - **milestones.md** — the roadmap. Update a feature's status and issue/PR link in every PR.
+- **CHANGELOG.md** — user-facing changes per version ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format). Every PR adds to `[Unreleased]`; each release's notes come from it (§2.7).
 
 ## 5. Environments
 
@@ -175,7 +186,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 3. Branch from the latest `origin/main`.
 4. Write tests first (where practical), then code.
 5. Build + `ctest` green.
-6. Update the wiki page and README if needed.
+6. Update the wiki page, `CHANGELOG.md` (`[Unreleased]`), and README if needed.
 7. Rebase on `origin/main`, re-test, push.
 8. Open the PR with the full description.
 9. Post the agent code review as a PR comment.
@@ -198,3 +209,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-27 — §2.7 Versioning: only milestone-closing PRs bump the version (MINOR), tag `vX.Y.Z` after merge with the owner's go-ahead, PATCH only for fixes to tagged releases.
 - 2026-10-27 — `IAllocator` replaced by `std::pmr::memory_resource` (review checklist, code rules) and allocations carry a `MemTag`; §2.7: every version tag gets a GitHub Release zip.
 - 2026-10-27 — §3 + review checklist: all code is documented; public API in Doxygen syntax (techstack.md §16.1).
+- 2026-10-27 — §2.4 clean check uses a temporary git worktree; `CHANGELOG.md` added: every PR adds to `[Unreleased]` (§2.5, §4, §6), milestone-closing PRs turn it into the version's section, which becomes the GitHub Release notes (§2.7).
