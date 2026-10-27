@@ -1,5 +1,5 @@
 # Meow2 code style — see docs/wiki/CodeStyle.md.
-# Needs clang-format 17 or newer (Visual Studio 2022 ships one).
+# Needs clang-format 19 (pinned in cmake/Meow2Format.cmake; Visual Studio 2022 ships it).
 ---
 Language: Cpp
 BasedOnStyle: LLVM

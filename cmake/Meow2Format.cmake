@@ -36,6 +36,9 @@ endif()
 execute_process(COMMAND "${MEOW2_CLANG_FORMAT}" --version OUTPUT_VARIABLE meow2ClangFormatVersion)
 string(REGEX MATCH "version ([0-9]+)" _ "${meow2ClangFormatVersion}")
 set(meow2ClangFormatMajor "${CMAKE_MATCH_1}")
+if(NOT meow2ClangFormatMajor)
+    set(meow2ClangFormatMajor "(unknown version)")
+endif()
 if(NOT meow2ClangFormatMajor EQUAL meow2ClangFormatRequiredMajor)
     message(${meow2ClangFormatFailMode}
         "clang-format ${meow2ClangFormatMajor} found (${MEOW2_CLANG_FORMAT}), but Meow2 pins version "
