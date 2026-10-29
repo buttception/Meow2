@@ -31,6 +31,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Log/Logger.h
             include/Meow2/Core/Log/LogSystem.h
             include/Meow2/Core/Memory/BlockArena.h
+            include/Meow2/Core/Memory/DebugFill.h
             include/Meow2/Core/Memory/MemTag.h
             include/Meow2/Core/Platform.h
             include/Meow2/Core/Process.h

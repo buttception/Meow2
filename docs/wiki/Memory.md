@@ -65,9 +65,25 @@ Because a request is at most 1/8 of its block, the unused space at the end of a 
 - The bookkeeping lives in a **header at the start of each block** (next block, size, alignment), so the arena never allocates anything for itself.
 - Upstream failures (`std::bad_alloc`) reach the caller unchanged, and the arena stays usable.
 
+## Debug fill patterns
+
+In **Debug and RelWithDebInfo**, engine allocators write recognisable bytes into memory, so reading memory at the wrong time shows up in the debugger instead of looking like plausible data:
+
+| Byte | Name | Written when |
+|---|---|---|
+| `0xCD` | `c_allocatedFill` ("clean") | memory is handed out, before its owner writes it |
+| `0xDD` | `c_freedFill` ("dead") | memory is deallocated, or its arena is reset |
+| `0xFD` | `c_guardFill` ("fence") | guard bytes around an allocation (tracking allocator, later) |
+
+- They're the values the Microsoft debug C runtime uses for its own heap, so `0xCDCDCDCD` means "never written" and `0xDDDDDDDD` means "already freed" everywhere in a Visual Studio session.
+- Read as a pointer, `0xCDCDCDCDCDCDCDCD` and `0xDDDDDDDDDDDDDDDD` are invalid addresses on x64, so following a stale pointer crashes immediately instead of corrupting something.
+- `BlockArena` fills the returned bytes on `allocate`, the freed bytes on `deallocate` (that catches reads of a vector's old buffer after it grew), and, on `reset()`, everything used since the last reset (that catches containers that outlived the reset). The cost is one `memset` over the bytes actually used.
+- **Turn it off for profiling:** `arena.setDebugFill(false)`. To remove the code entirely, build with `MEOW2_MEMORY_DEBUG_FILL=0`. Release never fills (`c_debugFillAvailable` is `false`).
+- Fills only make stale **reads** visible. A **write** to freed memory still corrupts whoever owns it now; finding those is AddressSanitizer's job (the `linux-clang-asan` CI job, planned in M1).
+
 ### Pitfalls
 
-- **Nothing may touch arena memory after `reset()`** (or after `trim()` freed it, or the arena is destroyed). A container that still exists afterwards points at memory that's about to be reused. Let containers go out of scope first. (`v.clear()` or `v = {}` is **not** enough: a `std::pmr` vector keeps its buffer, and the next `push_back` would write into memory the arena hands out again.)
+- **Containers must be destroyed before `reset()`** (and before `trim()` frees their memory, and before the arena is destroyed). A container that still exists afterwards points at memory that's about to be reused, and with debug fill on, even destroying it later writes `0xDD` over someone else's data. Let containers go out of scope first. (`v.clear()` or `v = {}` is **not** enough: a `std::pmr` vector keeps its buffer, and the next `push_back` would write into memory the arena hands out again.)
 - **Growing containers waste memory:** `push_back` past the capacity allocates a bigger buffer and leaves the old one behind until `reset()`. Call `reserve()` when the size is known.
 - **Not thread-safe:** one arena per thread, or a lock around it. The `FrameArena` (M5) will hold one per worker thread.
 - **The arena can't be copied or moved**, because containers hold a pointer to it.

@@ -352,6 +352,79 @@ TEST(BlockArena, IsEqualOnlyToItself)
     EXPECT_FALSE(first.is_equal(upstream));
 }
 
+namespace
+{
+bool allBytesAre(const void* pointer, std::size_t bytes, std::byte value)
+{
+    const auto* begin = static_cast<const std::byte*>(pointer);
+    return std::all_of(begin, begin + bytes, [value](std::byte byte) { return byte == value; });
+}
+} // namespace
+
+TEST(BlockArena, DebugFillMarksAllocatedAndFreedMemory)
+{
+    using Meow2::Memory::c_allocatedFill;
+    using Meow2::Memory::c_freedFill;
+    if (!Meow2::Memory::c_debugFillAvailable)
+    {
+        GTEST_SKIP() << "debug fill is compiled out of this configuration (Release)";
+    }
+    CountingResource upstream;
+    BlockArena arena{upstream, MemTag::General};
+    EXPECT_TRUE(arena.debugFill());
+
+    // Handed out: 0xCD in every size class.
+    void* small = arena.allocate(100, 8);
+    void* medium = arena.allocate(20 * c_kib, 16);
+    void* large = arena.allocate(300 * c_kib, 16);
+    EXPECT_TRUE(allBytesAre(small, 100, c_allocatedFill));
+    EXPECT_TRUE(allBytesAre(medium, 20 * c_kib, c_allocatedFill));
+    EXPECT_TRUE(allBytesAre(large, 300 * c_kib, c_allocatedFill));
+
+    // A single deallocate marks just those bytes as dead.
+    std::memset(small, 0x11, 100);
+    std::memset(medium, 0x22, 20 * c_kib);
+    arena.deallocate(small, 100, 8);
+    EXPECT_TRUE(allBytesAre(small, 100, c_freedFill));
+    EXPECT_TRUE(allBytesAre(medium, 20 * c_kib, std::byte{0x22})) << "neighbours are untouched";
+
+    // reset() marks everything used since the last reset as dead, in every block that was used.
+    std::memset(large, 0x33, 300 * c_kib);
+    std::vector<void*> spread;
+    for (int i = 0; i < 10; ++i)
+    {
+        spread.push_back(arena.allocate(8 * c_kib, 16)); // spills into a second small block
+        std::memset(spread.back(), 0x44, 8 * c_kib);
+    }
+    arena.reset();
+    EXPECT_TRUE(allBytesAre(medium, 20 * c_kib, c_freedFill));
+    EXPECT_TRUE(allBytesAre(large, 300 * c_kib, c_freedFill));
+    for (void* pointer : spread)
+    {
+        EXPECT_TRUE(allBytesAre(pointer, 8 * c_kib, c_freedFill));
+    }
+
+    // Reused memory is marked as freshly allocated again.
+    EXPECT_TRUE(allBytesAre(arena.allocate(64, 8), 64, c_allocatedFill));
+}
+
+TEST(BlockArena, DebugFillCanBeTurnedOff)
+{
+    CountingResource upstream;
+    BlockArena arena{upstream, MemTag::General};
+    arena.setDebugFill(false);
+    EXPECT_FALSE(arena.debugFill());
+
+    void* pointer = arena.allocate(256, 8);
+    std::memset(pointer, 0x11, 256);
+    arena.deallocate(pointer, 256, 8);
+    arena.reset();
+    EXPECT_TRUE(allBytesAre(pointer, 256, std::byte{0x11}));
+
+    arena.setDebugFill(true);
+    EXPECT_EQ(arena.debugFill(), Meow2::Memory::c_debugFillAvailable) << "can't be turned on where compiled out";
+}
+
 TEST(MemTag, EveryTagHasAName)
 {
     std::vector<std::string_view> names;

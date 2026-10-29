@@ -19,6 +19,7 @@
 /// @endcode
 /// @see techstack.md §6, docs/wiki/Memory.md
 
+#include <Meow2/Core/Memory/DebugFill.h>
 #include <Meow2/Core/Memory/MemTag.h>
 
 #include <array>
@@ -41,14 +42,18 @@ namespace Meow2::Memory
 ///   for later large requests that fit (smallest fitting block first).
 /// - trim() gives unused blocks back to the upstream resource, e.g. after a one-off spike such as a level load.
 /// - Upstream failures (`std::bad_alloc`) propagate to the caller; the arena stays usable.
+/// - **Debug fill** (Debug and RelWithDebInfo, see DebugFill.h): memory is filled with c_allocatedFill (`0xCD`) when
+///   it's handed out, and with c_freedFill (`0xDD`) when it's deallocated or the arena is reset. Turn it off with
+///   setDebugFill(false), e.g. while profiling.
 ///
 /// The blocks are labelled with a MemTag. Once the tracking allocator exists (later in M1), it counts them under
 /// that tag.
 /// @par Thread safety
 /// Not thread-safe. Use one arena per thread (see FrameArena, M5), or synchronise externally.
 /// @par Lifetime
-/// The upstream resource must outlive the arena. Every container using the arena must be destroyed, or never touch
-/// its memory again, before reset(), trim() frees what it used, or the arena is destroyed.
+/// The upstream resource must outlive the arena. Every container using the arena must be **destroyed** before
+/// reset(), before trim() frees what it used, and before the arena is destroyed. (With debug fill on, a container
+/// destroyed after reset() would fill memory that now belongs to someone else with `0xDD`.)
 class BlockArena final : public std::pmr::memory_resource
 {
 public:
@@ -77,7 +82,9 @@ public:
     BlockArena& operator=(BlockArena&&) = delete;      ///< Not movable: containers point at it.
 
     /// @brief Makes all memory available again. Keeps every block for reuse, so no upstream calls are made.
-    /// @warning Every container using this arena must be gone, or never touch its memory again, afterwards.
+    ///
+    /// With debug fill on, the memory used since the last reset is filled with c_freedFill.
+    /// @warning Every container using this arena must be destroyed before.
     void reset();
 
     /// @brief Returns unused blocks to the upstream resource until at most @p keepBytes stay reserved.
@@ -88,6 +95,21 @@ public:
     /// @param keepBytes Upper bound on reservedBytes() afterwards, in bytes, as far as unused blocks allow. A good
     ///                  value is what a typical cycle needs, e.g. a recent maximum of usedBytes().
     void trim(std::size_t keepBytes);
+
+    /// @brief Turns the debug fill patterns on or off for this arena (on by default where available).
+    /// @param enabled `false` skips all fills, e.g. while profiling. Ignored in builds without debug fill
+    ///                (c_debugFillAvailable is `false`, e.g. Release).
+    void setDebugFill(bool enabled)
+    {
+        m_debugFill = enabled && c_debugFillAvailable;
+    }
+
+    /// @brief Whether this arena currently writes the debug fill patterns.
+    /// @return `true` if fills are available in this build and not turned off.
+    [[nodiscard]] bool debugFill() const
+    {
+        return m_debugFill;
+    }
 
     /// @brief Memory tag the blocks are counted under.
     /// @return The tag given to the constructor.
@@ -146,5 +168,6 @@ private:
     std::size_t m_reservedBytes = 0;
     std::size_t m_usedBytes = 0;
     std::size_t m_blockCount = 0;
+    bool m_debugFill = c_debugFillAvailable;
 };
 } // namespace Meow2::Memory

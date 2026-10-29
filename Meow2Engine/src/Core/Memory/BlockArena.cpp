@@ -6,6 +6,7 @@
 #include "Meow2/Core/Assert.h"
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <new>
@@ -16,6 +17,12 @@ namespace
 {
 /// Alignment of the size-class blocks: what `malloc`/`operator new` guarantee, so any upstream serves it cheaply.
 constexpr std::size_t c_blockAlignment = alignof(std::max_align_t);
+
+/// Fills `bytes` bytes at `pointer` with a debug pattern (DebugFill.h).
+void fillPattern(void* pointer, std::size_t bytes, std::byte pattern)
+{
+    std::memset(pointer, std::to_integer<int>(pattern), bytes);
+}
 
 constexpr std::size_t alignUp(std::size_t value, std::size_t alignment)
 {
@@ -70,6 +77,27 @@ BlockArena::~BlockArena()
 
 void BlockArena::reset()
 {
+    if (m_debugFill)
+    {
+        // Only what was used since the last reset: full blocks up to `current`, and `current` up to the cursor.
+        for (SizeClass& sizeClass : m_sizeClasses)
+        {
+            for (Block* block = sizeClass.current != nullptr ? sizeClass.first : nullptr; block != nullptr;
+                 block = block == sizeClass.current ? nullptr : block->next)
+            {
+                std::byte* end = block == sizeClass.current ? sizeClass.cursor : block->data() + block->capacity();
+                fillPattern(block->data(), static_cast<std::size_t>(end - block->data()), c_freedFill);
+            }
+        }
+        for (Block* block = m_dedicated; block != nullptr; block = block->next)
+        {
+            if (block->inUse)
+            {
+                fillPattern(block->data(), block->capacity(), c_freedFill);
+            }
+        }
+    }
+
     for (SizeClass& sizeClass : m_sizeClasses)
     {
         // A null `current` means "before the first block": the next request starts at `first`.
@@ -132,12 +160,21 @@ void* BlockArena::do_allocate(std::size_t bytes, std::size_t alignment)
         pointer = allocateDedicated(requested, alignment);
     }
     m_usedBytes += bytes;
+    if (m_debugFill)
+    {
+        fillPattern(pointer, bytes, c_allocatedFill);
+    }
     return pointer;
 }
 
-void BlockArena::do_deallocate(void* /*pointer*/, std::size_t /*bytes*/, std::size_t /*alignment*/)
+void BlockArena::do_deallocate(void* pointer, std::size_t bytes, std::size_t /*alignment*/)
 {
-    // Intentionally empty: arena memory comes back all at once in reset().
+    // Arena memory comes back all at once in reset(); a single free only marks the bytes as dead, so code that
+    // still reads them (e.g. a vector's old buffer after it grew) sees 0xDD.
+    if (m_debugFill)
+    {
+        fillPattern(pointer, bytes, c_freedFill);
+    }
 }
 
 bool BlockArena::do_is_equal(const std::pmr::memory_resource& other) const noexcept
