@@ -150,7 +150,8 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - **Document all code (techstack.md §16.1):** every public header and every declaration in it (classes, structs and their fields, functions, enums and their values, macros, constants) gets a **Doxygen comment** (`///` style with `@brief`, `@param`, `@return`, …), so the API reference can be generated with Doxygen. Private code (`src/`) is documented the same way for classes and non-trivial functions, plus `//` comments explaining *why* wherever the code isn't obvious. Code without these comments isn't done.
 - **Editor (techstack.md §20):** every editor feature is implemented as a command (execute + undo + parameter schema) registered in `EditorCommandRegistry`; UI code only issues commands. A feature is done only when it works through MCP too and has a test for it.
 - Every subsystem is reached through its public header. Backends are chosen at build time (pimpl + CMake option); only the RHI uses virtual interfaces and runtime selection.
-- Third-party headers (SDL3, spdlog, Jolt, vulkan.h, d3d12.h, Qt) must **not** leak into public engine headers, except DirectXMath in `Meow2/Math`.
+- Third-party headers (SDL3, spdlog, Jolt, vulkan.h, d3d12.h, Qt) must **not** leak into public engine headers, except DirectXMath in `Meow2/Math` and tl::expected through `Meow2/Core/Result.h`.
+- **Expected failures** (missing file, bad input, unsupported format) are returned as `Meow2::Result<T>` (docs/wiki/ErrorHandling.md); bugs are asserts. Use only the `std::expected`-compatible part of `Result`'s API, so the future switch to C++23 `std::expected` is a one-line change.
 - Above the RHI, never cache backend-native handles (needed for the Vulkan ↔ D3D12 hot swap).
 - No raw `new`/`delete` in engine code. Use `std::unique_ptr`, engine handles, or an engine allocator (a `std::pmr::memory_resource`, techstack.md §6). Allocations get a `MemTag` (arena tag, library hook tag, or a `MemTagScope`).
 - Engine code must compile with both MSVC and Clang (future Linux/Android).
@@ -211,3 +212,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-27 — §3 + review checklist: all code is documented; public API in Doxygen syntax (techstack.md §16.1).
 - 2026-10-27 — §2.4 clean check uses a temporary git worktree; `CHANGELOG.md` added: every PR adds to `[Unreleased]` (§2.5, §4, §6), milestone-closing PRs turn it into the version's section, which becomes the GitHub Release notes (§2.7).
 - 2026-10-27 — §3: engine folders are Subsystem/Module/Backend (max three levels); every target calls `meow2_source_groups` and sets a solution `FOLDER`; OS-code rule reworded to match.
+- 2026-10-29 — §3: tl::expected (via `Meow2/Core/Result.h`) is a public-header exception; expected failures return `Result<T>` using only the `std::expected`-compatible API.

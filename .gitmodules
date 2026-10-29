@@ -4,3 +4,6 @@
 [submodule "external/spdlog"]
 	path = external/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "external/expected"]
+	path = external/expected
+	url = https://github.com/TartanLlama/expected.git

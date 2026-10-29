@@ -4,7 +4,8 @@
 # Every library is added with EXCLUDE_FROM_ALL (only built when something links it) and SYSTEM
 # (its headers are system headers, so our strict warnings never fire on its code). Their targets
 # never get meow2_set_warnings(). They are linked PRIVATE: no third-party header appears in
-# Meow2's public headers (AGENTS.md §3).
+# Meow2's public headers (AGENTS.md §3). The exceptions are tl::expected (Result<T> is part of
+# the public API until C++23 std::expected) and, later, DirectXMath.
 
 # meow2_require_submodule(<name> <dir>)
 #   Stops with a helpful message when a submodule folder is empty (cloned without
@@ -17,6 +18,17 @@ function(meow2_require_submodule name dir)
             "  git submodule update --init --recursive")
     endif()
 endfunction()
+
+# ---- tl::expected (Result<T>, techstack.md §3) ---------------------------------------------------
+# Header-only. Its own CMakeLists.txt includes CTest and enables its tests (downloading Catch2),
+# which would add CDash targets to our build, so we define a small INTERFACE target over its
+# include folder instead of add_subdirectory(). Include it only through <Meow2/Core/Result.h>.
+set(meow2ExpectedDir "${PROJECT_SOURCE_DIR}/external/expected")
+meow2_require_submodule(tl::expected "${meow2ExpectedDir}")
+
+add_library(meow2_tl_expected INTERFACE)
+target_include_directories(meow2_tl_expected SYSTEM INTERFACE "${meow2ExpectedDir}/include")
+add_library(tl::expected ALIAS meow2_tl_expected)
 
 # ---- spdlog (logging, techstack.md §7) ----------------------------------------------------------
 set(meow2SpdlogDir "${PROJECT_SOURCE_DIR}/external/spdlog")
