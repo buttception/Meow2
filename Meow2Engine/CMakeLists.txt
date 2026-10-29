@@ -13,6 +13,8 @@ target_sources(Meow2Engine
         src/Core/Log/Logger.cpp
         src/Core/Log/LoggerImpl.h
         src/Core/Log/LogSystem.cpp
+        src/Core/Memory/BlockArena.cpp
+        src/Core/Memory/MemTag.cpp
         src/Core/Version.cpp
     PUBLIC
         # A header FILE_SET makes the base dirs PUBLIC include directories and
@@ -28,6 +30,9 @@ target_sources(Meow2Engine
             include/Meow2/Core/Log/AssertLogging.h
             include/Meow2/Core/Log/Logger.h
             include/Meow2/Core/Log/LogSystem.h
+            include/Meow2/Core/Memory/BlockArena.h
+            include/Meow2/Core/Memory/DebugFill.h
+            include/Meow2/Core/Memory/MemTag.h
             include/Meow2/Core/Platform.h
             include/Meow2/Core/Process.h
             include/Meow2/Core/Result.h

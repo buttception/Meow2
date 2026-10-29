@@ -54,7 +54,7 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 | Config: TOML via toml++, defaults → `config.toml` → command line, write-back | §3, §4 | ⬜ | |
 | `FrameClock`: high-resolution time, delta time, frame counter | §23 | ⬜ | |
 | Memory: `TrackingAllocator` (thread-safe, `MemTag`s, per-tag stats, leak report), `MallocResource` | §6 | ⬜ | |
-| Memory: `BlockArena` (size-class block lists, reset keeps blocks, trim) as a `std::pmr::memory_resource` | §6 | ⬜ | |
+| Memory: `BlockArena` (size-class block lists, reset keeps blocks, trim) as a `std::pmr::memory_resource`, `MemTag` | §6 | ✅ | #48 / PR #49 |
 | Memory: global `operator new`/`delete` override (Debug/RWDI) + allocator hooks for libraries that have them, thread-local tag scopes | §6, §18 | ⬜ | |
 | Events: typed `EventBus` (immediate + queued, RAII subscriptions) | §22 | ⬜ | |
 | Job system: enkiTS behind `JobSystem` (pinned main-thread tasks, custom allocator, per-thread index) | §19 | ⬜ | |
