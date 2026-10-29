@@ -260,6 +260,15 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
 - **All configurations, Release included**: Release is what players run, so its dumps matter most. Release zips ship the matching PDBs (§21).
 - Not written when a debugger is attached (the debugger gets the exception instead).
 - Tested by a `windows`-labelled test that crashes a child process on purpose and checks the `.dmp` exists.
+- **Implemented (M1):** `Meow2::Crash::CrashHandler` (`Meow2/Core/Crash/CrashHandler.h`, RAII, owned by the composition root, takes the dump path and the engine Logger).
+  - The crashing thread only signals a watchdog thread created at startup, which writes the dump, logs it and flushes.
+  - Crashes without an exception context (abort, terminate, purecall, invalid parameter) raise a private structured exception, so the dump has a CPU context.
+  - The abort message box, Windows Error Reporting and Debug-CRT dialogs are suppressed.
+  - Dumps use `MiniDumpWithIndirectlyReferencedMemory | ThreadInfo | HandleData | UnloadedModules`.
+  - Tested by `Meow2CrashProbe` + `cmake/RunCrashProbe.cmake` for 9 crash kinds.
+  - Linux/Android: no-op backend until crashpad/breakpad (M12).
+
+  See [docs/wiki/CrashDumps.md](docs/wiki/CrashDumps.md).
 - GPU faults: D3D12 DRED, Vulkan `VK_EXT_device_fault` where available. Logged on device loss.
 
 ## 9. Windowing — SDL3
@@ -603,3 +612,4 @@ void Application::tick()
 - 2026-10-27 — §21: release notes come from `CHANGELOG.md`. Asserts implemented (§3 Core).
 - 2026-10-27 — §2: engine folders Subsystem/Module/Backend (subsystem table), Visual Studio filters and solution folders mirror them; `windows-vs2022` presets (solution from any prompt, regenerate-only build preset).
 - 2026-10-29 — §3/§4: `Result<T>` implemented over tl::expected v1.3.1 (std::expected-compatible subset only); tl::expected is the second public-header exception (after DirectXMath).
+- 2026-10-29 — §8: crash handler implemented on Windows (watchdog thread, hooks, dialogs suppressed, crash-probe tests); Linux/Android no-op for now.

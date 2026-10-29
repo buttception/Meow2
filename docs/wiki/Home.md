@@ -34,6 +34,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Platform & config header | [Platform](Platform.md) | ✅ M0 |
 | Asserts & debugger detection | [Asserts](Asserts.md) | ✅ M1 |
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |
+| Crash dumps (minidumps) | [CrashDumps](CrashDumps.md) | ✅ M1 (Windows) |
 | Logging (spdlog) | [Logging](Logging.md) | ✅ M1 |
 | Code style & warnings | [CodeStyle](CodeStyle.md) | ✅ M0 |
 | CI (GitHub Actions) | [CI](CI.md) | ✅ M0 |

@@ -23,6 +23,7 @@ target_sources(Meow2Engine
             "${meow2GeneratedDir}"
         FILES
             include/Meow2/Core/Assert.h
+            include/Meow2/Core/Crash/CrashHandler.h
             include/Meow2/Core/Debugger.h
             include/Meow2/Core/Log/AssertLogging.h
             include/Meow2/Core/Log/Logger.h
@@ -36,10 +37,13 @@ target_sources(Meow2Engine
 # Android uses the Linux sources: same kernel interfaces (/proc).
 if(WIN32)
     target_sources(Meow2Engine PRIVATE
+        src/Core/Crash/Win32/CrashHandlerWin32.cpp
         src/Core/Win32/DebuggerWin32.cpp
         src/Core/Win32/ProcessWin32.cpp)
+    target_link_libraries(Meow2Engine PRIVATE dbghelp) # MiniDumpWriteDump
 else()
     target_sources(Meow2Engine PRIVATE
+        src/Core/Crash/Linux/CrashHandlerLinux.cpp
         src/Core/Linux/DebuggerLinux.cpp
         src/Core/Linux/ProcessLinux.cpp)
 endif()
