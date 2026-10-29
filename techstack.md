@@ -226,13 +226,14 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
   - It works before `main` and after it returns by falling back to `MallocResource`; the header magic tells `delete` which path a block came from.
   - It's defined in a source file compiled into **each executable** (via the CMake helper that creates Meow2 executables), never in the static library, where the linker could silently drop it.
 - **`BlockArena`** (`std::pmr::memory_resource`, not thread-safe; one per thread where needed):
-  - **Size-class block lists:** requests ≤ 8 KiB go into 64 KiB blocks, ≤ 128 KiB into 1 MiB blocks, larger ones get a dedicated block of exactly their size. So the unused tail of a block is at most ~12.5 % of it. Unused bytes are accepted; blocks are never combined.
+  - **Size-class block lists:** requests ≤ 8 KiB go into 64 KiB blocks, ≤ 128 KiB into 1 MiB blocks, larger ones (or alignments above 4 KiB) get a dedicated block of exactly their size plus a small header. So the unused tail of a block is at most ~12.5 % of it. Unused bytes are accepted; blocks are never combined.
   - **Allocate** bumps a pointer in the current block of the size class. If the request doesn't fit, it moves to the next block in that list (reusing an existing one) or allocates a new block from upstream and links it.
   - **`deallocate` is a no-op**; memory comes back only on `reset()`. Containers that grow (`vector::push_back`) leave their old buffers behind until reset, so `reserve()` up front where the size is known.
-  - **`reset()`** rewinds every list to its first block and **keeps the blocks**, so after warm-up an arena makes no upstream calls at all. Dedicated large blocks are kept for reuse when a request of the same or smaller size class appears again.
-  - **`trim(keepBytes)`** frees blocks beyond the recent high-water mark, so a one-off spike (e.g. a level load) doesn't hold memory forever.
+  - **`reset()`** rewinds every list to its first block and **keeps the blocks**, so after warm-up an arena makes no upstream calls at all. Dedicated blocks are kept too; a later large request reuses the smallest free one it fits in.
+  - **`trim(keepBytes)`** gives unused blocks (no allocation since the last reset) back to upstream until at most `keepBytes` stay reserved, e.g. a recent high-water mark of `usedBytes()`. So a one-off spike (e.g. a level load) doesn't hold memory forever.
   - **No defragmentation needed:** nothing is freed individually, so no holes form inside an arena, and the upstream heap sees few, same-sized, long-lived blocks. Defragmentation is a topic for long-lived GPU heaps (VMA/D3D12MA), not for arenas.
-  - Every arena has a `MemTag`; its blocks are counted under that tag.
+  - Every arena has a `MemTag`; its blocks are counted under that tag (once `TrackingAllocator` exists).
+  - **Implemented (M1):** `Meow2::Memory::BlockArena` and `MemTag` (`Meow2/Core/Memory/`). Block headers live at the start of each block, so the arena never allocates bookkeeping of its own. See [docs/wiki/Memory.md](docs/wiki/Memory.md).
 - **`FrameArena`** (M5, with the renderer): `framesInFlight × workerThreads` `BlockArena`s. `beginFrame(frameIndex)` resets that frame's arenas after the frame's GPU fence has signalled; `current()` returns the calling thread's arena (thread index from the job system). Frame-scoped data only: a container must never outlive the reset of the arena it uses.
 - Pool and stack allocators are added when a concrete user appears.
 - GPU memory goes through VMA / D3D12MA, not these allocators. The per-frame **upload ring buffer** (M5) is the GPU-side twin of the frame arena: CPU-writable GPU memory, reset by the same fence.
@@ -613,3 +614,4 @@ void Application::tick()
 - 2026-10-27 — §2: engine folders Subsystem/Module/Backend (subsystem table), Visual Studio filters and solution folders mirror them; `windows-vs2022` presets (solution from any prompt, regenerate-only build preset).
 - 2026-10-29 — §3/§4: `Result<T>` implemented over tl::expected v1.3.1 (std::expected-compatible subset only); tl::expected is the second public-header exception (after DirectXMath).
 - 2026-10-29 — §8: crash handler implemented on Windows (watchdog thread, hooks, dialogs suppressed, crash-probe tests); Linux/Android no-op for now.
+- 2026-10-29 — §6: `BlockArena` and `MemTag` implemented; trim semantics (unused blocks only, down to `keepBytes`), alignments above 4 KiB get a dedicated block, dedicated blocks reused best-fit.

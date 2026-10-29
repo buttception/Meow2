@@ -5,6 +5,7 @@ meow2_add_test_suite(
     SOURCES
         Core/AssertTests.cpp
         Core/Log/LogTests.cpp
+        Core/Memory/BlockArenaTests.cpp
         Core/PlatformTests.cpp
         Core/ProcessTests.cpp
         Core/ResultTests.cpp
