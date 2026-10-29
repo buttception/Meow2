@@ -153,7 +153,7 @@ ctest --preset windows-msvc-debug -L unit
 
 - Backend contracts are written down in the header, and enforced by shared "contract" tests that every backend must pass.
 - Tests that need a fake build with a `Null`/`Fake` backend (e.g. `MEOW2_PHYSICS_BACKEND=Null`), instead of mocking through virtuals.
-- Third-party types never appear in public engine headers (except DirectXMath in `Meow2/Math`).
+- Third-party types never appear in public engine headers (except DirectXMath in `Meow2/Math`, and tl::expected through `Meow2/Core/Result.h`, because `Result<T>` is part of the API itself).
 - The one other place with virtual calls is memory: allocators implement `std::pmr::memory_resource`, whose interface the C++ standard defines as virtual (§6).
 
 ---
@@ -176,7 +176,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | DirectX-Headers / Agility SDK | D3D12 headers, newer features | MIT / MS | submodule / NuGet package (**⚠ OPEN**) |
 | glTF loader (**⚠ OPEN**) | asset import | MIT | submodule |
 | GoogleTest v1.17.0 | unit tests (gmock off) | BSD-3 | submodule |
-| tl::expected | `Result<T>` until C++23 `std::expected` | CC0 | submodule (M1) |
+| tl::expected v1.3.1 | `Result<T>` until C++23 `std::expected` (only the `std::expected`-compatible API is used) | CC0 | submodule; header-only, own INTERFACE target (its CMakeLists pulls in CTest/Catch2). **Public-header exception:** included by `Meow2/Core/Result.h` |
 | toml++ | config files | MIT | submodule (M1) |
 | enkiTS | job system | zlib | submodule (M1) |
 | Tracy (client only) | CPU/GPU/memory profiler | BSD-3 | submodule (M1). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
@@ -602,3 +602,4 @@ void Application::tick()
 - 2026-10-27 — §16.1 enforcement implemented: `docs` target, `Docs.PublicApi.IsDocumented` test, `@def` for `#if`-selected macros; Doxygen ≥ 1.9.8 required in CI.
 - 2026-10-27 — §21: release notes come from `CHANGELOG.md`. Asserts implemented (§3 Core).
 - 2026-10-27 — §2: engine folders Subsystem/Module/Backend (subsystem table), Visual Studio filters and solution folders mirror them; `windows-vs2022` presets (solution from any prompt, regenerate-only build preset).
+- 2026-10-29 — §3/§4: `Result<T>` implemented over tl::expected v1.3.1 (std::expected-compatible subset only); tl::expected is the second public-header exception (after DirectXMath).

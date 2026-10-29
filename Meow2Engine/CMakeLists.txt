@@ -29,6 +29,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Log/LogSystem.h
             include/Meow2/Core/Platform.h
             include/Meow2/Core/Process.h
+            include/Meow2/Core/Result.h
             "${meow2GeneratedDir}/Meow2/Core/Version.h")
 
 # OS-specific implementations (AGENTS.md: only in Win32/Linux/Android backend folders).
@@ -46,7 +47,12 @@ endif()
 target_include_directories(Meow2Engine PRIVATE src)
 
 # Third-party libraries are PRIVATE: none of their headers appear in Meow2's public headers.
-target_link_libraries(Meow2Engine PRIVATE spdlog::spdlog)
+# Exception: tl::expected is PUBLIC, because Result<T> (Meow2/Core/Result.h) is public API.
+target_link_libraries(Meow2Engine
+    PUBLIC
+        tl::expected
+    PRIVATE
+        spdlog::spdlog)
 
 # Build configuration for Meow2/Core/Platform.h. PUBLIC: everything linking the
 # engine sees the same values. $<CONFIG:...> is evaluated per configuration, so
