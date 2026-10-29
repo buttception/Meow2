@@ -54,7 +54,7 @@ Visual Studio then asks to **reload** the changed projects. (A normal build also
 
 **After `git pull` this happens automatically:** configuring once points git at the repo's hooks (`.githooks/`). After a pull, rebase or branch switch that changes CMake files, they run the regenerate step, and Visual Studio offers to reload. Details and how to turn it off: [Building](docs/wiki/Building.md#automatic-regeneration-after-git-pull-git-hooks).
 
-**Logs:** every app writes `logs/Meow2<App>_<date>_<time>.log` next to its `.exe`. Started from Visual Studio, logs go to the repository's `logs/` folder instead. See [Logging](docs/wiki/Logging.md).
+**Logs and crash dumps:** every app writes `logs/Meow2<App>_<date>_<time>.log` next to its `.exe`. Started from Visual Studio, logs go to the repository's `logs/` folder instead. If a program crashes, a `.dmp` with the same name appears next to its log (open it in Visual Studio; see [Crash dumps](docs/wiki/CrashDumps.md)). See [Logging](docs/wiki/Logging.md).
 
 ### Presets (Ninja; developer prompt)
 

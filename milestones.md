@@ -50,7 +50,7 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 | `Result<T>` = `tl::expected` (submodule; swap to `std::expected` with C++23) | §3, §4 | ✅ | #44 / PR #45 |
 | Logging: spdlog, levels debug/info/warn/error/fatal, `[hh:mm:ss.ms]<level> Name: msg`, `Engine` + per-app loggers, file sink (log folder) + console sink (Debug/RWDI), `fatal` flushes and crashes | §7 | ✅ | #39 / PR #41 |
 | Release exes use the Windows GUI subsystem (no console window) | §5, §7 | ⬜ | |
-| Crash dumps: minidump on crash in **all configs**, log flush, skipped under a debugger, child-process crash test | §8 | ⬜ | |
+| Crash dumps: minidump on crash in **all configs**, log flush, skipped under a debugger, child-process crash test | §8 | ✅ (Windows) | #46 / PR #47 |
 | Config: TOML via toml++, defaults → `config.toml` → command line, write-back | §3, §4 | ⬜ | |
 | `FrameClock`: high-resolution time, delta time, frame counter | §23 | ⬜ | |
 | Memory: `TrackingAllocator` (thread-safe, `MemTag`s, per-tag stats, leak report), `MallocResource` | §6 | ⬜ | |
