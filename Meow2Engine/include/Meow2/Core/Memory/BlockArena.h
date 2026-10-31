@@ -46,8 +46,8 @@ namespace Meow2::Memory
 ///   it's handed out, and with c_freedFill (`0xDD`) when it's deallocated or the arena is reset. Turn it off with
 ///   setDebugFill(false), e.g. while profiling.
 ///
-/// The blocks are labelled with a MemTag. Once the tracking allocator exists (later in M1), it counts them under
-/// that tag.
+/// The blocks are labelled with a MemTag: the arena sets a MemTagScope around its upstream calls, so a
+/// TrackingAllocator upstream counts them under that tag, whatever scope the caller is in.
 /// @par Thread safety
 /// Not thread-safe. Use one arena per thread (see FrameArena, M5), or synchronise externally.
 /// @par Lifetime

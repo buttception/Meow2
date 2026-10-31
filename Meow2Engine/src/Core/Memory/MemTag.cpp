@@ -1,5 +1,5 @@
 /// @file
-/// @brief MemTag names.
+/// @brief MemTag names and the thread-local current tag (MemTagScope).
 
 #include "Meow2/Core/Memory/MemTag.h"
 
@@ -39,5 +39,31 @@ std::string_view memTagName(MemTag tag)
             break;
     }
     return "Unknown";
+}
+} // namespace Meow2::Memory
+
+namespace Meow2::Memory
+{
+namespace
+{
+// GLOBAL: the current tag must be reachable from allocations that can't take a parameter (pmr containers, later
+// operator new), and it's per thread by definition. techstack.md §18 lists this exception.
+thread_local MemTag s_currentTag = MemTag::General;
+} // namespace
+
+MemTag currentMemTag()
+{
+    return s_currentTag;
+}
+
+MemTagScope::MemTagScope(MemTag tag)
+    : m_previous(s_currentTag)
+{
+    s_currentTag = tag;
+}
+
+MemTagScope::~MemTagScope()
+{
+    s_currentTag = m_previous;
 }
 } // namespace Meow2::Memory

@@ -45,6 +45,6 @@ inline constexpr std::byte c_allocatedFill{0xCD};
 inline constexpr std::byte c_freedFill{0xDD};
 
 /// @brief Written into guard bytes around an allocation ("fence"), to detect overruns when it's freed.
-///        Used by the tracking allocator.
+///        Written and checked by TrackingAllocator (16 bytes behind every allocation).
 inline constexpr std::byte c_guardFill{0xFD};
 } // namespace Meow2::Memory
