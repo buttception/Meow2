@@ -4,15 +4,71 @@ How Meow2 allocates memory. Everything is built on the C++ standard's allocator 
 
 | Piece | Status |
 |---|---|
-| `MemTag`: which subsystem memory belongs to | ✅ |
+| `MemTag`, `MemTagScope`: which subsystem memory belongs to | ✅ |
 | `BlockArena`: bump allocator for short-lived data | ✅ |
-| `TrackingAllocator` + `MallocResource`: per-tag statistics, leak report | ⬜ next |
-| Global `operator new`/`delete` override, library allocator hooks | ⬜ |
+| `MallocResource`: `malloc`/`free` at the bottom | ✅ |
+| `TrackingAllocator`: per-tag statistics, leak report, guard bytes | ✅ |
+| Global `operator new`/`delete` override, library allocator hooks, leak report at app exit | ⬜ next |
 | `FrameArena`: one arena per frame in flight × thread | ⬜ M5 |
 
 ## Memory tags
 
-`Meow2::Memory::MemTag` (`<Meow2/Core/Memory/MemTag.h>`) names the subsystem an allocation is counted under: `General`, `Logging`, `Config`, `Jobs`, `Events`, `Platform`, `Renderer`, `Rhi`, `Physics`, `Assets`, `Editor`, `ImGui`, `Profiler`. `memTagName(tag)` returns the name as text, for statistics and reports. Every arena is created with a tag. Once the tracking allocator exists, its counters (current bytes, peak, allocation count) are kept per tag, so a report can say "Physics: 40 MiB".
+`Meow2::Memory::MemTag` (`<Meow2/Core/Memory/MemTag.h>`) names the subsystem an allocation is counted under: `General`, `Logging`, `Config`, `Jobs`, `Events`, `Platform`, `Renderer`, `Rhi`, `Physics`, `Assets`, `Editor`, `ImGui`, `Profiler`. `memTagName(tag)` returns the name as text, for statistics and reports. Every arena is created with a tag, and the tracking allocator keeps its counters (current bytes, peak, allocation counts) per tag, so a report can say "Physics: 40 MiB".
+
+### The current tag (`MemTagScope`)
+
+Most allocations can't pass a tag (a `std::pmr::vector` only knows its resource; later, every `new`). They're counted under the calling thread's **current tag**, which a `MemTagScope` sets for a block of code and restores at its end:
+
+```cpp
+{
+    const Meow2::Memory::MemTagScope scope{Meow2::Memory::MemTag::Physics};
+    std::pmr::vector<Body> bodies{&tracker};   // counted under Physics
+}                                              // back to the previous tag (General outside any scope)
+```
+
+The tag is per thread (`thread_local`), so a scope on one thread never affects another. `currentMemTag()` returns it.
+
+## MallocResource
+
+`Meow2::Memory::MallocResource` (`<Meow2/Core/Memory/MallocResource.h>`) is the bottom of the stack: a `memory_resource` that calls `malloc`/`free` directly. It never uses `operator new`, so it keeps working underneath the planned global `operator new` override. Alignments above 16 bytes are handled portably by over-allocating and keeping `malloc`'s pointer just in front of the aligned address. It's thread-safe and stateless.
+
+## TrackingAllocator
+
+`Meow2::Memory::TrackingAllocator` (`<Meow2/Core/Memory/TrackingAllocator.h>`) wraps an upstream resource (usually a `MallocResource`) and counts every allocation per tag.
+
+```cpp
+Meow2::Memory::MallocResource mallocResource;
+Meow2::Memory::TrackingAllocator tracker{mallocResource};
+
+Meow2::Memory::BlockArena arena{tracker, Meow2::Memory::MemTag::Renderer};   // blocks counted under Renderer
+void* imguiMemory = tracker.allocateTagged(size, 16, Meow2::Memory::MemTag::ImGui); // explicit tag (library hooks)
+
+const Meow2::Memory::MemTagStats stats = tracker.stats(Meow2::Memory::MemTag::Renderer);
+// stats.currentBytes, stats.peakBytes, stats.liveAllocations, stats.totalAllocations
+
+if (tracker.hasLeaks())
+{
+    engineLog.warn("{}", tracker.leakReport());
+}
+```
+
+- **Per allocation**, the tracker asks upstream for a bit more: a header in front (magic value, size, tag, alignment) and 16 guard bytes behind. The caller only sees its own bytes; `stats()` counts only those (no overhead).
+- **Tag:** `allocate()` uses the current tag (`MemTagScope`); `allocateTagged()` takes one explicitly. Freeing reads the tag from the header, so memory can be freed on any thread, under any scope.
+- **Statistics** per tag: current bytes, peak bytes, live allocations, total allocations; `totalStats()` sums all tags (its peak is the sum of the per-tag peaks, an upper bound).
+- **Leak report:** `leakReport()` lists the live allocations per tag:
+  ```
+  Memory leaks: 3 allocations, 1546 bytes still allocated
+    Physics: 2 allocations, 1536 bytes
+    Assets: 1 allocations, 10 bytes
+  ```
+  The apps will print it at exit once all their memory goes through the tracker (next PR: the `operator new` override).
+- **Checks** (asserts in Debug and RelWithDebInfo):
+  - freeing a pointer the tracker didn't allocate, or freeing it twice (wrong magic in front of it; the block is then leaked rather than corrupting the heap);
+  - freeing with a different size than was allocated;
+  - **heap overruns:** with debug fill on, the 16 guard bytes are filled with `0xFD` and checked on free. Writing even one byte past the end of an allocation fails an assert when it's freed.
+- **Debug fill:** new memory `0xCD`, freed memory `0xDD`, guards `0xFD` (see below). `setDebugFill(false)` turns fills and guard checks off, e.g. while profiling.
+- **Thread-safe without a lock:** the counters are `std::atomic`. The peak is updated with a compare-and-swap loop.
+- Meant for Debug and RelWithDebInfo. Release uses `MallocResource` directly: no headers, no counters (techstack.md §5).
 
 ## BlockArena
 
@@ -43,7 +99,7 @@ for (;;) // e.g. once per frame
 }
 ```
 
-The upstream resource (here the standard `new`/`delete` one) must outlive the arena. The engine passes its own resource there once `MallocResource`/`TrackingAllocator` exist.
+The upstream resource (here the standard `new`/`delete` one) must outlive the arena. In the engine it's the `TrackingAllocator` (Debug/RelWithDebInfo) or a `MallocResource` (Release); a tracker counts the arena's blocks under the arena's tag.
 
 ### How it works
 
@@ -73,7 +129,7 @@ In **Debug and RelWithDebInfo**, engine allocators write recognisable bytes into
 |---|---|---|
 | `0xCD` | `c_allocatedFill` ("clean") | memory is handed out, before its owner writes it |
 | `0xDD` | `c_freedFill` ("dead") | memory is deallocated, or its arena is reset |
-| `0xFD` | `c_guardFill` ("fence") | guard bytes around an allocation (tracking allocator, later) |
+| `0xFD` | `c_guardFill` ("fence") | 16 guard bytes behind every `TrackingAllocator` allocation, checked on free |
 
 - They're the values the Microsoft debug C runtime uses for its own heap, so `0xCDCDCDCD` means "never written" and `0xDDDDDDDD` means "already freed" everywhere in a Visual Studio session.
 - Read as a pointer, `0xCDCDCDCDCDCDCDCD` and `0xDDDDDDDDDDDDDDDD` are invalid addresses on x64, so following a stale pointer crashes immediately instead of corrupting something.
@@ -90,4 +146,4 @@ In **Debug and RelWithDebInfo**, engine allocators write recognisable bytes into
 
 ### Existing engine code
 
-Nothing in the engine uses an arena yet. The code so far (logging, crash handling, error handling) has no frame-scoped data: log messages are formatted on any thread and handed to spdlog, which copies them; the crash handler must not allocate at all while crashing. The first users will be the event bus (its queue, reset after each dispatch), the job system (per-worker scratch) and the frame arena (M5).
+Nothing in the engine allocates through these yet. The tracker joins the apps together with the `operator new` override (next PR), when it can see every allocation; on its own it would only count a handful. As for arenas: The code so far (logging, crash handling, error handling) has no frame-scoped data: log messages are formatted on any thread and handed to spdlog, which copies them; the crash handler must not allocate at all while crashing. The first users will be the event bus (its queue, reset after each dispatch), the job system (per-worker scratch) and the frame arena (M5).

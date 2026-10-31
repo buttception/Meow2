@@ -244,7 +244,12 @@ void* BlockArena::allocateDedicated(std::size_t bytes, std::size_t alignment)
 
 BlockArena::Block* BlockArena::createBlock(std::size_t totalSize, std::size_t alignment)
 {
-    void* memory = m_upstream.allocate(totalSize, alignment);
+    // Counted under the arena's tag by a TrackingAllocator upstream, whatever scope the caller is in.
+    void* memory = nullptr;
+    {
+        const MemTagScope scope{m_tag};
+        memory = m_upstream.allocate(totalSize, alignment);
+    }
     // Placement new only constructs the header in memory that came from upstream; no heap allocation.
     Block* block = ::new (memory) Block{.next = nullptr, .size = totalSize, .alignment = alignment, .inUse = false};
     m_reservedBytes += totalSize;
