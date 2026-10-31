@@ -33,6 +33,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Testing | [Testing](Testing.md) | ✅ M0 |
 | Platform & config header | [Platform](Platform.md) | ✅ M0 |
 | Asserts & debugger detection | [Asserts](Asserts.md) | ✅ M1 |
+| Config files (TOML, `--set` overrides) | [Config](Config.md) | ✅ M1 |
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |
 | Crash dumps (minidumps) | [CrashDumps](CrashDumps.md) | ✅ M1 (Windows) |
 | Logging (spdlog) | [Logging](Logging.md) | ✅ M1 |

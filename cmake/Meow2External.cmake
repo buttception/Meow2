@@ -49,3 +49,15 @@ endif()
 
 add_subdirectory("${meow2SpdlogDir}" "${PROJECT_BINARY_DIR}/external/spdlog" EXCLUDE_FROM_ALL SYSTEM)
 set_target_properties(spdlog PROPERTIES FOLDER "External/spdlog") # IDE solution folder
+
+# ---- toml++ (config files, techstack.md §3) -----------------------------------------------------
+# Header-only. As with tl::expected, its own CMakeLists.txt is skipped (it would add install and test
+# targets); a small INTERFACE target over its include folder is enough. Only src/Core/Config/Config.cpp
+# includes it. TOML_EXCEPTIONS=0: parse errors come back as a value we turn into Result<T>, not as a throw.
+set(meow2TomlDir "${PROJECT_SOURCE_DIR}/external/tomlplusplus")
+meow2_require_submodule(toml++ "${meow2TomlDir}")
+
+add_library(meow2_tomlplusplus INTERFACE)
+target_include_directories(meow2_tomlplusplus SYSTEM INTERFACE "${meow2TomlDir}/include")
+target_compile_definitions(meow2_tomlplusplus INTERFACE TOML_EXCEPTIONS=0)
+add_library(tomlplusplus::tomlplusplus ALIAS meow2_tomlplusplus)

@@ -105,6 +105,7 @@ private:
 /// IDE log into the repository's (git-ignored) `logs` folder.
 /// @param argc Argument count, as given to `main`.
 /// @param argv Arguments, as given to `main`. `argv[0]` (the program) is skipped.
-/// @return The folder given on the command line, or `std::nullopt` if the option isn't there (or has no value).
+/// @return The folder given on the command line (the last one if repeated), or `std::nullopt` if the option isn't
+///         there (or has no value).
 [[nodiscard]] std::optional<std::filesystem::path> logDirectoryFromArguments(int argc, const char* const* argv);
 } // namespace Meow2::Log

@@ -72,3 +72,6 @@ logs/
 
 # Personal CMake presets (not shared)
 CMakeUserPresets.json
+
+# Settings of runs from the VS solution (<repo>/config/Meow2<App>.toml). Anchored: Config/ source folders aren't ignored.
+/config/

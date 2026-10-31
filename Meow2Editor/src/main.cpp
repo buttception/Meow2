@@ -2,6 +2,7 @@
 /// @brief Meow2Editor entry point (composition root). Qt arrives in M9; for now it sets up logging and
 ///        prints its name and the engine version, which the smoke test checks.
 
+#include <Meow2/Core/Config/Config.h>
 #include <Meow2/Core/Crash/CrashHandler.h>
 #include <Meow2/Core/Log/AssertLogging.h>
 #include <Meow2/Core/Log/LogSystem.h>
@@ -27,12 +28,18 @@ int main(int argc, char** argv)
     const Meow2::Crash::CrashHandler crashHandler{{.dumpPath = dumpPath}, engineLog};
     // Last of the infrastructure: everything created after it is gone when it checks for leaks at the end of main.
     const Meow2::Memory::ScopedLeakCheck leakCheck{Meow2::Memory::globalTracker(), engineLog};
+    // Settings (techstack.md §3): Meow2Editor.toml next to the exe (or --config <path>), --set key=value overrides.
+    Meow2::Config::Config config = Meow2::Config::openAppConfig("Editor", argc, argv, engineLog);
 
     std::printf("Meow2Editor (Meow2 Engine %s, %s/%s/%s)\n", Meow2::getVersionString(), Meow2::c_platformName,
                 Meow2::c_compilerName, Meow2::c_configName);
     MEOW2_LOG_INFO(appLog, "Meow2Editor started: engine {}, {} / {} / {}", Meow2::getVersionString(),
                    Meow2::c_platformName, Meow2::c_compilerName, Meow2::c_configName);
     MEOW2_LOG_INFO(appLog, "Log file: {}", logSystem.filePath().string());
+    if (const Meow2::Result<void> saved = config.save(); !saved)
+    {
+        MEOW2_LOG_WARN(appLog, "Settings not saved: {}", saved.error());
+    }
     MEOW2_LOG_INFO(appLog, "Meow2Editor exiting");
     return 0;
 }

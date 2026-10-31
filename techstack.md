@@ -127,7 +127,7 @@ ctest --preset windows-msvc-debug -L unit
 | Memory | `std::pmr::memory_resource` — the one virtual allocator interface (no separate `IAllocator`) | `TrackingAllocator`, `MallocResource`, `BlockArena`, `FrameArena` (M5) | See §6 |
 | Log | `Logger`, `LogSink` | spdlog | §7 |
 | Crash | `CrashHandler` | Win32 minidumps; Linux/Android later (e.g. crashpad/breakpad) | §8 |
-| Config | `Config` | TOML via **toml++** | defaults → `config.toml` → command line; write-back |
+| Config | `Config` | TOML via **toml++** | defaults (in code) → `Meow2<App>.toml` next to the exe (`--config`) → `--set key=value`; write-back on change. **Implemented (M1)**, see [docs/wiki/Config.md](docs/wiki/Config.md) |
 | Time | `FrameClock` | `std::chrono::steady_clock` | §23 |
 | Events | `EventBus` | in-house | §22 |
 | Jobs | `JobSystem` | **enkiTS** | §19 |
@@ -177,7 +177,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | glTF loader (**⚠ OPEN**) | asset import | MIT | submodule |
 | GoogleTest v1.17.0 | unit tests (gmock off) | BSD-3 | submodule |
 | tl::expected v1.3.1 | `Result<T>` until C++23 `std::expected` (only the `std::expected`-compatible API is used) | CC0 | submodule; header-only, own INTERFACE target (its CMakeLists pulls in CTest/Catch2). **Public-header exception:** included by `Meow2/Core/Result.h` |
-| toml++ | config files | MIT | submodule (M1) |
+| toml++ v3.4.0 | config files | MIT | submodule; header-only, own INTERFACE target, `TOML_EXCEPTIONS=0`; only included by `src/Core/Config/Config.cpp` |
 | enkiTS | job system | zlib | submodule (M1) |
 | Tracy (client only) | CPU/GPU/memory profiler | BSD-3 | submodule (M1). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
 | **Not submodules** | | | |
@@ -620,3 +620,4 @@ void Application::tick()
 - 2026-10-29 — §6: `BlockArena` and `MemTag` implemented; trim semantics (unused blocks only, down to `keepBytes`), alignments above 4 KiB get a dedicated block, dedicated blocks reused best-fit; debug fill patterns (`0xCD`/`0xDD`/`0xFD`).
 - 2026-10-31 — §6: `TrackingAllocator`, `MallocResource` and `MemTagScope` implemented (guard bytes, lock-free per-tag counters, `allocateTagged` for library hooks); `BlockArena` blocks counted under the arena's tag.
 - 2026-10-31 — §6/§18: global `operator new`/`delete` tracking implemented; the tracker behind it is process-wide (`constinit`, never destroyed) instead of owned by the composition root, because `delete` can run after `main` returns; `ScopedLeakCheck` logs leaks per tag at app exit; library hooks land with each library.
+- 2026-11-01 — §3/§4: Config implemented over toml++ v3.4.0 (`Meow2<App>.toml` next to the exe, `--config`, `--set key=value` overrides, write-back only on change, broken files never overwritten).
