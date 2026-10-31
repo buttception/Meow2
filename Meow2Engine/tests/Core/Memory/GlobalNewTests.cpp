@@ -132,8 +132,14 @@ TEST(GlobalNew, AllVariantsWork)
     delete nothrowSingle;
     delete[] nothrowArray;
     delete nothrowAligned;
-    ::operator delete(raw, std::size_t{100});                               // sized
-    ::operator delete(rawAligned, std::size_t{100}, std::align_val_t{128}); // sized + aligned
+#if defined(__cpp_sized_deallocation)
+    // Sized forms. Clang before 19 doesn't declare them unless built with -fsized-deallocation.
+    ::operator delete(raw, std::size_t{100});
+    ::operator delete(rawAligned, std::size_t{100}, std::align_val_t{128});
+#else
+    ::operator delete(raw);
+    ::operator delete(rawAligned, std::align_val_t{128});
+#endif
 
     const MemTagStats after = globalTracker().totalStats();
     EXPECT_EQ(after.liveAllocations, before.liveAllocations);
