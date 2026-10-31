@@ -64,3 +64,13 @@ if(WIN32)
     meow2_add_crash_test(FailedAssertWritesDump assert "$<IF:$<CONFIG:Release,MinSizeRel>,OFF,ON>"
         "-DMEOW2_EXPECT_LOG=Assertion failed: value == 2")
 endif()
+
+# Global operator new/delete replacement: its own executable, built with meow2_track_global_new(), so every `new`
+# in it goes through the tracker without changing how the other test suites allocate.
+meow2_add_test_suite(
+    TARGET  Meow2EngineGlobalNewTests
+    MODULE  Core
+    SOURCES
+        Core/Memory/CountingResource.h
+        Core/Memory/GlobalNewTests.cpp)
+meow2_track_global_new(Meow2EngineGlobalNewTests)

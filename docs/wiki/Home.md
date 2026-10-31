@@ -36,7 +36,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |
 | Crash dumps (minidumps) | [CrashDumps](CrashDumps.md) | ✅ M1 (Windows) |
 | Logging (spdlog) | [Logging](Logging.md) | ✅ M1 |
-| Memory (arenas, tracking, memory tags) | [Memory](Memory.md) | 🟨 M1 (BlockArena, TrackingAllocator) |
+| Memory (arenas, tracking, leak check, memory tags) | [Memory](Memory.md) | ✅ M1 |
 | Code style & warnings | [CodeStyle](CodeStyle.md) | ✅ M0 |
 | CI (GitHub Actions) | [CI](CI.md) | ✅ M0 |
 | Architecture (DI, globals, threading) | [Architecture](Architecture.md) | ✅ M0 |

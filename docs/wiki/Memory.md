@@ -8,7 +8,8 @@ How Meow2 allocates memory. Everything is built on the C++ standard's allocator 
 | `BlockArena`: bump allocator for short-lived data | ✅ |
 | `MallocResource`: `malloc`/`free` at the bottom | ✅ |
 | `TrackingAllocator`: per-tag statistics, leak report, guard bytes | ✅ |
-| Global `operator new`/`delete` override, library allocator hooks, leak report at app exit | ⬜ next |
+| Global `operator new`/`delete` tracking, leak report at app exit | ✅ |
+| Allocator hooks of SDL, enkiTS, ImGui, Jolt, VMA/D3D12MA | ⬜ with each library |
 | `FrameArena`: one arena per frame in flight × thread | ⬜ M5 |
 
 ## Memory tags
@@ -30,7 +31,7 @@ The tag is per thread (`thread_local`), so a scope on one thread never affects a
 
 ## MallocResource
 
-`Meow2::Memory::MallocResource` (`<Meow2/Core/Memory/MallocResource.h>`) is the bottom of the stack: a `memory_resource` that calls `malloc`/`free` directly. It never uses `operator new`, so it keeps working underneath the planned global `operator new` override. Alignments above 16 bytes are handled portably by over-allocating and keeping `malloc`'s pointer just in front of the aligned address. It's thread-safe and stateless.
+`Meow2::Memory::MallocResource` (`<Meow2/Core/Memory/MallocResource.h>`) is the bottom of the stack: a `memory_resource` that calls `malloc`/`free` directly. It never uses `operator new`, so it keeps working underneath the global `operator new` replacement (it would otherwise call itself). Alignments above 16 bytes are handled portably by over-allocating and keeping `malloc`'s pointer just in front of the aligned address. It's thread-safe and stateless.
 
 ## TrackingAllocator
 
@@ -61,7 +62,7 @@ if (tracker.hasLeaks())
     Physics: 2 allocations, 1536 bytes
     Assets: 1 allocations, 10 bytes
   ```
-  The apps will print it at exit once all their memory goes through the tracker (next PR: the `operator new` override).
+  At app exit, `ScopedLeakCheck` (below) prints the same kind of report for what leaked during the run.
 - **Checks** (asserts in Debug and RelWithDebInfo):
   - freeing a pointer the tracker didn't allocate, or freeing it twice (wrong magic in front of it; the block is then leaked rather than corrupting the heap);
   - freeing with a different size than was allocated;
@@ -69,6 +70,49 @@ if (tracker.hasLeaks())
 - **Debug fill:** new memory `0xCD`, freed memory `0xDD`, guards `0xFD` (see below). `setDebugFill(false)` turns fills and guard checks off, e.g. while profiling.
 - **Thread-safe without a lock:** the counters are `std::atomic`. The peak is updated with a compare-and-swap loop.
 - Meant for Debug and RelWithDebInfo. Release uses `MallocResource` directly: no headers, no counters (techstack.md §5).
+
+## Global `new`/`delete` tracking
+
+In **Debug and RelWithDebInfo**, every Meow2 executable replaces the global `operator new` and `operator delete`. So every C++ heap allocation goes through one process-wide `TrackingAllocator`, `Meow2::Memory::globalTracker()` (`<Meow2/Core/Memory/GlobalTracking.h>`). That includes `std::string`, `std::vector`, `std::make_unique`, spdlog, and any library that uses `new`. Each one is counted under the calling thread's current tag:
+
+```cpp
+{
+    const Meow2::Memory::MemTagScope scope{Meow2::Memory::MemTag::Physics};
+    auto world = std::make_unique<PhysicsWorld>();   // counted under Physics
+}
+const auto physics = Meow2::Memory::globalTracker().stats(Meow2::Memory::MemTag::Physics);
+```
+
+- **Which executables:** those whose CMake calls `meow2_track_global_new(<target>)`, which are the three apps and `Meow2EngineGlobalNewTests`. The other test suites keep the normal heap.
+- **Every form is replaced** (20 functions): plain and array, default and over-aligned (`alignas`), throwing and `nothrow`, and every `delete` including the sized ones. So no allocation slips past the tracker, and no tracked block ever reaches the CRT's `free`.
+- **You get the tracker's checks for free:** `0xCD` in new memory, `0xDD` in freed memory, `0xFD` guard bytes that catch writes past the end of any `new`'d object, and asserts on wrong frees.
+- **The tracker lives for the whole process.** It's `constinit`, ready before the first global constructor runs, and never destroyed. A `delete` that runs after `main` returns (in a static destructor) still finds it. That's why it isn't owned by `main` like other subsystems.
+- **Release** replaces nothing: `new` is the CRT's, with no overhead. `MEOW2_MEMORY_TRACKING=0` turns the replacement off in any build; sanitizer builds need that, because AddressSanitizer replaces `new` itself.
+- **Cost:** each allocation carries a 48-byte header and 16 guard bytes, and is filled. That's fine for Debug. While profiling RelWithDebInfo, `globalTracker().setDebugFill(false)` removes the fills.
+- **Why it's compiled into each executable:** the replacement lives in `src/Core/Memory/GlobalNewDelete.cpp`, and `meow2_track_global_new()` adds it to each executable rather than to the `Meow2Engine` static library. A linker only takes objects out of a static library when something refers to them by name, and nothing refers to `operator new` that way, so the replacement could silently be dropped.
+
+## Leak check at exit
+
+`Meow2::Memory::ScopedLeakCheck` (`<Meow2/Core/Memory/LeakCheck.h>`) records the tracker's live allocations per tag when it's created, and compares when it's destroyed. Each app creates one right after its logging and crash handler, so it covers the app's whole run:
+
+```
+[22:30:53.961]<info> Engine: No memory leaks (9 allocations during the run)
+```
+
+or, if something wasn't freed:
+
+```
+[22:30:53.961]<warn> Engine: Memory leaks: 1 allocations, 1234 bytes not freed
+  Assets: 1 allocations, 1234 bytes
+```
+
+- The smoke tests `Smoke.<App>.NoLeaks` fail if an app doesn't end with "No memory leaks" (Debug and RelWithDebInfo).
+- To find a leak: the tag tells you the subsystem. Then break on allocations of that size, or run the ASan CI job (M1), which reports the exact call stack.
+- **Limits:** it counts allocations, it doesn't identify them.
+  - An unrelated free of a block allocated *before* the check started can hide a leak in the same tag.
+  - Memory freed only after `main` returns (by a static destructor) shows as a leak.
+
+  Engine code has no mutable statics, so neither happens there today.
 
 ## BlockArena
 
@@ -146,4 +190,4 @@ In **Debug and RelWithDebInfo**, engine allocators write recognisable bytes into
 
 ### Existing engine code
 
-Nothing in the engine allocates through these yet. The tracker joins the apps together with the `operator new` override (next PR), when it can see every allocation; on its own it would only count a handful. As for arenas: The code so far (logging, crash handling, error handling) has no frame-scoped data: log messages are formatted on any thread and handed to spdlog, which copies them; the crash handler must not allocate at all while crashing. The first users will be the event bus (its queue, reset after each dispatch), the job system (per-worker scratch) and the frame arena (M5).
+Every `new` in the apps goes through the global tracker (above). Nothing in the engine uses an arena yet: the code so far (logging, crash handling, error handling) has no frame-scoped data: log messages are formatted on any thread and handed to spdlog, which copies them; the crash handler must not allocate at all while crashing. The first users will be the event bus (its queue, reset after each dispatch), the job system (per-worker scratch) and the frame arena (M5).

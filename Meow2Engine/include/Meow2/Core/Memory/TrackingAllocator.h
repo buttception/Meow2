@@ -61,7 +61,7 @@ struct MemTagStats
 /// @par Thread safety
 /// Thread-safe. Allocations and frees from any thread; the counters are `std::atomic`, so there is no lock. stats()
 /// may run concurrently with allocations: each value is exact, but values of different fields may be from slightly
-/// different moments. setDebugFill() must not race with allocations.
+/// different moments. setDebugFill() may be called at any time; it applies to allocations made afterwards.
 /// @par Lifetime
 /// The upstream resource must outlive the tracker, and every allocation must be freed through the tracker before it
 /// is destroyed (whatever isn't is a leak; it's never returned upstream).
@@ -74,7 +74,11 @@ public:
     /// @brief Creates a tracker with all counters at zero.
     /// @param upstream Resource the memory (plus header and guard) comes from, usually a MallocResource. Must outlive
     ///                 the tracker.
-    explicit TrackingAllocator(std::pmr::memory_resource& upstream);
+    /// @note `constexpr`, so a tracker can be `constinit` (the one behind global `new`, see GlobalTracking.h).
+    constexpr explicit TrackingAllocator(std::pmr::memory_resource& upstream)
+        : m_upstream(&upstream)
+    {
+    }
 
     TrackingAllocator(const TrackingAllocator&) = delete;            ///< Not copyable: owns the counters.
     TrackingAllocator& operator=(const TrackingAllocator&) = delete; ///< Not copyable: owns the counters.
@@ -84,7 +88,7 @@ public:
     /// @brief Allocates memory counted under an explicit tag, ignoring the current MemTagScope.
     ///
     /// For callers that know their tag, such as library allocator hooks (SDL, Jolt, ImGui). Free it with the normal
-    /// `deallocate()`.
+    /// `deallocate()` or deallocateUnsized().
     /// @param bytes     Size in bytes (0 is allowed and returns a distinct pointer).
     /// @param alignment Alignment in bytes; a power of two.
     /// @param tag       Tag the allocation is counted under.
@@ -95,6 +99,13 @@ public:
     /// @param tag Tag to report; MemTag::Count is not a tag.
     /// @return A snapshot of the tag's counters.
     [[nodiscard]] MemTagStats stats(MemTag tag) const;
+
+    /// @brief Frees memory from this tracker without knowing its size, e.g. for an unsized `operator delete`.
+    ///
+    /// Same as `deallocate()`, except that the size comes from the allocation's header instead of being checked
+    /// against it.
+    /// @param pointer A pointer returned by this tracker and not freed yet.
+    void deallocateUnsized(void* pointer);
 
     /// @brief Statistics summed over all tags.
     /// @return Total current bytes, live and total allocations; `peakBytes` is the sum of the per-tag peaks (an
@@ -136,10 +147,13 @@ private:
 
     void* do_allocate(std::size_t bytes, std::size_t alignment) override;
     void do_deallocate(void* pointer, std::size_t bytes, std::size_t alignment) override;
+    void release(void* pointer, const std::size_t* expectedBytes);
     [[nodiscard]] bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override;
 
-    std::pmr::memory_resource& m_upstream;
+    // A pointer (never null), not a reference: MSVC can't constant-initialise (constinit) a reference member bound to
+    // a base-class subobject, and the global tracker must be constinit.
+    std::pmr::memory_resource* m_upstream;
     std::array<TagCounters, c_memTagCount> m_counters;
-    bool m_debugFill = c_debugFillAvailable;
+    std::atomic<bool> m_debugFill{c_debugFillAvailable}; ///< Atomic: read by every allocation, on any thread.
 };
 } // namespace Meow2::Memory

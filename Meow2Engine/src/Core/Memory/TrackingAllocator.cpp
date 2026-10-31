@@ -50,11 +50,6 @@ std::size_t tagIndex(MemTag tag)
 }
 } // namespace
 
-TrackingAllocator::TrackingAllocator(std::pmr::memory_resource& upstream)
-    : m_upstream(upstream)
-{
-}
-
 void* TrackingAllocator::allocateTagged(std::size_t bytes, std::size_t alignment, MemTag tag)
 {
     MEOW2_ASSERT(alignment != 0 && (alignment & (alignment - 1)) == 0, "alignment must be a power of two");
@@ -67,17 +62,18 @@ void* TrackingAllocator::allocateTagged(std::size_t bytes, std::size_t alignment
     {
         throw std::bad_alloc{};
     }
-    auto* block = static_cast<std::byte*>(m_upstream.allocate(offset + bytes + c_guardBytes, upstreamAlignment));
+    auto* block = static_cast<std::byte*>(m_upstream->allocate(offset + bytes + c_guardBytes, upstreamAlignment));
 
     std::byte* pointer = block + offset;
+    const bool fill = m_debugFill; // read once: setDebugFill() may run concurrently
     // Placement new only constructs the header inside memory that came from upstream.
     ::new (headerOf(pointer)) AllocationHeader{.magic = c_liveMagic,
                                                .size = bytes,
                                                .offset = offset,
                                                .upstreamAlignment = upstreamAlignment,
                                                .tag = tag,
-                                               .guarded = m_debugFill};
-    if (m_debugFill)
+                                               .guarded = fill};
+    if (fill)
     {
         std::memset(pointer, std::to_integer<int>(c_allocatedFill), bytes);
         std::memset(pointer + bytes, std::to_integer<int>(c_guardFill), c_guardBytes);
@@ -102,6 +98,16 @@ void* TrackingAllocator::do_allocate(std::size_t bytes, std::size_t alignment)
 
 void TrackingAllocator::do_deallocate(void* pointer, std::size_t bytes, std::size_t /*alignment*/)
 {
+    release(pointer, &bytes);
+}
+
+void TrackingAllocator::deallocateUnsized(void* pointer)
+{
+    release(pointer, nullptr);
+}
+
+void TrackingAllocator::release(void* pointer, const std::size_t* expectedBytes)
+{
     AllocationHeader* header = headerOf(pointer);
     if (header->magic != c_liveMagic)
     {
@@ -109,7 +115,8 @@ void TrackingAllocator::do_deallocate(void* pointer, std::size_t bytes, std::siz
         MEOW2_ASSERT(false, "freeing a pointer this TrackingAllocator didn't allocate, or freeing it twice");
         return;
     }
-    MEOW2_ASSERT(header->size == bytes, "deallocate size differs from the allocated size");
+    MEOW2_ASSERT(expectedBytes == nullptr || header->size == *expectedBytes,
+                 "deallocate size differs from the allocated size");
 
     auto* data = static_cast<std::byte*>(pointer);
     const std::size_t size = header->size;
@@ -131,7 +138,7 @@ void TrackingAllocator::do_deallocate(void* pointer, std::size_t bytes, std::siz
     {
         std::memset(data, std::to_integer<int>(c_freedFill), size);
     }
-    m_upstream.deallocate(data - offset, offset + size + c_guardBytes, upstreamAlignment);
+    m_upstream->deallocate(data - offset, offset + size + c_guardBytes, upstreamAlignment);
 }
 
 bool TrackingAllocator::do_is_equal(const std::pmr::memory_resource& other) const noexcept
