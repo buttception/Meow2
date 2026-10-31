@@ -14,6 +14,8 @@ target_sources(Meow2Engine
         src/Core/Log/LoggerImpl.h
         src/Core/Log/LogSystem.cpp
         src/Core/Memory/BlockArena.cpp
+        src/Core/Memory/GlobalTracking.cpp
+        src/Core/Memory/LeakCheck.cpp
         src/Core/Memory/MallocResource.cpp
         src/Core/Memory/MemTag.cpp
         src/Core/Memory/TrackingAllocator.cpp
@@ -34,6 +36,8 @@ target_sources(Meow2Engine
             include/Meow2/Core/Log/LogSystem.h
             include/Meow2/Core/Memory/BlockArena.h
             include/Meow2/Core/Memory/DebugFill.h
+            include/Meow2/Core/Memory/GlobalTracking.h
+            include/Meow2/Core/Memory/LeakCheck.h
             include/Meow2/Core/Memory/MallocResource.h
             include/Meow2/Core/Memory/MemTag.h
             include/Meow2/Core/Memory/TrackingAllocator.h
@@ -84,6 +88,16 @@ meow2_source_groups(Meow2Engine) # after all target_sources()
 meow2_add_api_docs(
     INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/include" "${meow2GeneratedDir}"
     STRIP "${CMAKE_CURRENT_SOURCE_DIR}/include" "${meow2GeneratedDir}")
+
+# meow2_track_global_new(<target>)
+#   Compiles the replacement global operator new/delete (src/Core/Memory/GlobalNewDelete.cpp) into an
+#   executable, so every C++ heap allocation goes through Meow2::Memory::globalTracker() in Debug and
+#   RelWithDebInfo (the file compiles to nothing in Release). It's added to each executable instead of
+#   the static library because the linker drops library objects nothing refers to by name, and nothing
+#   refers to operator new that way. Call it before meow2_source_groups(<target>).
+function(meow2_track_global_new target)
+    target_sources(${target} PRIVATE "${PROJECT_SOURCE_DIR}/Meow2Engine/src/Core/Memory/GlobalNewDelete.cpp")
+endfunction()
 
 if(MEOW2_BUILD_TESTS)
     add_subdirectory(tests)
