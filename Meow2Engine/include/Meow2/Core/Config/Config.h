@@ -108,29 +108,34 @@ public:
     /// @param key          Dotted key, e.g. `"window.resizable"`.
     /// @param defaultValue Returned when the key is missing, or has another type (which logs a warning).
     /// @return The override, else the file value, else `defaultValue`.
+    /// @pre `key` is a valid dotted key (asserted).
     [[nodiscard]] bool getBool(std::string_view key, bool defaultValue) const;
 
     /// @brief Reads an integer.
     /// @param key          Dotted key, e.g. `"window.width"`.
     /// @param defaultValue Returned when the key is missing, or has another type (which logs a warning).
     /// @return The override, else the file value, else `defaultValue`.
+    /// @pre `key` is a valid dotted key (asserted).
     [[nodiscard]] std::int64_t getInt(std::string_view key, std::int64_t defaultValue) const;
 
     /// @brief Reads a floating-point number. An integer value is accepted too (`scale = 2` reads as 2.0).
     /// @param key          Dotted key, e.g. `"renderer.scale"`.
     /// @param defaultValue Returned when the key is missing, or has another type (which logs a warning).
     /// @return The override, else the file value, else `defaultValue`.
+    /// @pre `key` is a valid dotted key (asserted).
     [[nodiscard]] double getFloat(std::string_view key, double defaultValue) const;
 
     /// @brief Reads a string.
     /// @param key          Dotted key, e.g. `"window.mode"`.
     /// @param defaultValue Returned when the key is missing, or has another type (which logs a warning).
     /// @return The override, else the file value, else `defaultValue`.
+    /// @pre `key` is a valid dotted key (asserted).
     [[nodiscard]] std::string getString(std::string_view key, std::string_view defaultValue) const;
 
     /// @brief Whether the key has a value, from the file or an override.
     /// @param key Dotted key.
     /// @return `true` if get*() would find a value (of any type) instead of using its default.
+    /// @pre `key` is a valid dotted key (asserted).
     [[nodiscard]] bool contains(std::string_view key) const;
 
     /// @brief Stores a boolean in the file layer and removes an override of the same key.
