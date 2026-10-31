@@ -56,6 +56,8 @@ Visual Studio then asks to **reload** the changed projects. (A normal build also
 
 **Logs, crash dumps and leaks:** every app writes `logs/Meow2<App>_<date>_<time>.log` next to its `.exe`. In Debug and RelWithDebInfo its last line says "No memory leaks" or lists what leaked, per subsystem ([Memory](docs/wiki/Memory.md)). Started from Visual Studio, logs go to the repository's `logs/` folder instead. If a program crashes, a `.dmp` with the same name appears next to its log (open it in Visual Studio; see [Crash dumps](docs/wiki/CrashDumps.md)). See [Logging](docs/wiki/Logging.md).
 
+**Settings:** each app reads `Meow2<App>.toml` next to its `.exe` (from Visual Studio: the repository's git-ignored `config/` folder; `--config <path>` to choose another). Override any setting for one run with `--set key=value`, e.g. `--set window.width=800`. See [Config](docs/wiki/Config.md).
+
 ### Presets (Ninja; developer prompt)
 
 The presets are what CI uses. They build with Ninja (faster incremental builds, one folder per configuration), but Ninja needs the compiler on `PATH`, so run them from a **Developer PowerShell / Command Prompt for VS 2022** (or open the folder in Visual Studio, which picks up the presets automatically):

@@ -3,6 +3,7 @@
 
 #include "Meow2/Core/Log/LogSystem.h"
 
+#include "Core/CommandLine.h"
 #include "Core/Log/LoggerImpl.h"
 #include "Meow2/Core/Process.h"
 
@@ -176,23 +177,11 @@ std::filesystem::path defaultLogDirectory()
 
 std::optional<std::filesystem::path> logDirectoryFromArguments(int argc, const char* const* argv)
 {
-    constexpr std::string_view c_option = "--log-dir";
-    for (int i = 1; i < argc; ++i)
+    const std::vector<std::string_view> values = Detail::optionValues(argc, argv, "--log-dir");
+    if (values.empty())
     {
-        const std::string_view argument = argv[i];
-        if (argument == c_option)
-        {
-            if (i + 1 < argc && argv[i + 1][0] != '\0')
-            {
-                return std::filesystem::path{argv[i + 1]};
-            }
-            return std::nullopt;
-        }
-        if (argument.starts_with(c_option) && argument.size() > c_option.size() + 1 && argument[c_option.size()] == '=')
-        {
-            return std::filesystem::path{argument.substr(c_option.size() + 1)};
-        }
+        return std::nullopt;
     }
-    return std::nullopt;
+    return std::filesystem::path{values.back()}; // the last one wins, like any repeated option
 }
 } // namespace Meow2::Log

@@ -9,6 +9,9 @@ configure_file(src/Core/Version.h.in "${meow2GeneratedDir}/Meow2/Core/Version.h"
 target_sources(Meow2Engine
     PRIVATE
         src/Core/Assert.cpp
+        src/Core/CommandLine.cpp
+        src/Core/CommandLine.h
+        src/Core/Config/Config.cpp
         src/Core/Log/AssertLogging.cpp
         src/Core/Log/Logger.cpp
         src/Core/Log/LoggerImpl.h
@@ -29,6 +32,7 @@ target_sources(Meow2Engine
             "${meow2GeneratedDir}"
         FILES
             include/Meow2/Core/Assert.h
+            include/Meow2/Core/Config/Config.h
             include/Meow2/Core/Crash/CrashHandler.h
             include/Meow2/Core/Debugger.h
             include/Meow2/Core/Log/AssertLogging.h
@@ -69,7 +73,8 @@ target_link_libraries(Meow2Engine
     PUBLIC
         tl::expected
     PRIVATE
-        spdlog::spdlog)
+        spdlog::spdlog
+        tomlplusplus::tomlplusplus)
 
 # Build configuration for Meow2/Core/Platform.h. PUBLIC: everything linking the
 # engine sees the same values. $<CONFIG:...> is evaluated per configuration, so

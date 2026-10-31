@@ -51,7 +51,7 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 | Logging: spdlog, levels debug/info/warn/error/fatal, `[hh:mm:ss.ms]<level> Name: msg`, `Engine` + per-app loggers, file sink (log folder) + console sink (Debug/RWDI), `fatal` flushes and crashes | §7 | ✅ | #39 / PR #41 |
 | Release exes use the Windows GUI subsystem (no console window) | §5, §7 | ⬜ | |
 | Crash dumps: minidump on crash in **all configs**, log flush, skipped under a debugger, child-process crash test | §8 | ✅ (Windows) | #46 / PR #47 |
-| Config: TOML via toml++, defaults → `config.toml` → command line, write-back | §3, §4 | ⬜ | |
+| Config: TOML via toml++, defaults → `config.toml` → command line, write-back | §3, §4 | ✅ | #54 / PR #55 |
 | `FrameClock`: high-resolution time, delta time, frame counter | §23 | ⬜ | |
 | Memory: `TrackingAllocator` (thread-safe, `MemTag`s, per-tag stats, leak report), `MallocResource` | §6 | ✅ | #50 / PR #51 |
 | Memory: `BlockArena` (size-class block lists, reset keeps blocks, trim) as a `std::pmr::memory_resource`, `MemTag` | §6 | ✅ | #48 / PR #49 |
