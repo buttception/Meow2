@@ -177,6 +177,20 @@ sudo apt install ninja-build clang-18 clang-format-19 doxygen \
 
 The tests don't need a running display server: they use SDL's `offscreen` video driver (see [Window](Window.md#testing-without-a-desktop)). Windows needs nothing extra.
 
+## Release builds without a console
+
+On Windows every exe is linked for one **subsystem**. A *console* program gets a console window from Windows when it starts, unless it was started from one. A *GUI* program never does. Meow2's apps are:
+
+| Configuration | Subsystem | Starting the exe |
+|---|---|---|
+| Debug, RelWithDebInfo | console | opens a console with the coloured log next to the app window |
+| Release | GUI | only the app's own window |
+
+- **How:** each app's CMake calls `meow2_gui_subsystem_in_release(<target>)` (`cmake/Meow2Subsystem.cmake`). It sets `WIN32_EXECUTABLE` for Release/MinSizeRel, plus `/ENTRY:mainCRTStartup`, so the program still starts at the normal `int main(int argc, char** argv)` instead of `WinMain`. `main.cpp` is the same in every configuration.
+- **Output still works when redirected.** A GUI program has no console of its own, but standard handles passed in by whoever started it (a pipe, a file, CTest) are used as usual. That's how the Release smoke tests read "Ran 3 frames". In Release the log is in the log file anyway.
+- **Checked by a test:** `Build.Subsystem.<App>` (labels `integration`, `windows`) reads the subsystem straight out of the built exe's PE header (`cmake/CheckSubsystem.cmake`): GUI in Release, console otherwise.
+- **For a new app:** call `meow2_gui_subsystem_in_release(MyApp)` next to its other target settings.
+
 ## Smoke tests
 
 Each executable has CTest smoke tests (`Smoke.<App>.*`, label `smoke`). Each one runs the program and passes only if it exits with 0 **and** prints the expected text: its name and the engine version (`Runs`), "No memory leaks" in Debug/RelWithDebInfo (`NoLeaks`), "Ran 3 frames" for apps with a window (`OpensWindow`). Add one for a new executable with:
