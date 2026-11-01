@@ -37,6 +37,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ### Fixed
 - The text-file lint crashed CMake (stack overflow in a regex) on files larger than a few tens of KB (#32).
 - The API docs workflow failed on `main` because it didn't check out submodules (spdlog is needed to configure); its build now also runs on pull requests, so this is caught before merging (#43).
+- CI didn't start at all from #59 on (`startup_failure`): the Linux Qt install used a third-party action, which the repository's Actions settings don't allow. Qt is now installed with aqtinstall in a plain, cached step (#65).
 
 ## [0.1.0] — 2026-10-27
 

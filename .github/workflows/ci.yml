@@ -74,19 +74,27 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" ~/apt-cache
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
 
-      # Qt for Meow2Editor (Ubuntu's own Qt is 6.4, older than the 6.8 the editor needs). Downloaded from Qt's
-      # servers by aqtinstall and cached between runs. Same version as on the Windows runner.
-      - name: Install Qt
-        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
+      # Qt for Meow2Editor (Ubuntu's own Qt is 6.4, older than the 6.8 the editor needs), the same version as on the
+      # Windows runner. Plain steps instead of a Qt install action: the repository only allows GitHub's own actions
+      # (docs/wiki/CI.md, Step 2), and a third-party one stops the whole workflow from starting. aqtinstall (pinned)
+      # downloads Qt from Qt's servers; the install folder is cached, so most runs only restore it.
+      - name: Cache Qt
+        id: qt-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          version: '6.12.0'
-          host: linux
-          target: desktop
-          arch: linux_gcc_64
-          cache: true
+          path: ~/Qt
+          key: qt-6.12.0-linux_gcc_64-aqt-3.3.0
+
+      - name: Install Qt
+        if: steps.qt-cache.outputs.cache-hit != 'true'
+        run: |
+          # A virtual environment: Ubuntu 24.04's system Python refuses `pip install` (PEP 668).
+          python3 -m venv ~/aqt-venv
+          ~/aqt-venv/bin/pip install --quiet aqtinstall==3.3.0
+          ~/aqt-venv/bin/aqt install-qt linux desktop 6.12.0 linux_gcc_64 --outputdir ~/Qt
 
       - name: Point CMake at Qt
-        run: echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+        run: echo "CMAKE_PREFIX_PATH=$HOME/Qt/6.12.0/gcc_64" >> "$GITHUB_ENV"
 
       - name: Build and test (preset)
         if: matrix.preset != ''

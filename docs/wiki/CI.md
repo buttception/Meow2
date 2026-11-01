@@ -53,6 +53,8 @@ The three Windows configs cover different things. **Debug** catches logic errors
 
 GitHub → **Settings → Actions → General**:
 - **Actions permissions:** *Allow buttception, and select non-buttception, actions and reusable workflows* → ✅ *Allow actions created by GitHub* (nothing else). If shown, ✅ *Require actions to be pinned to a full-length commit SHA*.
+  - **What this means for workflow changes:** only `actions/*` (GitHub's own: checkout, cache, upload-artifact, …) may appear in `uses:`. Install everything else with `run:` steps, as `ci.yml` does for Qt (aqtinstall) and the apt packages.
+  - A third-party action makes GitHub refuse the **whole workflow**: the run ends as `startup_failure`, no job starts, and no failing check shows up on the PR. This happened between #59 and #64. Required status checks (Step 1) are what turn such a run into a blocked merge.
 - **Fork pull request workflows from outside collaborators:** **Require approval for all external contributors**.
 - **Workflow permissions:** **Read repository contents and packages permissions**; ❌ *Allow GitHub Actions to create and approve pull requests*.
 - **Save** each section.

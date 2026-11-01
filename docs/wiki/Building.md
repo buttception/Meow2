@@ -162,7 +162,7 @@ After each build, `windeployqt` (a Qt tool) copies the Qt DLLs and plugins the e
 ### Qt in CI
 
 - **Windows (self-hosted runner):** `ci.yml` sets `CMAKE_PREFIX_PATH=C:\Qt\6.12.0\msvc2022_64`, the install on the owner's PC.
-- **Linux (GitHub-hosted):** Ubuntu's own Qt is 6.4, too old. `jurplel/install-qt-action` (pinned to a commit) downloads Qt 6.12.0 `linux_gcc_64` from Qt's servers and caches it between runs.
+- **Linux (GitHub-hosted):** Ubuntu's own Qt is 6.4, too old. A plain workflow step installs [aqtinstall](https://github.com/miurahr/aqtinstall) 3.3.0 (pinned) and downloads Qt 6.12.0 `linux_gcc_64` from Qt's servers into `~/Qt`. GitHub's `actions/cache` keeps it between runs. No Qt install *action* is used: the repository only allows GitHub's own actions ([CI](CI.md#step-2--lock-down-actions-settings)), and a third-party action stops the whole workflow from starting.
 - **When Qt is upgraded,** change the version in both places together.
 
 ## Linux packages

@@ -181,7 +181,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | enkiTS | job system | zlib | submodule (M1) |
 | Tracy (client only) | CPU/GPU/memory profiler | BSD-3 | submodule (M1). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
 | **Not submodules** | | | |
-| Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, `jurplel/install-qt-action` in Linux CI; found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
+| Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, aqtinstall 3.3.0 in a plain step in Linux CI (only GitHub-owned actions are allowed); found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
 | Vulkan SDK | validation layers, tools | — | LunarG installer (dev machines only) |
 | DXC | shader compiler | NCSA/MIT | prebuilt release binaries from Microsoft (or the copy in the Vulkan SDK) — not built from source |
 | Doxygen ≥ 1.9.8 | API documentation (`docs` target, §16.1) | GPL-2.0 (tool only, not linked) | `winget install DimitriVanHeesch.Doxygen` (Windows), `apt install doxygen` (Linux CI). Optional locally: the `docs` target and test are skipped if it's missing; required in CI |
@@ -628,3 +628,4 @@ void Application::tick()
 - 2026-11-01 — Qt: ≥ 6.8, tested with 6.12.0 (MSVC 2022 64-bit kit), instead of 6.8 LTS; editor main window + viewport implemented (§9); the editor isn't covered by the global `new`/`delete` tracking (§6); `MEOW2_BUILD_EDITOR` skips the editor without Qt (error in CI).
 - 2026-11-01 — §5/§7: Release executables are GUI-subsystem programs (`meow2_gui_subsystem_in_release`, standard `main` kept via `/ENTRY:mainCRTStartup`).
 - 2026-11-01 — §23: `FrameClock` implemented (steady_clock, clamped delta, frame count, game-time total, explicit time points for tests).
+- 2026-11-01 — §4: Linux CI installs Qt with aqtinstall in a plain step; the third-party install-qt-action was refused by the repository's Actions settings and kept CI from starting (#64).
