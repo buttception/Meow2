@@ -79,6 +79,23 @@ endif()
 
 target_include_directories(Meow2Engine PRIVATE src)
 
+# Build metadata for getVersionString() ("0.1.0+g1a2b3c4", techstack.md §21). The git commit is read on every build,
+# not only at configure time, so the version never names an old commit; GitVersion.cmake rewrites the private header
+# only when it changes, so a build of the same commit recompiles nothing.
+set(meow2PrivateGeneratedDir "${CMAKE_CURRENT_BINARY_DIR}/generated/private")
+add_custom_target(meow2_git_version
+    COMMAND ${CMAKE_COMMAND}
+        "-DMEOW2_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+        "-DMEOW2_VERSION=${PROJECT_VERSION}"
+        "-DMEOW2_OUTPUT=${meow2PrivateGeneratedDir}/Core/BuildMetadata.h"
+        -P "${PROJECT_SOURCE_DIR}/cmake/GitVersion.cmake"
+    BYPRODUCTS "${meow2PrivateGeneratedDir}/Core/BuildMetadata.h"
+    COMMENT "Reading the git commit for the version string"
+    VERBATIM)
+set_target_properties(meow2_git_version PROPERTIES FOLDER "Tools")
+add_dependencies(Meow2Engine meow2_git_version)
+target_include_directories(Meow2Engine PRIVATE "${meow2PrivateGeneratedDir}")
+
 # Third-party libraries are PRIVATE: none of their headers appear in Meow2's public headers.
 # Exception: tl::expected is PUBLIC, because Result<T> (Meow2/Core/Result.h) is public API.
 target_link_libraries(Meow2Engine

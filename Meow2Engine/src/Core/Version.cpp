@@ -1,7 +1,10 @@
 /// @file
-/// @brief Implementation of Meow2::getVersionString().
+/// @brief Implementation of Meow2::getVersionString() and Meow2::getBuildMetadata().
 
 #include "Meow2/Core/Version.h"
+
+// Written at build time by cmake/GitVersion.cmake (the meow2_git_version target), into the build tree.
+#include "Core/BuildMetadata.h"
 
 namespace Meow2
 {
@@ -9,6 +12,11 @@ namespace Meow2
 // caller was compiled against a different Version.h.
 const char* getVersionString()
 {
-    return c_versionString;
+    return Detail::c_fullVersionString;
+}
+
+const char* getBuildMetadata()
+{
+    return Detail::c_buildMetadata;
 }
 } // namespace Meow2

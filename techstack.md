@@ -521,7 +521,7 @@ Requirement: **anything a user can do in the editor, an AI agent can do through 
 - **Feature PRs don't change the version.** Every one would edit the same `VERSION` line, so any two open PRs would conflict, and a number that moves with every merge says no more than the commit hash.
 - **Tags:** after the milestone-closing PR is merged, its merge commit on `main` gets an annotated tag `vX.Y.Z` (e.g. `v0.1.0`). Tags are never moved or deleted.
 - **Patch releases:** branch `release/0.Y` from the tag `v0.Y.0`, fix there (or cherry-pick the fix from `main`), bump PATCH, tag `v0.Y.Z`. `main` keeps going towards the next MINOR.
-- **Builds between releases** are identified by the git commit: the version string gets SemVer build metadata, `0.1.0+g1a2b3c4` (`+g` + short hash, `.dirty` if the tree had local changes), so logs and crash dumps say exactly what was built. (Planned for M1; until then the string is just `x.y.z`.)
+- **Builds between releases** are identified by the git commit: the version string gets SemVer build metadata, `0.1.0+g1a2b3c4` (`+g` + short hash, `.dirty` if the tree had local changes), so logs and crash dumps say exactly what was built. **Implemented (M1):** `getVersionString()` returns `x.y.z+g<hash>[.dirty]`, `getBuildMetadata()` the `g…` part; `cmake/GitVersion.cmake` refreshes it on every build (see [docs/wiki/Building.md](docs/wiki/Building.md#engine-version)).
 - **Releases (from v0.2.0):** every MINOR (and PATCH) tag gets a GitHub Release with a zip that **runs out of the box** on a Windows PC:
   - `Meow2-<version>-windows-x64.zip`, containing the Release build of the executables, their **PDBs** (so `.dmp` files from that version can be read), the MSVC runtime DLLs (app-local, via CMake's `InstallRequiredSystemLibraries`), and any third-party DLLs.
   - Built with CMake install rules + CPack (`ZIP` generator).
@@ -631,3 +631,4 @@ void Application::tick()
 - 2026-11-01 — §23: `FrameClock` implemented (steady_clock, clamped delta, frame count, game-time total, explicit time points for tests).
 - 2026-11-01 — §4: Linux CI installs Qt with aqtinstall in a plain step; the third-party install-qt-action was refused by the repository's Actions settings and kept CI from starting (#64).
 - 2026-11-01 — §22: `EventBus` implemented (typed events, publish/enqueue/dispatchQueued, RAII subscriptions, double-buffered arena queue).
+- 2026-11-01 — §21: build metadata implemented (git commit read at build time, `getBuildMetadata()`).
