@@ -14,6 +14,7 @@ meow2_add_test_suite(
         Core/Memory/TrackingAllocatorTests.cpp
         Core/PlatformTests.cpp
         Core/ProcessTests.cpp
+        Core/Profiling/ProfileTests.cpp
         Core/ResultTests.cpp
         Core/Time/FrameClockTests.cpp
         Core/VersionTests.cpp)

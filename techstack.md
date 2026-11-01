@@ -131,7 +131,7 @@ ctest --preset windows-msvc-debug -L unit
 | Time | `FrameClock` | `std::chrono::steady_clock` | §23 |
 | Events | `EventBus` | in-house | §22 |
 | Jobs | `JobSystem` | **enkiTS** | §19 |
-| Profiling | `MEOW2_PROFILE_*` macros | **Tracy** | Debug/RelWithDebInfo only; compiled out of Release |
+| Profiling | `MEOW2_PROFILE_*` macros | **Tracy** | Debug/RelWithDebInfo only; compiled out of Release. **Implemented (M1)**: zones, frame marks, thread names, per-tag memory plots; see [docs/wiki/Profiling.md](docs/wiki/Profiling.md) |
 | Platform / Window | `Platform`, `Window` | **SDL3** (§9) | One window; the editor's windows are Qt's |
 | Input | `InputSystem` + input sources | SDL3 sources (engine), Qt source (editor) | §9 |
 | FileSystem | `FileSystem` / VFS | native files; packages later; Android `AAssetManager` later | |
@@ -179,7 +179,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | tl::expected v1.3.1 | `Result<T>` until C++23 `std::expected` (only the `std::expected`-compatible API is used) | CC0 | submodule; header-only, own INTERFACE target (its CMakeLists pulls in CTest/Catch2). **Public-header exception:** included by `Meow2/Core/Result.h` |
 | toml++ v3.4.0 | config files | MIT | submodule; header-only, own INTERFACE target, `TOML_EXCEPTIONS=0`; only included by `src/Core/Config/Config.cpp` |
 | enkiTS v1.12 | job system | zlib | submodule; static, C interface/examples off; only included by `src/Core/Jobs/Enkits/` |
-| Tracy (client only) | CPU/GPU/memory profiler | BSD-3 | submodule (M1). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
+| Tracy v0.14.1 (client only) | CPU/GPU/memory profiler | BSD-3 | submodule; static, on demand, localhost only, no broadcast, its crash handler off; `TRACY_ENABLE` per configuration (Debug/RWDI). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
 | **Not submodules** | | | |
 | Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, aqtinstall 3.3.0 in a plain step in Linux CI (only GitHub-owned actions are allowed); found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
 | Vulkan SDK | validation layers, tools | — | LunarG installer (dev machines only) |
@@ -634,3 +634,4 @@ void Application::tick()
 - 2026-11-01 — §22: `EventBus` implemented (typed events, publish/enqueue/dispatchQueued, RAII subscriptions, double-buffered arena queue).
 - 2026-11-01 — §21: build metadata implemented (git commit read at build time, `getBuildMetadata()`).
 - 2026-11-01 — §4/§19: `JobSystem` implemented over enkiTS v1.12 (parallel-for, jobs, main-thread tasks, thread index, allocator hook under `MemTag::Jobs`).
+- 2026-11-01 — §3/§4: Tracy v0.14.1 client implemented (macros without Tracy in public headers, on demand + localhost only, job thread names, memory as per-tag plots instead of per-allocation events because allocations outlive Tracy's lifetime).

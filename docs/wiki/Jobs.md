@@ -51,10 +51,10 @@ jobs.runPinnedTasks(); // main thread: run main-thread tasks now (waiting also r
 - **A `Job` owns the task object.** enkiTS keeps a pointer to the task until it completes, which is why destroying an unfinished `Job` waits.
 - **Main-thread tasks** are enkiTS "pinned tasks" for thread 0. enkiTS runs them on thread 0 whenever that thread looks for work: in `RunPinnedTasks()` and while it waits.
 - **Memory:** in Debug and RelWithDebInfo, enkiTS's own allocations go to `globalTracker()` under `MemTag::Jobs` (its custom allocator hook). The leak check covers them, in the editor too.
+- **Profiling:** enkiTS's thread-start callback names each worker `Job thread N` in Tracy, and every piece of a `parallelFor` is a `Job` zone ([Profiling](Profiling.md)).
 
 ## Not yet
 
-- Tracy thread names for the workers: the Tracy PR.
 - Jolt's job interface on top of this (M8).
 - Dependencies between jobs and priorities, when a user needs them. enkiTS supports both.
 

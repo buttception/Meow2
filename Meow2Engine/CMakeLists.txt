@@ -24,6 +24,7 @@ target_sources(Meow2Engine
         src/Core/Memory/MallocResource.cpp
         src/Core/Memory/MemTag.cpp
         src/Core/Memory/TrackingAllocator.cpp
+        src/Core/Profiling/Tracy/ProfileTracy.cpp
         src/Core/Time/FrameClock.cpp
         src/Core/Version.cpp
         src/Platform/Sdl/PlatformImplSdl.h
@@ -57,6 +58,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Memory/TrackingAllocator.h
             include/Meow2/Core/Platform.h
             include/Meow2/Core/Process.h
+            include/Meow2/Core/Profiling/Profile.h
             include/Meow2/Core/Result.h
             include/Meow2/Core/Time/FrameClock.h
             include/Meow2/Platform/Platform.h
@@ -106,6 +108,7 @@ target_link_libraries(Meow2Engine
     PRIVATE
         SDL3::SDL3-static
         enkiTS
+        Tracy::TracyClient
         spdlog::spdlog
         tomlplusplus::tomlplusplus)
 
@@ -115,7 +118,8 @@ target_link_libraries(Meow2Engine
 target_compile_definitions(Meow2Engine PUBLIC
     MEOW2_CONFIG_DEBUG=$<CONFIG:Debug>
     MEOW2_CONFIG_RELWITHDEBINFO=$<CONFIG:RelWithDebInfo>
-    MEOW2_CONFIG_RELEASE=$<CONFIG:Release,MinSizeRel>)
+    MEOW2_CONFIG_RELEASE=$<CONFIG:Release,MinSizeRel>
+    MEOW2_PROFILING=$<IF:${meow2ProfilingEnabled},1,0>) # Tracy zones (Profile.h); set in cmake/Meow2External.cmake
 target_compile_features(Meow2Engine PUBLIC cxx_std_20)
 meow2_set_warnings(Meow2Engine)
 set_target_properties(Meow2Engine PROPERTIES FOLDER "Engine")

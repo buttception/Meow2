@@ -5,11 +5,14 @@
 #include "Meow2/Core/Jobs/JobSystem.h"
 #include "Meow2/Core/Memory/GlobalTracking.h"
 #include "Meow2/Core/Memory/MemTag.h"
+#include "Meow2/Core/Profiling/Profile.h"
 
 #include <TaskScheduler.h>
 
 #include <algorithm>
+#include <format>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace Meow2::Jobs
@@ -33,6 +36,16 @@ void enkiFree(void* pointer, std::size_t /*size*/, void* /*userData*/, const cha
     }
 }
 
+/// @brief enkiTS calls this on each worker thread it starts: names it in the profiler, "Job thread <n>".
+void nameJobThread(std::uint32_t threadIndex)
+{
+    if constexpr (Profiling::c_profilingEnabled)
+    {
+        const std::string name = std::format("Job thread {}", threadIndex);
+        Profiling::setThreadName(name.c_str()); // Tracy copies it
+    }
+}
+
 /// @brief A parallelFor() or run(): enkiTS calls ExecuteRange for each piece.
 class RangeTask final : public enki::ITaskSet
 {
@@ -45,6 +58,7 @@ public:
 
     void ExecuteRange(enki::TaskSetPartition range, std::uint32_t threadIndex) override
     {
+        MEOW2_PROFILE_ZONE_NAMED("Job");
         m_function(range.start, range.end, threadIndex);
     }
 
@@ -149,6 +163,7 @@ JobSystem::JobSystem(const JobSystemDesc& desc, Log::Logger& log)
         config.customAllocator.alloc = enkiAllocate;
         config.customAllocator.free = enkiFree;
     }
+    config.profilerCallbacks.threadStart = nameJobThread;
     m_impl->scheduler.Initialize(config);
     MEOW2_LOG_INFO(log, "Jobs: {} threads ({} workers + the main thread)", threadCount(), threadCount() - 1);
 }

@@ -13,6 +13,7 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Memory/LeakCheck.h>
 #include <Meow2/Core/Platform.h>
+#include <Meow2/Core/Profiling/Profile.h>
 #include <Meow2/Core/Time/FrameClock.h>
 #include <Meow2/Core/Version.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
@@ -44,6 +45,7 @@ int main(int argc, char** argv)
     Meow2::Log::Logger engineLog = logSystem.createLogger("Engine");
     Meow2::Log::Logger appLog = logSystem.createLogger("Editor");
     const Meow2::Log::ScopedAssertLogging assertLogging{engineLog};
+    MEOW2_PROFILE_THREAD_NAME("Main");
     std::filesystem::path dumpPath =
         logSystem.filePath().empty() ? logDirectory / "Meow2Editor_crash.dmp" : logSystem.filePath();
     dumpPath.replace_extension(".dmp"); // a crash writes Meow2Editor_<date>_<time>.dmp next to the log
@@ -92,6 +94,8 @@ int main(int argc, char** argv)
                      [&]
                      {
                          clock.tick(); // this frame's time; the game loop (M2) will hand it to update()
+                         MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker());
+                         MEOW2_PROFILE_FRAME_MARK();
                          if (quitAfterFrames > 0 && static_cast<std::int64_t>(clock.frameCount()) >= quitAfterFrames)
                          {
                              QApplication::quit();

@@ -108,3 +108,26 @@ set(ENKITS_BUILD_SHARED OFF)
 set(ENKITS_INSTALL OFF)
 add_subdirectory("${meow2EnkitsDir}" "${PROJECT_BINARY_DIR}/external/enkiTS" EXCLUDE_FROM_ALL SYSTEM)
 set_target_properties(enkiTS PROPERTIES FOLDER "External/enkiTS")
+
+# ---- Tracy client (profiler, techstack.md §3/§4) ------------------------------------------------------------------
+# Static client library; only src/Core/Profiling/Tracy/ includes it. Profiling is on in Debug and RelWithDebInfo and
+# compiled out of Release (and of sanitizer builds via MEOW2_PROFILING=OFF): TRACY_ENABLE is added per configuration
+# below instead of with Tracy's own (configuration-wide) option.
+#   - TRACY_ON_DEMAND: nothing is recorded until a viewer connects, so an unprofiled run costs next to nothing.
+#   - TRACY_ONLY_LOCALHOST + TRACY_NO_BROADCAST: the client listens on 127.0.0.1 only and never announces itself on
+#     the network.
+#   - TRACY_NO_CRASH_HANDLER: our CrashHandler owns the crash hooks (techstack.md §8).
+option(MEOW2_PROFILING "Tracy profiling in Debug and RelWithDebInfo builds" ON)
+set(meow2TracyDir "${PROJECT_SOURCE_DIR}/external/tracy")
+meow2_require_submodule(Tracy "${meow2TracyDir}")
+
+set(TRACY_STATIC ON)
+set(TRACY_ENABLE OFF)
+set(TRACY_ON_DEMAND ON)
+set(TRACY_ONLY_LOCALHOST ON)
+set(TRACY_NO_BROADCAST ON)
+set(TRACY_NO_CRASH_HANDLER ON)
+add_subdirectory("${meow2TracyDir}" "${PROJECT_BINARY_DIR}/external/tracy" EXCLUDE_FROM_ALL SYSTEM)
+set(meow2ProfilingEnabled "$<AND:$<BOOL:${MEOW2_PROFILING}>,$<NOT:$<CONFIG:Release,MinSizeRel>>>")
+target_compile_definitions(TracyClient PUBLIC "$<${meow2ProfilingEnabled}:TRACY_ENABLE>")
+set_target_properties(TracyClient PROPERTIES FOLDER "External/Tracy")

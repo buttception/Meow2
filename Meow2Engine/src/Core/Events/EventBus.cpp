@@ -6,6 +6,7 @@
 #include "Meow2/Core/Assert.h"
 #include "Meow2/Core/Memory/BlockArena.h"
 #include "Meow2/Core/Memory/MemTag.h"
+#include "Meow2/Core/Profiling/Profile.h"
 
 #include <algorithm>
 #include <mutex>
@@ -242,6 +243,7 @@ void EventBus::enqueueErased(EventTypeId type, std::size_t size, std::size_t ali
 
 void EventBus::dispatchQueued()
 {
+    MEOW2_PROFILE_ZONE();
     m_impl->assertOwnerThread();
     MEOW2_ASSERT(!m_impl->dispatchingQueue && m_impl->dispatchDepth == 0,
                  "dispatchQueued() can't be called from inside a handler");

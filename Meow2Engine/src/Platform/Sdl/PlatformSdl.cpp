@@ -3,6 +3,7 @@
 
 #include "Meow2/Core/Assert.h"
 #include "Meow2/Core/Memory/GlobalTracking.h"
+#include "Meow2/Core/Profiling/Profile.h"
 #include "Platform/Sdl/PlatformImplSdl.h"
 #include "Platform/Window/Sdl/WindowImplSdl.h"
 
@@ -135,6 +136,7 @@ Result<Platform> Platform::create(const PlatformDesc& desc, Log::Logger& log)
 
 void Platform::pumpEvents(std::chrono::milliseconds wait)
 {
+    MEOW2_PROFILE_ZONE();
     for (Window::Impl* window : m_impl->windows)
     {
         window->beginPump();
