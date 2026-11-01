@@ -49,6 +49,24 @@ ctest --preset windows-msvc-debug --rerun-failed
    ```
 4. Build and run `ctest --preset … -R Core`.
 
+## Sanitizers
+
+Two CI jobs run **every test** with compiler instrumentation that checks the program while it runs (techstack.md §19):
+
+| Job | Preset | Catches |
+|---|---|---|
+| `Linux (Clang ASan+UBSan)` | `linux-clang-asan` | **AddressSanitizer**: out-of-bounds reads/writes, use-after-free, double free, stack-use-after-return, and leaks at exit (LeakSanitizer). **UndefinedBehaviorSanitizer**: signed overflow, misaligned or null access, invalid casts and shifts. |
+| `Linux (Clang TSan)` | `linux-clang-tsan` | **ThreadSanitizer**: data races (two threads touching the same memory without synchronisation) and lock-order problems. |
+
+- **Any report fails the test.** The test presets set `ASAN_OPTIONS=…:abort_on_error=1`, `UBSAN_OPTIONS=…:halt_on_error=1` and `TSAN_OPTIONS=halt_on_error=1`, and the code is built with `-fno-sanitize-recover`.
+- **Third-party libraries are instrumented too** (SDL, enkiTS, GoogleTest). `cmake/Meow2Sanitizers.cmake` adds the flags before they're added. TSan only understands synchronisation in code it instrumented, so an uninstrumented library would show up as false races.
+- **What's switched off in these builds:**
+  - **memory tracking** (`MEOW2_MEMORY_TRACKING=0`): the sanitizers replace `new`/`delete` themselves, so the tracking tests are skipped and the `NoLeaks` smoke tests only check that the app runs; LeakSanitizer does the leak check;
+  - **profiling** (`MEOW2_PROFILING=OFF`): Tracy would only add noise;
+  - **the editor:** Qt isn't built with sanitizers, so only the engine and Player/Renderer are checked. The editor's own code isn't. Revisit when the MCP server adds a network thread (M9).
+- **Running them yourself** needs Linux (or WSL) with Clang: `cmake --workflow --preset linux-clang-asan`, or `linux-clang-tsan`. They're 2–15× slower than a normal Debug run.
+- **Reading a report:** the first stack in the output is where the bad access happened; "previous write"/"freed by" stacks show the other side. Fix the code, never the sanitizer options.
+
 ## How it works
 
 - GoogleTest is a git submodule in `external/googletest` (v1.17.0). Clone with `--recurse-submodules`, or run `git submodule update --init --recursive`. Configure stops with that hint if it is missing.

@@ -490,6 +490,8 @@ The engine starts single-threaded but every module is written so it can run on w
 
   The presets are `linux-clang-asan` (ASan + UBSan, from the start of M1) and `linux-clang-tsan` (added with the job system), each run as its own CI job on GitHub-hosted runners. That doesn't slow down local or Windows builds; the tests themselves run 2–15× slower in those jobs. An optional local `windows-msvc-asan` preset (MSVC `/fsanitize=address`) can be added for Windows-only code.
 
+  **Implemented (M1):** `MEOW2_SANITIZER=address|thread` (`cmake/Meow2Sanitizers.cmake`, flags for every target incl. third-party, memory tracking off), presets `linux-clang-asan` and `linux-clang-tsan` (no editor, no profiling), CI jobs `Linux (Clang ASan+UBSan)` and `Linux (Clang TSan)`. See [docs/wiki/Testing.md](docs/wiki/Testing.md#sanitizers).
+
 ## 20. Editor automation: commands + MCP server
 
 Requirement: **anything a user can do in the editor, an AI agent can do through MCP** (Model Context Protocol), so agents can build scenes and games in it.
@@ -635,3 +637,4 @@ void Application::tick()
 - 2026-11-01 — §21: build metadata implemented (git commit read at build time, `getBuildMetadata()`).
 - 2026-11-01 — §4/§19: `JobSystem` implemented over enkiTS v1.12 (parallel-for, jobs, main-thread tasks, thread index, allocator hook under `MemTag::Jobs`).
 - 2026-11-01 — §3/§4: Tracy v0.14.1 client implemented (macros without Tracy in public headers, on demand + localhost only, job thread names, memory as per-tag plots instead of per-allocation events because allocations outlive Tracy's lifetime).
+- 2026-11-01 — §19: sanitizer presets and CI jobs implemented (ASan+UBSan, TSan; engine + Player/Renderer, editor excluded by owner decision).

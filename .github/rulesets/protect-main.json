@@ -43,6 +43,12 @@
             "context": "Linux (GCC Debug)"
           },
           {
+            "context": "Linux (Clang ASan+UBSan)"
+          },
+          {
+            "context": "Linux (Clang TSan)"
+          },
+          {
             "context": "Windows (MSVC debug)"
           },
           {

@@ -38,8 +38,18 @@ jobs:
         include:
           - name: Clang Debug
             preset: linux-clang-debug
+            qt: true
           - name: GCC Debug
             preset: ""
+            qt: true
+          # Sanitizers (techstack.md §19): every test under ASan+UBSan and under TSan. Engine, Player and Renderer
+          # only: the editor (and so Qt) is off in these presets, and memory tracking and profiling too.
+          - name: Clang ASan+UBSan
+            preset: linux-clang-asan
+            qt: false
+          - name: Clang TSan
+            preset: linux-clang-tsan
+            qt: false
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -79,6 +89,7 @@ jobs:
       # (docs/wiki/CI.md, Step 2), and a third-party one stops the whole workflow from starting. aqtinstall (pinned)
       # downloads Qt from Qt's servers; the install folder is cached, so most runs only restore it.
       - name: Cache Qt
+        if: matrix.qt
         id: qt-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -86,7 +97,7 @@ jobs:
           key: qt-6.12.0-linux_gcc_64-aqt-3.3.0
 
       - name: Install Qt
-        if: steps.qt-cache.outputs.cache-hit != 'true'
+        if: matrix.qt && steps.qt-cache.outputs.cache-hit != 'true'
         run: |
           # A virtual environment: Ubuntu 24.04's system Python refuses `pip install` (PEP 668).
           python3 -m venv ~/aqt-venv
@@ -94,6 +105,7 @@ jobs:
           ~/aqt-venv/bin/aqt install-qt linux desktop 6.12.0 linux_gcc_64 --outputdir ~/Qt
 
       - name: Point CMake at Qt
+        if: matrix.qt
         run: echo "CMAKE_PREFIX_PATH=$HOME/Qt/6.12.0/gcc_64" >> "$GITHUB_ENV"
 
       - name: Build and test (preset)
