@@ -96,3 +96,15 @@ if(MSVC)
     set_source_files_properties("${meow2SdlDir}/src/stdlib/SDL_mslibc.c" DIRECTORY "${meow2SdlDir}"
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 endif()
+
+# ---- enkiTS (job system, techstack.md §19) -----------------------------------------------------------------------
+# Static library; only src/Core/Jobs/Enkits/ includes it. The C interface, examples and install rules are off.
+set(meow2EnkitsDir "${PROJECT_SOURCE_DIR}/external/enkiTS")
+meow2_require_submodule(enkiTS "${meow2EnkitsDir}")
+
+set(ENKITS_BUILD_C_INTERFACE OFF)
+set(ENKITS_BUILD_EXAMPLES OFF)
+set(ENKITS_BUILD_SHARED OFF)
+set(ENKITS_INSTALL OFF)
+add_subdirectory("${meow2EnkitsDir}" "${PROJECT_BINARY_DIR}/external/enkiTS" EXCLUDE_FROM_ALL SYSTEM)
+set_target_properties(enkiTS PROPERTIES FOLDER "External/enkiTS")
