@@ -554,6 +554,7 @@ m_events.publish(WindowResized{1600, 900});   // main thread only; delivered imm
 
   Signal/slot libraries (sigslot, Boost.Signals2) fix the lifetimes, but the listener still needs a reference to the emitter. `entt::dispatcher` is the same design as this bus; it's worth reconsidering if EnTT is adopted for the scene/ECS later.
 - **Threading (§19):** subscribe, unsubscribe, `publish` and dispatch run on the main thread; `enqueue` runs on any thread.
+- **Implemented (M1):** `Meow2::Events::EventBus` + `Subscription` (`Meow2/Core/Events/EventBus.h`). Double-buffered queue (two `BlockArena`s), delivery without the lock, subscribe/unsubscribe during dispatch deferred. The list of queued events is a plain vector: a container allocating from the arena would lose its MSVC Debug bookkeeping on `reset()`. See [docs/wiki/Events.md](docs/wiki/Events.md).
 - Input (§9) publishes `KeyPressed`, `KeyReleased`, `MouseButtonChanged`, `MouseMoved`, `GamepadConnected`, `TextInput`; the platform layer publishes window events.
 
 ## 23. Game loop & time
@@ -629,3 +630,4 @@ void Application::tick()
 - 2026-11-01 — §5/§7: Release executables are GUI-subsystem programs (`meow2_gui_subsystem_in_release`, standard `main` kept via `/ENTRY:mainCRTStartup`).
 - 2026-11-01 — §23: `FrameClock` implemented (steady_clock, clamped delta, frame count, game-time total, explicit time points for tests).
 - 2026-11-01 — §4: Linux CI installs Qt with aqtinstall in a plain step; the third-party install-qt-action was refused by the repository's Actions settings and kept CI from starting (#64).
+- 2026-11-01 — §22: `EventBus` implemented (typed events, publish/enqueue/dispatchQueued, RAII subscriptions, double-buffered arena queue).

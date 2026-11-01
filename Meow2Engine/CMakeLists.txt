@@ -12,6 +12,7 @@ target_sources(Meow2Engine
         src/Core/CommandLine.cpp
         src/Core/CommandLine.h
         src/Core/Config/Config.cpp
+        src/Core/Events/EventBus.cpp
         src/Core/Log/AssertLogging.cpp
         src/Core/Log/Logger.cpp
         src/Core/Log/LoggerImpl.h
@@ -41,6 +42,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Config/Config.h
             include/Meow2/Core/Crash/CrashHandler.h
             include/Meow2/Core/Debugger.h
+            include/Meow2/Core/Events/EventBus.h
             include/Meow2/Core/Log/AssertLogging.h
             include/Meow2/Core/Log/Logger.h
             include/Meow2/Core/Log/LogSystem.h
