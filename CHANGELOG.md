@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Releases: each version tag builds `Meow2-<version>-windows-x64.zip` (the apps, their PDBs, the MSVC runtime and Qt; runs after unpacking anywhere), checks it by running every app from the unpacked zip, and publishes it as a GitHub Release with that version's CHANGELOG section as notes. Release builds now produce PDBs (#77).
 - Sanitizers: two CI jobs build with Clang's AddressSanitizer + UndefinedBehaviorSanitizer and ThreadSanitizer and run every engine and app test under them (presets `linux-clang-asan`, `linux-clang-tsan`) (#75).
 - Profiling: Debug and RelWithDebInfo builds include the Tracy client (v0.14.1): connect the Tracy viewer to a running app for a timeline of all threads (`Main`, `Job thread N`), engine zones, frames and memory per tag. It listens on localhost only, records nothing until a viewer connects, and is compiled out of Release (#73).
 - Jobs: `JobSystem` (enkiTS v1.12) runs work on all cores: `parallelFor` over a range, single jobs, tasks for the main thread, and a stable per-thread index; waiting threads run jobs themselves. Each app creates one (`jobs.threadCount` in its config) (#71).

@@ -62,7 +62,7 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 | Sanitizer presets + CI jobs: `linux-clang-asan` (ASan + UBSan) from the start, `linux-clang-tsan` with the job system | §19 | ✅ | #74 / PR #75 |
 | Build metadata: git commit in the version string (`0.1.0+g1a2b3c4`) | §21 | ✅ | #68 / PR #69 |
 | API docs: Doxyfile + `docs` CMake target (skipped if Doxygen isn't installed), existing headers converted to Doxygen comments, CI job that fails on undocumented public API | §16.1 | ✅ | #33 / PR #34 |
-| Release packaging: CMake install rules + CPack ZIP (exes, PDBs, MSVC runtime DLLs), `release.yml` builds it on a `v*` tag and publishes a GitHub Release | §21 | ⬜ | |
+| Release packaging: CMake install rules + CPack ZIP (exes, PDBs, MSVC runtime DLLs), `release.yml` builds it on a `v*` tag and publishes a GitHub Release | §21 | ✅ | #76 / PR #77 |
 | Git hooks: regenerate the Visual Studio solution after pull/rebase/branch switch when CMake files change | §2 | ✅ | #40 / PR #41 |
 | Closing PR bumps the version to **0.2.0** (tag `v0.2.0`, first release zip) | §21 | ⬜ | |
 

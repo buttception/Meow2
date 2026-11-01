@@ -5,6 +5,7 @@ meow2_set_warnings(Meow2Player)
 set_target_properties(Meow2Player PROPERTIES FOLDER "Apps")
 meow2_track_global_new(Meow2Player) # every new/delete through the memory tracker (Debug/RWDI)
 meow2_gui_subsystem_in_release(Meow2Player) # no console window in Release
+meow2_install_app(Meow2Player)               # into the release zip (cmake/Meow2Packaging.cmake)
 meow2_source_groups(Meow2Player)
 # Started from the Visual Studio solution, log into the repository's (git-ignored) logs/ folder and keep the
 # settings in its (git-ignored) config/ folder.

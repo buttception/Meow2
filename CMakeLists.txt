@@ -32,6 +32,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)  # error instead of silently using an older 
 set(CMAKE_CXX_EXTENSIONS OFF)        # -std=c++20, not -std=gnu++20
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # compile_commands.json for clangd/clang-tidy
 
+# PDBs in every configuration (techstack.md §5): Release zips ship them, so crash dumps from players can be read.
+# /Zi writes the debug info; in Release /DEBUG makes the linker write the PDB, and /OPT:REF,ICF keep the removal of
+# unused and duplicate code that /DEBUG would otherwise switch off, so Release stays as small and fast as before.
+set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT ProgramDatabase)
+if(MSVC)
+    add_link_options("$<$<CONFIG:Release,MinSizeRel>:/DEBUG>" "$<$<CONFIG:Release,MinSizeRel>:/OPT:REF>"
+                     "$<$<CONFIG:Release,MinSizeRel>:/OPT:ICF>")
+endif()
+
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(Meow2SourceGroups)
 include(Meow2Warnings)
@@ -57,6 +66,7 @@ include(Meow2Sanitizers) # before the external libraries: they must be instrumen
 include(Meow2External)
 include(Meow2SmokeTest)
 include(Meow2Subsystem)
+include(Meow2Packaging) # meow2_install_app(); meow2_package() is called at the end
 if(MEOW2_BUILD_TESTS)
     include(Meow2Tests)
 endif()
@@ -78,3 +88,6 @@ if(MEOW2_BUILD_RENDERER)
 endif()
 
 add_subdirectory(tests)
+
+# Release zip: runtime DLLs, documents and CPack (`--target package`), after every app has installed itself.
+meow2_package()

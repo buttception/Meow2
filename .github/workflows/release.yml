@@ -1,0 +1,108 @@
+# Meow2 release — builds the release zip for a version tag and publishes a GitHub Release (techstack.md §21,
+# AGENTS.md §2.7, docs/wiki/Releases.md).
+#
+# Triggered only by pushing a tag v<MAJOR>.<MINOR>.<PATCH>. Tags are created by the owner (or with the owner's
+# go-ahead), never by CI.
+#
+# Safety rules for this file (the repo is public and one runner is the owner's PC; see ci.yml and AGENTS.md §5):
+#   - Two jobs with separate permissions. `package` runs on the self-hosted runner with a read-only token; it builds,
+#     tests and packages, and hands the zip over as an artifact. `publish` runs on a GitHub-hosted runner and is the
+#     ONLY job that can write (create the Release), so no write token ever reaches the owner's PC.
+#   - Only tag pushes trigger it, and only in this repository; tags can only be pushed by people with write access.
+#   - No secrets; untrusted text is never pasted into `run:` scripts (the tag name comes from the runner's
+#     GITHUB_REF_NAME environment variable, not from `${{ }}` expressions).
+#   - Only GitHub's own actions (repository setting, docs/wiki/CI.md Step 2), pinned to full commit SHAs.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+# Nothing by default; each job asks for exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Build and test the zip (Windows)
+    if: github.repository == 'buttception/Meow2'
+    runs-on: [self-hosted, windows, x64, meow2]
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          submodules: recursive
+          persist-credentials: false   # don't leave a token in .git/config on the PC
+          clean: true
+
+      - name: Build, test and package
+        env:
+          # Qt for Meow2Editor, installed on this PC with the Qt Maintenance Tool (MSVC 2022 64-bit kit).
+          CMAKE_PREFIX_PATH: C:\Qt\6.12.0\msvc2022_64
+        # cmd, not PowerShell: the PC's execution policy blocks Actions' unsigned temporary .ps1 files (see ci.yml).
+        shell: cmd
+        run: |
+          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+          if not defined VSDIR (echo ::error::Visual Studio 2022 with the C++ x64 tools was not found on this runner. & exit /b 1)
+          call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat"
+
+          rem The tag must match project(VERSION): v0.2.0 -> Meow2-0.2.0-windows-x64.zip
+          set "VERSION=%GITHUB_REF_NAME:~1%"
+          cmake --workflow --preset windows-msvc-release || exit /b 1
+          cmake --build --preset windows-msvc-release --target package || exit /b 1
+          if not exist "build\windows-msvc-release\package\Meow2-%VERSION%-windows-x64.zip" (echo ::error::No Meow2-%VERSION%-windows-x64.zip: does the tag match project(VERSION) in CMakeLists.txt? & exit /b 1)
+
+          rem Unpack it into an empty folder and run every app from there, the way a player would.
+          cmake "-DMEOW2_ZIP=build\windows-msvc-release\package\Meow2-%VERSION%-windows-x64.zip" "-DMEOW2_WORK_DIR=%RUNNER_TEMP%\meow2-package-test" -P cmake\TestPackage.cmake || exit /b 1
+
+      - name: Upload the zip
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-zip
+          path: build/windows-msvc-release/package/Meow2-*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the GitHub Release
+    needs: package
+    runs-on: ubuntu-24.04   # GitHub-hosted: the write token never reaches the self-hosted runner
+    timeout-minutes: 10
+    permissions:
+      contents: write       # create the Release and upload the zip; nothing else
+    steps:
+      - name: Checkout (CHANGELOG.md and the notes script only)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            CHANGELOG.md
+            cmake/ReleaseNotes.cmake
+          sparse-checkout-cone-mode: false
+
+      - name: Download the zip
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-zip
+          path: dist
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cmake "-DMEOW2_VERSION=${version}" -DMEOW2_CHANGELOG=CHANGELOG.md -DMEOW2_OUTPUT=notes.md \
+                -P cmake/ReleaseNotes.cmake
+
+      - name: Create the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip \
+            --repo "${GITHUB_REPOSITORY}" --verify-tag \
+            --title "Meow2 ${GITHUB_REF_NAME}" --notes-file notes.md
