@@ -13,7 +13,7 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 
 ## Status
 
-🚧 Pre-alpha. M0 (foundation) is done: the CMake skeleton builds an empty engine and apps in all three configs, with tests and CI. Next: M1 (core runtime: logging, crash dumps, memory, jobs, profiling). See [milestones.md](milestones.md).
+🚧 Pre-alpha. M0 (foundation) is done, and most of M1 (core runtime): logging, crash dumps, memory tracking, config files. Meow2Renderer and Meow2Player open an (empty) SDL3 window. Next: the rest of M1 and M2 (game loop, input). See [milestones.md](milestones.md).
 
 ## Documentation
 
@@ -25,6 +25,8 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 ## Building
 
 Requirements (Windows): Visual Studio 2022 with the *Desktop development with C++* workload, CMake ≥ 3.25 on `PATH`, and Git. Later milestones add the Vulkan SDK and Qt 6.8 (editor only).
+
+Requirements (Linux): Clang 18 or GCC 13+, CMake ≥ 3.25, Ninja, Git, and the X11/Wayland development packages SDL3 builds against; see [Building](docs/wiki/Building.md#linux-packages).
 
 ### Quick start: any command prompt (Visual Studio solution)
 
@@ -55,6 +57,8 @@ Visual Studio then asks to **reload** the changed projects. (A normal build also
 **After `git pull` this happens automatically:** configuring once points git at the repo's hooks (`.githooks/`). After a pull, rebase or branch switch that changes CMake files, they run the regenerate step, and Visual Studio offers to reload. Details and how to turn it off: [Building](docs/wiki/Building.md#automatic-regeneration-after-git-pull-git-hooks).
 
 **Logs, crash dumps and leaks:** every app writes `logs/Meow2<App>_<date>_<time>.log` next to its `.exe`. In Debug and RelWithDebInfo its last line says "No memory leaks" or lists what leaked, per subsystem ([Memory](docs/wiki/Memory.md)). Started from Visual Studio, logs go to the repository's `logs/` folder instead. If a program crashes, a `.dmp` with the same name appears next to its log (open it in Visual Studio; see [Crash dumps](docs/wiki/CrashDumps.md)). See [Logging](docs/wiki/Logging.md).
+
+**Window:** Meow2Renderer and Meow2Player open a window and run until you close it; its size, position, maximized state and fullscreen mode are remembered in the settings file. See [Window](docs/wiki/Window.md).
 
 **Settings:** each app reads `Meow2<App>.toml` next to its `.exe` (from Visual Studio: the repository's git-ignored `config/` folder; `--config <path>` to choose another). Override any setting for one run with `--set key=value`, e.g. `--set window.width=800`. See [Config](docs/wiki/Config.md).
 

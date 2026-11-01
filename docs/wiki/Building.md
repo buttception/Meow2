@@ -125,12 +125,27 @@ ctest --test-dir build/debug --output-on-failure
 
 Building inside the source folder (`cmake -S . -B .`) is refused on purpose.
 
+## Linux packages
+
+SDL3 (`external/SDL`) is built from source. On Linux its configure step needs the X11 and Wayland development headers, and it stops with *"SDL could not find X11 or Wayland development libraries"* without them. On Ubuntu 24.04 (the CI image):
+
+```
+sudo apt install ninja-build clang-18 clang-format-19 doxygen \
+  libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev \
+  libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libudev-dev libdbus-1-dev
+```
+
+The tests don't need a running display server: they use SDL's `offscreen` video driver (see [Window](Window.md#testing-without-a-desktop)). Windows needs nothing extra.
+
 ## Smoke tests
 
-Each executable has a CTest smoke test (`Smoke.<App>.Runs`, label `smoke`). It runs the program and passes only if it exits with 0 **and** prints its name and the engine version. Add one for a new executable with:
+Each executable has CTest smoke tests (`Smoke.<App>.*`, label `smoke`). Each one runs the program and passes only if it exits with 0 **and** prints the expected text: its name and the engine version (`Runs`), "No memory leaks" in Debug/RelWithDebInfo (`NoLeaks`), "Ran 3 frames" for apps with a window (`OpensWindow`). Add one for a new executable with:
 
 ```cmake
 meow2_add_smoke_test(Smoke.MyApp.Runs MyApp "MyApp.*${PROJECT_VERSION}")
+# With arguments, e.g. a windowed app without a desktop, ending after 3 frames:
+meow2_add_smoke_test(Smoke.MyApp.Runs MyApp "MyApp.*${PROJECT_VERSION}"
+    ARGS --set platform.videoDriver=offscreen --set app.quitAfterFrames=3)
 ```
 
 ## Engine version

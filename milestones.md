@@ -68,11 +68,11 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 
 **Done when:** an app logs to file and console, writes a `.dmp` on a forced crash in every config, reports leaks by tag at exit, runs jobs on all cores visible in Tracy, and the ASan/UBSan/TSan CI jobs are green.
 
-## M2 — Platform ⬜
+## M2 — Platform 🟨
 **Goal:** a window on screen, a real game loop and input, shared by Renderer and Player (the editor feeds the same input system from Qt in M9).
 **Depends on:** M1
 
-- SDL3 window (one window, API-neutral, exposes the native handle; window events → `EventBus`)
+- ✅ SDL3 window (one window, API-neutral, exposes the native handle; size/position/mode in the config) — #56 / PR #57. Window events are polled; they move to the `EventBus` when it exists
 - Game loop: `tick()` with fixed timestep (`fixedUpdate` 0..n times), `update`, `render(alpha)`; clamped frame time (§23)
 - `InputSystem`: engine `Key` (HID scan codes), mouse, gamepad; polling (`isDown`, `wasPressed`, …) + input events on the `EventBus`; presses latched for `fixedUpdate` (§9)
 - `SdlInputSource` (keyboard/mouse) and `SdlGamepadSource` (all three apps)

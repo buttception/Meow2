@@ -1,6 +1,6 @@
 /// @file
-/// @brief Meow2Renderer entry point (composition root). For now it sets up logging and
-///        prints its name and the engine version, which the smoke test checks.
+/// @brief Meow2Renderer entry point (composition root). Sets up logging, crash dumps and settings,
+///        prints its name and the engine version (checked by the smoke tests) and opens its window.
 
 #include <Meow2/Core/Config/Config.h>
 #include <Meow2/Core/Crash/CrashHandler.h>
@@ -10,7 +10,12 @@
 #include <Meow2/Core/Memory/LeakCheck.h>
 #include <Meow2/Core/Platform.h>
 #include <Meow2/Core/Version.h>
+#include <Meow2/Platform/Platform.h>
+#include <Meow2/Platform/Window/Window.h>
+#include <Meow2/Platform/Window/WindowConfig.h>
 
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
 
 int main(int argc, char** argv)
@@ -36,6 +41,36 @@ int main(int argc, char** argv)
     MEOW2_LOG_INFO(appLog, "Meow2Renderer started: engine {}, {} / {} / {}", Meow2::getVersionString(),
                    Meow2::c_platformName, Meow2::c_compilerName, Meow2::c_configName);
     MEOW2_LOG_INFO(appLog, "Log file: {}", logSystem.filePath().string());
+
+    // One window (techstack.md §9). platform.videoDriver = "offscreen" runs without a desktop (tests, CI).
+    Meow2::Result<Meow2::Platform::Platform> platform =
+        Meow2::Platform::Platform::create({.videoDriver = config.getString("platform.videoDriver", "")}, engineLog);
+    if (!platform)
+    {
+        MEOW2_LOG_ERROR(appLog, "Can't start the windowing layer: {}", platform.error());
+        return 1;
+    }
+    const Meow2::Platform::WindowDesc windowDesc =
+        Meow2::Platform::windowDescFromConfig(config, {.title = "Meow2Renderer"}, engineLog);
+    Meow2::Result<Meow2::Platform::Window> window = Meow2::Platform::Window::create(*platform, engineLog, windowDesc);
+    if (!window)
+    {
+        MEOW2_LOG_ERROR(appLog, "Can't open the window: {}", window.error());
+        return 1;
+    }
+
+    // Until the game loop exists (M2), wait for events and do nothing else. app.quitAfterFrames ends a smoke run.
+    const std::int64_t quitAfterFrames = config.getInt("app.quitAfterFrames", 0);
+    std::int64_t frames = 0;
+    while (!platform->quitRequested() && !window->closeRequested() &&
+           (quitAfterFrames <= 0 || frames < quitAfterFrames))
+    {
+        platform->pumpEvents(std::chrono::milliseconds{16}); // sleeps while idle instead of spinning a core
+        ++frames;
+    }
+    MEOW2_LOG_INFO(appLog, "Ran {} frames", frames);
+
+    Meow2::Platform::storeWindowState(config, *window); // reopen where the user left it
     if (const Meow2::Result<void> saved = config.save(); !saved)
     {
         MEOW2_LOG_WARN(appLog, "Settings not saved: {}", saved.error());

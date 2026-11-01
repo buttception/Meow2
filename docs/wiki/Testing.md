@@ -14,7 +14,7 @@ ctest --preset windows-msvc-debug --rerun-failed
 | Label | What | How it's made |
 |---|---|---|
 | `unit` | Tests one class/function in isolation, in milliseconds | GoogleTest, `meow2_add_test_suite()` |
-| `smoke` | Runs an executable and checks it starts, prints the expected text and exits with 0 | `meow2_add_smoke_test()` |
+| `smoke` | Runs an executable (with optional `ARGS`) and checks it prints the expected text and exits with 0. Apps with a window run with `--set platform.videoDriver=offscreen --set app.quitAfterFrames=3`, so no desktop is needed | `meow2_add_smoke_test()` |
 | `integration` | Several modules together / CLI / build behaviour (e.g. `Build.Warnings.AreErrors`) | GoogleTest or `add_test()` |
 | `lint` | Source checks: `Format.Check`, `Lint.EditorConfig.TextFilesFollowRules`, `Docs.PublicApi.IsDocumented` | `add_test()` |
 | `gpu`, `visual`, `windows` | Need a GPU, golden images, or Windows | later milestones |

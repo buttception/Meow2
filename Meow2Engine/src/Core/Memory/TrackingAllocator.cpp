@@ -106,6 +106,13 @@ void TrackingAllocator::deallocateUnsized(void* pointer)
     release(pointer, nullptr);
 }
 
+std::size_t TrackingAllocator::allocationSize(const void* pointer) const
+{
+    const AllocationHeader* header = headerOf(const_cast<void*>(pointer)); // only read through the const result
+    MEOW2_ASSERT(header->magic == c_liveMagic, "allocationSize of a pointer this TrackingAllocator didn't allocate");
+    return header->size;
+}
+
 void TrackingAllocator::release(void* pointer, const std::size_t* expectedBytes)
 {
     AllocationHeader* header = headerOf(pointer);

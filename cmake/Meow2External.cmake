@@ -61,3 +61,32 @@ add_library(meow2_tomlplusplus INTERFACE)
 target_include_directories(meow2_tomlplusplus SYSTEM INTERFACE "${meow2TomlDir}/include")
 target_compile_definitions(meow2_tomlplusplus INTERFACE TOML_EXCEPTIONS=0)
 add_library(tomlplusplus::tomlplusplus ALIAS meow2_tomlplusplus)
+
+# ---- SDL3 (window, input, gamepads; techstack.md §9) ---------------------------------------------
+# Static library, linked into Meow2Engine; only src/Platform/**/Sdl/ include its headers. Subsystems the
+# engine doesn't use are off: rendering goes through our own RHI (no SDL_Render/SDL_GPU), and audio and
+# camera come back with their own features. Joystick/HIDAPI/haptic stay on for gamepads (M2 input).
+set(meow2SdlDir "${PROJECT_SOURCE_DIR}/external/SDL")
+meow2_require_submodule(SDL3 "${meow2SdlDir}")
+
+set(SDL_SHARED OFF)
+set(SDL_STATIC ON)
+set(SDL_TEST_LIBRARY OFF)
+set(SDL_TESTS OFF)
+set(SDL_EXAMPLES OFF)
+set(SDL_INSTALL OFF)
+set(SDL_DISABLE_INSTALL ON)
+set(SDL_AUDIO OFF)
+set(SDL_CAMERA OFF)
+set(SDL_GPU OFF)
+set(SDL_RENDER OFF)
+set(SDL_DIALOG OFF)
+set(SDL_TRAY OFF)
+set(SDL_OFFSCREEN ON) # the "offscreen" video driver: tests and smoke runs without a desktop (Linux CI)
+
+add_subdirectory("${meow2SdlDir}" "${PROJECT_BINARY_DIR}/external/SDL" EXCLUDE_FROM_ALL SYSTEM)
+foreach(meow2SdlTarget IN ITEMS SDL3-static SDL_uclibc)
+    if(TARGET ${meow2SdlTarget})
+        set_target_properties(${meow2SdlTarget} PROPERTIES FOLDER "External/SDL3") # IDE solution folder
+    endif()
+endforeach()

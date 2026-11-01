@@ -107,6 +107,12 @@ public:
     /// @param pointer A pointer returned by this tracker and not freed yet.
     void deallocateUnsized(void* pointer);
 
+    /// @brief The size that was requested for a live allocation of this tracker, e.g. for a library's `realloc` hook.
+    /// @param pointer A pointer returned by this tracker and not freed yet.
+    /// @return The size in bytes passed to the allocation.
+    /// @pre `pointer` is a live allocation of this tracker (asserted through the header's magic number).
+    [[nodiscard]] std::size_t allocationSize(const void* pointer) const;
+
     /// @brief Statistics summed over all tags.
     /// @return Total current bytes, live and total allocations; `peakBytes` is the sum of the per-tag peaks (an
     ///         upper bound of the real combined peak, since the tags didn't necessarily peak at the same time).

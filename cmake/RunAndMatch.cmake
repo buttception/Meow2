@@ -1,7 +1,8 @@
 # Script mode helper for meow2_add_smoke_test().
-# Usage: cmake -DMEOW2_EXE=<path> -DMEOW2_EXPECT=<regex> -P RunAndMatch.cmake
+# Usage: cmake -DMEOW2_EXE=<path> -DMEOW2_EXPECT=<regex> [-DMEOW2_ARGS=<arg1|arg2|...>] -P RunAndMatch.cmake
+string(REPLACE "|" ";" meow2Args "${MEOW2_ARGS}")
 execute_process(
-    COMMAND "${MEOW2_EXE}"
+    COMMAND "${MEOW2_EXE}" ${meow2Args}
     RESULT_VARIABLE exitCode
     OUTPUT_VARIABLE stdOut
     ERROR_VARIABLE stdErr)

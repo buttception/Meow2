@@ -23,6 +23,11 @@ target_sources(Meow2Engine
         src/Core/Memory/MemTag.cpp
         src/Core/Memory/TrackingAllocator.cpp
         src/Core/Version.cpp
+        src/Platform/Sdl/PlatformImplSdl.h
+        src/Platform/Sdl/PlatformSdl.cpp
+        src/Platform/Window/Sdl/WindowImplSdl.h
+        src/Platform/Window/Sdl/WindowSdl.cpp
+        src/Platform/Window/WindowConfig.cpp
     PUBLIC
         # A header FILE_SET makes the base dirs PUBLIC include directories and
         # lists the headers in IDEs. Public headers go in include/Meow2/<Subsystem>/[<Module>/].
@@ -48,6 +53,9 @@ target_sources(Meow2Engine
             include/Meow2/Core/Platform.h
             include/Meow2/Core/Process.h
             include/Meow2/Core/Result.h
+            include/Meow2/Platform/Platform.h
+            include/Meow2/Platform/Window/Window.h
+            include/Meow2/Platform/Window/WindowConfig.h
             "${meow2GeneratedDir}/Meow2/Core/Version.h")
 
 # OS-specific implementations (AGENTS.md: only in Win32/Linux/Android backend folders).
@@ -73,6 +81,7 @@ target_link_libraries(Meow2Engine
     PUBLIC
         tl::expected
     PRIVATE
+        SDL3::SDL3-static
         spdlog::spdlog
         tomlplusplus::tomlplusplus)
 

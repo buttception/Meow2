@@ -38,16 +38,19 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-cache
-          key: apt-ubuntu-24.04-v1-ninja-clang18-clangformat19-doxygen
+          key: apt-ubuntu-24.04-v2-ninja-clang18-clangformat19-doxygen-sdl3
 
       - name: Install tools
         run: |
           mkdir -p ~/apt-cache/partial
           sudo apt-get update -o Acquire::Retries=3
           # clang-format is needed too: in CI (CI=true) configure fails without the pinned version.
+          # The lib*-dev packages: SDL3's configure step stops on Linux without X11 or Wayland headers.
           sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
             -o Dir::Cache::Archives="$HOME/apt-cache" \
-            ninja-build clang-18 clang-format-19 doxygen
+            ninja-build clang-18 clang-format-19 doxygen \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libudev-dev libdbus-1-dev
           sudo chown -R "$(id -u):$(id -g)" ~/apt-cache
 
       - name: Generate HTML
