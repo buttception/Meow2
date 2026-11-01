@@ -75,3 +75,13 @@ meow2_add_test_suite(
         Core/Memory/CountingResource.h
         Core/Memory/GlobalNewTests.cpp)
 meow2_track_global_new(Meow2EngineGlobalNewTests)
+
+# Platform (window) over SDL3. The tests use SDL's "offscreen" video driver, so they run without a desktop; they
+# include SDL themselves only to simulate OS events (e.g. a close request).
+meow2_add_test_suite(
+    TARGET    Meow2EnginePlatformTests
+    MODULE    Platform
+    SOURCES
+        Platform/WindowConfigTests.cpp
+        Platform/WindowTests.cpp
+    LIBRARIES SDL3::SDL3-static)

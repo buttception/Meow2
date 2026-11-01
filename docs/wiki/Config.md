@@ -4,7 +4,7 @@ Settings that last between runs, such as the window size, live in a small **TOML
 
 - Header: `#include <Meow2/Core/Config/Config.h>`, namespace `Meow2::Config`
 - Library: [toml++](https://github.com/marzer/tomlplusplus) v3.4.0 (submodule `external/tomlplusplus`, header-only), used only in `src/Core/Config/Config.cpp`
-- Status: ✅ M1 (#54). The window settings come with the SDL window (M2).
+- Status: ✅ M1 (#54). The `window.*` and `platform.*` keys are listed on the [Window](Window.md#settings) page.
 
 ## The file
 

@@ -120,6 +120,18 @@ TEST(TrackingAllocator, AllocateTaggedUsesTheGivenTag)
     EXPECT_EQ(tracker.stats(MemTag::ImGui).currentBytes, 0u);
 }
 
+TEST(TrackingAllocator, ReportsAllocationSize)
+{
+    Meow2::Tests::CountingResource upstream;
+    TrackingAllocator tracker{upstream};
+    void* small = tracker.allocateTagged(3, 1, MemTag::General);
+    void* aligned = tracker.allocateTagged(1000, 256, MemTag::General);
+    EXPECT_EQ(tracker.allocationSize(small), 3u);
+    EXPECT_EQ(tracker.allocationSize(aligned), 1000u);
+    tracker.deallocateUnsized(small);
+    tracker.deallocateUnsized(aligned);
+}
+
 TEST(TrackingAllocator, HonoursAlignment)
 {
     Meow2::Memory::MallocResource mallocResource;

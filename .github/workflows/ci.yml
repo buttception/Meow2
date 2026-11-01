@@ -48,12 +48,12 @@ jobs:
           persist-credentials: false
 
       # Hosted runners sometimes get a very slow Ubuntu mirror (minutes per run). The downloaded
-      # .deb files are cached, so most runs only install them. Bump "v1" to drop the cache.
+      # .deb files are cached, so most runs only install them. Bump the "vN" to drop the cache.
       - name: Cache apt packages
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-cache
-          key: apt-ubuntu-24.04-v1-ninja-clang18-clangformat19-doxygen
+          key: apt-ubuntu-24.04-v3-ninja-clang18-clangformat19-doxygen-sdl3
 
       - name: Install tools
         run: |
@@ -61,9 +61,13 @@ jobs:
           sudo apt-get update -o Acquire::Retries=3
           # clang-format is pinned to major 19 (cmake/Meow2Format.cmake), the version VS 2022 ships.
           # doxygen: the Docs.PublicApi.IsDocumented test (cmake/Meow2Docs.cmake); configure fails in CI without it.
+          # lib*-dev: what SDL3 (external/SDL) needs to build its X11 and Wayland video drivers and udev/dbus support
+          # (gamepads). The tests themselves use the offscreen driver, so no display server runs.
           sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
             -o Dir::Cache::Archives="$HOME/apt-cache" \
-            ninja-build clang-18 clang-format-19 doxygen
+            ninja-build clang-18 clang-format-19 doxygen \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libudev-dev libdbus-1-dev
           # apt runs as root; give the files back to the runner user so the cache step can save them.
           sudo chown -R "$(id -u):$(id -g)" ~/apt-cache
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100

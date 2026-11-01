@@ -165,7 +165,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 
 | Library | Use | License | How |
 |---|---|---|---|
-| SDL3 | window, input, gamepad | zlib | submodule |
+| SDL3 release-3.4.18 | window, input, gamepad | zlib | submodule; static, audio/camera/GPU/render subsystems off; only included under `src/Platform/**/Sdl/`. Linux needs X11/Wayland dev packages to build it ([Building](docs/wiki/Building.md#linux-packages)) |
 | DirectXMath | math | MIT | submodule (header-only; needs a `sal.h` shim off Windows) |
 | spdlog v1.17.0 | logging (bundled fmt; static library, no default logger, wchar file names on Windows) | MIT | submodule |
 | JoltPhysics | physics | MIT | submodule |
@@ -221,7 +221,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
 - **`TrackingAllocator`** (Debug/RelWithDebInfo): wraps an upstream resource. Each block gets a small header (magic, size, tag), and counters are kept per `MemTag` (current, peak, allocation count). A `ScopedLeakCheck` in each app logs the leaks by tag at the end of `main`. In Release, `MallocResource` is used directly with no headers.
   - **Implemented (M1):** `Meow2::Memory::TrackingAllocator` and `MallocResource` (`Meow2/Core/Memory/`). Header in front of each allocation, 16 `0xFD` guard bytes behind it (overrun check on free), lock-free `std::atomic` counters per tag, `allocateTagged()` for library hooks, `leakReport()`. Asserts on foreign/double frees and size mismatches. `MallocResource` handles large alignments portably (over-allocate, original pointer stored in front). `MemTagScope` (thread-local current tag) is implemented too.
 - **`MemTag`**: one per subsystem (`General`, `Logging`, `Config`, `Jobs`, `Events`, `Platform`, `Renderer`, `Rhi`, `Physics`, `Assets`, `Editor`, `ImGui`, `Profiler`, …). The stats feed the memory window in Meow2Renderer and Tracy's memory view.
-- **Libraries with an allocator hook** (SDL `SDL_SetMemoryFunctions`, Jolt `JPH::Allocate/Free`, ImGui `SetAllocatorFunctions`, enkiTS custom allocator, VMA/D3D12MA CPU callbacks) call `globalTracker().allocateTagged()` directly with their own tag (added with each library). Most hooks are C functions without a user-data pointer, so they reach the process-wide tracker (§18).
+- **Libraries with an allocator hook** (SDL `SDL_SetMemoryFunctions`, Jolt `JPH::Allocate/Free`, ImGui `SetAllocatorFunctions`, enkiTS custom allocator, VMA/D3D12MA CPU callbacks) call `globalTracker().allocateTagged()` directly with their own tag (added with each library). **SDL: implemented (M2).** Most hooks are C functions without a user-data pointer, so they reach the process-wide tracker (§18).
 - **Everything else** (spdlog, toml++, Tracy, `std::make_unique`, …) goes through a **global `operator new`/`delete` override** (Debug/RelWithDebInfo), tagged with the thread-local current tag (`MemTagScope` sets it for a scope, default `General`). No double counting: hooked libraries never go through `new`.
   - It replaces every variant: plain, array, aligned (`std::align_val_t`), `nothrow`, and sized delete.
   - **The tracker behind it lives for the whole process** (`globalTracker()`: `constinit`, never destroyed), not in the composition root. Memory allocated during `main` can be freed after `main` returns (static destructors), so the tracker must exist from before the first to after the last allocation. (The first plan, a tracker owned by `main` plus a `MallocResource` fallback outside it, would have left those late `delete`s with no tracker to go to.)
@@ -283,6 +283,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
   - Meow2Renderer: Dear ImGui docking branch + multi-viewports (tool windows can be dragged out into real OS windows; ImGui has an SDL3 platform backend for this).
   - Meow2Editor: Qt `QDockWidget`s. The viewport is a Qt widget, and the RHI renders into its native handle. **The editor never creates SDL windows**: Qt owns them.
 - Meow2Player and Meow2Renderer: one SDL3 window, fullscreen/windowed. Window events (resize, close, focus, DPI) are published on the `EventBus` (§22).
+- **Implemented (M2):** `Meow2::Platform::Platform` (owns SDL's init, one per process, `pumpEvents(wait)`, SDL memory hook → `MemTag::Platform`) and `Window` (pimpl, `WindowDesc`, polled state: bounds, restored bounds, pixel size, maximized/minimized/focused, fullscreen, close request; `nativeHandle()` for the RHI). `windowDescFromConfig` / `storeWindowState` keep the `window.*` keys in the app's config. Window events are **polled** until the EventBus exists. `platform.videoDriver = "offscreen"` runs without a desktop (tests, CI). See [docs/wiki/Window.md](docs/wiki/Window.md).
 
 ### Input
 
@@ -621,3 +622,4 @@ void Application::tick()
 - 2026-10-31 — §6: `TrackingAllocator`, `MallocResource` and `MemTagScope` implemented (guard bytes, lock-free per-tag counters, `allocateTagged` for library hooks); `BlockArena` blocks counted under the arena's tag.
 - 2026-10-31 — §6/§18: global `operator new`/`delete` tracking implemented; the tracker behind it is process-wide (`constinit`, never destroyed) instead of owned by the composition root, because `delete` can run after `main` returns; `ScopedLeakCheck` logs leaks per tag at app exit; library hooks land with each library.
 - 2026-11-01 — §3/§4: Config implemented over toml++ v3.4.0 (`Meow2<App>.toml` next to the exe, `--config`, `--set key=value` overrides, write-back only on change, broken files never overwritten).
+- 2026-11-01 — §4/§9: SDL3 release-3.4.18 window implemented (Platform + Window, settings in the config, polled events until the EventBus, SDL memory hook under `MemTag::Platform`, offscreen driver for tests); Linux CI installs SDL's X11/Wayland build packages.
