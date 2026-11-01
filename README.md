@@ -8,7 +8,7 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 |---|---|---|
 | **Meow2Engine** | static library | Core, memory arenas, logging, crash dumps, platform (SDL3), math (DirectXMath), RHI (Vulkan/D3D12), HLSL shaders via DXC, renderer, physics (Jolt), built-in game UI |
 | **Meow2Renderer** | executable | Rendering/shader test bed and showcase (Khronos glTF 2.0 sample scenes), Dear ImGui UI |
-| **Meow2Editor** | executable | Qt 6.8 editor that exports games as standalone executables |
+| **Meow2Editor** | executable | Qt editor (Qt ≥ 6.8) that exports games as standalone executables |
 | **Meow2Player** | executable | Standalone game runtime bundled by the editor on export |
 
 ## Status
@@ -24,9 +24,12 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 
 ## Building
 
-Requirements (Windows): Visual Studio 2022 with the *Desktop development with C++* workload, CMake ≥ 3.25 on `PATH`, and Git. Later milestones add the Vulkan SDK and Qt 6.8 (editor only).
+Requirements (Windows):
+- Visual Studio 2022 with the *Desktop development with C++* workload, CMake ≥ 3.25 on `PATH`, and Git.
+- **For the editor:** Qt ≥ 6.8 with the **MSVC 2022 64-bit** kit (tested with 6.12.0); see [Building → Qt](docs/wiki/Building.md#qt). Without Qt, everything except the editor builds, and configure says how to add it.
+- Later milestones add the Vulkan SDK.
 
-Requirements (Linux): Clang 18 or GCC 13+, CMake ≥ 3.25, Ninja, Git, and the X11/Wayland development packages SDL3 builds against; see [Building](docs/wiki/Building.md#linux-packages).
+Requirements (Linux): Clang 18 or GCC 13+, CMake ≥ 3.25, Ninja, Git, the X11/Wayland development packages SDL3 builds against ([Building](docs/wiki/Building.md#linux-packages)) and, for the editor, Qt ≥ 6.8 (`gcc_64`).
 
 ### Quick start: any command prompt (Visual Studio solution)
 
@@ -35,10 +38,13 @@ Works from a **standard** cmd or PowerShell window, with no developer prompt and
 ```
 git clone --recurse-submodules https://github.com/buttception/Meow2.git
 cd Meow2
+set CMAKE_PREFIX_PATH=C:\Qt\6.12.0\msvc2022_64  # where Qt is (cmd; PowerShell: $env:CMAKE_PREFIX_PATH="...")
 cmake --preset windows-vs2022                   # generate the solution
 cmake --build --preset windows-vs2022-debug     # build
 ctest --preset windows-vs2022-debug             # run the tests
 ```
+
+- **Qt only has to be found once.** CMake remembers it in the build folder, so later runs don't need `CMAKE_PREFIX_PATH`. To skip the editor instead, leave it out (configure warns and goes on).
 
 - The first command generates the solution, **`build/vs2022/Meow2.sln`**. Open it in Visual Studio if you want the IDE; set a project (e.g. `Meow2Renderer`) as startup project to run or debug it.
   - In Solution Explorer, projects are grouped into **Apps, Engine, Tests, External, Tools**, and each project's **filters mirror the folders** on disk (`Core`, `Core\Win32`, later `Graphics\Rhi\D3D12`, …; see [techstack.md §2](techstack.md)).
@@ -58,7 +64,7 @@ Visual Studio then asks to **reload** the changed projects. (A normal build also
 
 **Logs, crash dumps and leaks:** every app writes `logs/Meow2<App>_<date>_<time>.log` next to its `.exe`. In Debug and RelWithDebInfo its last line says "No memory leaks" or lists what leaked, per subsystem ([Memory](docs/wiki/Memory.md)). Started from Visual Studio, logs go to the repository's `logs/` folder instead. If a program crashes, a `.dmp` with the same name appears next to its log (open it in Visual Studio; see [Crash dumps](docs/wiki/CrashDumps.md)). See [Logging](docs/wiki/Logging.md).
 
-**Window:** Meow2Renderer and Meow2Player open a window and run until you close it; its size, position, maximized state and fullscreen mode are remembered in the settings file. See [Window](docs/wiki/Window.md).
+**Windows:** Meow2Renderer and Meow2Player open an SDL window, Meow2Editor a Qt main window with an (empty) viewport. Each runs until you close it, and its size, position, maximized state and fullscreen mode are remembered in the settings file. See [Window](docs/wiki/Window.md) and [Editor](docs/wiki/Editor.md).
 
 **Settings:** each app reads `Meow2<App>.toml` next to its `.exe` (from Visual Studio: the repository's git-ignored `config/` folder; `--config <path>` to choose another). Override any setting for one run with `--set key=value`, e.g. `--set window.width=800`. See [Config](docs/wiki/Config.md).
 
@@ -69,6 +75,8 @@ The presets are what CI uses. They build with Ninja (faster incremental builds, 
 ```
 cmake --workflow --preset windows-msvc-debug     # configure + build + test in one go
 ```
+
+For the editor, set `CMAKE_PREFIX_PATH` to your Qt kit first, as in the quick start above.
 
 | Preset | Use |
 |---|---|

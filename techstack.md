@@ -34,7 +34,7 @@
 |---|---|---|---|
 | `Meow2Engine` | static lib | All runtime code | `external/` libs |
 | `Meow2Renderer` | exe | Lightweight app to test rendering & shaders and **showcase engine capabilities**. Dev UI: Dear ImGui (docking). Loads glTF sample scenes. | `Meow2Engine`, imgui |
-| `Meow2Editor` | exe | Qt 6.8 editor: scene editing, asset import, game export. **Fully drivable through an MCP server** (§20), so AI agents can build in it | `Meow2Engine`, Qt6 |
+| `Meow2Editor` | exe | Qt (≥ 6.8, tested with 6.12) editor: scene editing, asset import, game export. **Fully drivable through an MCP server** (§20), so AI agents can build in it | `Meow2Engine`, Qt6 |
 | `Meow2Player` | exe | Standalone game runtime the editor bundles on export. Uses the built-in UI. No ImGui, no Qt. | `Meow2Engine` |
 | `*Tests` | exe | One GoogleTest executable per module (e.g. `Meow2EngineCoreTests`), registered with CTest | `Meow2Engine`, `GTest::gtest_main` |
 
@@ -100,7 +100,7 @@ Examples:
 |---|---|---|
 | `MEOW2_RHI_VULKAN` | ON | Vulkan backend |
 | `MEOW2_RHI_D3D12` | ON on Windows, forced OFF elsewhere | D3D12 backend |
-| `MEOW2_BUILD_EDITOR` | ON (desktop only) | Requires Qt 6.8 |
+| `MEOW2_BUILD_EDITOR` | ON (desktop only) | Builds the editor if Qt ≥ 6.8 is found; skipped with a warning otherwise (an error in CI). See [Building → Qt](docs/wiki/Building.md#qt) |
 | `MEOW2_BUILD_RENDERER` | ON | |
 | `MEOW2_BUILD_PLAYER` | ON | |
 | `MEOW2_BUILD_TESTS` | ON | |
@@ -181,7 +181,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | enkiTS | job system | zlib | submodule (M1) |
 | Tracy (client only) | CPU/GPU/memory profiler | BSD-3 | submodule (M1). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
 | **Not submodules** | | | |
-| Qt 6.8 LTS | Meow2Editor | LGPLv3 (link dynamically) | Qt online installer; `CMAKE_PREFIX_PATH` |
+| Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, `jurplel/install-qt-action` in Linux CI; found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
 | Vulkan SDK | validation layers, tools | — | LunarG installer (dev machines only) |
 | DXC | shader compiler | NCSA/MIT | prebuilt release binaries from Microsoft (or the copy in the Vulkan SDK) — not built from source |
 | Doxygen ≥ 1.9.8 | API documentation (`docs` target, §16.1) | GPL-2.0 (tool only, not linked) | `winget install DimitriVanHeesch.Doxygen` (Windows), `apt install doxygen` (Linux CI). Optional locally: the `docs` target and test are skipped if it's missing; required in CI |
@@ -222,7 +222,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
   - **Implemented (M1):** `Meow2::Memory::TrackingAllocator` and `MallocResource` (`Meow2/Core/Memory/`). Header in front of each allocation, 16 `0xFD` guard bytes behind it (overrun check on free), lock-free `std::atomic` counters per tag, `allocateTagged()` for library hooks, `leakReport()`. Asserts on foreign/double frees and size mismatches. `MallocResource` handles large alignments portably (over-allocate, original pointer stored in front). `MemTagScope` (thread-local current tag) is implemented too.
 - **`MemTag`**: one per subsystem (`General`, `Logging`, `Config`, `Jobs`, `Events`, `Platform`, `Renderer`, `Rhi`, `Physics`, `Assets`, `Editor`, `ImGui`, `Profiler`, …). The stats feed the memory window in Meow2Renderer and Tracy's memory view.
 - **Libraries with an allocator hook** (SDL `SDL_SetMemoryFunctions`, Jolt `JPH::Allocate/Free`, ImGui `SetAllocatorFunctions`, enkiTS custom allocator, VMA/D3D12MA CPU callbacks) call `globalTracker().allocateTagged()` directly with their own tag (added with each library). **SDL: implemented (M2).** Most hooks are C functions without a user-data pointer, so they reach the process-wide tracker (§18).
-- **Everything else** (spdlog, toml++, Tracy, `std::make_unique`, …) goes through a **global `operator new`/`delete` override** (Debug/RelWithDebInfo), tagged with the thread-local current tag (`MemTagScope` sets it for a scope, default `General`). No double counting: hooked libraries never go through `new`.
+- **Everything else** (spdlog, toml++, Tracy, `std::make_unique`, …) goes through a **global `operator new`/`delete` override** (Debug/RelWithDebInfo). **Not in Meow2Editor:** on Windows every DLL binds `new`/`delete` itself, and Qt's DLLs delete objects the exe allocated (parent widgets delete their children), so a replaced `operator new` would hand tracked blocks to the C runtime's `free`. The editor uses the normal heap; its library hooks are still tracked, tagged with the thread-local current tag (`MemTagScope` sets it for a scope, default `General`). No double counting: hooked libraries never go through `new`.
   - It replaces every variant: plain, array, aligned (`std::align_val_t`), `nothrow`, and sized delete.
   - **The tracker behind it lives for the whole process** (`globalTracker()`: `constinit`, never destroyed), not in the composition root. Memory allocated during `main` can be freed after `main` returns (static destructors), so the tracker must exist from before the first to after the last allocation. (The first plan, a tracker owned by `main` plus a `MallocResource` fallback outside it, would have left those late `delete`s with no tracker to go to.)
   - It's defined in a source file compiled into **each executable** (`meow2_track_global_new(<target>)`), never in the static library, where the linker could silently drop it. `MEOW2_MEMORY_TRACKING=0` turns it off (sanitizer builds).
@@ -282,6 +282,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
 - **Dockable windows (future):**
   - Meow2Renderer: Dear ImGui docking branch + multi-viewports (tool windows can be dragged out into real OS windows; ImGui has an SDL3 platform backend for this).
   - Meow2Editor: Qt `QDockWidget`s. The viewport is a Qt widget, and the RHI renders into its native handle. **The editor never creates SDL windows**: Qt owns them.
+  - **Implemented (M9, main window only):** `EditorMainWindow` + `ViewportWidget` (native child window, `nativeHandle()` → the same `NativeWindowHandle` as SDL windows), placed from and saved to the same `window.*` config keys. See [docs/wiki/Editor.md](docs/wiki/Editor.md).
 - Meow2Player and Meow2Renderer: one SDL3 window, fullscreen/windowed. Window events (resize, close, focus, DPI) are published on the `EventBus` (§22).
 - **Implemented (M2):** `Meow2::Platform::Platform` (owns SDL's init, one per process, `pumpEvents(wait)`, SDL memory hook → `MemTag::Platform`) and `Window` (pimpl, `WindowDesc`, polled state: bounds, restored bounds, pixel size, maximized/minimized/focused, fullscreen, close request; `nativeHandle()` for the RHI). `windowDescFromConfig` / `storeWindowState` keep the `window.*` keys in the app's config. Window events are **polled** until the EventBus exists. `platform.videoDriver = "offscreen"` runs without a desktop (tests, CI). See [docs/wiki/Window.md](docs/wiki/Window.md).
 
@@ -623,3 +624,4 @@ void Application::tick()
 - 2026-10-31 — §6/§18: global `operator new`/`delete` tracking implemented; the tracker behind it is process-wide (`constinit`, never destroyed) instead of owned by the composition root, because `delete` can run after `main` returns; `ScopedLeakCheck` logs leaks per tag at app exit; library hooks land with each library.
 - 2026-11-01 — §3/§4: Config implemented over toml++ v3.4.0 (`Meow2<App>.toml` next to the exe, `--config`, `--set key=value` overrides, write-back only on change, broken files never overwritten).
 - 2026-11-01 — §4/§9: SDL3 release-3.4.18 window implemented (Platform + Window, settings in the config, polled events until the EventBus, SDL memory hook under `MemTag::Platform`, offscreen driver for tests); Linux CI installs SDL's X11/Wayland build packages.
+- 2026-11-01 — Qt: ≥ 6.8, tested with 6.12.0 (MSVC 2022 64-bit kit), instead of 6.8 LTS; editor main window + viewport implemented (§9); the editor isn't covered by the global `new`/`delete` tracking (§6); `MEOW2_BUILD_EDITOR` skips the editor without Qt (error in CI).

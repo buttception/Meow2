@@ -81,6 +81,9 @@ icacls F:\ /deny "meow2-runner:(OI)(CI)(M)"
 
 - **Visual Studio 2022** (Community, or *Build Tools for Visual Studio 2022*) with the **Desktop development with C++** workload. It includes MSVC, *C++ CMake tools for Windows* (CMake + Ninja). Optional: *C++ Clang tools for Windows* (clang-format for `Format.Check`).
 - **Git for Windows** (installed for all users, so `git` is on the system PATH). Without it, checkout can't fetch submodules.
+- **Qt 6.12.0, MSVC 2022 64-bit kit**, in `C:\Qt\6.12.0\msvc2022_64` (the path `ci.yml` gives CMake; see [Building → Qt](Building.md#qt)).
+  - The runner account only needs to *read* it. The default permissions of a folder in `C:\` already allow that; check with `icacls C:\Qt` (look for `Users:(…RX…)` or `Authenticated Users`).
+  - Without it, the Windows jobs fail at configure with "Qt >= 6.8 (Widgets) not found".
 
 ## Step 5 — Register the runner
 

@@ -3,6 +3,7 @@
 
 #include "Meow2/Platform/Window/WindowConfig.h"
 
+#include <algorithm>
 #include <limits>
 #include <optional>
 #include <string>
@@ -75,12 +76,33 @@ WindowDesc windowDescFromConfig(const Config::Config& config, const WindowDesc& 
 
 void storeWindowState(Config::Config& config, const Window& window)
 {
-    const WindowRect restored = window.restoredBounds();
+    storeWindowState(config, window.restoredBounds(), window.maximized(), window.mode());
+}
+
+void storeWindowState(Config::Config& config, const WindowRect& restored, bool maximized, WindowMode mode)
+{
     config.setInt("window.width", restored.width);
     config.setInt("window.height", restored.height);
     config.setInt("window.x", restored.x);
     config.setInt("window.y", restored.y);
-    config.setBool("window.maximized", window.maximized());
-    config.setString("window.mode", window.mode() == WindowMode::Fullscreen ? c_fullscreenName : c_windowedName);
+    config.setBool("window.maximized", maximized);
+    config.setString("window.mode", mode == WindowMode::Fullscreen ? c_fullscreenName : c_windowedName);
+}
+
+bool isReachable(const WindowRect& rect, std::span<const WindowRect> displays)
+{
+    // Overlap per axis in 64 bits: x + width of two int32 values can overflow 32 bits.
+    const auto overlap = [](std::int64_t start, std::int64_t length, std::int64_t otherStart, std::int64_t otherLength)
+    {
+        return std::min(start + length, otherStart + otherLength) - std::max(start, otherStart);
+    };
+    const std::int64_t needWidth = std::min(c_minReachableWidth, rect.width);
+    const std::int64_t needHeight = std::min(c_minReachableHeight, rect.height);
+    return std::ranges::any_of(displays,
+                               [&](const WindowRect& display)
+                               {
+                                   return overlap(rect.x, rect.width, display.x, display.width) >= needWidth &&
+                                          overlap(rect.y, rect.height, display.y, display.height) >= needHeight;
+                               });
 }
 } // namespace Meow2::Platform

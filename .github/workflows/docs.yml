@@ -38,7 +38,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-cache
-          key: apt-ubuntu-24.04-v3-ninja-clang18-clangformat19-doxygen-sdl3
+          key: apt-ubuntu-24.04-v4-ninja-clang18-clangformat19-doxygen-sdl3-qt
 
       - name: Install tools
         run: |
@@ -50,12 +50,14 @@ jobs:
             -o Dir::Cache::Archives="$HOME/apt-cache" \
             ninja-build clang-18 clang-format-19 doxygen \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
-            libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libudev-dev libdbus-1-dev
+            libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libudev-dev libdbus-1-dev \
+            libgl-dev libfontconfig1
           sudo chown -R "$(id -u):$(id -g)" ~/apt-cache
 
       - name: Generate HTML
         run: |
-          cmake -S . -B build/pages -G Ninja -DMEOW2_BUILD_TESTS=OFF
+          # No editor: the API reference covers the engine only, so Qt isn't needed here.
+          cmake -S . -B build/pages -G Ninja -DMEOW2_BUILD_TESTS=OFF -DMEOW2_BUILD_EDITOR=OFF
           cmake --build build/pages --target docs
 
       - name: Upload Pages artifact

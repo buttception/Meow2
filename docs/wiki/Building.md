@@ -125,6 +125,46 @@ ctest --test-dir build/debug --output-on-failure
 
 Building inside the source folder (`cmake -S . -B .`) is refused on purpose.
 
+## Qt
+
+Meow2Editor needs **Qt ≥ 6.8** (Widgets). It's tested with **6.12.0**. Qt isn't a submodule; install it once per machine.
+
+**Without Qt** everything except the editor builds. Configure prints a warning saying how to add it, and you can silence the warning with `-DMEOW2_BUILD_EDITOR=OFF`. In CI (`CI=true`) a missing Qt is an error instead, so CI never silently stops building the editor.
+
+### Installing Qt on Windows
+
+1. Get the **Qt Online Installer** from https://www.qt.io/download-qt-installer (a free Qt account is needed). If Qt is already installed, run `C:\Qt\MaintenanceTool.exe` and choose **Add or remove components** instead.
+2. Under **Qt → Qt 6.12.x**, tick **MSVC 2022 64-bit**.
+   - **Not** MinGW: the engine is built with MSVC, and MinGW's libraries can't be linked into it.
+   - **Not** ARM64.
+   - The other modules are not needed yet.
+3. Finish the install. The kit lands in `C:\Qt\6.12.0\msvc2022_64`. Check that `lib\cmake\Qt6\Qt6Config.cmake` exists there.
+
+### Pointing CMake at Qt
+
+CMake looks for Qt through `CMAKE_PREFIX_PATH`. Any of these works:
+
+| How | Command |
+|---|---|
+| Environment variable, for one prompt (cmd) | `set CMAKE_PREFIX_PATH=C:\Qt\6.12.0\msvc2022_64` |
+| Environment variable, for one prompt (PowerShell) | `$env:CMAKE_PREFIX_PATH = "C:\Qt\6.12.0\msvc2022_64"` |
+| Environment variable, permanently | *Settings → System → About → Advanced system settings → Environment Variables*, new user variable `CMAKE_PREFIX_PATH`. Restart Visual Studio and your prompts afterwards. |
+| On the configure command line | `cmake --preset windows-vs2022 -DCMAKE_PREFIX_PATH=C:/Qt/6.12.0/msvc2022_64` |
+
+- **It only has to be found once per build folder.** CMake caches the location (`Qt6_DIR`), so later configures don't need it.
+- **Wrong kit found?** Delete the build folder and configure again.
+- Configure prints `-- Qt 6.12.0: C:/Qt/6.12.0/msvc2022_64/lib/cmake/Qt6` when it finds Qt.
+
+### Running the editor
+
+After each build, `windeployqt` (a Qt tool) copies the Qt DLLs and plugins the editor needs next to `Meow2Editor.exe`, in the same `bin/` folder. So the editor runs from the build folder, from Visual Studio and from the tests without any `PATH` changes. On Linux the editor finds Qt through the library path CMake writes into it (RPATH).
+
+### Qt in CI
+
+- **Windows (self-hosted runner):** `ci.yml` sets `CMAKE_PREFIX_PATH=C:\Qt\6.12.0\msvc2022_64`, the install on the owner's PC.
+- **Linux (GitHub-hosted):** Ubuntu's own Qt is 6.4, too old. `jurplel/install-qt-action` (pinned to a commit) downloads Qt 6.12.0 `linux_gcc_64` from Qt's servers and caches it between runs.
+- **When Qt is upgraded,** change the version in both places together.
+
 ## Linux packages
 
 SDL3 (`external/SDL`) is built from source. On Linux its configure step needs the X11 and Wayland development headers, and it stops with *"SDL could not find X11 or Wayland development libraries"* without them. On Ubuntu 24.04 (the CI image):

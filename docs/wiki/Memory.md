@@ -84,7 +84,8 @@ In **Debug and RelWithDebInfo**, every Meow2 executable replaces the global `ope
 const auto physics = Meow2::Memory::globalTracker().stats(Meow2::Memory::MemTag::Physics);
 ```
 
-- **Which executables:** those whose CMake calls `meow2_track_global_new(<target>)`, which are the three apps and `Meow2EngineGlobalNewTests`. The other test suites keep the normal heap.
+- **Which executables:** those whose CMake calls `meow2_track_global_new(<target>)`: Meow2Player, Meow2Renderer and `Meow2EngineGlobalNewTests`. The other test suites keep the normal heap.
+- **Not Meow2Editor.** On Windows every DLL binds `operator new`/`delete` itself, and Qt's DLLs delete objects the exe allocated (a parent widget deletes its children). A replaced `operator new` would hand tracked blocks, header in front, to the C runtime's `free()`. The editor uses the normal heap; its library hooks are still counted ([Editor](Editor.md#no-memory-tracking-in-the-editor)).
 - **Every form is replaced** (20 functions): plain and array, default and over-aligned (`alignas`), throwing and `nothrow`, and every `delete` including the sized ones. So no allocation slips past the tracker, and no tracked block ever reaches the CRT's `free`.
 - **You get the tracker's checks for free:** `0xCD` in new memory, `0xDD` in freed memory, `0xFD` guard bytes that catch writes past the end of any `new`'d object, and asserts on wrong frees.
 - **The tracker lives for the whole process.** It's `constinit`, ready before the first global constructor runs, and never destroyed. A `delete` that runs after `main` returns (in a static destructor) still finds it. That's why it isn't owned by `main` like other subsystems.

@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-cache
-          key: apt-ubuntu-24.04-v3-ninja-clang18-clangformat19-doxygen-sdl3
+          key: apt-ubuntu-24.04-v4-ninja-clang18-clangformat19-doxygen-sdl3-qt
 
       - name: Install tools
         run: |
@@ -63,14 +63,30 @@ jobs:
           # doxygen: the Docs.PublicApi.IsDocumented test (cmake/Meow2Docs.cmake); configure fails in CI without it.
           # lib*-dev: what SDL3 (external/SDL) needs to build its X11 and Wayland video drivers and udev/dbus support
           # (gamepads). The tests themselves use the offscreen driver, so no display server runs.
+          # libgl-dev, libfontconfig1: Qt's Gui module needs OpenGL headers to configure and fontconfig to run (editor).
           sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
             -o Dir::Cache::Archives="$HOME/apt-cache" \
             ninja-build clang-18 clang-format-19 doxygen \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
-            libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libudev-dev libdbus-1-dev
+            libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libudev-dev libdbus-1-dev \
+            libgl-dev libfontconfig1
           # apt runs as root; give the files back to the runner user so the cache step can save them.
           sudo chown -R "$(id -u):$(id -g)" ~/apt-cache
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
+
+      # Qt for Meow2Editor (Ubuntu's own Qt is 6.4, older than the 6.8 the editor needs). Downloaded from Qt's
+      # servers by aqtinstall and cached between runs. Same version as on the Windows runner.
+      - name: Install Qt
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
+        with:
+          version: '6.12.0'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Point CMake at Qt
+        run: echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
 
       - name: Build and test (preset)
         if: matrix.preset != ''
@@ -115,6 +131,9 @@ jobs:
           clean: true
 
       - name: Build and test
+        env:
+          # Qt for Meow2Editor, installed on this PC with the Qt Maintenance Tool (MSVC 2022 64-bit kit).
+          CMAKE_PREFIX_PATH: C:\Qt\6.12.0\msvc2022_64
         # cmd, not PowerShell: PowerShell's execution policy (e.g. AllSigned) blocks the
         # unsigned temporary .ps1 that Actions generates for each step. Batch files are not
         # subject to that policy, so this works without weakening the PC's settings.

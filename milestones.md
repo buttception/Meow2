@@ -138,12 +138,13 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 - Jolt backend (allocator hooks → `MemTag::Physics`, jobs on enkiTS)
 - Debug draw through the renderer
 
-## M9 — Editor ⬜
-**Goal:** a Qt 6.8 editor with a live viewport, fully drivable by AI agents over MCP.
+## M9 — Editor 🟨
+**Goal:** a Qt (≥ 6.8) editor with a live viewport, fully drivable by AI agents over MCP.
 **Depends on:** M5, M1
 
 - Command system: every editor action is an undoable command in `EditorCommandRegistry` (techstack §20)
-- Qt shell, dock layout (UI only issues commands; editor shortcuts are Qt shortcuts)
+- ✅ Qt main window with a native viewport, size/position/mode in the config — #58 / PR #59
+- Dock layout (UI only issues commands; editor shortcuts are Qt shortcuts)
 - Viewport widget (swapchain on the Qt native window), driven by `tick()` from a Qt timer
 - `QtInputSource`: viewport keyboard/mouse → `InputSystem` while the viewport has focus (play mode / viewport camera)
 - Log console dock (ring-buffer sink)

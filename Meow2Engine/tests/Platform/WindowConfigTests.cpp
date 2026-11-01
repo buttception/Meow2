@@ -138,3 +138,32 @@ TEST_F(WindowConfigTest, StoresState)
     EXPECT_EQ(desc.x, 30);
     EXPECT_EQ(desc.mode, WindowMode::Fullscreen);
 }
+
+TEST(WindowConfig, IsReachable)
+{
+    using Meow2::Platform::isReachable;
+    using Meow2::Platform::WindowRect;
+    const WindowRect displays[] = {{0, 0, 1920, 1080}, {-1280, 0, 1280, 1024}}; // primary + a monitor on the left
+
+    EXPECT_TRUE(isReachable({100, 100, 800, 600}, displays));
+    EXPECT_TRUE(isReachable({-1000, 200, 800, 600}, displays)) << "on the left monitor";
+    EXPECT_TRUE(isReachable({1800, 100, 800, 600}, displays)) << "120 units of it still on the primary display";
+    EXPECT_FALSE(isReachable({1850, 100, 800, 600}, displays)) << "only 70 units on a display";
+    EXPECT_FALSE(isReachable({3000, 100, 800, 600}, displays)) << "the monitor that was there is unplugged";
+    EXPECT_FALSE(isReachable({100, 1060, 800, 600}, displays)) << "only 20 units of the top edge visible";
+    EXPECT_TRUE(isReachable({1860, 1040, 50, 30}, displays)) << "a window smaller than 100x40 needs all of itself";
+    EXPECT_FALSE(isReachable({1900, 1040, 50, 30}, displays)) << "...and only 20 of its 50 units are on a display";
+    EXPECT_FALSE(isReachable({100, 100, 800, 600}, {})) << "no displays at all";
+    EXPECT_FALSE(isReachable({2147483000, 0, 2000, 600}, displays)) << "no overflow near the int32 limit";
+}
+
+TEST_F(WindowConfigTest, StoresPlainState)
+{
+    Meow2::Platform::storeWindowState(m_config, {10, 20, 900, 700}, true, WindowMode::Windowed);
+    EXPECT_EQ(m_config.getInt("window.x", 0), 10);
+    EXPECT_EQ(m_config.getInt("window.y", 0), 20);
+    EXPECT_EQ(m_config.getInt("window.width", 0), 900);
+    EXPECT_EQ(m_config.getInt("window.height", 0), 700);
+    EXPECT_TRUE(m_config.getBool("window.maximized", false));
+    EXPECT_EQ(m_config.getString("window.mode", ""), "windowed");
+}
