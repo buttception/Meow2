@@ -24,7 +24,7 @@
 - **Folder:** `logs/` **next to the executable** by default. `--log-dir <path>` (or `--log-dir=<path>`) overrides it.
   - **Started from the Visual Studio solution** (F5), CMake makes the debugger pass `--log-dir <repo>/logs`, so IDE runs log into the repository's git-ignored `logs/` folder.
   - **Started directly** (double-click, command line), the same exe logs next to itself.
-- **Console:** Debug and RelWithDebInfo also print to standard output, with the level coloured. Release doesn't.
+- **Console:** Debug and RelWithDebInfo also print to standard output, with the level coloured. Release doesn't, and Release builds of the apps are **Windows GUI-subsystem** programs, so starting them opens no console window at all. Their output still reaches a pipe or file the caller redirects (that's how the smoke tests read it). See [Building → Release builds without a console](Building.md#release-builds-without-a-console).
 - If the file can't be created (no permission, bad path), logging continues on the console only, with a warning. Logging never stops a program from starting.
 
 ## Using it
@@ -104,4 +104,4 @@ Its destructor restores the previous handler.
 
 - The in-app console window (ImGui in Meow2Renderer, a Qt dock in Meow2Editor) gets its ring-buffer sink with those apps (M6/M9).
 - The runtime level from `config.toml` comes with the Config feature.
-- Release builds becoming GUI-subsystem executables (no console window) is its own M1 item.
+- Release builds are GUI-subsystem executables (no console window) since #61.

@@ -54,6 +54,7 @@ set_target_properties(Meow2Editor PROPERTIES FOLDER "Apps")
 # our exe allocated (a parent widget deletes its children), so a replaced operator new would mix allocators and
 # corrupt the heap. The editor uses the normal heap; library allocator hooks are still tracked (techstack.md §6).
 meow2_deploy_qt(Meow2Editor)
+meow2_gui_subsystem_in_release(Meow2Editor) # no console window in Release
 meow2_source_groups(Meow2Editor)
 # Started from the Visual Studio solution, log into the repository's (git-ignored) logs/ folder and keep the
 # settings in its (git-ignored) config/ folder.
