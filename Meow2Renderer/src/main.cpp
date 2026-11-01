@@ -9,6 +9,7 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Memory/LeakCheck.h>
 #include <Meow2/Core/Platform.h>
+#include <Meow2/Core/Time/FrameClock.h>
 #include <Meow2/Core/Version.h>
 #include <Meow2/Platform/Platform.h>
 #include <Meow2/Platform/Window/Window.h>
@@ -61,16 +62,16 @@ int main(int argc, char** argv)
 
     // Until the game loop exists (M2), wait for events and do nothing else. app.quitAfterFrames ends a smoke run.
     const std::int64_t quitAfterFrames = config.getInt("app.quitAfterFrames", 0);
-    std::int64_t frames = 0;
+    Meow2::Time::FrameClock clock;
     while (!platform->quitRequested() && !window->closeRequested() &&
-           (quitAfterFrames <= 0 || frames < quitAfterFrames))
+           (quitAfterFrames <= 0 || static_cast<std::int64_t>(clock.frameCount()) < quitAfterFrames))
     {
+        clock.tick(); // this frame's time; the game loop (M2) will hand it to update()
         platform->pumpEvents(std::chrono::milliseconds{16}); // sleeps while idle instead of spinning a core
-        ++frames;
     }
     // Printed too, not only logged: the smoke tests read stdout, and Release logs to the file only.
-    std::printf("Ran %lld frames\n", static_cast<long long>(frames));
-    MEOW2_LOG_INFO(appLog, "Ran {} frames", frames);
+    std::printf("Ran %llu frames\n", static_cast<unsigned long long>(clock.frameCount()));
+    MEOW2_LOG_INFO(appLog, "Ran {} frames in {:.2f} s", clock.frameCount(), clock.totalSeconds());
 
     Meow2::Platform::storeWindowState(config, *window); // reopen where the user left it
     if (const Meow2::Result<void> saved = config.save(); !saved)

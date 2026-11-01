@@ -559,6 +559,7 @@ m_events.publish(WindowResized{1600, 900});   // main thread only; delivered imm
 ## 23. Game loop & time
 
 - **`FrameClock`**: `std::chrono::steady_clock`, delta time in seconds (`double` for accumulation, `float` handed to gameplay), frame counter, total time. The delta is clamped to `c_maxFrameDt` (0.25 s), so a breakpoint or a stall doesn't trigger hundreds of catch-up steps (the "spiral of death").
+  - **Implemented (M1):** `Meow2::Time::FrameClock` (`Meow2/Core/Time/FrameClock.h`): `tick()` / `tick(TimePoint)` (explicit time for tests), clamped `deltaSeconds()` + `deltaSecondsFloat()`, `unclampedDeltaSeconds()`, `wasClamped()`, `frameCount()`, `totalSeconds()` (sum of clamped deltas); limit `c_maxFrameDeltaSeconds` = 0.25 s. The apps count their frames with it. See [docs/wiki/FrameClock.md](docs/wiki/FrameClock.md).
 - **Fixed timestep with an accumulator** (see Glenn Fiedler, ["Fix Your Timestep!"](https://gafferongames.com/post/fix_your_timestep/)). One iteration of the loop is `tick()`:
 
 ```cpp
@@ -626,3 +627,4 @@ void Application::tick()
 - 2026-11-01 — §4/§9: SDL3 release-3.4.18 window implemented (Platform + Window, settings in the config, polled events until the EventBus, SDL memory hook under `MemTag::Platform`, offscreen driver for tests); Linux CI installs SDL's X11/Wayland build packages.
 - 2026-11-01 — Qt: ≥ 6.8, tested with 6.12.0 (MSVC 2022 64-bit kit), instead of 6.8 LTS; editor main window + viewport implemented (§9); the editor isn't covered by the global `new`/`delete` tracking (§6); `MEOW2_BUILD_EDITOR` skips the editor without Qt (error in CI).
 - 2026-11-01 — §5/§7: Release executables are GUI-subsystem programs (`meow2_gui_subsystem_in_release`, standard `main` kept via `/ENTRY:mainCRTStartup`).
+- 2026-11-01 — §23: `FrameClock` implemented (steady_clock, clamped delta, frame count, game-time total, explicit time points for tests).
