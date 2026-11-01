@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Jobs: `JobSystem` (enkiTS v1.12) runs work on all cores: `parallelFor` over a range, single jobs, tasks for the main thread, and a stable per-thread index; waiting threads run jobs themselves. Each app creates one (`jobs.threadCount` in its config) (#71).
 - The version string names the commit a build comes from, e.g. `0.1.0+g1a2b3c4` (`.dirty` for uncommitted changes), in every log and at app start; `getBuildMetadata()` returns just that part (#69).
 - Events: `EventBus` delivers typed events immediately (`publish`) or queued from any thread (`enqueue` + `dispatchQueued`), with `Subscription`s that unsubscribe when destroyed; subscribing, unsubscribing and enqueueing from inside a handler are safe (#67).
 - Doxygen API reference: `docs` CMake target, `Docs.PublicApi.IsDocumented` test that fails on undocumented public API, existing headers converted to Doxygen comments (#34).

@@ -178,7 +178,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | GoogleTest v1.17.0 | unit tests (gmock off) | BSD-3 | submodule |
 | tl::expected v1.3.1 | `Result<T>` until C++23 `std::expected` (only the `std::expected`-compatible API is used) | CC0 | submodule; header-only, own INTERFACE target (its CMakeLists pulls in CTest/Catch2). **Public-header exception:** included by `Meow2/Core/Result.h` |
 | toml++ v3.4.0 | config files | MIT | submodule; header-only, own INTERFACE target, `TOML_EXCEPTIONS=0`; only included by `src/Core/Config/Config.cpp` |
-| enkiTS | job system | zlib | submodule (M1) |
+| enkiTS v1.12 | job system | zlib | submodule; static, C interface/examples off; only included by `src/Core/Jobs/Enkits/` |
 | Tracy (client only) | CPU/GPU/memory profiler | BSD-3 | submodule (M1). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
 | **Not submodules** | | | |
 | Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, aqtinstall 3.3.0 in a plain step in Linux CI (only GitHub-owned actions are allowed); found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
@@ -469,6 +469,7 @@ The engine starts single-threaded but every module is written so it can run on w
   - `threadIndex()` gives each worker a stable index, used to pick per-thread arenas (§6) without locks;
   - its custom-allocator callbacks go to the `TrackingAllocator` (`MemTag::Jobs`), and its profiler callbacks name the threads in Tracy;
   - Jolt's job interface is implemented on top of it (M8).
+  - **Implemented (M1):** `Meow2::Jobs::JobSystem` + `Job` (`Meow2/Core/Jobs/JobSystem.h`): `parallelFor`, `run`, `runOnMainThread` (pinned to thread 0), `wait` (the waiting thread runs jobs), `threadIndex`; allocator hook → `MemTag::Jobs`; `jobs.threadCount` in the config. Profiler callbacks come with Tracy. See [docs/wiki/Jobs.md](docs/wiki/Jobs.md).
 
   Long-lived threads are only created by the job system or the composition root.
 - **The game loop itself is not threaded** (§23): one main thread runs the phases in order, and the parallelism lives inside phases as jobs.
@@ -632,3 +633,4 @@ void Application::tick()
 - 2026-11-01 — §4: Linux CI installs Qt with aqtinstall in a plain step; the third-party install-qt-action was refused by the repository's Actions settings and kept CI from starting (#64).
 - 2026-11-01 — §22: `EventBus` implemented (typed events, publish/enqueue/dispatchQueued, RAII subscriptions, double-buffered arena queue).
 - 2026-11-01 — §21: build metadata implemented (git commit read at build time, `getBuildMetadata()`).
+- 2026-11-01 — §4/§19: `JobSystem` implemented over enkiTS v1.12 (parallel-for, jobs, main-thread tasks, thread index, allocator hook under `MemTag::Jobs`).

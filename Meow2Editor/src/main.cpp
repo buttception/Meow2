@@ -7,6 +7,7 @@
 
 #include <Meow2/Core/Config/Config.h>
 #include <Meow2/Core/Crash/CrashHandler.h>
+#include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/AssertLogging.h>
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
@@ -16,6 +17,7 @@
 #include <Meow2/Core/Version.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <QApplication>
@@ -51,6 +53,10 @@ int main(int argc, char** argv)
     const Meow2::Memory::ScopedLeakCheck leakCheck{Meow2::Memory::globalTracker(), engineLog};
     // Settings (techstack.md §3): Meow2Editor.toml next to the exe (or --config <path>), --set key=value overrides.
     Meow2::Config::Config config = Meow2::Config::openAppConfig("Editor", argc, argv, engineLog);
+    // Work on all cores (techstack.md §19). jobs.threadCount = 0: one thread per hardware thread.
+    const std::int64_t jobThreads = config.getInt("jobs.threadCount", 0);
+    Meow2::Jobs::JobSystem jobs{
+        {.threadCount = static_cast<std::uint32_t>(std::clamp<std::int64_t>(jobThreads, 0, 256))}, engineLog};
 
     std::printf("Meow2Editor (Meow2 Engine %s, %s/%s/%s)\n", Meow2::getVersionString(), Meow2::c_platformName,
                 Meow2::c_compilerName, Meow2::c_configName);
