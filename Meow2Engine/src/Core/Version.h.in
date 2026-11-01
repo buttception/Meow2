@@ -19,13 +19,24 @@ inline constexpr int c_versionMinor = @PROJECT_VERSION_MINOR@;
 /// @brief PATCH version: incremented only for fixes to an already-released MINOR version.
 inline constexpr int c_versionPatch = @PROJECT_VERSION_PATCH@;
 
-/// @brief The whole version as `"MAJOR.MINOR.PATCH"`, e.g. `"0.1.0"`.
+/// @brief The whole version as `"MAJOR.MINOR.PATCH"`, e.g. `"0.1.0"`, without build metadata (see getVersionString()).
 inline constexpr const char* c_versionString = "@PROJECT_VERSION@";
 
 /// @brief Returns the version of the engine library that is actually linked into the program.
 ///
 /// The `c_version*` constants are the version of the header the caller was **compiled against**. Comparing them with
 /// this function detects a stale library (a program built against new headers but linked with an old library).
-/// @return `"MAJOR.MINOR.PATCH"` of the linked library. Points to a string literal: never null, never freed.
+/// @return `"MAJOR.MINOR.PATCH+<build metadata>"` of the linked library, e.g. `"0.1.0+g1a2b3c4"` (just
+///         `"MAJOR.MINOR.PATCH"` without git; see getBuildMetadata()). Points to a string literal: never null, never
+///         freed.
 const char* getVersionString();
+
+/// @brief The build metadata of the linked library: which commit it was built from.
+///
+/// `"g"` followed by the short commit hash, plus `".dirty"` if tracked files had uncommitted changes, e.g.
+/// `"g1a2b3c4.dirty"`. Empty when the build had no git repository (e.g. from a source zip). Read at build time, so it
+/// is always the commit of the last build, not of the last configure.
+/// @return The metadata, or an empty string. Points to a string literal: never null, never freed.
+/// @see techstack.md §21
+const char* getBuildMetadata();
 } // namespace Meow2

@@ -206,7 +206,12 @@ meow2_add_smoke_test(Smoke.MyApp.Runs MyApp "MyApp.*${PROJECT_VERSION}"
 
 `project(Meow2 VERSION x.y.z)` in the top-level `CMakeLists.txt` is the single source of the version. It is written into the generated `Meow2/Core/Version.h`:
 - `Meow2::c_versionMajor/Minor/Patch`, `Meow2::c_versionString` — the version the *caller was compiled against*
-- `Meow2::getVersionString()` — the version of the *library actually linked*
+- `Meow2::getVersionString()`: the version of the *library actually linked*, with the commit it was built from, e.g. `0.1.0+g1a2b3c4`
+- `Meow2::getBuildMetadata()`: just that commit part, `g1a2b3c4`; `.dirty` is appended when tracked files had uncommitted changes, and it's empty without git (a source zip)
+
+The apps print and log `getVersionString()` at start, so every log (and the crash dump next to it) names the exact commit.
+
+**How the commit gets in:** the `meow2_git_version` target runs `cmake/GitVersion.cmake` on **every build**. It asks git for the short hash and whether tracked files changed, then writes a private generated header (`build/<preset>/Meow2Engine/generated/private/Core/BuildMetadata.h`). The header is only rewritten when the value changes, so rebuilding the same commit recompiles nothing, and a new commit recompiles one file. Reading at build time, not configure time, means the version can't name an old commit after a `git pull` without reconfiguring. Untracked files and changes *inside* submodules don't count as dirty.
 
 ### How the version changes
 
@@ -218,6 +223,6 @@ meow2_add_smoke_test(Smoke.MyApp.Runs MyApp "MyApp.*${PROJECT_VERSION}"
 | 0.Y.Z (Z > 0) | a fix to the already-released 0.Y | `v0.Y.Z` |
 
 - Only the PR that closes a milestone changes `VERSION`. Normal feature PRs never touch it, so they never conflict on that line.
-- While M1 is being worked on, `main` still says 0.1.0. To tell such builds apart, the version string will carry the git commit as build metadata, e.g. `0.1.0+g1a2b3c4` (planned for M1).
+- While a milestone is being worked on, `main` still says the last version (e.g. 0.1.0). The commit in the version string (`0.1.0+g1a2b3c4`, [SemVer build metadata](https://semver.org/#spec-item-10)) tells such builds apart.
 - `git describe --tags` shows where a checkout is relative to the last release, e.g. `v0.1.0-12-g1a2b3c4` = 12 commits after 0.1.0.
 - Full rules: [techstack.md §21](../../techstack.md) and [AGENTS.md §2.7](../../AGENTS.md).

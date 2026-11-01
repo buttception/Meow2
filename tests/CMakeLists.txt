@@ -25,6 +25,18 @@ if(GIT_FOUND)
             "-DMEOW2_GIT=${GIT_EXECUTABLE}"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckTextFiles.cmake")
     set_tests_properties(Lint.EditorConfig.TextFilesFollowRules PROPERTIES LABELS "lint")
+
+    # The git commit in the version string (cmake/GitVersion.cmake): the real hash here, nothing outside a repo.
+    foreach(meow2Case IN ITEMS CommitHash NoGit)
+        add_test(NAME Build.GitVersion.${meow2Case}
+            COMMAND ${CMAKE_COMMAND}
+                "-DMEOW2_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DMEOW2_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/git-version/${meow2Case}"
+                "-DMEOW2_GIT=${GIT_EXECUTABLE}"
+                -DMEOW2_CASE=${meow2Case}
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/BuildChecks/TestGitVersion.cmake")
+        set_tests_properties(Build.GitVersion.${meow2Case} PROPERTIES LABELS "integration")
+    endforeach()
 else()
     message(STATUS "git not found: Lint.EditorConfig.TextFilesFollowRules disabled")
 endif()
