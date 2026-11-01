@@ -9,6 +9,7 @@
 #include <tracy/TracyC.h>
 
 #include <array>
+#include <cstddef>
 #include <cstring>
 #include <type_traits>
 #endif
@@ -19,8 +20,20 @@ namespace Meow2::Profiling
 namespace
 {
 // The zone macros hand Tracy our SourceLocation as its own source-location struct, so the two must stay identical.
-static_assert(std::is_layout_compatible_v<SourceLocation, ___tracy_source_location_data>,
-              "SourceLocation must match Tracy's ___tracy_source_location_data");
+// Checked field by field, because std::is_layout_compatible needs compiler support that not every toolchain has
+// (Clang 18 with libstdc++ lacks it); the trait is checked too where it exists.
+using TracyLocation = ___tracy_source_location_data;
+static_assert(std::is_standard_layout_v<SourceLocation> && std::is_standard_layout_v<TracyLocation>);
+static_assert(sizeof(SourceLocation) == sizeof(TracyLocation) && alignof(SourceLocation) == alignof(TracyLocation));
+static_assert(offsetof(SourceLocation, name) == offsetof(TracyLocation, name) &&
+                  offsetof(SourceLocation, function) == offsetof(TracyLocation, function) &&
+                  offsetof(SourceLocation, file) == offsetof(TracyLocation, file) &&
+                  offsetof(SourceLocation, line) == offsetof(TracyLocation, line) &&
+                  offsetof(SourceLocation, color) == offsetof(TracyLocation, color),
+              "SourceLocation must match Tracy's ___tracy_source_location_data field by field");
+#if defined(__cpp_lib_is_layout_compatible)
+static_assert(std::is_layout_compatible_v<SourceLocation, TracyLocation>);
+#endif
 
 /// @brief One plot per memory tag. Tracy identifies a plot by the name's address, so these are fixed strings.
 constexpr std::array<const char*, Memory::c_memTagCount> c_memoryPlotNames{
