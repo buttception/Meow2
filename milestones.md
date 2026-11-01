@@ -35,7 +35,7 @@ Issues are labelled `milestone:M<n>` on GitHub.
 
 **Done when:** `cmake --preset … && cmake --build … && ctest …` succeeds on Windows for all three configs, and CI runs it on every PR.
 
-## M1 — Core runtime ⬜
+## M1 — Core runtime ✅
 **Goal:** everything the engine needs before it opens a window: see what it's doing (logs, profiler), survive and diagnose crashes, manage memory with full attribution, run work on all cores, and ship a release zip.
 **Depends on:** M0
 
@@ -64,9 +64,11 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 | API docs: Doxyfile + `docs` CMake target (skipped if Doxygen isn't installed), existing headers converted to Doxygen comments, CI job that fails on undocumented public API | §16.1 | ✅ | #33 / PR #34 |
 | Release packaging: CMake install rules + CPack ZIP (exes, PDBs, MSVC runtime DLLs), `release.yml` builds it on a `v*` tag and publishes a GitHub Release | §21 | ✅ | #76 / PR #77 |
 | Git hooks: regenerate the Visual Studio solution after pull/rebase/branch switch when CMake files change | §2 | ✅ | #40 / PR #41 |
-| Closing PR bumps the version to **0.2.0** (tag `v0.2.0`, first release zip) | §21 | ⬜ | |
+| Closing PR bumps the version to **0.2.0** (tag `v0.2.0`, first release zip) | §21 | ✅ | #78 / PR #79 |
 
 **Done when:** an app logs to file and console, writes a `.dmp` on a forced crash in every config, reports leaks by tag at exit, runs jobs on all cores visible in Tracy, and the ASan/UBSan/TSan CI jobs are green.
+
+**Released as `v0.2.0`** (tag on the merge of PR #79, with the owner's go-ahead; the first GitHub Release zip). Crash dumps are Windows-only for now (Linux with M12). "Jobs visible in Tracy" needs the Tracy viewer, which the owner checks once by connecting it to a Debug build.
 
 ## M2 — Platform 🟨
 **Goal:** a window on screen, a real game loop and input, shared by Renderer and Player (the editor feeds the same input system from Qt in M9).

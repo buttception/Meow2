@@ -8,6 +8,8 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-11-02
+
 ### Added
 - Releases: each version tag builds `Meow2-<version>-windows-x64.zip` (the apps, their PDBs, the MSVC runtime and Qt; runs after unpacking anywhere), checks it by running every app from the unpacked zip, and publishes it as a GitHub Release with that version's CHANGELOG section as notes. Release builds now produce PDBs (#77).
 - Sanitizers: two CI jobs build with Clang's AddressSanitizer + UndefinedBehaviorSanitizer and ThreadSanitizer and run every engine and app test under them (presets `linux-clang-asan`, `linux-clang-tsan`) (#75).
