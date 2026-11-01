@@ -52,7 +52,7 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 | Release exes use the Windows GUI subsystem (no console window) | §5, §7 | ✅ | #60 / PR #61 |
 | Crash dumps: minidump on crash in **all configs**, log flush, skipped under a debugger, child-process crash test | §8 | ✅ (Windows) | #46 / PR #47 |
 | Config: TOML via toml++, defaults → `config.toml` → command line, write-back | §3, §4 | ✅ | #54 / PR #55 |
-| `FrameClock`: high-resolution time, delta time, frame counter | §23 | ⬜ | |
+| `FrameClock`: high-resolution time, delta time, frame counter | §23 | ✅ | #62 / PR #63 |
 | Memory: `TrackingAllocator` (thread-safe, `MemTag`s, per-tag stats, leak report), `MallocResource` | §6 | ✅ | #50 / PR #51 |
 | Memory: `BlockArena` (size-class block lists, reset keeps blocks, trim) as a `std::pmr::memory_resource`, `MemTag` | §6 | ✅ | #48 / PR #49 |
 | Memory: global `operator new`/`delete` override (Debug/RWDI) + allocator hooks for libraries that have them, thread-local tag scopes | §6, §18 | ✅ (hooks land with each library) | #52 / PR #53 |

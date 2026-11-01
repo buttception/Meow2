@@ -12,6 +12,7 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Memory/LeakCheck.h>
 #include <Meow2/Core/Platform.h>
+#include <Meow2/Core/Time/FrameClock.h>
 #include <Meow2/Core/Version.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
 
@@ -77,15 +78,15 @@ int main(int argc, char** argv)
         window, Meow2::Platform::windowDescFromConfig(config, {.title = "Meow2Editor"}, engineLog), engineLog);
 
     // The frame tick: Qt runs the event loop, a timer calls the engine (techstack.md §23: tick() from a Qt timer).
-    // For now it only counts frames; app.quitAfterFrames ends a smoke run.
+    // For now it only measures frames; app.quitAfterFrames ends a smoke run.
     const std::int64_t quitAfterFrames = config.getInt("app.quitAfterFrames", 0);
-    std::int64_t frames = 0;
+    Meow2::Time::FrameClock clock;
     QTimer frameTimer;
     QObject::connect(&frameTimer, &QTimer::timeout,
                      [&]
                      {
-                         ++frames;
-                         if (quitAfterFrames > 0 && frames >= quitAfterFrames)
+                         clock.tick(); // this frame's time; the game loop (M2) will hand it to update()
+                         if (quitAfterFrames > 0 && static_cast<std::int64_t>(clock.frameCount()) >= quitAfterFrames)
                          {
                              QApplication::quit();
                          }
@@ -94,8 +95,8 @@ int main(int argc, char** argv)
     const int exitCode = QApplication::exec(); // returns when the window is closed (or quit() is called)
 
     // Printed too, not only logged: the smoke tests read stdout, and Release logs to the file only.
-    std::printf("Ran %lld frames\n", static_cast<long long>(frames));
-    MEOW2_LOG_INFO(appLog, "Ran {} frames", frames);
+    std::printf("Ran %llu frames\n", static_cast<unsigned long long>(clock.frameCount()));
+    MEOW2_LOG_INFO(appLog, "Ran {} frames in {:.2f} s", clock.frameCount(), clock.totalSeconds());
     Meow2::Editor::storeWindowState(config, window); // reopen where the user left it
     if (const Meow2::Result<void> saved = config.save(); !saved)
     {
