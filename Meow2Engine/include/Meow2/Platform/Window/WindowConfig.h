@@ -20,6 +20,7 @@
 #include <Meow2/Platform/Window/Window.h>
 
 #include <cstdint>
+#include <span>
 
 namespace Meow2::Platform
 {
@@ -49,4 +50,28 @@ inline constexpr std::int32_t c_maxConfigWindowSize = 16384;
 /// @param config The app's settings.
 /// @param window The window to remember.
 void storeWindowState(Config::Config& config, const Window& window);
+
+/// @brief Stores a window's state given as plain values, for windows that aren't a Platform::Window (the Qt editor).
+/// @param config    The app's settings.
+/// @param restored  Position and size when windowed and not maximized (see Window::restoredBounds()).
+/// @param maximized Whether the window is maximized.
+/// @param mode      Windowed or fullscreen.
+void storeWindowState(Config::Config& config, const WindowRect& restored, bool maximized, WindowMode mode);
+
+/// @brief Minimum part of a window, in desktop units, that must be on a display for its position to be usable:
+///        enough of the title bar to grab it with the mouse.
+inline constexpr std::int32_t c_minReachableWidth = 100;
+
+/// @brief Minimum height of the part of a window that must be on a display; see c_minReachableWidth.
+inline constexpr std::int32_t c_minReachableHeight = 40;
+
+/// @brief Whether a window at `rect` can be reached by the user: at least c_minReachableWidth ×
+///        c_minReachableHeight of it (or all of it, if smaller) overlaps one of the displays.
+///
+/// Used before restoring a saved position: one on a monitor that has since been unplugged fails, and the window is
+/// centred instead. Each windowing backend passes its own list of display rectangles.
+/// @param rect     The window's client area, in desktop coordinates.
+/// @param displays Every display's bounds, in the same coordinates.
+/// @return `true` if the window would be reachable.
+[[nodiscard]] bool isReachable(const WindowRect& rect, std::span<const WindowRect> displays);
 } // namespace Meow2::Platform

@@ -10,7 +10,7 @@ This wiki is the developer documentation: what each feature does, how to use it,
 |---|---|
 | `Meow2Engine` | static library with all runtime code |
 | `Meow2Renderer` | showcase and test bed for rendering (Dear ImGui) |
-| `Meow2Editor` | Qt 6.8 editor, drivable by AI agents over MCP |
+| `Meow2Editor` | Qt editor (Qt ≥ 6.8), drivable by AI agents over MCP |
 | `Meow2Player` | standalone runtime for exported games |
 
 ## Quick start (Windows)
@@ -20,8 +20,11 @@ From a *Developer PowerShell for VS 2022*:
 ```
 git clone --recurse-submodules https://github.com/buttception/Meow2.git
 cd Meow2
+set CMAKE_PREFIX_PATH=C:\Qt\6.12.0\msvc2022_64  # Qt for the editor (optional; see Building → Qt)
 cmake --workflow --preset windows-msvc-debug     # configure + build + test
 ```
+
+You need Visual Studio 2022 (C++ workload), CMake ≥ 3.25 and Git; for the editor also Qt ≥ 6.8 with the **MSVC 2022 64-bit** kit ([Building → Qt](Building.md#qt)). Without Qt, everything but the editor builds.
 
 See [Building](Building.md) for all presets and [Testing](Testing.md) for running and writing tests.
 
@@ -35,6 +38,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Asserts & debugger detection | [Asserts](Asserts.md) | ✅ M1 |
 | Config files (TOML, `--set` overrides) | [Config](Config.md) | ✅ M1 |
 | Window (SDL3, settings in the config) | [Window](Window.md) | ✅ M2 |
+| Editor (Qt main window, viewport) | [Editor](Editor.md) | 🟨 M9 (main window only) |
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |
 | Crash dumps (minidumps) | [CrashDumps](CrashDumps.md) | ✅ M1 (Windows) |
 | Logging (spdlog) | [Logging](Logging.md) | ✅ M1 |

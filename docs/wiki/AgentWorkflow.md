@@ -42,8 +42,10 @@ Things to know:
 MSVC needs the Visual Studio environment (`vcvars64.bat`). The owner's PowerShell execution policy is `AllSigned`, which refuses unsigned `.ps1` scripts. Agents therefore run builds through `cmd`. From PowerShell (`""` is an escaped quote there; the path is for VS 2022 Community):
 
 ```
-cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"" && cmake --workflow --preset windows-msvc-debug"
+cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"" && set CMAKE_PREFIX_PATH=C:\Qt\6.12.0\msvc2022_64&& cmake --workflow --preset windows-msvc-debug"
 ```
+
+`CMAKE_PREFIX_PATH` points CMake at the owner's Qt install for Meow2Editor ([Building → Qt](Building.md#qt)). Note there's no space before `&&`; with one, cmd would put it into the path. Without the variable, the editor is skipped and its tests don't run, so say so in the PR.
 
 The Windows CI job on the self-hosted runner does the same thing (see [CI](CI.md)).
 

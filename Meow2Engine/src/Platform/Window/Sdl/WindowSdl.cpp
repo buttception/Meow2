@@ -2,6 +2,7 @@
 /// @brief Window over SDL3.
 
 #include "Meow2/Core/Assert.h"
+#include "Meow2/Platform/Window/WindowConfig.h"
 #include "Platform/Window/Sdl/WindowImplSdl.h"
 
 #include <SDL3/SDL.h>
@@ -10,34 +11,29 @@
 #include <format>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace Meow2::Platform
 {
 namespace
 {
-/// @brief How much of a window must be on a display for a saved position to count as visible, in desktop units.
-/// Enough of the title bar to grab it with the mouse.
-constexpr std::int32_t c_minVisibleWidth = 100;
-constexpr std::int32_t c_minVisibleHeight = 40;
-
-/// @brief Whether a window at `rect` would be reachable: enough of it overlaps at least one current display.
+/// @brief Whether a window at `rect` would be reachable on the current displays (see isReachable()).
 /// A position saved on a monitor that has since been unplugged fails this.
 bool isOnAnyDisplay(const WindowRect& rect)
 {
     int count = 0;
     SDL_DisplayID* displays = SDL_GetDisplays(&count);
-    bool visible = false;
-    const SDL_Rect window{rect.x, rect.y, rect.width, rect.height};
-    for (int i = 0; i < count && !visible; ++i)
+    std::vector<WindowRect> bounds;
+    for (int i = 0; i < count; ++i)
     {
         SDL_Rect display;
-        SDL_Rect overlap;
-        visible = SDL_GetDisplayBounds(displays[i], &display) && SDL_GetRectIntersection(&window, &display, &overlap) &&
-                  overlap.w >= std::min(c_minVisibleWidth, rect.width) &&
-                  overlap.h >= std::min(c_minVisibleHeight, rect.height);
+        if (SDL_GetDisplayBounds(displays[i], &display))
+        {
+            bounds.push_back({display.x, display.y, display.w, display.h});
+        }
     }
     SDL_free(displays);
-    return visible;
+    return isReachable(rect, bounds);
 }
 
 /// @brief The top-left corner that centres a `width`×`height` window on the primary display.
