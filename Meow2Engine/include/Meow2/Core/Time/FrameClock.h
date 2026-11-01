@@ -55,6 +55,7 @@ public:
 
     /// @brief Ends the current frame and starts the next one, reading the time from Clock.
     /// @return The frame's delta in seconds, clamped to 0..maxFrameDeltaSeconds().
+    /// @note The first frame is measured from when the clock was created, so create it right before the loop.
     double tick();
 
     /// @brief Ends the current frame and starts the next one at `now`.
