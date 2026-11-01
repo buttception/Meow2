@@ -26,10 +26,11 @@ using Memory::MemTag;
 
 // SDL's memory hooks are plain C function pointers without a user-data argument, so they reach the process-wide
 // tracker directly (techstack.md §6/§18: globalTracker() is the documented exception for library hooks).
+// [[maybe_unused]]: without memory tracking (Release, sanitizer builds) the hooks aren't installed.
 // malloc's guarantee: suitable for any fundamental type.
 constexpr std::size_t c_sdlAlignment = alignof(std::max_align_t);
 
-void* SDLCALL sdlMalloc(std::size_t size)
+[[maybe_unused]] void* SDLCALL sdlMalloc(std::size_t size)
 {
     try
     {
@@ -41,7 +42,7 @@ void* SDLCALL sdlMalloc(std::size_t size)
     }
 }
 
-void* SDLCALL sdlCalloc(std::size_t count, std::size_t size)
+[[maybe_unused]] void* SDLCALL sdlCalloc(std::size_t count, std::size_t size)
 {
     if (size != 0 && count > std::numeric_limits<std::size_t>::max() / size)
     {
@@ -55,7 +56,7 @@ void* SDLCALL sdlCalloc(std::size_t count, std::size_t size)
     return memory;
 }
 
-void SDLCALL sdlFree(void* memory)
+[[maybe_unused]] void SDLCALL sdlFree(void* memory)
 {
     if (memory != nullptr)
     {
@@ -63,7 +64,7 @@ void SDLCALL sdlFree(void* memory)
     }
 }
 
-void* SDLCALL sdlRealloc(void* memory, std::size_t size)
+[[maybe_unused]] void* SDLCALL sdlRealloc(void* memory, std::size_t size)
 {
     if (memory == nullptr)
     {

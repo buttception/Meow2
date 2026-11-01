@@ -23,12 +23,15 @@ using Memory::MemTag;
 using Memory::MemTagScope;
 
 // enkiTS's allocator hooks get a user-data pointer, but the tracker is process-wide anyway (techstack.md §6/§18).
-void* enkiAllocate(std::size_t alignment, std::size_t size, void* /*userData*/, const char* /*file*/, int /*line*/)
+// [[maybe_unused]]: without memory tracking (Release, sanitizer builds) the hooks aren't installed.
+[[maybe_unused]] void* enkiAllocate(std::size_t alignment, std::size_t size, void* /*userData*/, const char* /*file*/,
+                                    int /*line*/)
 {
     return Memory::globalTracker().allocateTagged(size, alignment, MemTag::Jobs);
 }
 
-void enkiFree(void* pointer, std::size_t /*size*/, void* /*userData*/, const char* /*file*/, int /*line*/)
+[[maybe_unused]] void enkiFree(void* pointer, std::size_t /*size*/, void* /*userData*/, const char* /*file*/,
+                               int /*line*/)
 {
     if (pointer != nullptr)
     {
