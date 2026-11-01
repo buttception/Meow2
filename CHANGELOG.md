@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Events: `EventBus` delivers typed events immediately (`publish`) or queued from any thread (`enqueue` + `dispatchQueued`), with `Subscription`s that unsubscribe when destroyed; subscribing, unsubscribing and enqueueing from inside a handler are safe (#67).
 - Doxygen API reference: `docs` CMake target, `Docs.PublicApi.IsDocumented` test that fails on undocumented public API, existing headers converted to Doxygen comments (#34).
 - Asserts: `MEOW2_ASSERT`, `MEOW2_ASSERT_SLOW`, `MEOW2_VERIFY` with a replaceable failure handler (`setAssertHandler`), and `isDebuggerAttached()` (#36).
 - This changelog (#36).

@@ -41,6 +41,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Window (SDL3, settings in the config) | [Window](Window.md) | ✅ M2 |
 | Editor (Qt main window, viewport) | [Editor](Editor.md) | 🟨 M9 (main window only) |
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |
+| Events (`EventBus`) | [Events](Events.md) | ✅ M1 |
 | Crash dumps (minidumps) | [CrashDumps](CrashDumps.md) | ✅ M1 (Windows) |
 | Logging (spdlog) | [Logging](Logging.md) | ✅ M1 |
 | Memory (arenas, tracking, leak check, memory tags) | [Memory](Memory.md) | ✅ M1 |
