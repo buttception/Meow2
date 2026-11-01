@@ -90,3 +90,9 @@ foreach(meow2SdlTarget IN ITEMS SDL3-static SDL_uclibc)
         set_target_properties(${meow2SdlTarget} PROPERTIES FOLDER "External/SDL3") # IDE solution folder
     endif()
 endforeach()
+if(MSVC)
+    # SDL compiles SDL_mslibc.c with /GL- (it must not be link-time optimised), which clashes with its precompiled
+    # header in builds with LTO (warning C4652 in Release). Skipping the PCH for that file only removes the clash.
+    set_source_files_properties("${meow2SdlDir}/src/stdlib/SDL_mslibc.c" DIRECTORY "${meow2SdlDir}"
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+endif()

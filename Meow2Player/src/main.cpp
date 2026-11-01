@@ -68,6 +68,8 @@ int main(int argc, char** argv)
         platform->pumpEvents(std::chrono::milliseconds{16}); // sleeps while idle instead of spinning a core
         ++frames;
     }
+    // Printed too, not only logged: the smoke tests read stdout, and Release logs to the file only.
+    std::printf("Ran %lld frames\n", static_cast<long long>(frames));
     MEOW2_LOG_INFO(appLog, "Ran {} frames", frames);
 
     Meow2::Platform::storeWindowState(config, *window); // reopen where the user left it
