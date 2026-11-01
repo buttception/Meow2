@@ -131,7 +131,7 @@ SDL3 (`external/SDL`) is built from source. On Linux its configure step needs th
 
 ```
 sudo apt install ninja-build clang-18 clang-format-19 doxygen \
-  libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev \
+  libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
   libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libudev-dev libdbus-1-dev
 ```
 
