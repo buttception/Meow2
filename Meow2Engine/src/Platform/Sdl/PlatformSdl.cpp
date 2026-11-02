@@ -4,6 +4,7 @@
 #include "Meow2/Core/Assert.h"
 #include "Meow2/Core/Memory/GlobalTracking.h"
 #include "Meow2/Core/Profiling/Profile.h"
+#include "Meow2/Platform/Window/WindowEvents.h"
 #include "Platform/Sdl/PlatformImplSdl.h"
 #include "Platform/Window/Sdl/WindowImplSdl.h"
 
@@ -96,7 +97,7 @@ Platform::Platform(std::unique_ptr<Impl> impl)
 Platform::~Platform() = default;
 Platform::Platform(Platform&& other) noexcept = default;
 
-Result<Platform> Platform::create(const PlatformDesc& desc, Log::Logger& log)
+Result<Platform> Platform::create(const PlatformDesc& desc, Log::Logger& log, Events::EventBus& events)
 {
     if (SDL_WasInit(0) != 0)
     {
@@ -128,6 +129,7 @@ Result<Platform> Platform::create(const PlatformDesc& desc, Log::Logger& log)
 
     auto impl = std::make_unique<Impl>();
     impl->log = &log;
+    impl->events = &events;
     impl->videoDriver = SDL_GetCurrentVideoDriver();
     const int c_version = SDL_GetVersion();
     MEOW2_LOG_INFO(log, "Platform: SDL {}.{}.{}, video driver '{}'", SDL_VERSIONNUM_MAJOR(c_version),
@@ -138,6 +140,7 @@ Result<Platform> Platform::create(const PlatformDesc& desc, Log::Logger& log)
 void Platform::pumpEvents(std::chrono::milliseconds wait)
 {
     MEOW2_PROFILE_ZONE();
+    const bool wasQuitRequested = m_impl->quitRequested;
     for (Window::Impl* window : m_impl->windows)
     {
         window->beginPump();
@@ -168,9 +171,14 @@ void Platform::pumpEvents(std::chrono::milliseconds wait)
         hasEvent = SDL_PollEvent(&event);
     }
 
+    // Window events first, then the quit request (the order WindowEvents.h documents).
     for (Window::Impl* window : m_impl->windows)
     {
         window->refresh();
+    }
+    if (m_impl->quitRequested && !wasQuitRequested)
+    {
+        m_impl->events->enqueue(QuitRequested{});
     }
 }
 

@@ -8,6 +8,9 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+- Window events: the windowing layer puts `WindowResized`, `WindowMoved`, `WindowStateChanged`, `WindowFocusChanged`, `WindowDisplayScaleChanged`, `WindowCloseRequested` and `QuitRequested` on the `EventBus` (one per kind of change per frame, with the final values). Player and Renderer stop on the close and quit events. `Platform::create` now takes the `EventBus`; `Window::id()` and `displayScale()` are new (#83).
+
 ### Changed
 - Roadmap: M2 is now "Platform & scene foundation", with a feature table that adds 128-bit IDs (time-sorted, with a kind tag such as entity or asset) and an entity/component store on EnTT; techstack.md §24 and §25 describe both, including their threading rules (#81).
 

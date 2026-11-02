@@ -2,6 +2,7 @@
 /// @brief Tests for WindowDesc ⇄ config (WindowConfig.h).
 
 #include <Meow2/Core/Config/Config.h>
+#include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Platform/Platform.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
@@ -12,6 +13,7 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <memory_resource>
 #include <string>
 #include <system_error>
 
@@ -114,8 +116,9 @@ TEST_F(WindowConfigTest, BadValuesUseDefaults)
 
 TEST_F(WindowConfigTest, StoresState)
 {
+    Meow2::Events::EventBus events{*std::pmr::new_delete_resource()};
     Meow2::Result<Meow2::Platform::Platform> platform =
-        Meow2::Platform::Platform::create({.videoDriver = "offscreen"}, m_log);
+        Meow2::Platform::Platform::create({.videoDriver = "offscreen"}, m_log, events);
     ASSERT_TRUE(platform.has_value()) << std::format("{}", platform.error());
     Meow2::Result<Meow2::Platform::Window> window = Meow2::Platform::Window::create(
         *platform, m_log, {.width = 700, .height = 500, .x = 30, .y = 40, .hidden = true});

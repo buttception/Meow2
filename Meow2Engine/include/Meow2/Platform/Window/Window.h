@@ -17,6 +17,10 @@ namespace Meow2::Platform
 {
 class Platform;
 
+/// @brief Identifies a window in window events (WindowEvents.h). Unique among the windows alive at the same time;
+///        0 is never a window.
+using WindowId = std::uint32_t;
+
 /// @brief Whether a window has a frame or covers its display.
 enum class WindowMode : std::uint8_t
 {
@@ -73,7 +77,11 @@ struct NativeWindowHandle
     std::uint64_t x11Window = 0;                    ///< X11 `Window` id; 0 otherwise.
 };
 
-/// @brief One OS window. Its state is read by polling, updated by Platform::pumpEvents().
+/// @brief One OS window. Its state is updated by Platform::pumpEvents(), which also enqueues an event on the
+///        EventBus for every change (WindowEvents.h).
+///
+/// React to changes by subscribing to the events; read the current values (e.g. the size when creating a
+/// swapchain) with the getters.
 ///
 /// Two sets of bounds are kept:
 /// - bounds(): where the window is right now (maximized or fullscreen included);
@@ -107,6 +115,14 @@ public:
     Window(const Window&) = delete;            ///< Not copyable: one object per OS window.
     Window& operator=(const Window&) = delete; ///< Not copyable: one object per OS window.
     Window& operator=(Window&&) = delete;      ///< Not assignable: destroy one window and create the next instead.
+
+    /// @brief The id that window events carry for this window.
+    /// @return A non-zero id, fixed for the window's life.
+    [[nodiscard]] WindowId id() const;
+
+    /// @brief Ratio of pixels to desktop coordinates for the display the window is on: 1.0 at 100 %, 1.5 at 150 %.
+    /// @return The display scale.
+    [[nodiscard]] float displayScale() const;
 
     /// @brief Whether the user asked to close the window (close button, Alt+F4). The window stays open until it's
     ///        destroyed, so the app can save first.
