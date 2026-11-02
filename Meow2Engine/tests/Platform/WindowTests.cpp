@@ -2,20 +2,25 @@
 /// @brief Tests for Platform and Window over SDL3. They use SDL's `offscreen` video driver, so they run without a
 ///        desktop (Linux CI); one Windows-only test uses the real driver with a hidden window.
 
+#include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Platform/Platform.h>
 #include <Meow2/Platform/Window/Window.h>
+#include <Meow2/Platform/Window/WindowEvents.h>
 
 #include <gtest/gtest.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_video.h>
 
+#include <cstddef>
 #include <filesystem>
 #include <format>
+#include <memory_resource>
 #include <optional>
 #include <system_error>
+#include <vector>
 
 namespace
 {
@@ -37,7 +42,7 @@ protected:
 
     void SetUp() override
     {
-        Meow2::Result<Platform> platform = Platform::create({.videoDriver = "offscreen"}, m_log);
+        Meow2::Result<Platform> platform = Platform::create({.videoDriver = "offscreen"}, m_log, m_events);
         ASSERT_TRUE(platform.has_value()) << std::format("{}", platform.error());
         m_platform.emplace(std::move(*platform));
     }
@@ -52,6 +57,7 @@ protected:
 
     Meow2::Log::LogSystem m_logSystem;
     Meow2::Log::Logger m_log;
+    Meow2::Events::EventBus m_events{*std::pmr::new_delete_resource()}; // outlives the Platform (declared first)
     std::optional<Platform> m_platform; // optional: created in SetUp, where a failure can be reported
 
 private:
@@ -160,7 +166,7 @@ TEST_F(WindowTest, OffscreenPositionIsCentred)
 
 TEST_F(WindowTest, SecondPlatformFails)
 {
-    const Meow2::Result<Platform> second = Platform::create({.videoDriver = "offscreen"}, m_log);
+    const Meow2::Result<Platform> second = Platform::create({.videoDriver = "offscreen"}, m_log, m_events);
     ASSERT_FALSE(second.has_value());
     EXPECT_EQ(second.error().code, Meow2::ErrorCode::AlreadyExists);
 }
@@ -168,7 +174,7 @@ TEST_F(WindowTest, SecondPlatformFails)
 TEST_F(WindowTest, PlatformCanBeRecreated)
 {
     m_platform.reset();
-    Meow2::Result<Platform> again = Platform::create({.videoDriver = "offscreen"}, m_log);
+    Meow2::Result<Platform> again = Platform::create({.videoDriver = "offscreen"}, m_log, m_events);
     ASSERT_TRUE(again.has_value()) << std::format("{}", again.error());
     m_platform.emplace(std::move(*again));
     const Window window = createWindow({.hidden = true});
@@ -186,7 +192,7 @@ TEST_F(WindowTest, SdlMemoryIsTracked)
     m_platform.reset();
     const Meow2::Memory::MemTagStats before = globalTracker().stats(MemTag::Platform);
     {
-        Meow2::Result<Platform> platform = Platform::create({.videoDriver = "offscreen"}, m_log);
+        Meow2::Result<Platform> platform = Platform::create({.videoDriver = "offscreen"}, m_log, m_events);
         ASSERT_TRUE(platform.has_value()) << std::format("{}", platform.error());
         Meow2::Result<Window> window = Window::create(*platform, m_log, {.hidden = true});
         ASSERT_TRUE(window.has_value());
@@ -200,9 +206,158 @@ TEST_F(WindowTest, SdlMemoryIsTracked)
 TEST_F(WindowTest, UnknownDriverFails)
 {
     m_platform.reset();
-    const Meow2::Result<Platform> platform = Platform::create({.videoDriver = "no-such-driver"}, m_log);
+    const Meow2::Result<Platform> platform = Platform::create({.videoDriver = "no-such-driver"}, m_log, m_events);
     ASSERT_FALSE(platform.has_value());
     EXPECT_EQ(platform.error().code, Meow2::ErrorCode::Unsupported);
+}
+
+namespace
+{
+using Meow2::Platform::QuitRequested;
+using Meow2::Platform::WindowCloseRequested;
+using Meow2::Platform::WindowMoved;
+using Meow2::Platform::WindowResized;
+using Meow2::Platform::WindowStateChanged;
+
+/// @brief WindowTest plus a record of every window and quit event the bus delivers.
+class WindowEventsTest : public WindowTest
+{
+protected:
+    /// @brief Pushes an SDL event of `type` for `window`, as the OS would.
+    static void pushWindowEvent(SDL_EventType type, const Window& window)
+    {
+        SDL_Event event{};
+        event.type = type;
+        event.window.windowID = window.id();
+        ASSERT_TRUE(SDL_PushEvent(&event));
+    }
+
+    /// @brief Pumps and delivers the queue, the way an app does once per frame.
+    void pumpAndDispatch()
+    {
+        m_platform->pumpEvents();
+        m_events.dispatchQueued();
+    }
+
+    /// @brief How many events of any kind arrived.
+    [[nodiscard]] std::size_t totalEvents() const
+    {
+        return m_resized.size() + m_moved.size() + m_stateChanged.size() + m_closeRequested.size() + m_quitCount;
+    }
+
+    std::vector<WindowResized> m_resized;
+    std::vector<WindowMoved> m_moved;
+    std::vector<WindowStateChanged> m_stateChanged;
+    std::vector<WindowCloseRequested> m_closeRequested;
+    int m_quitCount = 0;
+
+    // Last members: destroyed first, before the vectors their handlers write to (techstack.md §22).
+    Meow2::Events::Subscription m_onResized =
+        m_events.subscribe<WindowResized>([this](const WindowResized& e) { m_resized.push_back(e); });
+    Meow2::Events::Subscription m_onMoved =
+        m_events.subscribe<WindowMoved>([this](const WindowMoved& e) { m_moved.push_back(e); });
+    Meow2::Events::Subscription m_onStateChanged =
+        m_events.subscribe<WindowStateChanged>([this](const WindowStateChanged& e) { m_stateChanged.push_back(e); });
+    Meow2::Events::Subscription m_onCloseRequested = m_events.subscribe<WindowCloseRequested>(
+        [this](const WindowCloseRequested& e) { m_closeRequested.push_back(e); });
+    Meow2::Events::Subscription m_onQuit =
+        m_events.subscribe<QuitRequested>([this](const QuitRequested&) { ++m_quitCount; });
+};
+} // namespace
+
+TEST_F(WindowEventsTest, ResizeEnqueuesResized)
+{
+    Window window = createWindow({.width = 640, .height = 480, .hidden = true});
+    window.setSize(1024, 768);
+    pumpAndDispatch();
+    ASSERT_EQ(m_resized.size(), 1U);
+    EXPECT_EQ(m_resized[0].window, window.id());
+    EXPECT_NE(window.id(), 0U);
+    EXPECT_EQ(m_resized[0].width, 1024);
+    EXPECT_EQ(m_resized[0].height, 768);
+    EXPECT_EQ(m_resized[0].pixelWidth, window.pixelWidth());
+    EXPECT_EQ(m_resized[0].pixelHeight, window.pixelHeight());
+}
+
+TEST_F(WindowEventsTest, QueuedUntilDispatch)
+{
+    Window window = createWindow({.width = 640, .height = 480, .hidden = true});
+    window.setSize(800, 600);
+    m_platform->pumpEvents();
+    EXPECT_TRUE(m_resized.empty()) << "pumpEvents only enqueues; no handler runs inside it";
+    m_events.dispatchQueued();
+    EXPECT_EQ(m_resized.size(), 1U);
+}
+
+TEST_F(WindowEventsTest, MoveEnqueuesMoved)
+{
+    Window window = createWindow({.width = 640, .height = 480, .x = 10, .y = 20, .hidden = true});
+    window.setPosition(50, 60);
+    pumpAndDispatch();
+    ASSERT_EQ(m_moved.size(), 1U);
+    EXPECT_EQ(m_moved[0].window, window.id());
+    EXPECT_EQ(m_moved[0].x, 50);
+    EXPECT_EQ(m_moved[0].y, 60);
+    EXPECT_TRUE(m_resized.empty()) << "a move doesn't change the size";
+}
+
+TEST_F(WindowEventsTest, FullscreenEnqueuesStateChanged)
+{
+    Window window = createWindow({.width = 640, .height = 480, .hidden = true});
+    window.setMode(WindowMode::Fullscreen);
+    pumpAndDispatch();
+    ASSERT_EQ(m_stateChanged.size(), 1U);
+    EXPECT_EQ(m_stateChanged[0].window, window.id());
+    EXPECT_EQ(m_stateChanged[0].mode, WindowMode::Fullscreen);
+    EXPECT_FALSE(m_stateChanged[0].minimized);
+
+    window.setMode(WindowMode::Windowed);
+    pumpAndDispatch();
+    ASSERT_EQ(m_stateChanged.size(), 2U);
+    EXPECT_EQ(m_stateChanged[1].mode, WindowMode::Windowed);
+}
+
+TEST_F(WindowEventsTest, CloseRequestEnqueuedOnce)
+{
+    const Window window = createWindow({.hidden = true});
+    pushWindowEvent(SDL_EVENT_WINDOW_CLOSE_REQUESTED, window);
+    pushWindowEvent(SDL_EVENT_WINDOW_CLOSE_REQUESTED, window);
+    pumpAndDispatch();
+    pushWindowEvent(SDL_EVENT_WINDOW_CLOSE_REQUESTED, window);
+    pumpAndDispatch();
+    ASSERT_EQ(m_closeRequested.size(), 1U) << "sent once, however often the user clicks";
+    EXPECT_EQ(m_closeRequested[0].window, window.id());
+    EXPECT_TRUE(window.closeRequested());
+}
+
+TEST_F(WindowEventsTest, QuitEnqueuesQuitRequested)
+{
+    SDL_Event event{};
+    event.type = SDL_EVENT_QUIT;
+    ASSERT_TRUE(SDL_PushEvent(&event));
+    ASSERT_TRUE(SDL_PushEvent(&event));
+    pumpAndDispatch();
+    pumpAndDispatch();
+    EXPECT_EQ(m_quitCount, 1);
+    EXPECT_TRUE(m_platform->quitRequested());
+}
+
+TEST_F(WindowEventsTest, NoChangeNoEvents)
+{
+    Window window = createWindow({.width = 640, .height = 480, .hidden = true});
+    window.setSize(800, 600);
+    pumpAndDispatch();
+    const std::size_t afterChange = totalEvents();
+    pumpAndDispatch();
+    pumpAndDispatch();
+    EXPECT_EQ(totalEvents(), afterChange) << "nothing changed, so nothing is sent";
+}
+
+TEST_F(WindowEventsTest, CreationEnqueuesNothing)
+{
+    const Window window = createWindow({.width = 640, .height = 480, .hidden = true});
+    pumpAndDispatch();
+    EXPECT_EQ(totalEvents(), 0U) << "the initial state comes from create(), not from events";
 }
 
 #if defined(_WIN32)
@@ -211,7 +366,8 @@ TEST(WindowWin32, NativeHandle)
     const fs::path directory = fs::temp_directory_path() / std::format("meow2-window-{}-native", Meow2::c_configName);
     Meow2::Log::LogSystem logSystem{{.appName = "Test", .directory = directory, .console = false}};
     Meow2::Log::Logger log = logSystem.createLogger("Engine");
-    Meow2::Result<Platform> platform = Platform::create({}, log); // the real Windows driver
+    Meow2::Events::EventBus events{*std::pmr::new_delete_resource()};
+    Meow2::Result<Platform> platform = Platform::create({}, log, events); // the real Windows driver
     ASSERT_TRUE(platform.has_value()) << std::format("{}", platform.error());
     EXPECT_EQ(platform->videoDriver(), "windows");
 

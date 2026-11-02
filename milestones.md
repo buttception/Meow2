@@ -79,7 +79,7 @@ Rough order: window events → game loop → input → IDs → scene/ECS → fil
 | Feature | Notes (techstack.md) | Status | Issue / PR |
 |---|---|---|---|
 | SDL3 window: one window, API-neutral, native handle; size/position/mode in the config | §9 | ✅ | #56 / PR #57 |
-| Window events (resize, close, focus, DPI) on the `EventBus` instead of polling | §9, §22 | ⬜ | |
+| Window events (resize, move, state, focus, DPI, close, quit) on the `EventBus`; polled getters stay for current values | §9, §22 | ✅ | #82 / PR #83 |
 | Game loop: `tick()` with fixed timestep (`fixedUpdate` 0..n times), `update`, `render(alpha)`, clamped frame time; the editor ticks from a Qt timer | §23 | ⬜ | |
 | `InputSystem`: engine `Key` (HID scan codes), mouse, gamepad; polling (`isDown`, `wasPressed`, …) + input events on the `EventBus`; presses latched for `fixedUpdate` | §9 | ⬜ | |
 | `SdlInputSource` (keyboard/mouse) and `SdlGamepadSource` (all three apps) | §9 | ⬜ | |

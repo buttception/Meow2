@@ -3,6 +3,7 @@
 
 #include "Meow2/Core/Assert.h"
 #include "Meow2/Platform/Window/WindowConfig.h"
+#include "Meow2/Platform/Window/WindowEvents.h"
 #include "Platform/Window/Sdl/WindowImplSdl.h"
 
 #include <SDL3/SDL.h>
@@ -71,15 +72,13 @@ void Window::Impl::beginPump()
     resized = false;
 }
 
-void Window::Impl::refresh()
+void Window::Impl::readState()
 {
-    const WindowRect previous = bounds;
-    const std::int32_t previousPixelWidth = pixelWidth;
-    const std::int32_t previousPixelHeight = pixelHeight;
-
     SDL_GetWindowPosition(window, &bounds.x, &bounds.y);
     SDL_GetWindowSize(window, &bounds.width, &bounds.height);
     SDL_GetWindowSizeInPixels(window, &pixelWidth, &pixelHeight);
+    const float scale = SDL_GetWindowDisplayScale(window);
+    displayScale = scale > 0.0F ? scale : 1.0F; // 0 means SDL couldn't tell; keep a usable value
     flags = SDL_GetWindowFlags(window);
 
     // Only a plain window's bounds are worth restoring to: a maximized, minimized or fullscreen window reports the
@@ -88,8 +87,57 @@ void Window::Impl::refresh()
     {
         restored = bounds;
     }
-    resized = resized || previous.width != bounds.width || previous.height != bounds.height ||
-              previousPixelWidth != pixelWidth || previousPixelHeight != pixelHeight;
+}
+
+void Window::Impl::refresh()
+{
+    const WindowRect previousBounds = bounds;
+    const std::int32_t previousPixelWidth = pixelWidth;
+    const std::int32_t previousPixelHeight = pixelHeight;
+    const float previousScale = displayScale;
+    const SDL_WindowFlags previousFlags = flags;
+    readState();
+
+    // Compare the end state with the previous pump's instead of forwarding SDL's events one by one: that coalesces a
+    // drag-resize into one event, and the values are always the final ones.
+    Events::EventBus& events = *platform->events;
+    if (previousBounds.x != bounds.x || previousBounds.y != bounds.y)
+    {
+        events.enqueue(WindowMoved{.window = id, .x = bounds.x, .y = bounds.y});
+    }
+    const bool sizeChanged = previousBounds.width != bounds.width || previousBounds.height != bounds.height ||
+                             previousPixelWidth != pixelWidth || previousPixelHeight != pixelHeight;
+    if (sizeChanged)
+    {
+        resized = true;
+        events.enqueue(WindowResized{.window = id,
+                                     .width = bounds.width,
+                                     .height = bounds.height,
+                                     .pixelWidth = pixelWidth,
+                                     .pixelHeight = pixelHeight});
+    }
+    constexpr SDL_WindowFlags c_stateFlags = SDL_WINDOW_MAXIMIZED | SDL_WINDOW_MINIMIZED | SDL_WINDOW_FULLSCREEN;
+    if ((previousFlags & c_stateFlags) != (flags & c_stateFlags))
+    {
+        events.enqueue(WindowStateChanged{.window = id,
+                                          .maximized = (flags & SDL_WINDOW_MAXIMIZED) != 0,
+                                          .minimized = (flags & SDL_WINDOW_MINIMIZED) != 0,
+                                          .mode = (flags & SDL_WINDOW_FULLSCREEN) != 0 ? WindowMode::Fullscreen
+                                                                                       : WindowMode::Windowed});
+    }
+    if ((previousFlags & SDL_WINDOW_INPUT_FOCUS) != (flags & SDL_WINDOW_INPUT_FOCUS))
+    {
+        events.enqueue(WindowFocusChanged{.window = id, .focused = (flags & SDL_WINDOW_INPUT_FOCUS) != 0});
+    }
+    if (previousScale != displayScale)
+    {
+        events.enqueue(WindowDisplayScaleChanged{.window = id, .scale = displayScale});
+    }
+    if (closeRequested && !closeEventEnqueued)
+    {
+        closeEventEnqueued = true;
+        events.enqueue(WindowCloseRequested{.window = id});
+    }
 }
 
 Window::Window(std::unique_ptr<Impl> impl)
@@ -144,13 +192,22 @@ Result<Window> Window::create(Platform& platform, Log::Logger& log, const Window
     impl->restored = restored; // replaced by the real bounds whenever the window is plain windowed
     impl->platform->windows.push_back(impl.get());
     SDL_SyncWindow(sdlWindow); // let asynchronous window systems (X11, Wayland) apply the initial state
-    impl->refresh();
-    impl->resized = false;
+    impl->readState();         // the initial state: no events, the caller gets it from create()
 
     MEOW2_LOG_INFO(log, "Window '{}': {}x{} at ({}, {}), {}{}, {}x{} pixels", desc.title, impl->bounds.width,
                    impl->bounds.height, impl->bounds.x, impl->bounds.y, toString(desc.mode),
                    (impl->flags & SDL_WINDOW_MAXIMIZED) != 0 ? ", maximized" : "", impl->pixelWidth, impl->pixelHeight);
     return Window{std::move(impl)};
+}
+
+WindowId Window::id() const
+{
+    return m_impl->id;
+}
+
+float Window::displayScale() const
+{
+    return m_impl->displayScale;
 }
 
 bool Window::closeRequested() const

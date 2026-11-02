@@ -22,6 +22,7 @@ struct Platform::Impl
     ~Impl();
 
     Log::Logger* log = nullptr;         ///< Never null.
+    Events::EventBus* events = nullptr; ///< Never null; window and quit events are enqueued here.
     std::string videoDriver;            ///< Name of the driver SDL picked, e.g. "windows".
     bool quitRequested = false;         ///< An SDL_EVENT_QUIT arrived.
     std::vector<Window::Impl*> windows; ///< Live windows; each registers on creation, unregisters on destruction.

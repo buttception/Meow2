@@ -6,9 +6,10 @@ Meow2Renderer and Meow2Player open one OS window through **SDL3**. Its size, pos
   - `#include <Meow2/Platform/Platform.h>`
   - `#include <Meow2/Platform/Window/Window.h>`
   - `#include <Meow2/Platform/Window/WindowConfig.h>`
+  - `#include <Meow2/Platform/Window/WindowEvents.h>` (events on the [EventBus](Events.md))
 - Namespace: `Meow2::Platform`.
 - Library: [SDL3](https://github.com/libsdl-org/SDL) release-3.4.18 (submodule `external/SDL`, static). It's used only in `src/Platform/Sdl/` and `src/Platform/Window/Sdl/`.
-- Status: ✅ M2 (#56). Window events are **polled** until the EventBus exists (M1). The Qt editor creates its own windows (techstack.md §9).
+- Status: ✅ M2 (#56; events on the EventBus #82). The Qt editor creates its own windows (techstack.md §9).
 
 ## Settings
 
@@ -39,27 +40,33 @@ For one run: `Meow2Player.exe --set window.mode=fullscreen` or `--set window.wid
 ```cpp
 using namespace Meow2;
 
-Result<Platform::Platform> platform = Platform::Platform::create({}, engineLog);
+Events::EventBus events{Memory::globalTracker()};
+Result<Platform::Platform> platform = Platform::Platform::create({}, engineLog, events);
 const Platform::WindowDesc desc = Platform::windowDescFromConfig(config, {.title = "Meow2Player"}, engineLog);
 Result<Platform::Window> window = Platform::Window::create(*platform, engineLog, desc);
 
-while (!platform->quitRequested() && !window->closeRequested())
+bool running = true;
+const Events::Subscription onClose =
+    events.subscribe<Platform::WindowCloseRequested>([&](const Platform::WindowCloseRequested&) { running = false; });
+const Events::Subscription onResize = events.subscribe<Platform::WindowResized>(
+    [&](const Platform::WindowResized& e) { /* resize the swapchain to e.pixelWidth x e.pixelHeight */ });
+
+while (running)
 {
-    platform->pumpEvents(std::chrono::milliseconds{16}); // sleeps while idle, at most 16 ms
-    if (window->wasResized())
-    {
-        // resize the swapchain to window->pixelWidth() x window->pixelHeight()
-    }
+    platform->pumpEvents(std::chrono::milliseconds{16}); // sleeps while idle, at most 16 ms; enqueues window events
+    events.dispatchQueued();                             // the handlers above run here
 }
 Platform::storeWindowState(config, *window);
 ```
 
 | API | What it does |
 |---|---|
-| `Platform::create(desc, log)` | Starts SDL's video subsystem. One per process; `AlreadyExists` for a second one, `Unsupported` if the video driver can't start (e.g. no display on Linux). |
-| `pumpEvents(wait)` | Handles all pending OS events and updates every window's state. Call it once per frame, before reading window state. |
+| `Platform::create(desc, log, events)` | Starts SDL's video subsystem; window events go to `events`. One per process; `AlreadyExists` for a second one, `Unsupported` if the video driver can't start (e.g. no display on Linux). |
+| `pumpEvents(wait)` | Handles all pending OS events, updates every window's state and **enqueues** an event for each change. Call it once per frame, then `events.dispatchQueued()`. |
 | `quitRequested()` | The OS asked the app to quit: last window closed, Ctrl+C in the console, logoff. |
 | `Window::create(platform, log, desc)` | Opens a window. `WindowDesc` has title, size, optional position, maximized, mode, resizable, hidden. |
+| `id()` | The `WindowId` that window events carry. |
+| `displayScale()` | Pixels per desktop unit on the window's display: 1.0 at 100 %, 1.5 at 150 %. |
 | `closeRequested()` | Close button or Alt+F4. The window stays open until destroyed, so the app can save first. |
 | `wasResized()` | The size changed during the last `pumpEvents()`; true for one pump. |
 | `bounds()` / `restoredBounds()` | Current position and size / the last *plain windowed* ones (what's saved). |
@@ -70,13 +77,36 @@ Platform::storeWindowState(config, *window);
 
 `Platform` and `Window` are main-thread only. Destroy every `Window` before its `Platform`; declaring them in that order in `main` does it.
 
+## Window events
+
+`pumpEvents()` puts these on the `EventBus` (`WindowEvents.h`); they arrive at the next `dispatchQueued()`. Every event carries the `WindowId` (`window.id()`).
+
+| Event | When | Fields |
+|---|---|---|
+| `WindowMoved` | the window moved | `x`, `y` |
+| `WindowResized` | its size or pixel size changed: resize the swapchain | `width`, `height`, `pixelWidth`, `pixelHeight` |
+| `WindowStateChanged` | maximized, minimized, restored, fullscreen or windowed | `maximized`, `minimized`, `mode` (the whole new state) |
+| `WindowFocusChanged` | it gained or lost keyboard focus | `focused` |
+| `WindowDisplayScaleChanged` | it moved to a display with another DPI setting | `scale` |
+| `WindowCloseRequested` | close button or Alt+F4; sent once | — |
+| `QuitRequested` | the OS asked the app to quit (Ctrl+C, logoff, last window closed); sent once | — |
+
+- **Coalesced:** after each pump every window compares its state with the previous pump's and sends at most one event of each kind, with the final values. Dragging the frame across many OS events gives one `WindowResized` per frame.
+- **Order** within one pump: per window moved, resized, state, focus, scale, close; then quit.
+- **Queued, never immediate:** no handler runs inside `pumpEvents()`; they run at the frame's dispatch point (techstack.md §23).
+- **Creating a window sends nothing:** its initial state is what `create()` returned.
+- The getters (`bounds()`, `closeRequested()`, `wasResized()`, …) still return the current values, e.g. for the size when creating a swapchain.
+
+The apps stop on `WindowCloseRequested` or `QuitRequested`, and log `WindowResized` at debug level.
+
 ## How it works
 
 - **Pimpl over SDL.** The public headers have only engine types. The SDL code lives in `src/Platform/Sdl/PlatformSdl.cpp` and `src/Platform/Window/Sdl/WindowSdl.cpp`, so another backend could replace those two files (techstack.md §3, build-time selection).
 - **Event routing.**
   - Each `Window` registers its SDL window ID with the `Platform`.
   - `pumpEvents()` gives each window its own events: today only the close request is acted on directly.
-  - After the queue is empty, every window **re-reads its state from SDL**: position, size, pixel size, flags. Reading the final state once, instead of replaying each intermediate event, can't get out of sync.
+  - After the queue is empty, every window **re-reads its state from SDL**: position, size, pixel size, display scale, flags. Reading the final state once, instead of replaying each intermediate event, can't get out of sync.
+  - It then **compares** that state with the previous pump's and enqueues one event per kind of change (see above).
 - **Restored bounds.** Whenever a window is plain windowed (not maximized, minimized or fullscreen), its bounds are copied to `restoredBounds()`. That's the size to save, and the size to come back to.
 - **High DPI.** Windows are created with SDL's high-pixel-density flag. Sizes in the config and the API are in desktop units, and the drawable area gets the full pixel resolution (`pixelWidth()`).
 - **Idle apps sleep.** `pumpEvents(16 ms)` waits for the first event with `SDL_WaitEventTimeout`, so an app with nothing to draw doesn't spin a CPU core. The game loop (M2) will pace frames properly.
@@ -97,7 +127,6 @@ So the Linux CI job runs the same tests without X11 or Wayland. It still install
 
 - **Exclusive fullscreen** (changing the display mode) isn't supported; `fullscreen` is borderless at the desktop resolution.
 - **One window per app.**
-- **Window events are polled.** They move to the EventBus (`WindowResized`, …) when it exists.
 - **No input yet.** Keyboard, mouse and gamepads come with `InputSystem` (M2).
 
 See also: techstack.md §9, [Config](Config.md), [Memory](Memory.md), API reference `Meow2::Platform`.

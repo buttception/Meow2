@@ -64,6 +64,7 @@ target_sources(Meow2Engine
             include/Meow2/Platform/Platform.h
             include/Meow2/Platform/Window/Window.h
             include/Meow2/Platform/Window/WindowConfig.h
+            include/Meow2/Platform/Window/WindowEvents.h
             "${meow2GeneratedDir}/Meow2/Core/Version.h")
 
 # OS-specific implementations (AGENTS.md: only in Win32/Linux/Android backend folders).

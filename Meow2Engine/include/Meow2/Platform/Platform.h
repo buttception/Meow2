@@ -4,16 +4,22 @@
 /// @brief Platform: owns the OS windowing layer (SDL3) for the whole process and delivers its events.
 ///
 /// @code
-/// Result<Platform::Platform> platform = Platform::Platform::create({}, engineLog);
+/// Result<Platform::Platform> platform = Platform::Platform::create({}, engineLog, events);
 /// Result<Platform::Window> window = Platform::Window::create(*platform, engineLog, {.title = "Meow2Player"});
-/// while (!platform->quitRequested() && !window->closeRequested())
+/// bool running = true;
+/// Events::Subscription onClose =
+///     events.subscribe<Platform::WindowCloseRequested>([&](const Platform::WindowCloseRequested&) { running = false;
+///     });
+/// while (running)
 /// {
 ///     platform->pumpEvents(std::chrono::milliseconds{16}); // sleeps until an event arrives, at most 16 ms
+///     events.dispatchQueued();                             // window events (WindowEvents.h) arrive here
 ///     // ... update, render ...
 /// }
 /// @endcode
 /// @see techstack.md §9, docs/wiki/Window.md
 
+#include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Log/Logger.h>
 #include <Meow2/Core/Result.h>
 
@@ -49,16 +55,17 @@ struct PlatformDesc
 /// Not thread-safe. Create it, pump events and destroy it on the main thread (SDL requires the thread that
 /// initialised video to handle its events).
 /// @par Lifetime
-/// Must outlive every Window created from it, and the Logger must outlive the Platform.
+/// Must outlive every Window created from it, and the Logger and the EventBus must outlive the Platform.
 class Platform
 {
 public:
     /// @brief Initialises the windowing layer.
     /// @param desc How to set it up.
-    /// @param log  Where problems and the chosen video driver are logged. Must outlive the Platform.
+    /// @param log    Where problems and the chosen video driver are logged. Must outlive the Platform.
+    /// @param events Where pumpEvents() enqueues window and quit events (WindowEvents.h). Must outlive the Platform.
     /// @return The Platform, or ErrorCode::AlreadyExists if another one is alive, or ErrorCode::Unsupported (with
     ///         SDL's message) if the video driver can't start, e.g. no display on a Linux machine.
-    [[nodiscard]] static Result<Platform> create(const PlatformDesc& desc, Log::Logger& log);
+    [[nodiscard]] static Result<Platform> create(const PlatformDesc& desc, Log::Logger& log, Events::EventBus& events);
 
     /// @brief Shuts the windowing layer down.
     /// @pre No Window created from this Platform is alive (asserted).
@@ -72,10 +79,11 @@ public:
     Platform& operator=(const Platform&) = delete; ///< Not copyable: one per process.
     Platform& operator=(Platform&&) = delete;      ///< Not assignable: there is never a second one to assign.
 
-    /// @brief Handles every pending OS event and updates the Windows' state.
+    /// @brief Handles every pending OS event, updates the Windows' state and enqueues an event for each change.
     ///
-    /// Call it once per frame, before reading window state. Per-frame flags such as Window::wasResized() describe
-    /// what happened during the last call.
+    /// Call it once per frame, before reading window state, followed by EventBus::dispatchQueued() (techstack.md
+    /// §23). The events are only enqueued here (WindowEvents.h says which, and in what order); no handler runs inside
+    /// this call. Per-frame flags such as Window::wasResized() describe what happened during the last call.
     /// @param wait How long to sleep if no event is pending yet, so an idle app doesn't spin a CPU core. 0 (the
     ///             default) returns immediately.
     void pumpEvents(std::chrono::milliseconds wait = std::chrono::milliseconds{0});

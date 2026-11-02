@@ -4,6 +4,7 @@
 
 #include <Meow2/Core/Config/Config.h>
 #include <Meow2/Core/Crash/CrashHandler.h>
+#include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/AssertLogging.h>
 #include <Meow2/Core/Log/LogSystem.h>
@@ -16,6 +17,7 @@
 #include <Meow2/Platform/Platform.h>
 #include <Meow2/Platform/Window/Window.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
+#include <Meow2/Platform/Window/WindowEvents.h>
 
 #include <algorithm>
 #include <chrono>
@@ -44,6 +46,8 @@ int main(int argc, char** argv)
     const std::int64_t jobThreads = config.getInt("jobs.threadCount", 0);
     Meow2::Jobs::JobSystem jobs{
         {.threadCount = static_cast<std::uint32_t>(std::clamp<std::int64_t>(jobThreads, 0, 256))}, engineLog};
+    // Things that happen (window events now, input later) are delivered through it (techstack.md §22).
+    Meow2::Events::EventBus events{Meow2::Memory::globalTracker()};
 
     std::printf("Meow2Renderer (Meow2 Engine %s, %s/%s/%s)\n", Meow2::getVersionString(), Meow2::c_platformName,
                 Meow2::c_compilerName, Meow2::c_configName);
@@ -52,8 +56,8 @@ int main(int argc, char** argv)
     MEOW2_LOG_INFO(appLog, "Log file: {}", logSystem.filePath().string());
 
     // One window (techstack.md §9). platform.videoDriver = "offscreen" runs without a desktop (tests, CI).
-    Meow2::Result<Meow2::Platform::Platform> platform =
-        Meow2::Platform::Platform::create({.videoDriver = config.getString("platform.videoDriver", "")}, engineLog);
+    Meow2::Result<Meow2::Platform::Platform> platform = Meow2::Platform::Platform::create(
+        {.videoDriver = config.getString("platform.videoDriver", "")}, engineLog, events);
     if (!platform)
     {
         MEOW2_LOG_ERROR(appLog, "Can't start the windowing layer: {}", platform.error());
@@ -68,14 +72,27 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    // Closing the window (or Ctrl+C, logoff) ends the loop. Declared after the window and the bus: destroyed first.
+    bool running = true;
+    const Meow2::Events::Subscription onClose = events.subscribe<Meow2::Platform::WindowCloseRequested>(
+        [&running](const Meow2::Platform::WindowCloseRequested&) { running = false; });
+    const Meow2::Events::Subscription onQuit = events.subscribe<Meow2::Platform::QuitRequested>(
+        [&running](const Meow2::Platform::QuitRequested&) { running = false; });
+    const Meow2::Events::Subscription onResize = events.subscribe<Meow2::Platform::WindowResized>(
+        [&appLog]([[maybe_unused]] const Meow2::Platform::WindowResized& e) // unused in Release: no debug log
+        {
+            MEOW2_LOG_DEBUG(appLog, "Window resized: {}x{} ({}x{} pixels)", e.width, e.height, e.pixelWidth,
+                            e.pixelHeight);
+        });
+
     // Until the game loop exists (M2), wait for events and do nothing else. app.quitAfterFrames ends a smoke run.
     const std::int64_t quitAfterFrames = config.getInt("app.quitAfterFrames", 0);
     Meow2::Time::FrameClock clock;
-    while (!platform->quitRequested() && !window->closeRequested() &&
-           (quitAfterFrames <= 0 || static_cast<std::int64_t>(clock.frameCount()) < quitAfterFrames))
+    while (running && (quitAfterFrames <= 0 || static_cast<std::int64_t>(clock.frameCount()) < quitAfterFrames))
     {
         clock.tick(); // this frame's time; the game loop (M2) will hand it to update()
         platform->pumpEvents(std::chrono::milliseconds{16});  // sleeps while idle instead of spinning a core
+        events.dispatchQueued();                              // window events arrive here
         MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker()); // memory per tag, as plots in Tracy
         MEOW2_PROFILE_FRAME_MARK();
     }
