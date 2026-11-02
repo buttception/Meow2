@@ -74,8 +74,9 @@ public:
 
 private:
     // Tracy's zone context (id, active flag, connection id), kept as bytes so no Tracy header is needed here. The
-    // size and alignment are checked against Tracy's type in the implementation.
-    alignas(8) std::byte m_context[16];
+    // size and alignment are checked against Tracy's type in the implementation. Unused when profiling is compiled
+    // out (e.g. sanitizer builds), hence [[maybe_unused]] for Clang's -Wunused-private-field.
+    [[maybe_unused]] alignas(8) std::byte m_context[16];
 };
 
 /// @brief Marks the end of a frame (the timeline's frame boundaries). Call once per frame.
