@@ -141,6 +141,34 @@
                 "linux-clang",
                 "config-release"
             ]
+        },
+        {
+            "name": "linux-clang-asan",
+            "displayName": "linux-clang ASan + UBSan",
+            "description": "Debug with AddressSanitizer and UndefinedBehaviorSanitizer (CI). No editor, no memory tracking, no profiling.",
+            "inherits": [
+                "linux-clang",
+                "config-debug"
+            ],
+            "cacheVariables": {
+                "MEOW2_SANITIZER": "address",
+                "MEOW2_BUILD_EDITOR": "OFF",
+                "MEOW2_PROFILING": "OFF"
+            }
+        },
+        {
+            "name": "linux-clang-tsan",
+            "displayName": "linux-clang TSan",
+            "description": "Debug with ThreadSanitizer (CI). No editor, no memory tracking, no profiling.",
+            "inherits": [
+                "linux-clang",
+                "config-debug"
+            ],
+            "cacheVariables": {
+                "MEOW2_SANITIZER": "thread",
+                "MEOW2_BUILD_EDITOR": "OFF",
+                "MEOW2_PROFILING": "OFF"
+            }
         }
     ],
     "buildPresets": [
@@ -219,6 +247,16 @@
         {
             "name": "linux-clang-release",
             "configurePreset": "linux-clang-release",
+            "inherits": "linux-clang-build"
+        },
+        {
+            "name": "linux-clang-asan",
+            "configurePreset": "linux-clang-asan",
+            "inherits": "linux-clang-build"
+        },
+        {
+            "name": "linux-clang-tsan",
+            "configurePreset": "linux-clang-tsan",
             "inherits": "linux-clang-build"
         }
     ],
@@ -342,6 +380,35 @@
                 "noTestsAction": "error"
             },
             "inherits": "linux-clang-test"
+        },
+        {
+            "name": "linux-clang-asan",
+            "configurePreset": "linux-clang-asan",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "environment": {
+                "ASAN_OPTIONS": "detect_leaks=1:abort_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1",
+                "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+            },
+            "inherits": "linux-clang-test"
+        },
+        {
+            "name": "linux-clang-tsan",
+            "configurePreset": "linux-clang-tsan",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "environment": {
+                "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1:suppressions=${sourceDir}/cmake/TsanSuppressions.txt"
+            },
+            "inherits": "linux-clang-test"
         }
     ],
     "workflowPresets": [
@@ -450,6 +517,42 @@
                 {
                     "type": "test",
                     "name": "linux-clang-release"
+                }
+            ]
+        },
+        {
+            "name": "linux-clang-asan",
+            "description": "Configure, build and test with AddressSanitizer + UndefinedBehaviorSanitizer (linux-clang)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "linux-clang-asan"
+                },
+                {
+                    "type": "build",
+                    "name": "linux-clang-asan"
+                },
+                {
+                    "type": "test",
+                    "name": "linux-clang-asan"
+                }
+            ]
+        },
+        {
+            "name": "linux-clang-tsan",
+            "description": "Configure, build and test with ThreadSanitizer (linux-clang)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "linux-clang-tsan"
+                },
+                {
+                    "type": "build",
+                    "name": "linux-clang-tsan"
+                },
+                {
+                    "type": "test",
+                    "name": "linux-clang-tsan"
                 }
             ]
         }

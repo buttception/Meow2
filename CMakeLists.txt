@@ -53,6 +53,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 # enable_testing() (not include(CTest)) — we only need add_test/ctest, not the
 # CDash dashboard targets that include(CTest) would add.
 enable_testing()
+include(Meow2Sanitizers) # before the external libraries: they must be instrumented too
 include(Meow2External)
 include(Meow2SmokeTest)
 include(Meow2Subsystem)

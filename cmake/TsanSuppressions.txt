@@ -1,0 +1,6 @@
+# ThreadSanitizer suppressions for the linux-clang-tsan test preset (docs/wiki/Testing.md#sanitizers).
+# Only uninstrumented system libraries belong here; never suppress a report in Meow2 or external/ code.
+
+# libdbus (loaded by SDL_Init/SDL_Quit for IME and screensaver support) takes its own locks in different orders on
+# one thread. It isn't built with TSan, and the cycle is inside the library, so it is reported as a potential deadlock.
+deadlock:libdbus-1.so

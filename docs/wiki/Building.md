@@ -36,6 +36,8 @@ The engine library is always built.
 | Windows (MSVC x64, Ninja) | `windows-msvc-debug` | `windows-msvc-relwithdebinfo` | `windows-msvc-release` |
 | Linux (Clang, Ninja) | `linux-clang-debug` | `linux-clang-relwithdebinfo` | `linux-clang-release` |
 
+Two more Linux presets build Debug with sanitizers: `linux-clang-asan` (AddressSanitizer + UndefinedBehaviorSanitizer) and `linux-clang-tsan` (ThreadSanitizer). They leave out the editor and turn off memory tracking and profiling; see [Testing → Sanitizers](Testing.md#sanitizers).
+
 | Config | What it's for |
 |---|---|
 | Debug | No optimisation, full debug info. Day-to-day debugging. |

@@ -18,6 +18,7 @@ set(meow2SmokeArgs
     --set platform.videoDriver=offscreen --set app.quitAfterFrames=3)
 meow2_add_smoke_test(Smoke.Player.Runs Meow2Player "Meow2Player.*${PROJECT_VERSION}" ARGS ${meow2SmokeArgs})
 meow2_add_smoke_test(Smoke.Player.OpensWindow Meow2Player "Ran 3 frames" ARGS ${meow2SmokeArgs})
-# Debug/RWDI: every allocation is tracked, and the app must end with nothing leaked (Release has no tracking).
-meow2_add_smoke_test(Smoke.Player.NoLeaks Meow2Player "$<IF:$<CONFIG:Release,MinSizeRel>,Meow2Player,No memory leaks>"
+# Debug/RWDI: every allocation is tracked, and the app must end with nothing leaked. Release and sanitizer builds
+# have no tracking (in sanitizer builds LeakSanitizer checks leaks instead), so there it only checks that the app runs.
+meow2_add_smoke_test(Smoke.Player.NoLeaks Meow2Player "$<IF:$<OR:$<CONFIG:Release,MinSizeRel>,$<BOOL:${MEOW2_SANITIZER}>>,Meow2Player,No memory leaks>"
     ARGS ${meow2SmokeArgs})
