@@ -16,7 +16,9 @@ meow2_add_test_suite(
         Core/ProcessTests.cpp
         Core/Profiling/ProfileTests.cpp
         Core/ResultTests.cpp
+        Core/Time/FixedTimestepTests.cpp
         Core/Time/FrameClockTests.cpp
+        Core/Time/GameLoopTests.cpp
         Core/VersionTests.cpp)
 
 # The expected version comes straight from CMake, independently of the generated

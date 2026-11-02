@@ -25,7 +25,10 @@ target_sources(Meow2Engine
         src/Core/Memory/MemTag.cpp
         src/Core/Memory/TrackingAllocator.cpp
         src/Core/Profiling/Tracy/ProfileTracy.cpp
+        src/Core/Time/FixedTimestep.cpp
         src/Core/Time/FrameClock.cpp
+        src/Core/Time/GameLoop.cpp
+        src/Core/Time/GameLoopConfig.cpp
         src/Core/Version.cpp
         src/Platform/Sdl/PlatformImplSdl.h
         src/Platform/Sdl/PlatformSdl.cpp
@@ -60,7 +63,10 @@ target_sources(Meow2Engine
             include/Meow2/Core/Process.h
             include/Meow2/Core/Profiling/Profile.h
             include/Meow2/Core/Result.h
+            include/Meow2/Core/Time/FixedTimestep.h
             include/Meow2/Core/Time/FrameClock.h
+            include/Meow2/Core/Time/GameLoop.h
+            include/Meow2/Core/Time/GameLoopConfig.h
             include/Meow2/Platform/Platform.h
             include/Meow2/Platform/Window/Window.h
             include/Meow2/Platform/Window/WindowConfig.h

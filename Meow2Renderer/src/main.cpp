@@ -13,6 +13,8 @@
 #include <Meow2/Core/Platform.h>
 #include <Meow2/Core/Profiling/Profile.h>
 #include <Meow2/Core/Time/FrameClock.h>
+#include <Meow2/Core/Time/GameLoop.h>
+#include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
 #include <Meow2/Platform/Platform.h>
 #include <Meow2/Platform/Window/Window.h>
@@ -85,20 +87,29 @@ int main(int argc, char** argv)
                             e.pixelHeight);
         });
 
-    // Until the game loop exists (M2), wait for events and do nothing else. app.quitAfterFrames ends a smoke run.
+    // The game loop (techstack.md §23): events, fixedUpdate × n, update, render. Nothing to simulate or draw yet.
+    // app.quitAfterFrames ends a smoke run.
     const std::int64_t quitAfterFrames = config.getInt("app.quitAfterFrames", 0);
     Meow2::Time::FrameClock clock;
+    Meow2::Time::GameLoop loop{
+        clock,
+        events,
+        Meow2::Time::gameLoopDescFromConfig(config, engineLog),
+        {// Sleeps up to 16 ms while idle instead of spinning a core, until the swapchain's vsync paces frames (M5).
+         .pumpEvents = [&platform] { platform->pumpEvents(std::chrono::milliseconds{16}); },
+         .update =
+             [](double)
+         {
+             MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker());
+         }}}; // memory plots in Tracy
     while (running && (quitAfterFrames <= 0 || static_cast<std::int64_t>(clock.frameCount()) < quitAfterFrames))
     {
-        clock.tick(); // this frame's time; the game loop (M2) will hand it to update()
-        platform->pumpEvents(std::chrono::milliseconds{16});  // sleeps while idle instead of spinning a core
-        events.dispatchQueued();                              // window events arrive here
-        MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker()); // memory per tag, as plots in Tracy
-        MEOW2_PROFILE_FRAME_MARK();
+        loop.tick();
     }
     // Printed too, not only logged: the smoke tests read stdout, and Release logs to the file only.
     std::printf("Ran %llu frames\n", static_cast<unsigned long long>(clock.frameCount()));
-    MEOW2_LOG_INFO(appLog, "Ran {} frames in {:.2f} s", clock.frameCount(), clock.totalSeconds());
+    MEOW2_LOG_INFO(appLog, "Ran {} frames ({} fixed steps) in {:.2f} s", clock.frameCount(), loop.fixedStepCount(),
+                   clock.totalSeconds());
 
     Meow2::Platform::storeWindowState(config, *window); // reopen where the user left it
     if (const Meow2::Result<void> saved = config.save(); !saved)

@@ -1,6 +1,6 @@
 # FrameClock
 
-`FrameClock` measures how long each frame took. It's the first piece of the game loop (techstack.md §23): the loop's `tick()` will hand its delta to `update()` and the fixed-timestep accumulator (M2). Today the three apps use it to count their frames.
+`FrameClock` measures how long each frame took. It's the first step of each [game loop](GameLoop.md) tick (techstack.md §23): its delta goes to `update()` and the fixed-timestep accumulator.
 
 - Header: `#include <Meow2/Core/Time/FrameClock.h>`, namespace `Meow2::Time`.
 - Status: ✅ M1 (#62).
