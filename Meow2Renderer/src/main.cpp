@@ -10,6 +10,7 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Memory/LeakCheck.h>
 #include <Meow2/Core/Platform.h>
+#include <Meow2/Core/Profiling/Profile.h>
 #include <Meow2/Core/Time/FrameClock.h>
 #include <Meow2/Core/Version.h>
 #include <Meow2/Platform/Platform.h>
@@ -30,6 +31,7 @@ int main(int argc, char** argv)
     Meow2::Log::Logger engineLog = logSystem.createLogger("Engine");
     Meow2::Log::Logger appLog = logSystem.createLogger("Renderer");
     const Meow2::Log::ScopedAssertLogging assertLogging{engineLog};
+    MEOW2_PROFILE_THREAD_NAME("Main");
     std::filesystem::path dumpPath =
         logSystem.filePath().empty() ? logDirectory / "Meow2Renderer_crash.dmp" : logSystem.filePath();
     dumpPath.replace_extension(".dmp"); // a crash writes Meow2Renderer_<date>_<time>.dmp next to the log
@@ -73,7 +75,9 @@ int main(int argc, char** argv)
            (quitAfterFrames <= 0 || static_cast<std::int64_t>(clock.frameCount()) < quitAfterFrames))
     {
         clock.tick(); // this frame's time; the game loop (M2) will hand it to update()
-        platform->pumpEvents(std::chrono::milliseconds{16}); // sleeps while idle instead of spinning a core
+        platform->pumpEvents(std::chrono::milliseconds{16});  // sleeps while idle instead of spinning a core
+        MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker()); // memory per tag, as plots in Tracy
+        MEOW2_PROFILE_FRAME_MARK();
     }
     // Printed too, not only logged: the smoke tests read stdout, and Release logs to the file only.
     std::printf("Ran %llu frames\n", static_cast<unsigned long long>(clock.frameCount()));

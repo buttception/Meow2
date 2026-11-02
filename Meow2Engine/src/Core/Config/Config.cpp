@@ -7,6 +7,7 @@
 #include "Meow2/Core/Assert.h"
 #include "Meow2/Core/Memory/MemTag.h"
 #include "Meow2/Core/Process.h"
+#include "Meow2/Core/Profiling/Profile.h"
 
 #include <toml++/toml.h>
 
@@ -193,6 +194,7 @@ Config& Config::operator=(Config&& other) noexcept = default;
 
 Result<Config> Config::load(const std::filesystem::path& path, Log::Logger& log)
 {
+    MEOW2_PROFILE_ZONE();
     const MemTagScope tag{MemTag::Config};
     std::error_code error;
     if (!std::filesystem::exists(path, error))

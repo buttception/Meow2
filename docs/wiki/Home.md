@@ -43,6 +43,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |
 | Events (`EventBus`) | [Events](Events.md) | ✅ M1 |
 | Jobs (`JobSystem`, enkiTS) | [Jobs](Jobs.md) | ✅ M1 |
+| Profiling (Tracy) | [Profiling](Profiling.md) | ✅ M1 |
 | Crash dumps (minidumps) | [CrashDumps](CrashDumps.md) | ✅ M1 (Windows) |
 | Logging (spdlog) | [Logging](Logging.md) | ✅ M1 |
 | Memory (arenas, tracking, leak check, memory tags) | [Memory](Memory.md) | ✅ M1 |
