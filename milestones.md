@@ -70,16 +70,25 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 
 **Released as `v0.2.0`** (tag on the merge of PR #79, with the owner's go-ahead; the first GitHub Release zip). Crash dumps are Windows-only for now (Linux with M12). "Jobs visible in Tracy" needs the Tracy viewer, which the owner checks once by connecting it to a Debug build.
 
-## M2 — Platform 🟨
-**Goal:** a window on screen, a real game loop and input, shared by Renderer and Player (the editor feeds the same input system from Qt in M9).
+## M2 — Platform & scene foundation 🟨
+**Goal:** a window on screen, a real game loop and input, shared by Renderer and Player (the editor feeds the same input system from Qt in M9), plus the IDs and the entity/component store everything after it builds on.
 **Depends on:** M1
 
-- ✅ SDL3 window (one window, API-neutral, exposes the native handle; size/position/mode in the config) — #56 / PR #57. Window events are polled; they move to the `EventBus` when it exists
-- Game loop: `tick()` with fixed timestep (`fixedUpdate` 0..n times), `update`, `render(alpha)`; clamped frame time (§23)
-- `InputSystem`: engine `Key` (HID scan codes), mouse, gamepad; polling (`isDown`, `wasPressed`, …) + input events on the `EventBus`; presses latched for `fixedUpdate` (§9)
-- `SdlInputSource` (keyboard/mouse) and `SdlGamepadSource` (all three apps)
-- Virtual file system (`FileSystem`)
-- Closing PR bumps the version to **0.3.0**
+Rough order: window events → game loop → input → IDs → scene/ECS → file system.
+
+| Feature | Notes (techstack.md) | Status | Issue / PR |
+|---|---|---|---|
+| SDL3 window: one window, API-neutral, native handle; size/position/mode in the config | §9 | ✅ | #56 / PR #57 |
+| Window events (resize, close, focus, DPI) on the `EventBus` instead of polling | §9, §22 | ⬜ | |
+| Game loop: `tick()` with fixed timestep (`fixedUpdate` 0..n times), `update`, `render(alpha)`, clamped frame time; the editor ticks from a Qt timer | §23 | ⬜ | |
+| `InputSystem`: engine `Key` (HID scan codes), mouse, gamepad; polling (`isDown`, `wasPressed`, …) + input events on the `EventBus`; presses latched for `fixedUpdate` | §9 | ⬜ | |
+| `SdlInputSource` (keyboard/mouse) and `SdlGamepadSource` (all three apps) | §9 | ⬜ | |
+| IDs: 128-bit `Uuid` (snowflake-style UUIDv8: time, sequence, kind, random node), `EntityId`/`AssetId` wrappers, lock-free `UuidGenerator`, text form | §24 | ⬜ | |
+| Scene/ECS: EnTT in `Scene`, `EntityId` ↔ `entt::entity`, pools created at startup, command buffers for jobs, `MemTag::Scene` (EnTT submodule needs the owner's permission first) | §25 | ⬜ | |
+| Virtual file system (`FileSystem`) | §3 | ⬜ | |
+| Closing PR bumps the version to **0.3.0** | §21 | ⬜ | |
+
+**Done when:** Renderer and Player run a fixed-timestep loop driven by SDL input and window events from the `EventBus`, and a `Scene` creates, finds by `EntityId` and destroys entities, with structural changes from jobs applied through command buffers (TSan job green). Transforms wait for M3's math.
 
 ## M3 — Math ⬜
 **Goal:** one coordinate convention, used consistently.
@@ -180,3 +189,4 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 ## Changelog
 - 2026-10-26 — Initial milestones (moved out of techstack.md §17).
 - 2026-10-27 — M1 rescoped as "Core runtime" (old M1 Core & Memory + old M2 Logging & Crash, plus config, clock, events, Tracy, release packaging); old M3 Platform becomes M2 (with game loop and input design); later milestones renumbered (old M4 → M3 … old M13 → M12). RHI (M5) gains the frame arena, upload ring buffer and frame packet; handles move there.
+- 2026-11-02 — M2 renamed "Platform & scene foundation" and turned into a feature table; adds 128-bit IDs (techstack §24) and the scene/ECS on EnTT (§25, submodule pending approval), plus a "done when".

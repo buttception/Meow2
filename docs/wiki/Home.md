@@ -55,7 +55,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 
 ## Roadmap
 
-M0 (foundation) and **M1 (core runtime, `v0.2.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers and release zips. The SDL window (M2) and the Qt editor window (M9) are in too. Next up is the rest of **M2, platform**: the game loop and input. The full roadmap is in [milestones.md](../../milestones.md).
+M0 (foundation) and **M1 (core runtime, `v0.2.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers and release zips. The SDL window (M2) and the Qt editor window (M9) are in too. Next up is the rest of **M2, platform & scene foundation**: the game loop, input, IDs and the entity/component store. The full roadmap is in [milestones.md](../../milestones.md).
 
 ## API reference
 

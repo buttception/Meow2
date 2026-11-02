@@ -70,8 +70,9 @@ Engine code is grouped by **subsystem**, then **module**, then (in `src/` only) 
 
 | Subsystem | Modules (folder) | Backends / OS folders (in `src/`) |
 |---|---|---|
-| `Core` | files directly in `Core/` (Platform, Version, Assert, Debugger), `Memory`, `Log`, `Crash`, `Config`, `Time`, `Events`, `Jobs`, `Profiling` | `Win32`, `Linux`, `Android`; library wrappers such as `Spdlog`, `Enkits`, `Tracy` |
+| `Core` | files directly in `Core/` (Platform, Version, Assert, Debugger), `Memory`, `Log`, `Crash`, `Config`, `Time`, `Events`, `Jobs`, `Profiling`, `Id` | `Win32`, `Linux`, `Android`; library wrappers such as `Spdlog`, `Enkits`, `Tracy` |
 | `Platform` | `Window`, `Input`, `FileSystem` | `Sdl`, `Win32`, `Linux`, `Android` |
+| `Scene` | files directly in `Scene/` (planned, §25) | — |
 | `Math` | files directly in `Math/` | — |
 | `Graphics` | `Rhi`, `Shader`, `Renderer` | `Vulkan`, `D3D12` (Rhi), `Dxc` (Shader) |
 | `Assets` | `Gltf`, `Registry` | — |
@@ -132,6 +133,8 @@ ctest --preset windows-msvc-debug -L unit
 | Events | `EventBus` | in-house | §22 |
 | Jobs | `JobSystem` | **enkiTS** | §19 |
 | Profiling | `MEOW2_PROFILE_*` macros | **Tracy** | Debug/RelWithDebInfo only; compiled out of Release. **Implemented (M1)**: zones, frame marks, thread names, per-tag memory plots; see [docs/wiki/Profiling.md](docs/wiki/Profiling.md) |
+| Id | `Uuid`, `EntityId`, `AssetId`, …, `UuidGenerator` | in-house, 128-bit snowflake-style UUIDv8 with a kind tag | §24 (M2) |
+| Scene | `Scene` (entities, components) | **EnTT** (planned, **⚠ OPEN**: submodule not added yet) | §25 (M2) |
 | Platform / Window | `Platform`, `Window` | **SDL3** (§9) | One window; the editor's windows are Qt's |
 | Input | `InputSystem` + input sources | SDL3 sources (engine), Qt source (editor) | §9 |
 | FileSystem | `FileSystem` / VFS | native files; packages later; Android `AAssetManager` later | |
@@ -177,6 +180,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | glTF loader (**⚠ OPEN**) | asset import | MIT | submodule |
 | GoogleTest v1.17.0 | unit tests (gmock off) | BSD-3 | submodule |
 | tl::expected v1.3.1 | `Result<T>` until C++23 `std::expected` (only the `std::expected`-compatible API is used) | CC0 | submodule; header-only, own INTERFACE target (its CMakeLists pulls in CTest/Catch2). **Public-header exception:** included by `Meow2/Core/Result.h` |
+| EnTT (**⚠ OPEN**: planned, not added yet) | ECS for `Scene` (§25) | MIT | submodule at the latest release tag once the owner approves; header-only. Whether its types may appear in public `Meow2/Scene` headers (a third public-header exception) is decided when it's added |
 | toml++ v3.4.0 | config files | MIT | submodule; header-only, own INTERFACE target, `TOML_EXCEPTIONS=0`; only included by `src/Core/Config/Config.cpp` |
 | enkiTS v1.12 | job system | zlib | submodule; static, C interface/examples off; only included by `src/Core/Jobs/Enkits/` |
 | Tracy v0.14.1 (client only) | CPU/GPU/memory profiler | BSD-3 | submodule; static, on demand, localhost only, no broadcast, its crash handler off; `TRACY_ENABLE` per configuration (Debug/RWDI). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
@@ -328,7 +332,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
   4. Recreate all GPU resources from their **CPU-side descriptions** (the renderer keeps a resource registry). Shaders are already compiled for both (DXIL + SPIR-V).
   - Rule this implies: nothing above the RHI may cache backend-native handles or pointers. Only engine handles, which are re-bound after the swap.
   - It costs a hitch of seconds, not a seamless switch. That is fine for comparing backends in Meow2Renderer.
-- Resources are referenced by handles owned by the device.
+- Resources are referenced by handles owned by the device (32-bit index + generation). **GPU resources don't get UUIDs** (§24): they exist only while the program runs, are recreated on every hot swap and are looked up every frame, so a 128-bit key would cost hashing for nothing. A resource may record the `AssetId` it was loaded from, for debugging and Tracy names.
 - Debug: validation layers / D3D12 debug layer, object names, validation messages routed to the `RHI` logger.
 
 ## 12. Shaders
@@ -596,6 +600,49 @@ void Application::tick()
 - **`tick()`, not `run()`:** Player and Renderer call `while (app.isRunning()) app.tick();`. The editor calls `tick()` from a Qt timer, because Qt owns its event loop.
 - **Threading:** the phases run in order on the main thread, and the parallelism is inside them (jobs, §19). There's no render thread or double-buffered simulation for now. The **extract step** (M5) copies what the renderer needs into a frame packet allocated from the frame arena, and the renderer reads only the packet. If a render thread is added later, the packet becomes the hand-off, and nothing else changes.
 
+## 24. IDs (M2)
+
+Things that are **saved and referenced across runs** (entities, assets, scenes, prefabs) get a 128-bit ID that says what kind of thing it names. Runtime-only objects use handles instead: `entt::entity` for entities while a scene runs (§25), RHI handles for GPU resources (§11).
+
+**Layout: a snowflake-style [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562) UUIDv8** (v8 is the RFC's layout for custom fields, so these are valid UUIDs that any tool accepts):
+
+```
+ bit 127                                                                                    bit 0
+| unix time, ms (48) | version = 8 (4) | sequence (12) | variant = 0b10 (2) | kind (8) | node (54) |
+```
+
+| Field | Bits | Why |
+|---|---|---|
+| Time | 48 | Milliseconds since 1970 (lasts until the year 10889). IDs sort by creation time, so saved files list things in a stable order and git diffs stay small |
+| Version, variant | 4 + 2 | Fixed values that make it a standard UUID |
+| Sequence | 12 | 4096 IDs per millisecond per generator; on overflow the generator borrows the next millisecond, so IDs never go backwards |
+| Kind | 8 | `IdKind`: `Invalid` (0), `Entity`, `Asset`, `Scene`, `Prefab`, … (up to 255). `id.kind()` says what an unknown ID refers to |
+| Node | 54 | Random, chosen when the generator is created (`std::random_device`). Replaces Snowflake's worker ID, so separate machines, editor instances and AI agents need no coordination |
+
+- **Types:** `Meow2::Uuid` (two `std::uint64_t`, comparable, hashable) and typed wrappers `EntityId`, `AssetId`, … that only accept their kind, so an asset ID can't be passed where an entity ID is expected. The all-zero ID is invalid.
+- **Text form:** the standard `xxxxxxxx-xxxx-8xxx-xxxx-xxxxxxxxxxxx` (lowercase hex) in TOML, scene files and logs; parsing returns `Result<Uuid>` and checks version, variant and kind.
+- **Assets** get a generated ID stored in a `.meta` sidecar next to the source file, so renaming or moving the file keeps its ID. (A hash of the path would change on every rename and break references.)
+- **Not secret:** IDs contain their creation time and are guessable; never use them as tokens (the MCP token is separate random data, §20).
+- **Threading:** one `UuidGenerator`, created by the composition root and injected, is thread-safe without a lock: time and sequence live in one `std::atomic<std::uint64_t>`, and `next()` advances it with a compare-and-swap (`max(now, last + 1)`). That handles millions of IDs per second, far more than entity creation needs. If profiling ever shows contention, each job thread gets its own generator with the thread index in the node bits.
+- **Options considered:** UUIDv4 (random: no order, no room for a kind), UUIDv7 (ordered, but no kind field), 64-bit Snowflake (needs a unique worker ID per machine, handed out by someone, and few spare bits), a hash of the name or path (changes on rename), a runtime counter (not stable across runs).
+
+## 25. Scene & ECS (M2, planned)
+
+The engine's entities and components use **[EnTT](https://github.com/skypjack/EnTT)** (MIT, header-only). **⚠ OPEN:** the submodule is added later with the owner's permission, and with it the decision whether EnTT types may appear in public `Meow2/Scene` headers (its views and registry are its API, so wrapping them would mean rewriting them).
+
+- **Two identities per entity:** `entt::entity` (32 bits: index + version) is the fast runtime handle used by systems; `EntityId` (§24) is the saved identity used by scene files, prefabs, undo, the editor and MCP. `Scene` owns the `entt::registry`, every entity carries an `IdComponent`, and `Scene` keeps an `EntityId → entt::entity` map.
+- **Components are plain data structs** (§16), like events (§22). Behaviour lives in systems that iterate views.
+- **Memory:** EnTT's storages take an allocator, so they use a `std::pmr::polymorphic_allocator` over a tracked resource, counted under a new `MemTag::Scene` (§6).
+- **Transforms** need M3's math; until then the scene holds only IDs and non-spatial components.
+- **Threading** (the registry isn't thread-safe):
+  1. **Structural changes** (create or destroy entities, add or remove components) happen only on the main thread. Jobs record them in **per-thread command buffers** (allocated from the frame arena), which the main thread applies at fixed points in the frame (§23). EnTT has no command buffers, so the engine provides them.
+  2. **Every component pool is created at startup** (`registry.storage<T>()` for each registered component type). EnTT otherwise creates a pool on first use, and a first use on a worker thread would be a race.
+  3. **Parallel iteration** is safe when jobs touch disjoint entities, or disjoint component types, while nothing changes structure: a view is split into ranges with `JobSystem::parallelFor`.
+  4. **Groups** reorder their pools when components are added or removed, so they count as structural changes too.
+  5. **Signals** (`on_construct`, `on_destroy`) run on the thread making the change, so in practice the main thread; anything other subsystems should hear about goes on the `EventBus`.
+  6. **Later:** systems declare which components they read and write, `entt::organizer` builds a dependency graph from that, and the graph runs as enkiTS tasks with dependencies, with no locks inside systems.
+- **Why EnTT:** sparse-set storage (fast add/remove, cache-friendly iteration), widely used, MIT; `entt::dispatcher` was already noted as the same design as our `EventBus` (§22). The bus stays ours.
+
 ---
 
 ## Changelog
@@ -640,3 +687,4 @@ void Application::tick()
 - 2026-11-01 — §3/§4: Tracy v0.14.1 client implemented (macros without Tracy in public headers, on demand + localhost only, job thread names, memory as per-tag plots instead of per-allocation events because allocations outlive Tracy's lifetime).
 - 2026-11-01 — §19: sanitizer presets and CI jobs implemented (ASan+UBSan, TSan; engine + Player/Renderer, editor excluded by owner decision).
 - 2026-11-01 — §5/§21: PDBs for Release builds; release zip (CPack) with PDBs, MSVC runtime and Qt, checked by running every app from the unpacked zip; release.yml publishes GitHub Releases with the CHANGELOG section as notes.
+- 2026-11-02 — New §24 IDs (128-bit snowflake-style UUIDv8 with a kind tag, lock-free generator; GPU resources keep RHI handles, §11) and §25 Scene & ECS (EnTT planned, ⚠ OPEN until the submodule is approved; threading rules). Planned for M2.
