@@ -11,6 +11,11 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ### Changed
 - Roadmap: M2 is now "Platform & scene foundation", with a feature table that adds 128-bit IDs (time-sorted, with a kind tag such as entity or asset) and an entity/component store on EnTT; techstack.md §24 and §25 describe both, including their threading rules (#81).
 
+## [0.2.1] — 2026-11-02
+
+### Fixed
+- Releases: the release workflow stopped after building the zip ("in was unexpected at this time"): a parenthesis in an error message ended a cmd block early. `v0.2.0` therefore has no GitHub Release; `0.2.1` is the first one, with the same engine as 0.2.0 (#85, #86).
+
 ## [0.2.0] — 2026-11-02
 
 ### Added

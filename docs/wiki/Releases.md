@@ -2,7 +2,7 @@
 
 Every version tag (`v0.2.0`, …) gets a **GitHub Release** with `Meow2-<version>-windows-x64.zip`. Players unpack it anywhere and run it; nothing needs installing. The release notes are that version's section of [CHANGELOG.md](../../CHANGELOG.md) (techstack.md §21, AGENTS.md §2.7).
 
-- Status: ✅ M1 (#76). The first release made this way is `v0.2.0`, at the end of M1.
+- Status: ✅ M1 (#76). The first release made this way is `v0.2.1` (`v0.2.0`'s run failed on a workflow bug, #84).
 
 ## What's in the zip
 
@@ -32,7 +32,20 @@ One folder, `Meow2-<version>-windows-x64/`, with:
    - **`publish`** (a GitHub-hosted runner, the only job with write access): takes the zip, cuts `## [0.2.0]` out of `CHANGELOG.md` and creates the Release.
 4. **Check the Release page:** download the zip on a clean folder or PC and start the apps.
 
-If a step fails, nothing is published. Fix the problem on `main`, and re-run the workflow from the Actions tab or, for a broken build, make a new PATCH tag. Tags are never moved or deleted.
+If a step fails, nothing is published. Tags are never moved or deleted, so:
+- **The runner had a problem** (offline, out of disk): re-run the workflow from the Actions tab.
+- **The fix needs a change** to the code, a test or `release.yml` itself: a re-run can't pick it up, because the workflow always runs the files of the **tagged commit**. Fix it on `main`, then make a PATCH release (below).
+
+## Patch releases
+
+A fix for an already-tagged version ships as `0.Y.Z+1` from a `release/0.Y` branch (techstack.md §21):
+
+1. Create the branch from the tag once: `git push origin v0.2.0:refs/heads/release/0.2`.
+2. A `fix/` PR **into `release/0.Y`** carries the fix (cherry-picked from `main`), bumps `project(Meow2 VERSION …)` to the next PATCH and adds a `## [0.Y.Z] — <date>` section to `CHANGELOG.md` (that section becomes the release notes).
+3. After merging it, tag the merge commit **on `release/0.Y`** and push the tag; `release.yml` runs as above.
+4. `main` gets the same fix in its own PR, and its `CHANGELOG.md` gets the same `[0.Y.Z]` section, so the history matches.
+
+Example: `v0.2.0`'s run built the zip, then stopped on a cmd parsing bug in `release.yml` (#84), so the first published release is **`v0.2.1`**.
 
 ## Building the zip locally
 
