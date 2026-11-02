@@ -33,22 +33,24 @@ struct GameLoopDesc
     std::uint32_t maxFixedStepsPerFrame = 8; ///< Most fixedUpdate calls per frame (see FixedTimestep).
 };
 
-/// @brief What the loop calls in each phase. Plain data; any callback may be empty, and is then skipped.
+/// @brief What the loop calls in each phase. Plain data; any callback may be left out (empty), and is then skipped.
+///
+/// Every field has a default initializer, so designated initializers can name only the phases an app uses.
 struct GameLoopCallbacks
 {
     /// @brief Collects OS events (e.g. Platform::pumpEvents()); the events they enqueue are delivered right after.
-    std::function<void()> pumpEvents;
+    std::function<void()> pumpEvents{};
 
     /// @brief Simulation at a constant rate (physics, gameplay); called 0..n times per frame.
     /// The parameter is the fixed step in seconds, the same every call.
-    std::function<void(double)> fixedUpdate;
+    std::function<void(double)> fixedUpdate{};
 
     /// @brief Once per frame with the frame's clamped delta in seconds (camera, animation, UI).
-    std::function<void(double)> update;
+    std::function<void(double)> update{};
 
     /// @brief Draws the frame. The parameter is alpha, 0..1: how far real time is between the last two fixed
     /// steps, for interpolating between their states.
-    std::function<void(double)> render;
+    std::function<void(double)> render{};
 };
 
 /// @brief Runs one frame per tick(): measure, pump, dispatch, fixedUpdate × n, update, dispatch, render.
