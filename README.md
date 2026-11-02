@@ -13,7 +13,7 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 
 ## Status
 
-🚧 Pre-alpha. M0 (foundation) is done, and most of M1 (core runtime): logging, crash dumps, memory tracking, config files. Meow2Renderer and Meow2Player open an (empty) SDL3 window. Next: the rest of M1 and M2 (game loop, input). See [milestones.md](milestones.md).
+🚧 Pre-alpha. **M1 (core runtime) is done, version 0.2.0**: logging, crash dumps, memory tracking with leak checks, config files, events, a job system, the Tracy profiler, sanitizer CI and release zips (see [Releases](docs/wiki/Releases.md)). The apps open their windows (SDL3, the editor with Qt). Next: M2 (platform: game loop, input). See [milestones.md](milestones.md).
 
 ## Documentation
 
