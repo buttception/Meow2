@@ -40,3 +40,14 @@ if(GIT_FOUND)
 else()
     message(STATUS "git not found: Lint.EditorConfig.TextFilesFollowRules disabled")
 endif()
+
+# Release notes from CHANGELOG.md (cmake/ReleaseNotes.cmake, used by release.yml).
+foreach(meow2Case IN ITEMS ExtractsSection MissingVersion)
+    add_test(NAME Build.ReleaseNotes.${meow2Case}
+        COMMAND ${CMAKE_COMMAND}
+            "-DMEOW2_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DMEOW2_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-notes/${meow2Case}"
+            -DMEOW2_CASE=${meow2Case}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/BuildChecks/TestReleaseNotes.cmake")
+    set_tests_properties(Build.ReleaseNotes.${meow2Case} PROPERTIES LABELS "integration")
+endforeach()

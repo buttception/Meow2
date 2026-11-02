@@ -198,7 +198,7 @@ Clone with: `git clone --recurse-submodules`. glTF sample assets are **not** sub
 | RelWithDebInfo | on (`/O2`) | on (cheap ones) | debug+ | yes | yes | yes | yes | profiling, testing, crash-dump analysis |
 | Release | full (`/O2 /GL`, LTO) | off | info+ | no (GUI subsystem) | no | compiled out | yes | exported games, release zips |
 
-PDBs are kept for every build, so crash dumps can be symbolicated. Release zips include the PDBs of that build (§21), so dumps from players can be read later.
+PDBs are kept for every build, so crash dumps can be symbolicated. Release zips include the PDBs of that build (§21), so dumps from players can be read later. **Implemented (M1):** `/Zi` in every configuration and `/DEBUG /OPT:REF /OPT:ICF` for Release (top-level `CMakeLists.txt`).
 
 ---
 
@@ -530,7 +530,8 @@ Requirement: **anything a user can do in the editor, an AI agent can do through 
   - Built with CMake install rules + CPack (`ZIP` generator).
   - **Release notes = that version's section of [`CHANGELOG.md`](CHANGELOG.md)** ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format). Every PR adds its lines under `[Unreleased]`; the milestone-closing PR renames that section to the new version.
   - A `release.yml` workflow triggered by a `v*` tag: the self-hosted Windows runner builds, tests and packages, and uploads the zip as an artifact. A separate job on a GitHub-hosted runner, the only one with `contents: write`, creates the Release and attaches the zip, so no write token ever reaches the owner's PC (§ CI safety in AGENTS.md §5).
-  - The editor joins the zip once it uses Qt (needs `windeployqt`, M9).
+  - The editor is in the zip too, with Qt deployed next to it (Qt's deploy script).
+  - **Implemented (M1):** `cmake/Meow2Packaging.cmake` (`meow2_install_app`, `meow2_package`), `cmake/TestPackage.cmake` (runs each app from the unpacked zip), `cmake/ReleaseNotes.cmake`, `.github/workflows/release.yml`. See [docs/wiki/Releases.md](docs/wiki/Releases.md).
 
 ## 22. Events
 
@@ -638,3 +639,4 @@ void Application::tick()
 - 2026-11-01 — §4/§19: `JobSystem` implemented over enkiTS v1.12 (parallel-for, jobs, main-thread tasks, thread index, allocator hook under `MemTag::Jobs`).
 - 2026-11-01 — §3/§4: Tracy v0.14.1 client implemented (macros without Tracy in public headers, on demand + localhost only, job thread names, memory as per-tag plots instead of per-allocation events because allocations outlive Tracy's lifetime).
 - 2026-11-01 — §19: sanitizer presets and CI jobs implemented (ASan+UBSan, TSan; engine + Player/Renderer, editor excluded by owner decision).
+- 2026-11-01 — §5/§21: PDBs for Release builds; release zip (CPack) with PDBs, MSVC runtime and Qt, checked by running every app from the unpacked zip; release.yml publishes GitHub Releases with the CHANGELOG section as notes.

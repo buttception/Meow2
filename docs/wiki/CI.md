@@ -6,6 +6,8 @@ Every PR and every push to `main` builds and tests Meow2 automatically:
 |---|---|---|
 | `Linux (Clang Debug)`, `Linux (GCC Debug)`, `Linux (Clang ASan+UBSan)`, `Linux (Clang TSan)` | GitHub-hosted Ubuntu 24.04 (free for public repos) | every PR (including forks), push to `main` |
 | `Windows (MSVC debug)`, `Windows (MSVC relwithdebinfo)`, `Windows (MSVC release)` | **your PC** (self-hosted runner, label `meow2`) | push to `main`, PRs from branches **in this repo**, manual runs. **Never for PRs from forks.** |
+| `Build and test the zip (Windows)` (release.yml) | **your PC** | only when a `v*` tag is pushed to this repo (read-only token) |
+| `Publish the GitHub Release` (release.yml) | GitHub-hosted Ubuntu | after the zip job; the only job with write access. See [Releases](Releases.md) |
 
 Workflow: [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). Each job runs the same thing you run locally: `cmake --workflow --preset …`.
 
