@@ -249,7 +249,7 @@ protected:
     std::vector<WindowMoved> m_moved;
     std::vector<WindowStateChanged> m_stateChanged;
     std::vector<WindowCloseRequested> m_closeRequested;
-    int m_quitCount = 0;
+    std::size_t m_quitCount = 0;
 
     // Last members: destroyed first, before the vectors their handlers write to (techstack.md §22).
     Meow2::Events::Subscription m_onResized =
@@ -338,7 +338,7 @@ TEST_F(WindowEventsTest, QuitEnqueuesQuitRequested)
     ASSERT_TRUE(SDL_PushEvent(&event));
     pumpAndDispatch();
     pumpAndDispatch();
-    EXPECT_EQ(m_quitCount, 1);
+    EXPECT_EQ(m_quitCount, 1U);
     EXPECT_TRUE(m_platform->quitRequested());
 }
 
