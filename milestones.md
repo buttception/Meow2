@@ -68,7 +68,7 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 
 **Done when:** an app logs to file and console, writes a `.dmp` on a forced crash in every config, reports leaks by tag at exit, runs jobs on all cores visible in Tracy, and the ASan/UBSan/TSan CI jobs are green.
 
-**Released as `v0.2.0`** (tag on the merge of PR #79, with the owner's go-ahead; the first GitHub Release zip). Crash dumps are Windows-only for now (Linux with M12). "Jobs visible in Tracy" needs the Tracy viewer, which the owner checks once by connecting it to a Debug build.
+**Released as `v0.2.1`.** `v0.2.0` was tagged on the merge of PR #79 (with the owner's go-ahead), but its release run stopped on a workflow bug after building the zip (#84), so the first GitHub Release is the patch `v0.2.1` from `release/0.2` (same engine). Crash dumps are Windows-only for now (Linux with M12). "Jobs visible in Tracy" needs the Tracy viewer, which the owner checks once by connecting it to a Debug build.
 
 ## M2 — Platform 🟨
 **Goal:** a window on screen, a real game loop and input, shared by Renderer and Player (the editor feeds the same input system from Qt in M9).
