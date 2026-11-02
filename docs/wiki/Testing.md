@@ -60,6 +60,7 @@ Two CI jobs run **every test** with compiler instrumentation that checks the pro
 
 - **Any report fails the test.** The test presets set `ASAN_OPTIONS=…:abort_on_error=1`, `UBSAN_OPTIONS=…:halt_on_error=1` and `TSAN_OPTIONS=halt_on_error=1`, and the code is built with `-fno-sanitize-recover`.
 - **Third-party libraries are instrumented too** (SDL, enkiTS, GoogleTest). `cmake/Meow2Sanitizers.cmake` adds the flags before they're added. TSan only understands synchronisation in code it instrumented, so an uninstrumented library would show up as false races.
+- **Suppressions:** `cmake/TsanSuppressions.txt` lists reports from uninstrumented system libraries only (today: lock-order reports inside `libdbus`, which SDL loads during `SDL_Init`/`SDL_Quit`). Never add Meow2 or `external/` code there; fix the race instead.
 - **What's switched off in these builds:**
   - **memory tracking** (`MEOW2_MEMORY_TRACKING=0`): the sanitizers replace `new`/`delete` themselves, so the tracking tests are skipped and the `NoLeaks` smoke tests only check that the app runs; LeakSanitizer does the leak check;
   - **profiling** (`MEOW2_PROFILING=OFF`): Tracy would only add noise;
