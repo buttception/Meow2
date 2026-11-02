@@ -7,6 +7,7 @@
 
 #include <Meow2/Core/Config/Config.h>
 #include <Meow2/Core/Crash/CrashHandler.h>
+#include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/AssertLogging.h>
 #include <Meow2/Core/Log/LogSystem.h>
@@ -15,6 +16,8 @@
 #include <Meow2/Core/Platform.h>
 #include <Meow2/Core/Profiling/Profile.h>
 #include <Meow2/Core/Time/FrameClock.h>
+#include <Meow2/Core/Time/GameLoop.h>
+#include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
 
@@ -59,6 +62,8 @@ int main(int argc, char** argv)
     const std::int64_t jobThreads = config.getInt("jobs.threadCount", 0);
     Meow2::Jobs::JobSystem jobs{
         {.threadCount = static_cast<std::uint32_t>(std::clamp<std::int64_t>(jobThreads, 0, 256))}, engineLog};
+    // Things that happen are delivered through it (techstack.md §22); the game loop dispatches it each frame.
+    Meow2::Events::EventBus events{Meow2::Memory::globalTracker()};
 
     std::printf("Meow2Editor (Meow2 Engine %s, %s/%s/%s)\n", Meow2::getVersionString(), Meow2::c_platformName,
                 Meow2::c_compilerName, Meow2::c_configName);
@@ -85,17 +90,22 @@ int main(int argc, char** argv)
     Meow2::Editor::showWithDesc(
         window, Meow2::Platform::windowDescFromConfig(config, {.title = "Meow2Editor"}, engineLog), engineLog);
 
-    // The frame tick: Qt runs the event loop, a timer calls the engine (techstack.md §23: tick() from a Qt timer).
-    // For now it only measures frames; app.quitAfterFrames ends a smoke run.
+    // The game loop (techstack.md §23). Qt runs the event loop and pumps the OS events itself, so a timer calls
+    // tick() and the loop has no pumpEvents. Nothing to simulate or draw yet; app.quitAfterFrames ends a smoke run.
     const std::int64_t quitAfterFrames = config.getInt("app.quitAfterFrames", 0);
     Meow2::Time::FrameClock clock;
+    Meow2::Time::GameLoop loop{clock,
+                               events,
+                               Meow2::Time::gameLoopDescFromConfig(config, engineLog),
+                               {.update = [](double)
+                                {
+                                    MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker());
+                                }}}; // memory plots in Tracy
     QTimer frameTimer;
     QObject::connect(&frameTimer, &QTimer::timeout,
                      [&]
                      {
-                         clock.tick(); // this frame's time; the game loop (M2) will hand it to update()
-                         MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker());
-                         MEOW2_PROFILE_FRAME_MARK();
+                         loop.tick();
                          if (quitAfterFrames > 0 && static_cast<std::int64_t>(clock.frameCount()) >= quitAfterFrames)
                          {
                              QApplication::quit();
@@ -106,7 +116,8 @@ int main(int argc, char** argv)
 
     // Printed too, not only logged: the smoke tests read stdout, and Release logs to the file only.
     std::printf("Ran %llu frames\n", static_cast<unsigned long long>(clock.frameCount()));
-    MEOW2_LOG_INFO(appLog, "Ran {} frames in {:.2f} s", clock.frameCount(), clock.totalSeconds());
+    MEOW2_LOG_INFO(appLog, "Ran {} frames ({} fixed steps) in {:.2f} s", clock.frameCount(), loop.fixedStepCount(),
+                   clock.totalSeconds());
     Meow2::Editor::storeWindowState(config, window); // reopen where the user left it
     if (const Meow2::Result<void> saved = config.save(); !saved)
     {

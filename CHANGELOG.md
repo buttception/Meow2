@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Game loop: every app now runs its frames through `GameLoop`: events, then `fixedUpdate` at a constant rate (60 Hz by default, `loop.fixedStepHz`), `update` with the frame time and `render` with an interpolation factor. Long frames run at most `loop.maxFixedSteps` simulation steps, so a stall can't snowball. The editor ticks it from its Qt timer (#88).
 - Window events: the windowing layer puts `WindowResized`, `WindowMoved`, `WindowStateChanged`, `WindowFocusChanged`, `WindowDisplayScaleChanged`, `WindowCloseRequested` and `QuitRequested` on the `EventBus` (one per kind of change per frame, with the final values). Player and Renderer stop on the close and quit events. `Platform::create` now takes the `EventBus`; `Window::id()` and `displayScale()` are new (#83).
 
 ### Changed

@@ -598,6 +598,7 @@ void Application::tick()
 - **`update`** runs once per frame with the real (clamped) delta.
 - **`render(alpha)`** interpolates between the previous and current fixed-step state, so motion is smooth when the frame rate and the fixed rate don't line up.
 - **`tick()`, not `run()`:** Player and Renderer call `while (app.isRunning()) app.tick();`. The editor calls `tick()` from a Qt timer, because Qt owns its event loop.
+- **Implemented (M2):** `Meow2::Time::GameLoop` (`Meow2/Core/Time/GameLoop.h`): callbacks `pumpEvents`, `fixedUpdate(dt)`, `update(dt)`, `render(alpha)` (`std::function`s, any may be empty), dispatch after the pump and after update, Tracy zones + frame mark; `FixedTimestep` (the accumulator; over `maxFixedStepsPerFrame` the excess is dropped, keeping the fraction of a step); `loop.fixedStepHz` and `loop.maxFixedSteps` in the config (`GameLoopConfig.h`). See [docs/wiki/GameLoop.md](docs/wiki/GameLoop.md).
 - **Threading:** the phases run in order on the main thread, and the parallelism is inside them (jobs, §19). There's no render thread or double-buffered simulation for now. The **extract step** (M5) copies what the renderer needs into a frame packet allocated from the frame arena, and the renderer reads only the packet. If a render thread is added later, the packet becomes the hand-off, and nothing else changes.
 
 ## 24. IDs (M2)
@@ -689,3 +690,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-01 — §5/§21: PDBs for Release builds; release zip (CPack) with PDBs, MSVC runtime and Qt, checked by running every app from the unpacked zip; release.yml publishes GitHub Releases with the CHANGELOG section as notes.
 - 2026-11-02 — New §24 IDs (128-bit snowflake-style UUIDv8 with a kind tag, lock-free generator; GPU resources keep RHI handles, §11) and §25 Scene & ECS (EnTT planned, ⚠ OPEN until the submodule is approved; threading rules). Planned for M2.
 - 2026-11-02 — §9: window events implemented on the `EventBus` (coalesced per pump, queued, `Platform` takes the bus).
+- 2026-11-02 — §23: game loop implemented (`GameLoop`, `FixedTimestep`, `loop.*` config keys); all three apps use it.
