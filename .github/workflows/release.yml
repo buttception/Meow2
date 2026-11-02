@@ -57,7 +57,8 @@ jobs:
           set "VERSION=%GITHUB_REF_NAME:~1%"
           cmake --workflow --preset windows-msvc-release || exit /b 1
           cmake --build --preset windows-msvc-release --target package || exit /b 1
-          if not exist "build\windows-msvc-release\package\Meow2-%VERSION%-windows-x64.zip" (echo ::error::No Meow2-%VERSION%-windows-x64.zip: does the tag match project(VERSION) in CMakeLists.txt? & exit /b 1)
+          rem No parentheses inside the error message: cmd would end the ( ... ) block at the first ")" (#84).
+          if not exist "build\windows-msvc-release\package\Meow2-%VERSION%-windows-x64.zip" (echo ::error::No Meow2-%VERSION%-windows-x64.zip: does the tag match the project VERSION in CMakeLists.txt? & exit /b 1)
 
           rem Unpack it into an empty folder and run every app from there, the way a player would.
           cmake "-DMEOW2_ZIP=build\windows-msvc-release\package\Meow2-%VERSION%-windows-x64.zip" "-DMEOW2_WORK_DIR=%RUNNER_TEMP%\meow2-package-test" -P cmake\TestPackage.cmake || exit /b 1
