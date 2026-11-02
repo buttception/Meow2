@@ -8,6 +8,11 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-11-02
+
+### Fixed
+- Releases: the release workflow stopped after building the zip ("in was unexpected at this time"): a parenthesis in an error message ended a cmd block early. `v0.2.0` therefore has no GitHub Release; `0.2.1` is the first one, with the same engine as 0.2.0 (#85, #86).
+
 ## [0.2.0] — 2026-11-02
 
 ### Added
