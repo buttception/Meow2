@@ -25,6 +25,7 @@ target_sources(Meow2Engine
         src/Core/Memory/LeakCheck.cpp
         src/Core/Memory/MallocResource.cpp
         src/Core/Memory/MemTag.cpp
+        src/Core/Memory/TaggedResource.cpp
         src/Core/Memory/TrackingAllocator.cpp
         src/Core/Profiling/Tracy/ProfileTracy.cpp
         src/Core/Time/FixedTimestep.cpp
@@ -40,6 +41,7 @@ target_sources(Meow2Engine
         src/Platform/Window/Sdl/WindowImplSdl.h
         src/Platform/Window/Sdl/WindowSdl.cpp
         src/Platform/Window/WindowConfig.cpp
+        src/Scene/Scene.cpp
     PUBLIC
         # A header FILE_SET makes the base dirs PUBLIC include directories and
         # lists the headers in IDEs. Public headers go in include/Meow2/<Subsystem>/[<Module>/].
@@ -65,6 +67,8 @@ target_sources(Meow2Engine
             include/Meow2/Core/Memory/LeakCheck.h
             include/Meow2/Core/Memory/MallocResource.h
             include/Meow2/Core/Memory/MemTag.h
+            include/Meow2/Core/Memory/ResourceAllocator.h
+            include/Meow2/Core/Memory/TaggedResource.h
             include/Meow2/Core/Memory/TrackingAllocator.h
             include/Meow2/Core/Platform.h
             include/Meow2/Core/Process.h
@@ -83,6 +87,7 @@ target_sources(Meow2Engine
             include/Meow2/Platform/Window/Window.h
             include/Meow2/Platform/Window/WindowConfig.h
             include/Meow2/Platform/Window/WindowEvents.h
+            include/Meow2/Scene/Scene.h
             "${meow2GeneratedDir}/Meow2/Core/Version.h")
 
 # OS-specific implementations (AGENTS.md: only in Win32/Linux/Android backend folders).
@@ -123,6 +128,7 @@ target_include_directories(Meow2Engine PRIVATE "${meow2PrivateGeneratedDir}")
 # Exception: tl::expected is PUBLIC, because Result<T> (Meow2/Core/Result.h) is public API.
 target_link_libraries(Meow2Engine
     PUBLIC
+        EnTT::EnTT
         tl::expected
     PRIVATE
         SDL3::SDL3-static

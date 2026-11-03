@@ -5,7 +5,8 @@
 # (its headers are system headers, so our strict warnings never fire on its code). Their targets
 # never get meow2_set_warnings(). They are linked PRIVATE: no third-party header appears in
 # Meow2's public headers (AGENTS.md §3). The exceptions are tl::expected (Result<T> is part of
-# the public API until C++23 std::expected) and, later, DirectXMath.
+# the public API until C++23 std::expected), EnTT (its registry and views are the Scene API, techstack.md
+# §25) and, later, DirectXMath.
 
 # meow2_require_submodule(<name> <dir>)
 #   Stops with a helpful message when a submodule folder is empty (cloned without
@@ -61,6 +62,17 @@ add_library(meow2_tomlplusplus INTERFACE)
 target_include_directories(meow2_tomlplusplus SYSTEM INTERFACE "${meow2TomlDir}/include")
 target_compile_definitions(meow2_tomlplusplus INTERFACE TOML_EXCEPTIONS=0)
 add_library(tomlplusplus::tomlplusplus ALIAS meow2_tomlplusplus)
+
+# ---- EnTT (entities and components, techstack.md §25) --------------------------------------------
+# Header-only. Its own CMakeLists.txt is skipped like the others (install, test and testbed targets); a
+# small INTERFACE target over src/ is enough. Linked PUBLIC by Meow2Engine: Meow2/Scene/Scene.h exposes
+# the registry and views (the owner-approved public-header exception).
+set(meow2EnttDir "${PROJECT_SOURCE_DIR}/external/entt")
+meow2_require_submodule(EnTT "${meow2EnttDir}")
+
+add_library(meow2_entt INTERFACE)
+target_include_directories(meow2_entt SYSTEM INTERFACE "${meow2EnttDir}/src")
+add_library(EnTT::EnTT ALIAS meow2_entt)
 
 # ---- SDL3 (window, input, gamepads; techstack.md §9) ---------------------------------------------
 # Static library, linked into Meow2Engine; only src/Platform/**/Sdl/ include its headers. Subsystems the

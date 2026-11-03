@@ -37,9 +37,9 @@ static_assert(std::is_layout_compatible_v<SourceLocation, TracyLocation>);
 
 /// @brief One plot per memory tag. Tracy identifies a plot by the name's address, so these are fixed strings.
 constexpr std::array<const char*, Memory::c_memTagCount> c_memoryPlotNames{
-    "Memory/General",  "Memory/Logging",  "Memory/Config",  "Memory/Jobs",    "Memory/Events",
-    "Memory/Platform", "Memory/Renderer", "Memory/Rhi",     "Memory/Physics", "Memory/Assets",
-    "Memory/Editor",   "Memory/ImGui",    "Memory/Profiler"};
+    "Memory/General",  "Memory/Logging",  "Memory/Config",   "Memory/Jobs",    "Memory/Events",
+    "Memory/Platform", "Memory/Renderer", "Memory/Rhi",      "Memory/Physics", "Memory/Assets",
+    "Memory/Editor",   "Memory/ImGui",    "Memory/Profiler", "Memory/Scene"};
 static_assert(c_memoryPlotNames.back() != nullptr, "one plot name per MemTag");
 } // namespace
 

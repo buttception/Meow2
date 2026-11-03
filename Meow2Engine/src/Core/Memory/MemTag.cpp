@@ -35,6 +35,8 @@ std::string_view memTagName(MemTag tag)
             return "ImGui";
         case MemTag::Profiler:
             return "Profiler";
+        case MemTag::Scene:
+            return "Scene";
         case MemTag::Count:
             break;
     }

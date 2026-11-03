@@ -12,6 +12,7 @@ meow2_add_test_suite(
         Core/Memory/BlockArenaTests.cpp
         Core/Memory/CountingResource.h
         Core/Memory/MallocResourceTests.cpp
+        Core/Memory/TaggedResourceTests.cpp
         Core/Memory/TrackingAllocatorTests.cpp
         Core/PlatformTests.cpp
         Core/ProcessTests.cpp
@@ -94,3 +95,10 @@ meow2_add_test_suite(
         Platform/WindowConfigTests.cpp
         Platform/WindowTests.cpp
     LIBRARIES SDL3::SDL3-static)
+
+# Scene (entities and components on EnTT).
+meow2_add_test_suite(
+    TARGET    Meow2EngineSceneTests
+    MODULE    Scene
+    SOURCES
+        Scene/SceneTests.cpp)

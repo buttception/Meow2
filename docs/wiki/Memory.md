@@ -16,7 +16,7 @@ How Meow2 allocates memory. Everything is built on the C++ standard's allocator 
 
 ## Memory tags
 
-`Meow2::Memory::MemTag` (`<Meow2/Core/Memory/MemTag.h>`) names the subsystem an allocation is counted under: `General`, `Logging`, `Config`, `Jobs`, `Events`, `Platform`, `Renderer`, `Rhi`, `Physics`, `Assets`, `Editor`, `ImGui`, `Profiler`. `memTagName(tag)` returns the name as text, for statistics and reports. Every arena is created with a tag, and the tracking allocator keeps its counters (current bytes, peak, allocation counts) per tag, so a report can say "Physics: 40 MiB".
+`Meow2::Memory::MemTag` (`<Meow2/Core/Memory/MemTag.h>`) names the subsystem an allocation is counted under: `General`, `Logging`, `Config`, `Jobs`, `Events`, `Platform`, `Renderer`, `Rhi`, `Physics`, `Assets`, `Editor`, `ImGui`, `Profiler`, `Scene`. `memTagName(tag)` returns the name as text, for statistics and reports. Every arena is created with a tag, and the tracking allocator keeps its counters (current bytes, peak, allocation counts) per tag, so a report can say "Physics: 40 MiB".
 
 ### The current tag (`MemTagScope`)
 
@@ -30,6 +30,17 @@ Most allocations can't pass a tag (a `std::pmr::vector` only knows its resource;
 ```
 
 The tag is per thread (`thread_local`), so a scope on one thread never affects another. `currentMemTag()` returns it.
+
+### A fixed tag for a container (`TaggedResource`)
+
+A long-lived container that grows from many places (a scene's registry) can't wrap every growth in a `MemTagScope`. `Meow2::Memory::TaggedResource` (`<Meow2/Core/Memory/TaggedResource.h>`) does it for every allocation: it forwards to an upstream resource inside a scope of its own tag.
+
+```cpp
+Meow2::Memory::TaggedResource sceneMemory{Meow2::Memory::globalTracker(), Meow2::Memory::MemTag::Scene};
+std::pmr::vector<int> values{&sceneMemory};   // counted under Scene, whatever the thread's tag
+```
+
+For libraries that need a typed allocator instead of a `memory_resource*`, `Meow2::Memory::ResourceAllocator<T>` (`<Meow2/Core/Memory/ResourceAllocator.h>`) allocates from a resource without `std::pmr::polymorphic_allocator`'s uses-allocator `construct()`, which EnTT's pools can't take.
 
 ## MallocResource
 

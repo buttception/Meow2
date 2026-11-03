@@ -31,6 +31,7 @@ enum class MemTag : std::uint8_t
     Editor,   ///< Editor-only data.
     ImGui,    ///< Dear ImGui.
     Profiler, ///< Profiler (Tracy).
+    Scene,    ///< Entities and components (the EnTT registry of each Scene).
     Count     ///< Number of tags; not a tag.
 };
 
