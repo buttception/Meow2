@@ -204,8 +204,8 @@ TEST_F(SdlInputSourceTest, VirtualGamepad)
     // Real gamepads plugged into the test machine show up too, so look for this one by its id.
     const auto isConnected = [this, id]
     {
-        const auto gamepads = m_input.connectedGamepads();
-        return std::ranges::find(gamepads, id) != gamepads.end();
+        const auto connected = m_input.connectedGamepads();
+        return std::ranges::find(connected, id) != connected.end();
     };
     ASSERT_TRUE(isConnected()) << "the virtual pad arrives as GAMEPAD_ADDED";
 
