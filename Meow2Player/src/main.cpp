@@ -17,6 +17,8 @@
 #include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
 #include <Meow2/Platform/Input/InputSystem.h>
+#include <Meow2/Platform/Input/SdlGamepadSource.h>
+#include <Meow2/Platform/Input/SdlInputSource.h>
 #include <Meow2/Platform/Platform.h>
 #include <Meow2/Platform/Window/Window.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
@@ -51,7 +53,7 @@ int main(int argc, char** argv)
         {.threadCount = static_cast<std::uint32_t>(std::clamp<std::int64_t>(jobThreads, 0, 256))}, engineLog};
     // Things that happen (window and input events) are delivered through it (techstack.md §22).
     Meow2::Events::EventBus events{Meow2::Memory::globalTracker()};
-    // Keyboard, mouse and gamepads (techstack.md §9). Nothing feeds it until the SDL input sources exist.
+    // Keyboard, mouse and gamepads (techstack.md §9), fed by the SDL input sources below.
     Meow2::Input::InputSystem input{events};
 
     std::printf("Meow2Player (Meow2 Engine %s, %s/%s/%s)\n", Meow2::getVersionString(), Meow2::c_platformName,
@@ -75,6 +77,15 @@ int main(int argc, char** argv)
     {
         MEOW2_LOG_ERROR(appLog, "Can't open the window: {}", window.error());
         return 1;
+    }
+    // SDL keyboard, mouse and text → input (techstack.md §9). Destroyed before the Platform: declared after it.
+    const Meow2::Input::SdlInputSource keyboardAndMouse{*platform, input};
+    // Gamepads are optional: without them (no gamepad support on this machine) the app still runs.
+    Meow2::Result<Meow2::Input::SdlGamepadSource> gamepads =
+        Meow2::Input::SdlGamepadSource::create(*platform, input, engineLog);
+    if (!gamepads)
+    {
+        MEOW2_LOG_WARN(appLog, "Gamepads unavailable: {}", gamepads.error());
     }
 
     // Closing the window (or Ctrl+C, logoff) ends the loop. Declared after the window and the bus: destroyed first.

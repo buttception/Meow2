@@ -312,7 +312,8 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Mouse capture** (relative mode) is done by the active source: SDL relative mouse mode, or a Qt cursor hide + warp.
 - **Editor rule:** editor actions (Ctrl+Z, Delete, gizmo shortcuts) are Qt shortcuts that issue editor commands (§20) and never go through `InputSystem`. `InputSystem` serves the game (play mode, future scripting) and the viewport camera.
 - **Later:** an action layer ("Jump" = Space or gamepad A) on top of `InputSystem`, with bindings in the TOML config.
-- **Implemented (M2):** `Meow2::Input::InputSystem` (`Meow2/Platform/Input/`): `submit(InputEvent)` (a `std::variant` of raw input structs), `beginFrame()`, frame edges and the fixed-step latch (`fixedWasPressed`, `endFixedStep()`), mouse position/delta/wheel, gamepads by `GamepadId`, `releaseAll()` on focus loss; bus events `KeyPressed` (with `repeat`), `KeyReleased`, `MouseButtonChanged`, `MouseMoved`, `MouseWheelScrolled`, `TextEntered`, `GamepadConnected`/`Disconnected`, `GamepadButtonChanged`. Player and Renderer call it from the game loop; nothing feeds it until the SDL sources. See [docs/wiki/Input.md](docs/wiki/Input.md).
+- **Implemented (M2):** `Meow2::Input::InputSystem` (`Meow2/Platform/Input/`): `submit(InputEvent)` (a `std::variant` of raw input structs), `beginFrame()`, frame edges and the fixed-step latch (`fixedWasPressed`, `endFixedStep()`), mouse position/delta/wheel, gamepads by `GamepadId`, `releaseAll()` on focus loss; bus events `KeyPressed` (with `repeat`), `KeyReleased`, `MouseButtonChanged`, `MouseMoved`, `MouseWheelScrolled`, `TextEntered`, `GamepadConnected`/`Disconnected`, `GamepadButtonChanged`. Player and Renderer call it from the game loop. See [docs/wiki/Input.md](docs/wiki/Input.md).
+- **Implemented (M2):** `SdlInputSource` (keyboard, mouse, text) and `SdlGamepadSource` (`create()` → `Result`, opens pads on `GAMEPAD_ADDED`, `GamepadId` = SDL joystick id) in `src/Platform/Input/Sdl/`; `Platform::pumpEvents()` passes non-window SDL events to registered handlers. Player and Renderer only (the editor gets `QtInputSource` in M9). Tested with pushed SDL events and an SDL virtual gamepad.
 
 ## 10. Math & coordinates
 
@@ -693,3 +694,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-02 — §9: window events implemented on the `EventBus` (coalesced per pump, queued, `Platform` takes the bus).
 - 2026-11-02 — §23: game loop implemented (`GameLoop`, `FixedTimestep`, `loop.*` config keys); all three apps use it.
 - 2026-11-03 — §9: `InputSystem` implemented (raw input queue, frame edges + fixed-step latch, mouse, gamepads, bus events); the SDL sources follow.
+- 2026-11-03 — §9: SDL input sources implemented (keyboard/mouse/text and gamepads → `InputSystem`; Platform routes non-window events to them).

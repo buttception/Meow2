@@ -89,6 +89,7 @@ meow2_add_test_suite(
     MODULE    Platform
     SOURCES
         Platform/Input/InputSystemTests.cpp
+        Platform/Input/SdlInputSourceTests.cpp
         Platform/WindowConfigTests.cpp
         Platform/WindowTests.cpp
     LIBRARIES SDL3::SDL3-static)

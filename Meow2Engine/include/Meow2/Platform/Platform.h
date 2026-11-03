@@ -101,6 +101,10 @@ public:
 
 private:
     friend class Window; // registers itself to receive its events
+    /// @brief Backend access for the input sources (`src/Platform/Input/`), which register for input events.
+    /// @param platform The Platform.
+    /// @return Its backend state.
+    friend Impl& sdlPlatformImpl(Platform& platform);
 
     explicit Platform(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> m_impl;
