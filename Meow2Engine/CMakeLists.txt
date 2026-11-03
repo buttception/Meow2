@@ -13,6 +13,8 @@ target_sources(Meow2Engine
         src/Core/CommandLine.h
         src/Core/Config/Config.cpp
         src/Core/Events/EventBus.cpp
+        src/Core/Id/Uuid.cpp
+        src/Core/Id/UuidGenerator.cpp
         src/Core/Jobs/Enkits/JobSystemEnkits.cpp
         src/Core/Log/AssertLogging.cpp
         src/Core/Log/Logger.cpp
@@ -51,6 +53,8 @@ target_sources(Meow2Engine
             include/Meow2/Core/Crash/CrashHandler.h
             include/Meow2/Core/Debugger.h
             include/Meow2/Core/Events/EventBus.h
+            include/Meow2/Core/Id/Uuid.h
+            include/Meow2/Core/Id/UuidGenerator.h
             include/Meow2/Core/Jobs/JobSystem.h
             include/Meow2/Core/Log/AssertLogging.h
             include/Meow2/Core/Log/Logger.h
