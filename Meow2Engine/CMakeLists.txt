@@ -30,6 +30,7 @@ target_sources(Meow2Engine
         src/Core/Time/GameLoop.cpp
         src/Core/Time/GameLoopConfig.cpp
         src/Core/Version.cpp
+        src/Platform/Input/InputSystem.cpp
         src/Platform/Sdl/PlatformImplSdl.h
         src/Platform/Sdl/PlatformSdl.cpp
         src/Platform/Window/Sdl/WindowImplSdl.h
@@ -67,6 +68,9 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/FrameClock.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
+            include/Meow2/Platform/Input/InputEvents.h
+            include/Meow2/Platform/Input/InputSystem.h
+            include/Meow2/Platform/Input/InputTypes.h
             include/Meow2/Platform/Platform.h
             include/Meow2/Platform/Window/Window.h
             include/Meow2/Platform/Window/WindowConfig.h
