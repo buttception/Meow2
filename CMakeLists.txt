@@ -12,7 +12,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
 endif()
 
 project(Meow2
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Modular C++20 game engine"
     LANGUAGES CXX)
 
