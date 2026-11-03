@@ -16,6 +16,7 @@
 #include <Meow2/Core/Time/GameLoop.h>
 #include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
+#include <Meow2/Platform/Input/InputSystem.h>
 #include <Meow2/Platform/Platform.h>
 #include <Meow2/Platform/Window/Window.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
@@ -48,8 +49,10 @@ int main(int argc, char** argv)
     const std::int64_t jobThreads = config.getInt("jobs.threadCount", 0);
     Meow2::Jobs::JobSystem jobs{
         {.threadCount = static_cast<std::uint32_t>(std::clamp<std::int64_t>(jobThreads, 0, 256))}, engineLog};
-    // Things that happen (window events now, input later) are delivered through it (techstack.md §22).
+    // Things that happen (window and input events) are delivered through it (techstack.md §22).
     Meow2::Events::EventBus events{Meow2::Memory::globalTracker()};
+    // Keyboard, mouse and gamepads (techstack.md §9). Nothing feeds it until the SDL input sources exist.
+    Meow2::Input::InputSystem input{events};
 
     std::printf("Meow2Player (Meow2 Engine %s, %s/%s/%s)\n", Meow2::getVersionString(), Meow2::c_platformName,
                 Meow2::c_compilerName, Meow2::c_configName);
@@ -86,6 +89,15 @@ int main(int argc, char** argv)
             MEOW2_LOG_DEBUG(appLog, "Window resized: {}x{} ({}x{} pixels)", e.width, e.height, e.pixelWidth,
                             e.pixelHeight);
         });
+    // Keys let go while another window has focus never send a release: release everything on focus loss.
+    const Meow2::Events::Subscription onFocus = events.subscribe<Meow2::Platform::WindowFocusChanged>(
+        [&input](const Meow2::Platform::WindowFocusChanged& e)
+        {
+            if (!e.focused)
+            {
+                input.releaseAll();
+            }
+        });
 
     // The game loop (techstack.md §23): events, fixedUpdate × n, update, render. Nothing to simulate or draw yet.
     // app.quitAfterFrames ends a smoke run.
@@ -96,7 +108,15 @@ int main(int argc, char** argv)
         events,
         Meow2::Time::gameLoopDescFromConfig(config, engineLog),
         {// Sleeps up to 16 ms while idle instead of spinning a core, until the swapchain's vsync paces frames (M5).
-         .pumpEvents = [&platform] { platform->pumpEvents(std::chrono::milliseconds{16}); },
+         // Input is applied right after the pump, so its events are in the loop's first dispatch.
+         .pumpEvents =
+             [&platform, &input]
+         {
+             platform->pumpEvents(std::chrono::milliseconds{16});
+             input.beginFrame();
+         },
+         // Gameplay's fixed step goes before endFixedStep(), which ends this step's latched presses.
+         .fixedUpdate = [&input](double) { input.endFixedStep(); },
          .update =
              [](double)
          {
