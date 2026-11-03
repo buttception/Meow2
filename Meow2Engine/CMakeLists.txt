@@ -33,6 +33,7 @@ target_sources(Meow2Engine
         src/Core/Time/GameLoop.cpp
         src/Core/Time/GameLoopConfig.cpp
         src/Core/Version.cpp
+        src/Platform/FileSystem/FileSystem.cpp
         src/Platform/Input/InputSystem.cpp
         src/Platform/Input/Sdl/SdlGamepadSource.cpp
         src/Platform/Input/Sdl/SdlInputSource.cpp
@@ -78,6 +79,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/FrameClock.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
+            include/Meow2/Platform/FileSystem/FileSystem.h
             include/Meow2/Platform/Input/InputEvents.h
             include/Meow2/Platform/Input/InputSystem.h
             include/Meow2/Platform/Input/InputTypes.h

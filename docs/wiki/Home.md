@@ -40,6 +40,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Frame clock (frame time, clamped delta) | [FrameClock](FrameClock.md) | ✅ M1 |
 | Game loop (fixed timestep, update, render) | [GameLoop](GameLoop.md) | ✅ M2 |
 | Input (keys, mouse, gamepads, events, SDL sources) | [Input](Input.md) | ✅ M2 |
+| File system (virtual paths, mounts) | [FileSystem](FileSystem.md) | ✅ M2 |
 | Window (SDL3, settings in the config) | [Window](Window.md) | ✅ M2 |
 | Editor (Qt main window, viewport) | [Editor](Editor.md) | 🟨 M9 (main window only) |
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |

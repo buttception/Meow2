@@ -137,7 +137,7 @@ ctest --preset windows-msvc-debug -L unit
 | Scene | `Scene` (entities, components) | **EnTT** | §25 (M2) |
 | Platform / Window | `Platform`, `Window` | **SDL3** (§9) | One window; the editor's windows are Qt's |
 | Input | `InputSystem` + input sources | SDL3 sources (engine), Qt source (editor) | §9 |
-| FileSystem | `FileSystem` / VFS | native files; packages later; Android `AAssetManager` later | |
+| FileSystem | `FileSystem` / VFS | native folders (`std::filesystem`); packages later; Android `AAssetManager` later | **Implemented (M2)**: virtual paths `<mount>/…` (no escaping a mount), folder mounts read-only/read-write, atomic writes, thread-safe (shared lock, no lock during I/O), mounts as a `std::variant`; see [docs/wiki/FileSystem.md](docs/wiki/FileSystem.md) |
 | Math | aliases + inline functions (no virtuals) | DirectXMath | §10 |
 | RHI | `IRhiDevice`, `IRhiCommandList`, `IRhiSwapchain`, resources by handle | Vulkan, D3D12 | §11 |
 | Shader | `ShaderCompiler` | DXC (HLSL → DXIL / SPIR-V) | Interface leaves room for a custom shader language (§12) |
@@ -702,3 +702,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-03 — §24: IDs implemented (`Uuid`, `TypedId`, lock-free `UuidGenerator`).
 - 2026-11-03 — §3/§4/§25: EnTT v3.16.0 added (owner-approved) and is the third public-header exception (`Meow2/Scene`); `Scene` part 1 implemented; `MemTag::Scene`; the registry uses `Memory::ResourceAllocator` because EnTT doesn't build with `std::pmr::polymorphic_allocator`.
 - 2026-11-03 — §25: command buffers, transient entities and a signal-synced `entt::dense_map` ID map implemented; decision recorded: no double-buffered ECS (render overlap via the extract step).
+- 2026-11-03 — §3: virtual file system implemented (folder mounts, path rules, atomic writes, thread-safe reads).
