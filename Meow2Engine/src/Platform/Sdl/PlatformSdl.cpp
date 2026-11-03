@@ -85,8 +85,26 @@ constexpr std::size_t c_sdlAlignment = alignof(std::max_align_t);
 Platform::Impl::~Impl()
 {
     MEOW2_ASSERT(windows.empty(), "destroy every Window before its Platform");
+    MEOW2_ASSERT(eventHandlers.empty(), "destroy every input source before its Platform");
     SDL_Quit();
     MEOW2_LOG_DEBUG(*log, "Platform shut down");
+}
+
+std::uint64_t Platform::Impl::addEventHandler(std::function<void(const SDL_Event&)> handle)
+{
+    const std::uint64_t id = nextEventHandlerId++;
+    eventHandlers.push_back({.id = id, .handle = std::move(handle)});
+    return id;
+}
+
+void Platform::Impl::removeEventHandler(std::uint64_t id)
+{
+    std::erase_if(eventHandlers, [id](const SdlEventHandler& handler) { return handler.id == id; });
+}
+
+Platform::Impl& sdlPlatformImpl(Platform& platform)
+{
+    return *platform.m_impl;
 }
 
 Platform::Platform(std::unique_ptr<Impl> impl)
@@ -166,6 +184,14 @@ void Platform::pumpEvents(std::chrono::milliseconds wait)
             if (window != m_impl->windows.end())
             {
                 (*window)->handleEvent(event.window);
+            }
+        }
+        else
+        {
+            // Keyboard, mouse, text, gamepads: the input sources translate them for the InputSystem.
+            for (const SdlEventHandler& handler : m_impl->eventHandlers)
+            {
+                handler.handle(event);
             }
         }
         hasEvent = SDL_PollEvent(&event);

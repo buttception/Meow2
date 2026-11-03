@@ -127,6 +127,6 @@ So the Linux CI job runs the same tests without X11 or Wayland. It still install
 
 - **Exclusive fullscreen** (changing the display mode) isn't supported; `fullscreen` is borderless at the desktop resolution.
 - **One window per app.**
-- **No input yet.** Keyboard, mouse and gamepads come with `InputSystem` (M2).
+- **Input** (keyboard, mouse, gamepads) is the [Input](Input.md) page: the SDL input sources receive it through the same `pumpEvents()`.
 
 See also: techstack.md §9, [Config](Config.md), [Memory](Memory.md), API reference `Meow2::Platform`.

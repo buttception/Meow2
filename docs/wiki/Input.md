@@ -6,13 +6,14 @@
   - `#include <Meow2/Platform/Input/InputSystem.h>`: `InputSystem`
   - `#include <Meow2/Platform/Input/InputTypes.h>`: `Key`, `MouseButton`, `GamepadButton`, `GamepadAxis`, `GamepadId`
   - `#include <Meow2/Platform/Input/InputEvents.h>`: what sources submit, and the bus events
+  - `#include <Meow2/Platform/Input/SdlInputSource.h>`, `SdlGamepadSource.h`: the SDL sources
 - Namespace: `Meow2::Input`.
-- Status: ✅ M2 (#89). **Nothing feeds it yet:** the SDL keyboard/mouse and gamepad sources are the next M2 feature; the Qt source comes with the editor viewport (M9).
+- Status: ✅ M2 (#89, SDL sources #91). Player and Renderer get keyboard, mouse and gamepads from SDL. The editor's viewport input (`QtInputSource`) comes with M9.
 
 ```
-Player / Renderer:   SDL events ───► SdlInputSource   ─┐   (next feature)
-Editor viewport:     Qt events  ───► QtInputSource    ─┼─► InputSystem::submit(InputEvent)
-All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
+Player / Renderer:   SDL events ───► SdlInputSource   ─┐
+Editor viewport:     Qt events  ───► QtInputSource    ─┼─► InputSystem::submit(InputEvent)   (QtInputSource: M9)
+Player / Renderer:   SDL gamepads ─► SdlGamepadSource ─┘            │
                                                                     ├─► polling: isDown, wasPressed, mouseDelta, axis, …
                                                                     └─► bus events: KeyPressed, MouseMoved, GamepadConnected, …
 ```
@@ -74,6 +75,10 @@ The **fixed-step latch** solves both: `fixedWasPressed` stays set from the press
 
 ```cpp
 Meow2::Input::InputSystem input{events};
+// after the Platform (and destroyed before it):
+const Meow2::Input::SdlInputSource keyboardAndMouse{*platform, input};
+Meow2::Result<Meow2::Input::SdlGamepadSource> gamepads = Meow2::Input::SdlGamepadSource::create(*platform, input, log);
+if (!gamepads) { /* warn; the app runs without gamepads */ }
 Meow2::Time::GameLoop loop{clock, events, loopDesc,
     {.pumpEvents = [&] { platform.pumpEvents(); input.beginFrame(); },   // sources submit during the pump
      .fixedUpdate = [&](double dt) { game.fixedUpdate(dt); input.endFixedStep(); },
@@ -90,9 +95,27 @@ Meow2::Time::GameLoop loop{clock, events, loopDesc,
 - **Gamepads** are kept in a small vector by `GamepadId`. Input for an id that isn't connected is ignored, and disconnecting drops its state.
 - **Raw input is a `std::variant`** of plain structs, applied with `std::visit`. No virtual interfaces: sources are translators that hold an `InputSystem&` (techstack.md §9).
 
+## The SDL sources
+
+`Platform::pumpEvents()` gives every SDL event that isn't a window event to the registered sources (each registers in its constructor and unregisters in its destructor), and they translate:
+
+| SDL | Engine |
+|---|---|
+| `KEY_DOWN`/`KEY_UP` (scancode, `repeat`) | `KeyInput`: the scancode **is** the `Key` value (both are HID usage IDs; checked with `static_assert`) |
+| `MOUSE_MOTION` (`x`, `y`, `xrel`, `yrel`) | `MouseMotionInput` |
+| `MOUSE_BUTTON_*` 1..5 | `MouseButtonInput`: Left, Middle, Right, X1, X2 |
+| `MOUSE_WHEEL` | `MouseWheelInput`, negated when SDL says `FLIPPED` (natural scrolling), so +y is always away from the user |
+| `TEXT_INPUT` | `TextInput`. SDL only sends text while text input is switched on; that comes with the first text field |
+| `GAMEPAD_ADDED`/`REMOVED` | the pad is opened/closed; `GamepadConnection` with its name. `GamepadId` = SDL's joystick instance id |
+| `GAMEPAD_BUTTON_*`, `GAMEPAD_AXIS_MOTION` | `GamepadButtonInput`, `GamepadAxisInput` (same order as SDL's standard layout; sticks −1..1, triggers 0..1) |
+
+- **Gamepads are optional.** `SdlGamepadSource::create()` starts SDL's gamepad subsystem and returns an error if it can't; Player and Renderer then log a warning and run without gamepads. Pads already plugged in when it starts are reported like new ones.
+- **Destroy the sources before the Platform** (it asserts that no source is still registered). Declaring them after it in `main` does that.
+- **Tests** push SDL events by hand (`SDL_PushEvent`) and attach an **SDL virtual gamepad** (`SDL_AttachVirtualJoystick`), so the gamepad path is tested without hardware, on CI too. A real pad plugged into the test machine shows up as well; the test looks for its virtual pad by id.
+
 ## Not yet
 
-- The SDL sources (keyboard, mouse, gamepads): next M2 feature.
-- `QtInputSource` for the editor viewport (M9), mouse capture (relative mode), an action layer ("Jump" = Space or A) with bindings in the config.
+- `QtInputSource` for the editor viewport (M9); gamepads in the editor (it has no Platform yet).
+- Switching text input on (`SDL_StartTextInput`), mouse capture (relative mode), rumble, an action layer ("Jump" = Space or A) with bindings in the config.
 
 See also: techstack.md §9, [GameLoop](GameLoop.md), [Events](Events.md), [Window](Window.md).

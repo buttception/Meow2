@@ -82,7 +82,7 @@ Rough order: window events → game loop → input → IDs → scene/ECS → fil
 | Window events (resize, move, state, focus, DPI, close, quit) on the `EventBus`; polled getters stay for current values | §9, §22 | ✅ | #82 / PR #83 |
 | Game loop: `tick()` with fixed timestep (`fixedUpdate` 0..n times), `update`, `render(alpha)`, clamped frame time; the editor ticks from a Qt timer | §23 | ✅ | #87 / PR #88 |
 | `InputSystem`: engine `Key` (HID scan codes), mouse, gamepad; polling (`isDown`, `wasPressed`, …) + input events on the `EventBus`; presses latched for `fixedUpdate` | §9 | ✅ | #89 / PR #90 |
-| `SdlInputSource` (keyboard/mouse) and `SdlGamepadSource` (all three apps) | §9 | ⬜ | |
+| `SdlInputSource` (keyboard/mouse/text) and `SdlGamepadSource` (Player and Renderer; the editor gets `QtInputSource` in M9) | §9 | ✅ | #91 / PR #92 |
 | IDs: 128-bit `Uuid` (snowflake-style UUIDv8: time, sequence, kind, random node), `EntityId`/`AssetId` wrappers, lock-free `UuidGenerator`, text form | §24 | ⬜ | |
 | Scene/ECS: EnTT in `Scene`, `EntityId` ↔ `entt::entity`, pools created at startup, command buffers for jobs, `MemTag::Scene` (EnTT submodule needs the owner's permission first) | §25 | ⬜ | |
 | Virtual file system (`FileSystem`) | §3 | ⬜ | |
