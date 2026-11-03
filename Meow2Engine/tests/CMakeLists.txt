@@ -6,6 +6,7 @@ meow2_add_test_suite(
         Core/AssertTests.cpp
         Core/Config/ConfigTests.cpp
         Core/Events/EventBusTests.cpp
+        Core/Id/UuidTests.cpp
         Core/Jobs/JobSystemTests.cpp
         Core/Log/LogTests.cpp
         Core/Memory/BlockArenaTests.cpp

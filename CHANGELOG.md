@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- IDs: 128-bit `Uuid`s for things that are saved (entities, assets, scenes, prefabs). They sort by creation time, carry what kind of thing they name (`EntityId`, `AssetId`, … can't be mixed up), read and write as standard UUID text, and come from a lock-free `UuidGenerator` that needs no coordination between machines (#94).
 - Input sources: Player and Renderer now feed the `InputSystem` from SDL: keyboard (physical keys), mouse (motion, buttons, wheel with natural scrolling handled), typed text, and gamepads (plugged in or out at any time; sticks -1..1, triggers 0..1). Gamepad support is optional; without it the apps run as before (#92).
 - Input: `InputSystem` keeps keyboard (by physical key), mouse and gamepad state. Gameplay polls it (`isDown`, `wasPressed`, `mouseDelta`, `axis`, …), with presses latched for the fixed-rate `fixedUpdate` so a tap is never lost or doubled; changes go on the `EventBus` (`KeyPressed`, `MouseMoved`, `GamepadConnected`, …). Player and Renderer run it each frame; the SDL sources that feed it come next (#90).
 - Game loop: every app now runs its frames through `GameLoop`: events, then `fixedUpdate` at a constant rate (60 Hz by default, `loop.fixedStepHz`), `update` with the frame time and `render` with an interpolation factor. Long frames run at most `loop.maxFixedSteps` simulation steps, so a stall can't snowball. The editor ticks it from its Qt timer (#88).

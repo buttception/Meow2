@@ -628,6 +628,7 @@ Things that are **saved and referenced across runs** (entities, assets, scenes, 
 - **Not secret:** IDs contain their creation time and are guessable; never use them as tokens (the MCP token is separate random data, §20).
 - **Threading:** one `UuidGenerator`, created by the composition root and injected, is thread-safe without a lock: time and sequence live in one `std::atomic<std::uint64_t>`, and `next()` advances it with a compare-and-swap (`max(now, last + 1)`). That handles millions of IDs per second, far more than entity creation needs. If profiling ever shows contention, each job thread gets its own generator with the thread index in the node bits.
 - **Options considered:** UUIDv4 (random: no order, no room for a kind), UUIDv7 (ordered, but no kind field), 64-bit Snowflake (needs a unique worker ID per machine, handed out by someone, and few spare bits), a hash of the name or path (changes on rename), a runtime counter (not stable across runs).
+- **Implemented (M2):** `Meow2::Uuid`, `IdKind`, `TypedId<K>` (`EntityId`, `AssetId`, `SceneId`, `PrefabId`; `fromUuid()` checks the kind) in `Meow2/Core/Id/Uuid.h`, with `parse()`/`toString()`, `std::hash` and `std::formatter`; `UuidGenerator` (`Meow2/Core/Id/UuidGenerator.h`): random or given node, `next(kind)`, `next<K>()`, `next(kind, unixMs)`, one atomic CAS per ID. See [docs/wiki/Ids.md](docs/wiki/Ids.md).
 
 ## 25. Scene & ECS (M2, planned)
 
@@ -695,3 +696,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-02 — §23: game loop implemented (`GameLoop`, `FixedTimestep`, `loop.*` config keys); all three apps use it.
 - 2026-11-03 — §9: `InputSystem` implemented (raw input queue, frame edges + fixed-step latch, mouse, gamepads, bus events); the SDL sources follow.
 - 2026-11-03 — §9: SDL input sources implemented (keyboard/mouse/text and gamepads → `InputSystem`; Platform routes non-window events to them).
+- 2026-11-03 — §24: IDs implemented (`Uuid`, `TypedId`, lock-free `UuidGenerator`).
