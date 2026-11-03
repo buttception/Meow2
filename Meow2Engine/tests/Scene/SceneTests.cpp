@@ -2,17 +2,24 @@
 /// @brief Tests for Scene: entity IDs, lookup, destruction, loading by ID, views, up-front pools, memory tag.
 
 #include <Meow2/Core/Id/UuidGenerator.h>
+#include <Meow2/Core/Jobs/JobSystem.h>
+#include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/MallocResource.h>
 #include <Meow2/Core/Memory/TrackingAllocator.h>
+#include <Meow2/Core/Platform.h>
 #include <Meow2/Scene/Scene.h>
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <filesystem>
 #include <format>
 #include <memory_resource>
 #include <optional>
 #include <vector>
+
+namespace fs = std::filesystem;
 
 namespace
 {
@@ -142,4 +149,172 @@ TEST(SceneMemory, CountedUnderSceneTag)
         EXPECT_EQ(tracker.stats(MemTag::General).liveAllocations, 0U) << "nothing leaks into another tag";
     }
     EXPECT_EQ(tracker.stats(MemTag::Scene).liveAllocations, 0U) << "all returned when the scene goes away";
+}
+
+TEST_F(SceneTest, TransientHasNoId)
+{
+    const entt::entity saved = m_scene.create("Saved");
+    const entt::entity bullet = m_scene.createTransient();
+    EXPECT_TRUE(m_scene.contains(bullet));
+    EXPECT_FALSE(m_scene.registry().all_of<IdComponent>(bullet));
+    EXPECT_FALSE(m_scene.idOf(bullet).isValid()) << "transient entities have no saved ID";
+    EXPECT_TRUE(m_scene.idOf(saved).isValid());
+    EXPECT_EQ(m_scene.entityCount(), 2U);
+    EXPECT_EQ(m_scene.persistentCount(), 1U) << "only the saved one is in the ID map";
+}
+
+TEST_F(SceneTest, RegistryDestroyKeepsMapInSync)
+{
+    const entt::entity entity = m_scene.create();
+    const Meow2::EntityId id = m_scene.idOf(entity);
+    m_scene.registry().destroy(entity); // bypassing Scene::destroy
+    EXPECT_EQ(m_scene.find(id), std::nullopt) << "the IdComponent signal updated the map";
+    EXPECT_EQ(m_scene.persistentCount(), 0U);
+}
+
+TEST_F(SceneTest, RemovingIdMakesEntityTransient)
+{
+    const entt::entity entity = m_scene.create();
+    const Meow2::EntityId id = m_scene.idOf(entity);
+    m_scene.registry().remove<IdComponent>(entity);
+    EXPECT_TRUE(m_scene.contains(entity));
+    EXPECT_EQ(m_scene.find(id), std::nullopt);
+    EXPECT_FALSE(m_scene.idOf(entity).isValid());
+}
+
+TEST_F(SceneTest, IsRegistered)
+{
+    EXPECT_FALSE(m_scene.isRegistered<Health>());
+    m_scene.registerComponent<Health>();
+    EXPECT_TRUE(m_scene.isRegistered<Health>());
+    EXPECT_TRUE(m_scene.isRegistered<IdComponent>()) << "the Scene registers its own components";
+}
+
+namespace
+{
+/// @brief A tag component for the command tests. Plain data.
+struct Marker
+{
+    int frame = 0; ///< Which frame marked it.
+};
+
+/// @brief A scene with Health and Marker registered.
+class SceneCommandsTest : public ::testing::Test
+{
+protected:
+    SceneCommandsTest()
+    {
+        m_scene.registerComponent<Health>();
+        m_scene.registerComponent<Marker>();
+    }
+
+    Meow2::UuidGenerator m_ids;
+    Scene m_scene{m_ids, *std::pmr::new_delete_resource()};
+};
+} // namespace
+
+TEST_F(SceneCommandsTest, SpawnAppearsOnApply)
+{
+    Meow2::Scene::SceneCommands& commands = m_scene.commands(0);
+    const Meow2::EntityId id = commands.spawn("Spawned", Health{5});
+    EXPECT_TRUE(id.isValid()) << "the ID exists right away";
+    EXPECT_EQ(m_scene.find(id), std::nullopt) << "the entity doesn't, until apply";
+    EXPECT_EQ(commands.size(), 1U);
+
+    m_scene.applyCommands();
+    const std::optional<entt::entity> entity = m_scene.find(id);
+    ASSERT_TRUE(entity.has_value());
+    EXPECT_EQ(m_scene.registry().get<Health>(*entity).value, 5);
+    EXPECT_EQ(m_scene.registry().get<NameComponent>(*entity).name, "Spawned");
+    EXPECT_EQ(commands.size(), 0U) << "applied commands are gone";
+
+    commands.spawnTransient(Health{1}, Marker{2});
+    m_scene.applyCommands();
+    EXPECT_EQ(m_scene.entityCount(), 2U);
+    EXPECT_EQ(m_scene.persistentCount(), 1U);
+}
+
+TEST_F(SceneCommandsTest, DestroyEmplaceRemove)
+{
+    const entt::entity a = m_scene.create();
+    const entt::entity b = m_scene.create();
+    m_scene.registry().emplace<Health>(b, 10);
+    Meow2::Scene::SceneCommands& commands = m_scene.commands(0);
+    commands.emplace(a, Marker{7});
+    commands.remove<Health>(b);
+    commands.destroy(b);
+    EXPECT_TRUE(m_scene.contains(b)) << "nothing happens before apply";
+    EXPECT_FALSE(m_scene.registry().all_of<Marker>(a));
+
+    m_scene.applyCommands();
+    EXPECT_EQ(m_scene.registry().get<Marker>(a).frame, 7);
+    EXPECT_FALSE(m_scene.contains(b));
+
+    commands.emplace(a, Marker{8});
+    m_scene.applyCommands();
+    EXPECT_EQ(m_scene.registry().get<Marker>(a).frame, 8) << "emplace replaces an existing component";
+}
+
+TEST_F(SceneCommandsTest, SkipsEntitiesDestroyedEarlier)
+{
+    const entt::entity entity = m_scene.create();
+    Meow2::Scene::SceneCommands& commands = m_scene.commands(0);
+    commands.destroy(entity);
+    commands.emplace(entity, Marker{1}); // recorded by a job that didn't know it'd be destroyed first
+    commands.remove<Health>(entity);
+    commands.destroy(entity);
+    m_scene.applyCommands();
+    EXPECT_FALSE(m_scene.contains(entity));
+    EXPECT_EQ(m_scene.entityCount(), 0U);
+}
+
+TEST(SceneCommandsJobs, JobsRecordInParallel)
+{
+    const fs::path directory = fs::temp_directory_path() / std::format("meow2-scene-jobs-{}", Meow2::c_configName);
+    Meow2::Log::LogSystem logSystem{{.appName = "Test", .directory = directory, .console = false}};
+    Meow2::Log::Logger log = logSystem.createLogger("Engine");
+    Meow2::Jobs::JobSystem jobs{{.threadCount = 4}, log};
+    Meow2::UuidGenerator ids;
+    Scene scene{ids, *std::pmr::new_delete_resource(), jobs.threadCount()};
+    scene.registerComponent<Health>();
+    scene.registerComponent<Marker>();
+
+    constexpr std::uint32_t c_count = 10000;
+    std::vector<entt::entity> entities;
+    for (std::uint32_t i = 0; i < c_count; ++i)
+    {
+        entities.push_back(scene.create());
+    }
+    // Every job thread records into its own buffer: even entities are destroyed, odd ones marked, and every 100th
+    // spawns a transient bullet. Nothing changes structure while the jobs run.
+    jobs.wait(jobs.parallelFor(c_count, 64,
+                               [&scene, &entities](std::uint32_t begin, std::uint32_t end, std::uint32_t threadIndex)
+                               {
+                                   Meow2::Scene::SceneCommands& commands = scene.commands(threadIndex);
+                                   for (std::uint32_t i = begin; i < end; ++i)
+                                   {
+                                       if (i % 2 == 0)
+                                       {
+                                           commands.destroy(entities[i]);
+                                       }
+                                       else
+                                       {
+                                           commands.emplace(entities[i], Marker{static_cast<int>(i)});
+                                       }
+                                       if (i % 100 == 0)
+                                       {
+                                           commands.spawnTransient(Health{1});
+                                       }
+                                   }
+                               }));
+    scene.applyCommands();
+
+    EXPECT_EQ(scene.persistentCount(), c_count / 2);
+    EXPECT_EQ(scene.entityCount(), c_count / 2 + c_count / 100);
+    EXPECT_EQ(scene.registry().view<Marker>().size(), c_count / 2);
+    EXPECT_EQ(scene.registry().view<Health>().size(), c_count / 100);
+    for (std::uint32_t i = 0; i < c_count; ++i)
+    {
+        ASSERT_EQ(scene.contains(entities[i]), i % 2 == 1) << "entity " << i;
+    }
 }
