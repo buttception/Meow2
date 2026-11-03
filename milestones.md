@@ -85,7 +85,7 @@ Rough order: window events → game loop → input → IDs → scene/ECS → fil
 | `SdlInputSource` (keyboard/mouse/text) and `SdlGamepadSource` (Player and Renderer; the editor gets `QtInputSource` in M9) | §9 | ✅ | #91 / PR #92 |
 | IDs: 128-bit `Uuid` (snowflake-style UUIDv8: time, sequence, kind, random node), `EntityId`/`AssetId` wrappers, lock-free `UuidGenerator`, text form | §24 | ✅ | #93 / PR #94 |
 | Scene/ECS: EnTT in `Scene`, `EntityId` ↔ `entt::entity`, pools created at startup, `MemTag::Scene` (part 1); command buffers for jobs, transient entities (part 2) | §25 | ✅ | #95 / PR #96, #97 / PR #98 |
-| Virtual file system (`FileSystem`) | §3 | ⬜ | |
+| Virtual file system (`FileSystem`): virtual paths, folder mounts (read-only / read-write), atomic writes, thread-safe | §3 | ✅ | #99 / PR #100 |
 | Closing PR bumps the version to **0.3.0** | §21 | ⬜ | |
 
 **Done when:** Renderer and Player run a fixed-timestep loop driven by SDL input and window events from the `EventBus`, and a `Scene` creates, finds by `EntityId` and destroys entities, with structural changes from jobs applied through command buffers (TSan job green). Transforms wait for M3's math.

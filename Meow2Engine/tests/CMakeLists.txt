@@ -90,6 +90,7 @@ meow2_add_test_suite(
     TARGET    Meow2EnginePlatformTests
     MODULE    Platform
     SOURCES
+        Platform/FileSystem/FileSystemTests.cpp
         Platform/Input/InputSystemTests.cpp
         Platform/Input/SdlInputSourceTests.cpp
         Platform/WindowConfigTests.cpp

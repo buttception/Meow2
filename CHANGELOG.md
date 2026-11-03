@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- File system: engine code reads and writes files by virtual path (`assets/textures/cat.png`), with each part (`assets`, `save`, …) mounted to a folder by the app; packages and Android assets will plug in the same way. Paths can't escape their mount, writes are atomic (a crash never leaves a half-written file), non-ASCII names work, and any thread can use it (#100).
 - Scene: jobs can now create and destroy entities and add or remove components through per-thread command buffers, applied on the main thread at one point in the frame. New transient entities (no saved ID, for bullets and effects), and the ID lookup stays correct however an entity is destroyed (#98).
 - Scene: entities and components on EnTT v3.16.0 (new dependency). Every entity gets a saved `EntityId` next to its runtime handle; scenes can be loaded with their saved IDs, component types are registered up front, and all scene memory shows up under the new `Scene` memory tag (#96).
 - IDs: 128-bit `Uuid`s for things that are saved (entities, assets, scenes, prefabs). They sort by creation time, carry what kind of thing they name (`EntityId`, `AssetId`, … can't be mixed up), read and write as standard UUID text, and come from a lock-free `UuidGenerator` that needs no coordination between machines (#94).
