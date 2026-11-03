@@ -134,7 +134,7 @@ ctest --preset windows-msvc-debug -L unit
 | Jobs | `JobSystem` | **enkiTS** | §19 |
 | Profiling | `MEOW2_PROFILE_*` macros | **Tracy** | Debug/RelWithDebInfo only; compiled out of Release. **Implemented (M1)**: zones, frame marks, thread names, per-tag memory plots; see [docs/wiki/Profiling.md](docs/wiki/Profiling.md) |
 | Id | `Uuid`, `EntityId`, `AssetId`, …, `UuidGenerator` | in-house, 128-bit snowflake-style UUIDv8 with a kind tag | §24 (M2) |
-| Scene | `Scene` (entities, components) | **EnTT** (planned, **⚠ OPEN**: submodule not added yet) | §25 (M2) |
+| Scene | `Scene` (entities, components) | **EnTT** | §25 (M2) |
 | Platform / Window | `Platform`, `Window` | **SDL3** (§9) | One window; the editor's windows are Qt's |
 | Input | `InputSystem` + input sources | SDL3 sources (engine), Qt source (editor) | §9 |
 | FileSystem | `FileSystem` / VFS | native files; packages later; Android `AAssetManager` later | |
@@ -156,7 +156,7 @@ ctest --preset windows-msvc-debug -L unit
 
 - Backend contracts are written down in the header, and enforced by shared "contract" tests that every backend must pass.
 - Tests that need a fake build with a `Null`/`Fake` backend (e.g. `MEOW2_PHYSICS_BACKEND=Null`), instead of mocking through virtuals.
-- Third-party types never appear in public engine headers (except DirectXMath in `Meow2/Math`, and tl::expected through `Meow2/Core/Result.h`, because `Result<T>` is part of the API itself).
+- Third-party types never appear in public engine headers (except DirectXMath in `Meow2/Math`; tl::expected through `Meow2/Core/Result.h`, because `Result<T>` is part of the API itself; and EnTT in `Meow2/Scene`, because its registry and views are the Scene API, §25).
 - The one other place with virtual calls is memory: allocators implement `std::pmr::memory_resource`, whose interface the C++ standard defines as virtual (§6).
 
 ---
@@ -180,7 +180,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | glTF loader (**⚠ OPEN**) | asset import | MIT | submodule |
 | GoogleTest v1.17.0 | unit tests (gmock off) | BSD-3 | submodule |
 | tl::expected v1.3.1 | `Result<T>` until C++23 `std::expected` (only the `std::expected`-compatible API is used) | CC0 | submodule; header-only, own INTERFACE target (its CMakeLists pulls in CTest/Catch2). **Public-header exception:** included by `Meow2/Core/Result.h` |
-| EnTT (**⚠ OPEN**: planned, not added yet) | ECS for `Scene` (§25) | MIT | submodule at the latest release tag once the owner approves; header-only. Whether its types may appear in public `Meow2/Scene` headers (a third public-header exception) is decided when it's added |
+| EnTT v3.16.0 | ECS for `Scene` (§25) | MIT | submodule; header-only, own INTERFACE target (`EnTT::EnTT`, linked PUBLIC). **Public-header exception:** `Meow2/Scene/Scene.h` exposes the registry and views. The registry allocates through `Memory::ResourceAllocator` (EnTT doesn't build with `std::pmr::polymorphic_allocator`) |
 | toml++ v3.4.0 | config files | MIT | submodule; header-only, own INTERFACE target, `TOML_EXCEPTIONS=0`; only included by `src/Core/Config/Config.cpp` |
 | enkiTS v1.12 | job system | zlib | submodule; static, C interface/examples off; only included by `src/Core/Jobs/Enkits/` |
 | Tracy v0.14.1 (client only) | CPU/GPU/memory profiler | BSD-3 | submodule; static, on demand, localhost only, no broadcast, its crash handler off; `TRACY_ENABLE` per configuration (Debug/RWDI). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
@@ -224,7 +224,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
 - **`MallocResource`**: upstream of everything, calls `malloc`/`free` directly (never `new`, so the override can't recurse).
 - **`TrackingAllocator`** (Debug/RelWithDebInfo): wraps an upstream resource. Each block gets a small header (magic, size, tag), and counters are kept per `MemTag` (current, peak, allocation count). A `ScopedLeakCheck` in each app logs the leaks by tag at the end of `main`. In Release, `MallocResource` is used directly with no headers.
   - **Implemented (M1):** `Meow2::Memory::TrackingAllocator` and `MallocResource` (`Meow2/Core/Memory/`). Header in front of each allocation, 16 `0xFD` guard bytes behind it (overrun check on free), lock-free `std::atomic` counters per tag, `allocateTagged()` for library hooks, `leakReport()`. Asserts on foreign/double frees and size mismatches. `MallocResource` handles large alignments portably (over-allocate, original pointer stored in front). `MemTagScope` (thread-local current tag) is implemented too.
-- **`MemTag`**: one per subsystem (`General`, `Logging`, `Config`, `Jobs`, `Events`, `Platform`, `Renderer`, `Rhi`, `Physics`, `Assets`, `Editor`, `ImGui`, `Profiler`, …). The stats feed the memory window in Meow2Renderer and Tracy's memory view.
+- **`MemTag`**: one per subsystem (`General`, `Logging`, `Config`, `Jobs`, `Events`, `Platform`, `Renderer`, `Rhi`, `Physics`, `Assets`, `Editor`, `ImGui`, `Profiler`, `Scene`, …). The stats feed the memory window in Meow2Renderer and Tracy's memory view.
 - **Libraries with an allocator hook** (SDL `SDL_SetMemoryFunctions`, Jolt `JPH::Allocate/Free`, ImGui `SetAllocatorFunctions`, enkiTS custom allocator, VMA/D3D12MA CPU callbacks) call `globalTracker().allocateTagged()` directly with their own tag (added with each library). **SDL: implemented (M2).** Most hooks are C functions without a user-data pointer, so they reach the process-wide tracker (§18).
 - **Everything else** (spdlog, toml++, Tracy, `std::make_unique`, …) goes through a **global `operator new`/`delete` override** (Debug/RelWithDebInfo). **Not in Meow2Editor:** on Windows every DLL binds `new`/`delete` itself, and Qt's DLLs delete objects the exe allocated (parent widgets delete their children), so a replaced `operator new` would hand tracked blocks to the C runtime's `free`. The editor uses the normal heap; its library hooks are still tracked, tagged with the thread-local current tag (`MemTagScope` sets it for a scope, default `General`). No double counting: hooked libraries never go through `new`.
   - It replaces every variant: plain, array, aligned (`std::align_val_t`), `nothrow`, and sized delete.
@@ -630,13 +630,13 @@ Things that are **saved and referenced across runs** (entities, assets, scenes, 
 - **Options considered:** UUIDv4 (random: no order, no room for a kind), UUIDv7 (ordered, but no kind field), 64-bit Snowflake (needs a unique worker ID per machine, handed out by someone, and few spare bits), a hash of the name or path (changes on rename), a runtime counter (not stable across runs).
 - **Implemented (M2):** `Meow2::Uuid`, `IdKind`, `TypedId<K>` (`EntityId`, `AssetId`, `SceneId`, `PrefabId`; `fromUuid()` checks the kind) in `Meow2/Core/Id/Uuid.h`, with `parse()`/`toString()`, `std::hash` and `std::formatter`; `UuidGenerator` (`Meow2/Core/Id/UuidGenerator.h`): random or given node, `next(kind)`, `next<K>()`, `next(kind, unixMs)`, one atomic CAS per ID. See [docs/wiki/Ids.md](docs/wiki/Ids.md).
 
-## 25. Scene & ECS (M2, planned)
+## 25. Scene & ECS (M2)
 
-The engine's entities and components use **[EnTT](https://github.com/skypjack/EnTT)** (MIT, header-only). **⚠ OPEN:** the submodule is added later with the owner's permission, and with it the decision whether EnTT types may appear in public `Meow2/Scene` headers (its views and registry are its API, so wrapping them would mean rewriting them).
+The engine's entities and components use **[EnTT](https://github.com/skypjack/EnTT)** (MIT, header-only), v3.16.0. Its types are part of the public `Meow2/Scene` API (owner decision): its views and registry *are* the API, so wrapping them would mean rewriting them.
 
 - **Two identities per entity:** `entt::entity` (32 bits: index + version) is the fast runtime handle used by systems; `EntityId` (§24) is the saved identity used by scene files, prefabs, undo, the editor and MCP. `Scene` owns the `entt::registry`, every entity carries an `IdComponent`, and `Scene` keeps an `EntityId → entt::entity` map.
 - **Components are plain data structs** (§16), like events (§22). Behaviour lives in systems that iterate views.
-- **Memory:** EnTT's storages take an allocator, so they use a `std::pmr::polymorphic_allocator` over a tracked resource, counted under a new `MemTag::Scene` (§6).
+- **Memory:** EnTT's storages take an allocator. The registry uses `Memory::ResourceAllocator` (a plain allocator over a `memory_resource`; `std::pmr::polymorphic_allocator` doesn't compile with EnTT because of its uses-allocator `construct`) over a `TaggedResource`, so everything is counted under `MemTag::Scene` (§6).
 - **Transforms** need M3's math; until then the scene holds only IDs and non-spatial components.
 - **Threading** (the registry isn't thread-safe):
   1. **Structural changes** (create or destroy entities, add or remove components) happen only on the main thread. Jobs record them in **per-thread command buffers** (allocated from the frame arena), which the main thread applies at fixed points in the frame (§23). EnTT has no command buffers, so the engine provides them.
@@ -646,6 +646,7 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
   5. **Signals** (`on_construct`, `on_destroy`) run on the thread making the change, so in practice the main thread; anything other subsystems should hear about goes on the `EventBus`.
   6. **Later:** systems declare which components they read and write, `entt::organizer` builds a dependency graph from that, and the graph runs as enkiTS tasks with dependencies, with no locks inside systems.
 - **Why EnTT:** sparse-set storage (fast add/remove, cache-friendly iteration), widely used, MIT; `entt::dispatcher` was already noted as the same design as our `EventBus` (§22). The bus stays ours.
+- **Implemented (M2, part 1):** EnTT v3.16.0 submodule (`EnTT::EnTT`, PUBLIC); `Meow2::Scene::Scene` (`Meow2/Scene/Scene.h`): `create`, `createWithId` (`Result`), `destroy`, `find`, `idOf`, `registerComponent<T>()`, `registry()`; `IdComponent`, `NameComponent`; owner-thread asserts; `Memory::TaggedResource` + `Memory::ResourceAllocator` put all of it under `MemTag::Scene`. Command buffers (part 2) are next. See [docs/wiki/Scene.md](docs/wiki/Scene.md).
 
 ---
 
@@ -697,3 +698,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-03 — §9: `InputSystem` implemented (raw input queue, frame edges + fixed-step latch, mouse, gamepads, bus events); the SDL sources follow.
 - 2026-11-03 — §9: SDL input sources implemented (keyboard/mouse/text and gamepads → `InputSystem`; Platform routes non-window events to them).
 - 2026-11-03 — §24: IDs implemented (`Uuid`, `TypedId`, lock-free `UuidGenerator`).
+- 2026-11-03 — §3/§4/§25: EnTT v3.16.0 added (owner-approved) and is the third public-header exception (`Meow2/Scene`); `Scene` part 1 implemented; `MemTag::Scene`; the registry uses `Memory::ResourceAllocator` because EnTT doesn't build with `std::pmr::polymorphic_allocator`.

@@ -84,7 +84,7 @@ Rough order: window events → game loop → input → IDs → scene/ECS → fil
 | `InputSystem`: engine `Key` (HID scan codes), mouse, gamepad; polling (`isDown`, `wasPressed`, …) + input events on the `EventBus`; presses latched for `fixedUpdate` | §9 | ✅ | #89 / PR #90 |
 | `SdlInputSource` (keyboard/mouse/text) and `SdlGamepadSource` (Player and Renderer; the editor gets `QtInputSource` in M9) | §9 | ✅ | #91 / PR #92 |
 | IDs: 128-bit `Uuid` (snowflake-style UUIDv8: time, sequence, kind, random node), `EntityId`/`AssetId` wrappers, lock-free `UuidGenerator`, text form | §24 | ✅ | #93 / PR #94 |
-| Scene/ECS: EnTT in `Scene`, `EntityId` ↔ `entt::entity`, pools created at startup, command buffers for jobs, `MemTag::Scene` (EnTT submodule needs the owner's permission first) | §25 | ⬜ | |
+| Scene/ECS: EnTT in `Scene`, `EntityId` ↔ `entt::entity`, pools created at startup, `MemTag::Scene` (part 1); command buffers for jobs (part 2) | §25 | 🟨 | #95 / PR #96 (part 1) |
 | Virtual file system (`FileSystem`) | §3 | ⬜ | |
 | Closing PR bumps the version to **0.3.0** | §21 | ⬜ | |
 
