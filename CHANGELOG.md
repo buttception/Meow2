@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Math: camera maths: a lens (perspective or orthographic), view and projection matrices from a transform, world ↔ screen conversion, and camera-relative rendering, which keeps scenes far from the origin as precise as scenes near it (#122).
 - Math: reversed-Z projection matrices (perspective with no far plane, perspective with one, orthographic), depth back to distance, and the viewport flip that lets Vulkan and D3D12 share the same matrices (#120).
 - Math: easing curves (quad, cubic, sine, expo, back, elastic, bounce, … in, out and in-out) for tweens and UI, and splines (Catmull-Rom, Bézier, Hermite, and smooth rotation through keys); `SplinePath` follows a path through waypoints at constant speed, for camera rails and moving platforms (#118).
 - Math: `Transform` (position, rotation, scale) with conversion to and from matrices, moving points between local and parent space, combining for hierarchies, inverting and interpolating for smooth rendering between fixed steps; world positions have their own `WorldPosition` type so larger worlds can change it in one place (#116).

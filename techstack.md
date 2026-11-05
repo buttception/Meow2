@@ -338,6 +338,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Implemented (M3):** `Meow2/Math/Transform.h`: `Transform` (`WorldPosition position`, `Quat rotation`, `Vec3 scale`; plain data, identity default), `WorldPosition` (= `Vec3` for now), to/from matrices, `transformPoint`/`inverseTransformPoint`/`transformDirection`, `combine(child, parent)`, `inverse` (exact for uniform scale), `lerp` (slerped rotation, for `render(alpha)`), `forward`/`right`/`up`. See [docs/wiki/Math.md](docs/wiki/Math.md#transform).
 - **Implemented (M3):** `Meow2/Math/Easing.h`: `ease(EaseCurve, EaseMode, t)` (Linear, Quad, Cubic, Quart, Sine, Expo, Circ, Back, Elastic, Bounce × In/Out/InOut; Out and InOut derived from In); `Meow2/Math/Spline.h`: `catmullRom`, `bezier`/`bezierTangent`, `hermite`, squad-based `catmullRom` for `Quat`, `SplinePath` (arc-length table + Newton step: constant speed within 0.2 %). See [docs/wiki/Math.md](docs/wiki/Math.md#easing-and-splines).
 - **Implemented (M3):** `Meow2/Math/Projection.h`: `perspectiveReversedInfiniteLH` (default), `perspectiveReversedLH`, `orthographicReversedLH`, `viewDistanceFromDepth`, `Viewport` + `ndcToScreen` + `flipForVulkan` (negative-height viewport, same matrices on both backends). See [docs/wiki/Math.md](docs/wiki/Math.md#projections).
+- **Implemented (M3):** `Meow2/Math/Camera.h`: `CameraLens` (perspective/orthographic), `viewMatrix(Transform)`, `projectionMatrix`, `CameraMatrices` (+ inverse view-projection), `worldToScreen` / `screenToWorld`, camera-relative rendering (`cameraRelative`, `cameraRelativeViewMatrix`: a scene 100 km out renders bit-identically to one at the origin). See [docs/wiki/Math.md](docs/wiki/Math.md#camera).
 
 ## 11. RHI
 
@@ -729,3 +730,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-05 — §10: `Transform` and the `WorldPosition` type implemented.
 - 2026-11-05 — §10: easing curves and splines (with constant-speed paths) implemented.
 - 2026-11-05 — §10: reversed-Z projections and the Vulkan viewport flip implemented.
+- 2026-11-05 — §10: camera maths and camera-relative rendering helpers implemented.
