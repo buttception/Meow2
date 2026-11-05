@@ -257,7 +257,8 @@ inline DirectX::BoundingOrientedBox toDirectX(const OrientedBox& box) noexcept
 {
     using namespace DirectX;
     const XMMATRIX columns = XMMatrixTranspose(viewProjection);
-    const std::array<XMVECTOR, 6> raw{
+    // A C array: std::array<XMVECTOR, N> makes GCC warn that it ignores __m128's vector attributes.
+    const XMVECTOR raw[6] = {
         XMVectorAdd(columns.r[3], columns.r[0]),      // left:   x ≥ −w
         XMVectorSubtract(columns.r[3], columns.r[0]), // right:  x ≤ w
         XMVectorAdd(columns.r[3], columns.r[1]),      // bottom: y ≥ −w
@@ -266,7 +267,7 @@ inline DirectX::BoundingOrientedBox toDirectX(const OrientedBox& box) noexcept
         columns.r[2],                                 // far:    z ≥ 0 (depth 0)
     };
     Frustum frustum;
-    for (std::size_t i = 0; i < raw.size(); ++i)
+    for (std::size_t i = 0; i < frustum.planes.size(); ++i)
     {
         const float length = XMVectorGetX(XMVector3Length(raw[i]));
         frustum.planes[i] =
