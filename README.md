@@ -13,7 +13,7 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 
 ## Status
 
-🚧 Pre-alpha. **M1 (core runtime) is done, version 0.2.0**: logging, crash dumps, memory tracking with leak checks, config files, events, a job system, the Tracy profiler, sanitizer CI and release zips (see [Releases](docs/wiki/Releases.md)). The apps open their windows (SDL3, the editor with Qt). Next: M2 (platform & scene foundation: game loop, input, IDs, entities). See [milestones.md](milestones.md).
+🚧 Pre-alpha. **M2 (platform & scene foundation) is done, version 0.3.0**: a fixed-timestep game loop, window and input events (keyboard, mouse, gamepads), 128-bit IDs, an entity/component scene on EnTT with command buffers for jobs, and a virtual file system. M1 (0.2.x) brought logging, crash dumps, memory tracking with leak checks, config files, events, a job system, the Tracy profiler, sanitizer CI and release zips (see [Releases](docs/wiki/Releases.md)). Next: M3 (math: transforms, camera, culling, picking). See [milestones.md](milestones.md).
 
 ## Documentation
 
