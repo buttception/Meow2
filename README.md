@@ -27,6 +27,7 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 Requirements (Windows):
 - Visual Studio 2022 with the *Desktop development with C++* workload, CMake ≥ 3.25 on `PATH`, and Git.
 - **For the editor:** Qt ≥ 6.8 with the **MSVC 2022 64-bit** kit (tested with 6.12.0); see [Building → Qt](docs/wiki/Building.md#qt). Without Qt, everything except the editor builds, and configure says how to add it.
+- **To run** the apps: a 64-bit CPU with **AVX2** (Intel since 2013, AMD since 2015). Older CPUs get a clear message at startup; `-DMEOW2_SIMD=SSE4.2` builds for them ([Math → SIMD](docs/wiki/Math.md#simd)).
 - Later milestones add the Vulkan SDK.
 
 Requirements (Linux): Clang 18 or GCC 13+, CMake ≥ 3.25, Ninja, Git, the X11/Wayland development packages SDL3 builds against ([Building](docs/wiki/Building.md#linux-packages)) and, for the editor, Qt ≥ 6.8 (`gcc_64`).

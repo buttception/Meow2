@@ -5,6 +5,7 @@ meow2_add_test_suite(
     SOURCES
         Core/AssertTests.cpp
         Core/Config/ConfigTests.cpp
+        Core/CpuFeaturesTests.cpp
         Core/Events/EventBusTests.cpp
         Core/Id/UuidTests.cpp
         Core/Jobs/JobSystemTests.cpp
@@ -102,6 +103,7 @@ meow2_add_test_suite(
     TARGET    Meow2EngineMathTests
     MODULE    Math
     SOURCES
+        Math/BatchTests.cpp
         Math/MathPrinters.h
         Math/TypesTests.cpp)
 

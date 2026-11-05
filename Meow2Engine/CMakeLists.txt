@@ -79,6 +79,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/FrameClock.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
+            include/Meow2/Math/Batch.h
             include/Meow2/Math/Types.h
             include/Meow2/Platform/FileSystem/FileSystem.h
             include/Meow2/Platform/Input/InputEvents.h
@@ -132,6 +133,7 @@ target_include_directories(Meow2Engine PRIVATE "${meow2PrivateGeneratedDir}")
 target_link_libraries(Meow2Engine
     PUBLIC
         DirectXMath::DirectXMath
+        Meow2CpuCheck
         EnTT::EnTT
         tl::expected
     PRIVATE
@@ -157,8 +159,8 @@ meow2_source_groups(Meow2Engine) # after all target_sources()
 # API reference over the public headers (incl. the generated ones): `docs` target and
 # the Docs.PublicApi.IsDocumented test (cmake/Meow2Docs.cmake).
 meow2_add_api_docs(
-    INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/include" "${meow2GeneratedDir}"
-    STRIP "${CMAKE_CURRENT_SOURCE_DIR}/include" "${meow2GeneratedDir}")
+    INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/include" "${meow2GeneratedDir}" "${PROJECT_SOURCE_DIR}/Meow2CpuCheck/include"
+    STRIP "${CMAKE_CURRENT_SOURCE_DIR}/include" "${meow2GeneratedDir}" "${PROJECT_SOURCE_DIR}/Meow2CpuCheck/include")
 
 # meow2_track_global_new(<target>)
 #   Compiles the replacement global operator new/delete (src/Core/Memory/GlobalNewDelete.cpp) into an

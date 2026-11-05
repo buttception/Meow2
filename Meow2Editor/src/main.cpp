@@ -6,6 +6,7 @@
 #include "WindowPlacement.h"
 
 #include <Meow2/Core/Config/Config.h>
+#include <Meow2/Core/CpuFeatures.h>
 #include <Meow2/Core/Crash/CrashHandler.h>
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Jobs/JobSystem.h>
@@ -41,6 +42,12 @@ std::string qtPlatformName(const std::string& videoDriver)
 
 int main(int argc, char** argv)
 {
+    // First: a CPU without this build's instruction sets (AVX2) gets a clear message instead of a crash.
+    if (!Meow2::checkCpuFeatures("Meow2Editor"))
+    {
+        return 1;
+    }
+
     // Composition root (techstack.md §18): everything is created here, in dependency order.
     const std::filesystem::path logDirectory =
         Meow2::Log::logDirectoryFromArguments(argc, argv).value_or(Meow2::Log::defaultLogDirectory());

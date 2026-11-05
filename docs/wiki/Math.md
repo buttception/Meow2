@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers done (#103); SIMD batches, random numbers, colours, quaternions, transforms, camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105) done; random numbers, colours, quaternions, transforms, camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -67,7 +67,53 @@ DirectXMath includes `sal.h`, Microsoft's source annotations (`_In_`, `_Out_`, �
 
 ## SIMD
 
-On x64 DirectXMath uses SSE intrinsics (checked by `Math.Simd.IntrinsicsOn`), and NEON on ARM. The **AVX2** baseline (owner decision) with FMA3 and F16C, the CPU check at startup and the batch helpers for thousands of items are the next M3 feature.
+**SIMD** (single instruction, multiple data): one instruction works on several numbers at once, e.g. 4 floats with SSE, 8 with AVX2. DirectXMath uses it for everything, so the question is only *which* instructions the build may use.
+
+### The baseline: AVX2
+
+The whole build targets **AVX2 + FMA3 + F16C** on x64 (owner decision, techstack.md §10). That covers Intel CPUs since 2013 and AMD since 2015. FMA3 is fused multiply-add, one instruction for `a × b + c` (all of matrix maths); F16C converts half floats in hardware (vertex packing).
+
+| CMake option | Value | Effect |
+|---|---|---|
+| `MEOW2_SIMD` | `AVX2` (default) | MSVC `/arch:AVX2`, GCC/Clang `-mavx2 -mfma -mf16c`; DirectXMath turns on its AVX2, FMA3 and F16C paths |
+| | `SSE4.2` | for older CPUs (every PC that runs Windows 11 24H2 has it): `-msse4.2`, DirectXMath's SSE4 paths |
+
+On ARM (Android later) the option is ignored: NEON is the default there.
+
+**Every target gets the flags, third-party libraries too.** An inline function (DirectXMath's, or any template) compiled with different instruction sets in different files is still *one* function to the linker, which keeps one copy. If it kept the AVX2 copy, code built for SSE would crash on an old CPU anyway (an ODR violation). So `cmake/Meow2Simd.cmake` sets the flags once, before any library is added.
+
+### The startup check
+
+A program built for AVX2 that starts on an older CPU dies with "illegal instruction" the first time it reaches an AVX2 instruction, with no hint why. So every app's `main` starts with:
+
+```cpp
+if (!Meow2::checkCpuFeatures("Meow2Player"))
+{
+    return 1;   // the user saw: "Meow2Player can't run on this computer: its processor doesn't support AVX2, FMA3. …"
+}
+```
+
+- It asks the CPU (`CPUID`) **and the OS** (`XGETBV`): a CPU with AVX under an OS that doesn't save the wider registers on a thread switch can't use AVX either.
+- The message goes to stderr and, on Windows, a **message box**, because Release builds have no console window.
+- **This code is compiled without the AVX2 flags.** It lives in its own small library, `Meow2CpuCheck` (`Meow2CpuCheck/`), whose folder CMake adds before the flags are set. It also avoids C++ standard-library templates (`std::string`…), whose functions would otherwise be shared with the AVX2-compiled rest of the program.
+- `detectCpuFeatures()`, `requiredCpuFeatures()` and `describeMissingCpuFeatures()` are public too (`<Meow2/Core/CpuFeatures.h>`), e.g. for a crash report or a system-info screen.
+
+The one remaining gap: C++ code that runs *before* `main` (static initialisers in AVX2-compiled files) could still hit an AVX2 instruction first. Engine code keeps those trivial; it's documented in the header.
+
+### Batch helpers
+
+`#include <Meow2/Math/Batch.h>`: maths over whole arrays, wrapping DirectXMath's *stream* functions, which run tight SIMD loops (AVX2 paths in this build) without copies or allocations.
+
+```cpp
+std::vector<Vec3> world(local.size());
+transformPoints(local, load(modelMatrix), world);                // with translation and perspective divide
+transformDirections(normalsIn, load(modelMatrix), normalsOut);   // rotation and scale only
+const std::optional<MinMax> bounds = computeMinMax(local);        // the box around the points
+```
+
+- Input and output must not overlap.
+- For very large arrays, split the range across jobs (`JobSystem::parallelFor`) and call the helper per range.
+- Frustum culling batches come with the culling feature.
 
 ## Tests
 
