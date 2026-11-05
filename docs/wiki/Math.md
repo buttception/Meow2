@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113) done; transforms, camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115) done; camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -218,8 +218,34 @@ const Vec3 angles = toEuler(rotation);                    // for the inspector: 
 - **Gimbal lock** in `toEuler`: looking straight up or down, yaw and roll turn about the same axis, so roll comes back as 0 and yaw holds the whole turn. The rotation itself is unchanged.
 - **`combine`, not `operator*`:** the order of quaternion products is a classic bug source (`XMQuaternionMultiply(a, b)` applies `a` first, while maths notation `b·a` means the same thing). A name that says the order avoids it.
 
+## Transform
+
+`#include <Meow2/Math/Transform.h>`: `Transform` is a position, a rotation and a scale (TRS), the identity by default. It is a plain data struct, so it's ready to be a component.
+
+A point is **scaled, then rotated, then moved**: `world = rotate(rotation, local × scale) + position`, which is the matrix `S × R × T`.
+
+```cpp
+Transform door{.position = {2.0F, 0.0F, 5.0F}, .rotation = fromAxisAngle(c_up, toRadians(30.0F))};
+const Vec3 handle = transformPoint(door, Vec3{0.9F, 1.0F, 0.0F});   // local → world
+const Transform wheelInWorld = combine(wheelLocal, car);              // child, then parent
+const Transform shown = lerp(previous, current, alpha);               // render(alpha): lerp + slerp
+const DirectX::XMMATRIX world = toMatrix(shown);
+```
+
+| Function | Does |
+|---|---|
+| `toMatrix`, `toMat4`, `toMat3x4`, `fromMatrix` | to and from matrices; `fromMatrix` returns `std::nullopt` for a flattened (zero-scale) matrix |
+| `transformPoint`, `inverseTransformPoint` | local ↔ parent space |
+| `transformDirection` | rotation only, so unit directions stay unit |
+| `combine(child, parent)`, `inverse(t)` | hierarchies; undo a transform |
+| `lerp(a, b, t)` | position and scale lerped, rotation slerped |
+| `forward`, `right`, `up` | local +Z, +X, +Y in the parent's space |
+
+- **`WorldPosition`** is the type of `position`, a `Vec3` today. Every world position uses this one name, so larger worlds can later move to doubles or a floating origin in one place (techstack.md §10).
+- **No shear:** a transform can't represent a rotated child under a parent that scales non-uniformly (e.g. (2, 1, 1)); in reality that child would be sheared. `combine` and `inverse` are exact for uniform parent scales. `inverseTransformPoint` and the matrices are exact in every case.
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between).
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).
