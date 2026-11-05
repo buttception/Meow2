@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117) done; camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119) done; camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -280,8 +280,30 @@ camera.position = rail.pointAtDistance(distance);
 camera.rotation = lookRotation(rail.tangentAtDistance(distance));
 ```
 
+## Projections
+
+`#include <Meow2/Math/Projection.h>`. The conventions (techstack.md §10):
+- left-handed view space (+Z into the screen);
+- depth 0..1 with **reversed Z**: the near plane maps to 1, the far plane or infinity to 0;
+- a `D32_FLOAT` depth buffer, cleared to 0 and compared with `GREATER_EQUAL`.
+
+| Function | Depth |
+|---|---|
+| `perspectiveReversedInfiniteLH(fovY, aspect, near)` | `near / z`: 1 at near, 0.5 at twice the distance, → 0 at infinity. **The default.** |
+| `perspectiveReversedLH(fovY, aspect, near, far)` | 1 at near, 0 at far (shadow cascades, probes) |
+| `orthographicReversedLH(width, height, near, far)` | linear, 1 at near, 0 at far |
+| `viewDistanceFromDepth(depth, near)` | back from a depth value to a distance (fog, SSAO) |
+
+**Why reversed Z?**
+- A float has most of its precision near 0.
+- Perspective division crowds depth values near the near plane.
+- Storing `near / z` puts the float's fine steps exactly where the projection's coarse ones are, so the two errors cancel.
+- The result: nearly uniform precision out to infinity, so there's **no far plane** to tune and no z-fighting on distant mountains.
+
+**Vulkan and the Y axis.** In NDC, +Y is up; framebuffer rows count down from the top on both APIs. D3D12's viewport rule flips Y (`screenY = y + (1 − ndcY)·h/2`) and Vulkan's doesn't (`y + (1 + ndcY)·h/2`). With the same matrix, Vulkan's image would be upside down. `flipForVulkan(viewport)` returns the viewport with its origin on the bottom edge and a **negative height** (core since Vulkan 1.1). Every point then lands on the same pixel as on D3D12, and both backends share every matrix. `Math.Projection.VulkanYFlip` checks it.
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path).
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path), `Math.Projection.*` (hand-checked infinite perspective, finite vs DirectXMath, orthographic, depth linearisation, Vulkan Y-flip).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).
