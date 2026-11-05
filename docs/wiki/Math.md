@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119), camera (#121) done; camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119), camera (#121), bounds and culling (#123) done; camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -330,8 +330,31 @@ const Vec3 onNearPlane = screenToWorld({mouseX, mouseY, 1.0F}, m, viewport);
 
 The camera's **frustum** (for culling) comes with the bounding-volume functions.
 
+## Bounding volumes and culling
+
+`#include <Meow2/Math/Bounds.h>`: cheap stand-ins for complex shapes. If a mesh's box is outside the camera's view, none of its triangles can be visible, so it isn't drawn (**frustum culling**). The same tests serve picking, triggers and physics broad phases.
+
+| Type | Stored as | Good for |
+|---|---|---|
+| `Aabb` | centre + half-size, axis-aligned | the cheapest tests; world bounds of meshes |
+| `Sphere` | centre + radius | rotation doesn't change it; the fastest culling |
+| `OrientedBox` | centre + half-size + rotation | a tight box around rotated objects |
+| `Frustum` | 6 planes, inside where `n·p + d ≥ 0` | the camera's view volume |
+
+```cpp
+const Frustum frustum = frustumFromCamera(cameraMatrices);
+const Aabb world = transformAabb(mesh.localBounds, worldMatrix);    // exact box around the turned box (Arvo)
+if (test(frustum, world) != Containment::Outside) { draw(mesh); }
+cullSpheres(frustum, boundingSpheres, visibleFlags);                // thousands at once, SIMD
+```
+
+- **Building:** `aabbFromMinMax`, `aabbFromPoints`, `toMinMax`, `sphereFromPoints`; `orientedBox(localBox, transform)`.
+- **Tests:** `contains(volume, point)`; `intersects` box/box, sphere/sphere, box/sphere and oriented box/oriented box (separating axes, DirectXCollision). Touching counts as intersecting.
+- **The frustum** is read off the view-projection matrix (Gribb-Hartmann), so it fits any projection. With the engine's reversed infinite projection the far plane lies at infinity. It's stored as a plane every point passes, so distant objects are never culled by distance.
+- `test(frustum, box)` is **conservative**: near a frustum corner a box can be reported as `Intersects` while it's just outside, never the reverse. Drawing a little too much is safe; culling something visible is not.
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path), `Math.Projection.*` (hand-checked infinite perspective, finite vs DirectXMath, orthographic, depth linearisation, Vulkan Y-flip), `Math.Camera.*` (view matrix, lens projection, world ↔ screen, camera-relative precision).
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path), `Math.Projection.*` (hand-checked infinite perspective, finite vs DirectXMath, orthographic, depth linearisation, Vulkan Y-flip), `Math.Camera.*` (view matrix, lens projection, world ↔ screen, camera-relative precision), `Math.Bounds.*` (building and containment, intersections, transformed boxes, reversed-infinite frustum, frustum vs volumes, batch cull = single tests).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).
