@@ -8,7 +8,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
-## [0.3.0] — 2026-11-03
+## [0.3.0] — 2026-11-05
 
 ### Added
 - File system: engine code reads and writes files by virtual path (`assets/textures/cat.png`), with each part (`assets`, `save`, …) mounted to a folder by the app; packages and Android assets will plug in the same way. Paths can't escape their mount, writes are atomic (a crash never leaves a half-written file), non-ASCII names work, and any thread can use it (#100).
