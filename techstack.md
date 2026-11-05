@@ -331,6 +331,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Noise** (Perlin/simplex) isn't planned for M3: most of it runs on the GPU in shaders; a CPU version comes with its first CPU user (terrain heights for physics, camera shake, procedural placement).
 - **Implemented (M3):** `Meow2/Math/Types.h`: `Vec2/3/4`, `Quat`, `Mat4`, `Mat3x4` derived from DirectXMath's `XMFLOAT*` (zero/identity defaults; `Quat` distinct from `Vec4`), `load()` / `storeVec3()`…, `c_right/c_up/c_forward`, `c_pi`…, `nearlyEqual` (absolute + relative), `std::formatter`s. See [docs/wiki/Math.md](docs/wiki/Math.md).
 - **Implemented (M3):** `MEOW2_SIMD` (`cmake/Meow2Simd.cmake`, global flags, AVX2 default); `Meow2CpuCheck` (`<Meow2/Core/CpuFeatures.h>`: CPUID + XGETBV, compiled without the SIMD flags, message box on Windows) called first in every app's `main`; `Meow2/Math/Batch.h`: `transformPoints`, `transformDirections`, `computeMinMax` over DirectXMath's stream functions. See [docs/wiki/Math.md](docs/wiki/Math.md#simd).
+- **Implemented (M3):** `Meow2/Math/Scalar.h`: `toRadians`/`toDegrees`, `lerp` (exact at both ends), `inverseLerp`, `remap`, `clamp`, `saturate`, `wrapAngle` (to [−π, π)), `smoothstep` (HLSL). See [docs/wiki/Math.md](docs/wiki/Math.md#scalar-helpers).
 
 ## 11. RHI
 
@@ -715,3 +716,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-05 — §10: AVX2 (+ FMA3, F16C) as the x64 SIMD baseline (owner decision); large worlds (camera-relative rendering from M5, a single `WorldPosition` type; doubles or a floating origin deferred to terrain/streaming) and noise (GPU first, CPU with its first user).
 - 2026-11-05 — §4/§10: DirectXMath may2026 added (owner-approved) with a `sal.h` shim for GCC/Clang; `Meow2/Math` types implemented.
 - 2026-11-05 — §2/§10: `MEOW2_SIMD` (AVX2 default) and the startup CPU check implemented; batch helpers added.
+- 2026-11-05 — §10: scalar helpers implemented.

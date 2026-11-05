@@ -80,6 +80,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
             include/Meow2/Math/Batch.h
+            include/Meow2/Math/Scalar.h
             include/Meow2/Math/Types.h
             include/Meow2/Platform/FileSystem/FileSystem.h
             include/Meow2/Platform/Input/InputEvents.h

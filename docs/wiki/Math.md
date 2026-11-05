@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105) done; random numbers, colours, quaternions, transforms, camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107) done; random numbers, colours, quaternions, transforms, camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -115,8 +115,29 @@ const std::optional<MinMax> bounds = computeMinMax(local);        // the box aro
 - For very large arrays, split the range across jobs (`JobSystem::parallelFor`) and call the helper per range.
 - Frustum culling batches come with the culling feature.
 
+## Scalar helpers
+
+`#include <Meow2/Math/Scalar.h>`: small `float` functions used everywhere. For whole vectors, DirectXMath has `XMVectorLerp`, `XMVectorClamp` and `XMVectorSaturate`.
+
+| Function | Does | Edge behaviour |
+|---|---|---|
+| `toRadians(deg)`, `toDegrees(rad)` | angle units | `constexpr` |
+| `lerp(a, b, t)` | `a` at t = 0 to `b` at t = 1 | exact at both ends (`(1−t)·a + t·b`); extrapolates outside 0..1 |
+| `inverseLerp(a, b, v)` | where `v` lies between `a` and `b` (0..1) | not clamped; `a == b` asserts |
+| `remap(v, inMin, inMax, outMin, outMax)` | one range onto another | not clamped; reversed ranges work |
+| `clamp(v, lo, hi)`, `saturate(v)` | limit to a range / to 0..1 | NaN stays NaN |
+| `wrapAngle(rad)` | same direction in **[−π, π)** | π becomes −π |
+| `smoothstep(e0, e1, v)` | HLSL's S-curve `3t² − 2t³` | 0 below `e0`, 1 above `e1`, zero slope at both |
+
+```cpp
+heading = wrapAngle(heading + turnRate * dt);                       // never grows without limit
+const float fade = smoothstep(fadeStart, fadeEnd, distanceToCamera); // 0 → 1 without a visible jump
+```
+
+Why our own `lerp` rather than `std::lerp`: the standard one guarantees monotonicity, which costs branches in every call; ours is exact at both ends, which is what animation and interpolation need.
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`.
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).
