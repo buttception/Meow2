@@ -10,7 +10,10 @@
 #include <cmath>
 #include <limits>
 
-using namespace Meow2::Math;
+// Inside the namespace rather than `using namespace Meow2::Math;`: libstdc++ also declares `std::lerp` as a global
+// `::lerp`, which a using-directive at global scope would make ambiguous with ours.
+namespace Meow2::Math
+{
 
 TEST(Scalar, AngleConversion)
 {
@@ -111,3 +114,4 @@ TEST(Scalar, Smoothstep)
     EXPECT_LT(smoothstep(0.0F, 1.0F, h) / h, 0.01F);
     EXPECT_LT((1.0F - smoothstep(0.0F, 1.0F, 1.0F - h)) / h, 0.01F);
 }
+} // namespace Meow2::Math

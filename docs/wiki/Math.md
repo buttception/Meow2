@@ -136,6 +136,8 @@ const float fade = smoothstep(fadeStart, fadeEnd, distanceToCamera); // 0 → 1 
 
 Why our own `lerp` rather than `std::lerp`: the standard one guarantees monotonicity, which costs branches in every call; ours is exact at both ends, which is what animation and interpolation need.
 
+**Linux pitfall:** libstdc++ also makes `std::lerp` visible as a global `::lerp`. So after `using namespace Meow2::Math;` at global or function scope, `lerp(1.0F, 2.0F, t)` is ambiguous on GCC and Clang (MSVC compiles it). Write `Math::lerp`, or call it from code inside `namespace Meow2`. The overloads for colours and transforms aren't affected.
+
 ## Tests
 
 `Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep).
