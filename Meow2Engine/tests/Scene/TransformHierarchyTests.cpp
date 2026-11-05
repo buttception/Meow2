@@ -128,11 +128,17 @@ TEST_F(TransformHierarchyTest, Reparenting)
     EXPECT_TRUE(Math::nearlyEqual(worldPosition(item), Math::Vec3{0.0F, 1.0F, 0.0F})) << "now a root";
     EXPECT_EQ(m_hierarchy.levelCount(), 2U);
 
-    if constexpr (c_assertsEnabled)
+}
+
+TEST_F(TransformHierarchyTest, CycleAsserts)
+{
+    if constexpr (!c_assertsEnabled)
     {
-        m_hierarchy.setParent(item, right);
-        EXPECT_DEATH(m_hierarchy.setParent(right, itemChild), "cycle");
+        GTEST_SKIP() << "asserts are compiled out in this configuration";
     }
+    const entt::entity parent = spawn({0.0F, 0.0F, 0.0F});
+    const entt::entity child = spawn({0.0F, 1.0F, 0.0F}, parent);
+    EXPECT_DEATH(m_hierarchy.setParent(parent, child), "cycle");
 }
 
 TEST_F(TransformHierarchyTest, DestroyedParentOrphans)
