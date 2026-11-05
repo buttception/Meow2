@@ -332,6 +332,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Implemented (M3):** `Meow2/Math/Types.h`: `Vec2/3/4`, `Quat`, `Mat4`, `Mat3x4` derived from DirectXMath's `XMFLOAT*` (zero/identity defaults; `Quat` distinct from `Vec4`), `load()` / `storeVec3()`…, `c_right/c_up/c_forward`, `c_pi`…, `nearlyEqual` (absolute + relative), `std::formatter`s. See [docs/wiki/Math.md](docs/wiki/Math.md).
 - **Implemented (M3):** `MEOW2_SIMD` (`cmake/Meow2Simd.cmake`, global flags, AVX2 default); `Meow2CpuCheck` (`<Meow2/Core/CpuFeatures.h>`: CPUID + XGETBV, compiled without the SIMD flags, message box on Windows) called first in every app's `main`; `Meow2/Math/Batch.h`: `transformPoints`, `transformDirections`, `computeMinMax` over DirectXMath's stream functions. See [docs/wiki/Math.md](docs/wiki/Math.md#simd).
 - **Implemented (M3):** `Meow2/Math/Scalar.h`: `toRadians`/`toDegrees`, `lerp` (exact at both ends), `inverseLerp`, `remap`, `clamp`, `saturate`, `wrapAngle` (to [−π, π)), `smoothstep` (HLSL). See [docs/wiki/Math.md](docs/wiki/Math.md#scalar-helpers).
+- **Implemented (M3):** `Meow2/Math/Random.h`: `Random` (PCG32, seed + stream, never global), unbiased integer ranges, exact `[0, 1)` floats, `chance`, `unitVector`, `pointInSphere`, `fromEntropy()`; bit-identical on every platform (no `std::` distributions, no libm, `-ffp-contract=off` on GCC/Clang). See [docs/wiki/Math.md](docs/wiki/Math.md#random-numbers).
 
 ## 11. RHI
 
@@ -717,3 +718,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-05 — §4/§10: DirectXMath may2026 added (owner-approved) with a `sal.h` shim for GCC/Clang; `Meow2/Math` types implemented.
 - 2026-11-05 — §2/§10: `MEOW2_SIMD` (AVX2 default) and the startup CPU check implemented; batch helpers added.
 - 2026-11-05 — §10: scalar helpers implemented.
+- 2026-11-05 — §10: deterministic random numbers (PCG32) implemented; GCC/Clang build with `-ffp-contract=off` so float results match MSVC.

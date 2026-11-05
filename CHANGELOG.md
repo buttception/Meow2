@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Math: a seedable random number generator (PCG32) whose numbers are identical on every platform and compiler, for replays and procedural content: unbiased integer ranges, floats, chances, random directions and points in a sphere, with a separate stream per thread or system (#110).
 - Math: scalar helpers for angles (degrees ↔ radians, wrapping to −π..π), interpolation (`lerp` exact at both ends, its inverse, `remap` between ranges), `clamp`/`saturate` and `smoothstep` (#108).
 - SIMD: everything is now built for AVX2 (with FMA3 and F16C) on x64, so the maths runs on DirectXMath's fastest paths (`MEOW2_SIMD=SSE4.2` builds for older CPUs). On a CPU without AVX2 the apps show a clear message at startup instead of crashing. Batch helpers transform thousands of points or directions at once and compute bounding boxes (#106).
 - Math: DirectXMath (`may2026`, new dependency) and the engine's math types: `Vec2/3/4`, `Quat` and `Mat4`/`Mat3x4` for storing values (zero or identity by default; a rotation is its own type), `load`/`store` to SIMD registers, the left-handed axis constants, `nearlyEqual` with an absolute and relative tolerance, and readable `std::format` output for logs (#104).

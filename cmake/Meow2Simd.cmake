@@ -25,6 +25,14 @@ endif()
 
 add_subdirectory("${PROJECT_SOURCE_DIR}/Meow2CpuCheck" "${PROJECT_BINARY_DIR}/Meow2CpuCheck")
 
+# No implicit fused multiply-add: GCC and Clang may otherwise turn `a * b + c` into one FMA instruction (one rounding
+# instead of two), MSVC (/fp:precise, VS 2022) doesn't. Results would then differ in the last bit between Windows and
+# Linux, and anything that must replay identically (Meow2/Math/Random.h, later physics) would drift apart.
+# DirectXMath's explicit FMA intrinsics are unaffected.
+if(NOT MSVC)
+    add_compile_options(-ffp-contract=off)
+endif()
+
 if(NOT meow2SimdIsX64)
     message(STATUS "SIMD: ${CMAKE_SYSTEM_PROCESSOR}: compiler default (NEON on ARM)")
     return()

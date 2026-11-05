@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107) done; random numbers, colours, quaternions, transforms, camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109) done; colours, quaternions, transforms, camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -138,8 +138,36 @@ Why our own `lerp` rather than `std::lerp`: the standard one guarantees monotoni
 
 **Linux pitfall:** libstdc++ also makes `std::lerp` visible as a global `::lerp`. So after `using namespace Meow2::Math;` at global or function scope, `lerp(1.0F, 2.0F, t)` is ambiguous on GCC and Clang (MSVC compiles it). Write `Math::lerp`, or call it from code inside `namespace Meow2`. The overloads for colours and transforms aren't affected.
 
+## Random numbers
+
+`#include <Meow2/Math/Random.h>`: `Random`, a **PCG32** generator with the engine's own distributions. **One seed gives the same sequence, bit for bit, on every platform and compiler**: replays, tests, procedural levels and bug reports ("seed 1234 crashes") reproduce everywhere.
+
+```cpp
+Random rng{levelSeed, threadIndex};              // seed + stream
+const int damage = rng.range(5, 10);             // 5..10, both included, no bias
+const float delay = rng.range(0.5F, 2.0F);       // [0.5, 2)
+const Vec3 direction = rng.unitVector();         // uniform over the sphere
+if (rng.chance(0.1F)) { dropRareItem(); }
+Random fresh = Random::fromEntropy();            // different every run; log fresh.seed() to reproduce it
+```
+
+| Function | Result |
+|---|---|
+| `nextU32()`, `nextU64()` | raw bits |
+| `nextFloat()` | [0, 1), 2²⁴ evenly spaced values, exact |
+| `range(int, int)` | inclusive, unbiased (Lemire's method), full `int32` range works |
+| `range(float, float)` | [min, max) |
+| `chance(p)` | `true` with probability `p` |
+| `pointInSphere()`, `unitVector()` | uniform inside / on the unit sphere |
+
+- **Never global.** Each system or job thread owns its generator. A shared one would make the AI's numbers depend on how many particles spawned this frame. The **stream** (the second constructor argument) gives each thread or system its own sequence from one game seed.
+- **Why not `std::mt19937` + `std::uniform_int_distribution`?** The engines are specified exactly, but the *distributions* aren't: MSVC and libstdc++ turn the same bits into different numbers. Ours use only integer maths and correctly rounded float operations (no `sin`/`cos`, whose results differ between C libraries).
+- **No implicit FMA:** GCC and Clang could fuse `a * b + c` into one instruction with a different rounding than MSVC; `-ffp-contract=off` (in `cmake/Meow2Simd.cmake`) keeps float results identical. `Math.Random.GoldenValues` checks exact bits on Windows and Linux CI.
+- `Random` works with `<random>` and `std::shuffle`, but those results are platform-dependent again.
+- **Not for security:** a few outputs reveal the state. Tokens come from the OS.
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep).
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).
