@@ -169,7 +169,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | Library | Use | License | How |
 |---|---|---|---|
 | SDL3 release-3.4.18 | window, input, gamepad | zlib | submodule; static, audio/camera/GPU/render subsystems off; only included under `src/Platform/**/Sdl/`. Linux needs X11/Wayland dev packages to build it ([Building](docs/wiki/Building.md#linux-packages)) |
-| DirectXMath | math | MIT | submodule (header-only; needs a `sal.h` shim off Windows) |
+| DirectXMath may2026 | math | MIT | submodule; header-only, own INTERFACE target (`DirectXMath::DirectXMath`, linked PUBLIC: the `Meow2/Math` public-header exception); a `sal.h` shim (`Meow2Engine/shims/`) on its include path off Windows |
 | spdlog v1.17.0 | logging (bundled fmt; static library, no default logger, wchar file names on Windows) | MIT | submodule |
 | JoltPhysics | physics | MIT | submodule |
 | Dear ImGui (docking branch) | Meow2Renderer UI | MIT | submodule |
@@ -328,6 +328,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 
   Doubles or a floating origin themselves (and Jolt's double-precision build) come with the terrain/streaming work, if a game needs worlds larger than a few kilometres.
 - **Noise** (Perlin/simplex) isn't planned for M3: most of it runs on the GPU in shaders; a CPU version comes with its first CPU user (terrain heights for physics, camera shake, procedural placement).
+- **Implemented (M3):** `Meow2/Math/Types.h`: `Vec2/3/4`, `Quat`, `Mat4`, `Mat3x4` derived from DirectXMath's `XMFLOAT*` (zero/identity defaults; `Quat` distinct from `Vec4`), `load()` / `storeVec3()`…, `c_right/c_up/c_forward`, `c_pi`…, `nearlyEqual` (absolute + relative), `std::formatter`s. See [docs/wiki/Math.md](docs/wiki/Math.md).
 
 ## 11. RHI
 
@@ -710,3 +711,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-03 — §25: command buffers, transient entities and a signal-synced `entt::dense_map` ID map implemented; decision recorded: no double-buffered ECS (render overlap via the extract step).
 - 2026-11-03 — §3: virtual file system implemented (folder mounts, path rules, atomic writes, thread-safe reads).
 - 2026-11-05 — §10: AVX2 (+ FMA3, F16C) as the x64 SIMD baseline (owner decision); large worlds (camera-relative rendering from M5, a single `WorldPosition` type; doubles or a floating origin deferred to terrain/streaming) and noise (GPU first, CPU with its first user).
+- 2026-11-05 — §4/§10: DirectXMath may2026 added (owner-approved) with a `sal.h` shim for GCC/Clang; `Meow2/Math` types implemented.

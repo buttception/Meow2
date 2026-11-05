@@ -79,6 +79,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/FrameClock.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
+            include/Meow2/Math/Types.h
             include/Meow2/Platform/FileSystem/FileSystem.h
             include/Meow2/Platform/Input/InputEvents.h
             include/Meow2/Platform/Input/InputSystem.h
@@ -130,6 +131,7 @@ target_include_directories(Meow2Engine PRIVATE "${meow2PrivateGeneratedDir}")
 # Exception: tl::expected is PUBLIC, because Result<T> (Meow2/Core/Result.h) is public API.
 target_link_libraries(Meow2Engine
     PUBLIC
+        DirectXMath::DirectXMath
         EnTT::EnTT
         tl::expected
     PRIVATE

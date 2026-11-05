@@ -5,8 +5,8 @@
 # (its headers are system headers, so our strict warnings never fire on its code). Their targets
 # never get meow2_set_warnings(). They are linked PRIVATE: no third-party header appears in
 # Meow2's public headers (AGENTS.md §3). The exceptions are tl::expected (Result<T> is part of
-# the public API until C++23 std::expected), EnTT (its registry and views are the Scene API, techstack.md
-# §25) and, later, DirectXMath.
+# the public API until C++23 std::expected), DirectXMath (Meow2/Math) and EnTT (its registry and
+# views are the Scene API, techstack.md §25).
 
 # meow2_require_submodule(<name> <dir>)
 #   Stops with a helpful message when a submodule folder is empty (cloned without
@@ -62,6 +62,20 @@ add_library(meow2_tomlplusplus INTERFACE)
 target_include_directories(meow2_tomlplusplus SYSTEM INTERFACE "${meow2TomlDir}/include")
 target_compile_definitions(meow2_tomlplusplus INTERFACE TOML_EXCEPTIONS=0)
 add_library(tomlplusplus::tomlplusplus ALIAS meow2_tomlplusplus)
+
+# ---- DirectXMath (math, techstack.md §10) ---------------------------------------------------------
+# Header-only; its own CMakeLists.txt is skipped (install and test targets). Linked PUBLIC by Meow2Engine:
+# Meow2/Math exposes its types (the public-header exception). DirectXMath includes "sal.h", which only the
+# Windows SDK has, so GCC/Clang get a shim that defines the annotations as nothing.
+set(meow2DirectXMathDir "${PROJECT_SOURCE_DIR}/external/DirectXMath")
+meow2_require_submodule(DirectXMath "${meow2DirectXMathDir}")
+
+add_library(meow2_directxmath INTERFACE)
+target_include_directories(meow2_directxmath SYSTEM INTERFACE "${meow2DirectXMathDir}/Inc")
+if(NOT WIN32)
+    target_include_directories(meow2_directxmath SYSTEM INTERFACE "${PROJECT_SOURCE_DIR}/Meow2Engine/shims")
+endif()
+add_library(DirectXMath::DirectXMath ALIAS meow2_directxmath)
 
 # ---- EnTT (entities and components, techstack.md §25) --------------------------------------------
 # Header-only. Its own CMakeLists.txt is skipped like the others (install, test and testbed targets); a

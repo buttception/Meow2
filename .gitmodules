@@ -22,3 +22,6 @@
 [submodule "external/entt"]
 	path = external/entt
 	url = https://github.com/skypjack/entt.git
+[submodule "external/DirectXMath"]
+	path = external/DirectXMath
+	url = https://github.com/microsoft/DirectXMath.git
