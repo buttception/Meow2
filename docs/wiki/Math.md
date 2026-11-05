@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119), camera (#121), bounds and culling (#123), rays (#125), vertex packing (#127) and the transform hierarchy in the Scene (#129, [Scene](Scene.md#transforms-and-the-hierarchy)) done ([milestones](../../milestones.md)).
+- Status: ✅ M3 (0.4.0). Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119), camera (#121), bounds and culling (#123), rays (#125), vertex packing (#127) and the transform hierarchy in the Scene (#129, [Scene](Scene.md#transforms-and-the-hierarchy)) done ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
