@@ -4,7 +4,7 @@ A `Scene` is one world of **entities** and **components**, built on [EnTT](https
 
 - Header: `#include <Meow2/Scene/Scene.h>`. Namespace `Meow2::Scene`.
 - EnTT's types (`entt::entity`, the registry, views) are part of the API on purpose: systems iterate EnTT views directly.
-- Status: ✅ M2 (#95, command buffers and transient entities #97). Transforms come with M3's math.
+- Status: ✅ M2 (#95, command buffers and transient entities #97); transform hierarchy M3 (#129).
 
 ## Entities and components in one paragraph
 
@@ -69,6 +69,40 @@ scene.applyCommands();
 - **Components must be registered** (`registerComponent<T>()`): the buffers assert `isRegistered<T>()`, so a job never makes EnTT create a pool. They must also be copyable (they're stored in a `std::function`).
 - Commands are `std::function`s in a `std::vector` per thread for now; they'll move to the frame arena with M5.
 
+## Transforms and the hierarchy
+
+`#include <Meow2/Scene/TransformHierarchy.h>`: entities with a position get a **local** transform (relative to their parent) and a **world** transform (in the world). A wheel is placed relative to its car; moving the car moves the wheel.
+
+| Component | Holds | Written by |
+|---|---|---|
+| `LocalTransform` | `Math::Transform` relative to the parent | you: `setLocal()`, or directly + `markDirty()` |
+| `WorldTransform` | local → world matrix | `update()` |
+| `PreviousWorldTransform` | the world matrix at the previous fixed step | `savePrevious()` |
+| `Parent` | the parent entity (absent on roots) | `add()`, `setParent()` |
+| `TransformState` | dirty / changed flags and the depth | the hierarchy |
+
+```cpp
+Meow2::Scene::TransformHierarchy transforms{scene, jobs};      // composition root, after the Scene
+transforms.add(car, Math::Transform{.position = {0.0F, 0.0F, 10.0F}});
+transforms.add(wheel, Math::Transform{.position = {1.0F, -0.5F, 1.5F}}, car);
+
+// each fixed step:
+transforms.savePrevious();                       // remember where things were
+transforms.setLocal(car, movedCar);              // gameplay moves things
+transforms.update();                             // world transforms follow, in parallel
+// render(alpha):
+const Math::Mat4 world = transforms.interpolatedWorld(wheel, alpha);
+```
+
+**How `update()` works.**
+- **Depth levels:** entities are grouped by depth (roots, their children, grandchildren, …). Each level runs as one `parallelFor` on the job system. A child only reads its parent's world matrix, which the previous level finished, so there are no locks and no data races. The TSan CI job checks this with 100k entities.
+- **Dirty flags:** an entity is recomputed only if its local transform changed or its parent's world transform changed this update. A scene where only a few things move costs one flag check per entity.
+- **Structure:** the levels are rebuilt only after a structural change (a transform added, a parent set or removed, an entity destroyed). EnTT's signals report those.
+- **World matrices, not TRS:** a world matrix is exact even under a non-uniformly scaled parent, where a TRS would need shear (see Transform in [Math](Math.md#transform)).
+- **`render(alpha)`:** `interpolatedWorld` splits the previous and current world matrices into position, rotation and scale, lerps and slerps them, and recombines them. Motion is smooth even when the screen refreshes faster than the fixed step.
+- **Destroying a parent** turns its children into roots. They keep their local transform, which is now relative to the world. To remove a whole subtree, destroy it child-first.
+- **Reparenting** keeps the local transform (the entity moves with its new parent). Making an entity its own ancestor asserts.
+
 ## Rules
 
 - **Components are plain data structs** (no behaviour, no invariants), like events.
@@ -86,6 +120,6 @@ The test `Scene.SceneMemory.CountedUnderSceneTag` creates 1000 entities against 
 
 ## Tests
 
-`Scene.SceneTest.*`: IDs and names on create, find by ID, destroy, loading with saved IDs (duplicates and invalid IDs rejected), views, pools that exist before first use. `Scene.SceneMemory.CountedUnderSceneTag`. `Core.TaggedResource.CountsUnderTag` checks the memory resource. Part 2: `Scene.SceneTest.TransientHasNoId`, `RegistryDestroyKeepsMapInSync`, `RemovingIdMakesEntityTransient`, `IsRegistered`; `Scene.SceneCommandsTest.*` (spawn appears on apply, destroy/emplace/remove in order, stale handles skipped); `Scene.SceneCommandsJobs.JobsRecordInParallel` (4 job threads record changes for 10,000 entities at once; TSan checks it in CI).
+`Scene.SceneTest.*`: IDs and names on create, find by ID, destroy, loading with saved IDs (duplicates and invalid IDs rejected), views, pools that exist before first use. `Scene.SceneMemory.CountedUnderSceneTag`. `Core.TaggedResource.CountsUnderTag` checks the memory resource. Part 2: `Scene.SceneTest.TransientHasNoId`, `RegistryDestroyKeepsMapInSync`, `RemovingIdMakesEntityTransient`, `IsRegistered`; `Scene.SceneCommandsTest.*` (spawn appears on apply, destroy/emplace/remove in order, stale handles skipped); `Scene.SceneCommandsJobs.JobsRecordInParallel` (4 job threads record changes for 10,000 entities at once; TSan checks it in CI). Transforms: `Scene.TransformHierarchyTest.*` (world = local × parent world, dirty propagation, reparenting and cycles, orphans of destroyed parents, render interpolation, and 100,000 entities updated on 4 job threads matching a single-threaded reference; TSan in CI).
 
 See also: techstack.md §25, [Ids](Ids.md), [Memory](Memory.md), EnTT's [ECS docs](https://github.com/skypjack/entt/wiki/Entity-Component-System).

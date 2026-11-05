@@ -113,7 +113,7 @@ Rough order: DirectXMath + types → SIMD baseline → scalar helpers, random nu
 | Bounding volumes and culling: AABB, sphere, oriented box, frustum (DirectXCollision); contains/intersects; frustum vs AABB/sphere | §10, §13 | ✅ | #123 / PR #124 |
 | Rays and picking: a ray from a screen point; ray vs plane, sphere, AABB, triangle (editor picking, M9) | §10 | ✅ | #125 / PR #126 |
 | Vertex packing and quantisation: half floats, unorm/snorm 8/16, octahedral normals (2 × 16 bit), tangent frames as a packed quaternion, positions quantised to 16 bit inside a mesh's bounds; round-trip error bounds tested | §10, §11 | ✅ | #127 / PR #128 |
-| Transform hierarchy in the `Scene`: `LocalTransform`, `WorldTransform`, `Parent`; world transforms updated by depth level in parallel jobs with the SIMD batch helpers; dirty flags; the previous transform kept for `render(alpha)` | §23, §25 | ⬜ | |
+| Transform hierarchy in the `Scene`: `LocalTransform`, `WorldTransform`, `Parent`; world transforms updated by depth level in parallel jobs with the SIMD batch helpers; dirty flags; the previous transform kept for `render(alpha)` | §23, §25 | ✅ | #129 / PR #130 |
 | Closing PR bumps the version to **0.4.0** | §21 | ⬜ | |
 
 **Done when:** the projection matrices match hand-checked values in tests, a parented hierarchy of 100k entities updates its world transforms in parallel (TSan job green), a ray from a screen point picks the right AABB, the same seed gives the same random sequence on Windows and Linux CI, and packed vertices round-trip within their documented error.
