@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119), camera (#121), bounds and culling (#123) done; camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119), camera (#121), bounds and culling (#123), rays (#125) done; camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -12,7 +12,7 @@ DirectXMath separates two kinds of types, and so does the engine:
 
 | | Types | Where |
 |---|---|---|
-| **Storage** | `Vec2` (8 bytes), `Vec3` (12), `Vec4` (16), `Quat` (16), `Mat4` (64), `Mat3x4` (48) | components, files, arrays, function parameters that are stored |
+| **Storage** | `Vec2` (8 bytes), `Vec3` (12), `Vec4` (16), `Quat` (16), `Mat4` (64), `Mat3x4` (48) | components, files, arfunction parameters that are stored |
 | **Computation** | `DirectX::XMVECTOR`, `DirectX::XMMATRIX` | local variables inside maths code: they live in SIMD registers (4 floats at once) |
 
 `load()` turns a storage value into a register; `storeVec3()`, `storeQuat()`, `storeMat4()`, … turn the result back:
@@ -353,8 +353,31 @@ cullSpheres(frustum, boundingSpheres, visibleFlags);                // thousands
 - **The frustum** is read off the view-projection matrix (Gribb-Hartmann), so it fits any projection. With the engine's reversed infinite projection the far plane lies at infinity. It's stored as a plane every point passes, so distant objects are never culled by distance.
 - `test(frustum, box)` is **conservative**: near a frustum corner a box can be reported as `Intersects` while it's just outside, never the reverse. Drawing a little too much is safe; culling something visible is not.
 
+## Rays and picking
+
+`#include <Meow2/Math/Ray.h>`: a `Ray` is an origin and a unit direction. Every test returns the **distance along the ray** to the first hit, or `std::nullopt`; `pointAt(ray, distance)` gives the hit point. Hits behind the origin don't count, and a ray that starts inside a volume hits it at 0.
+
+```cpp
+const Ray ray = rayFromScreen(mouseX, mouseY, cameraMatrices, viewport);   // from the near plane into the scene
+if (const std::optional<RayPick> pick = pickClosest(ray, entityBounds)) { select(entities[pick->index]); }
+if (const auto hit = intersect(ray, v0, v1, v2)) { /* hit->distance, barycentrics hit->u, hit->v */ }
+```
+
+| Test | Method |
+|---|---|
+| `intersect(ray, Plane)` | one dot product; parallel rays miss |
+| `intersect(ray, Sphere)` | the quadratic, with an early out when the ray points away |
+| `intersect(ray, Aabb)` | **slabs**: clip the ray against the three pairs of parallel planes; it hits if the three intervals overlap |
+| `intersect(ray, OrientedBox)` | the slab test in the box's own frame (a rotation keeps distances) |
+| `intersect(ray, v0, v1, v2, cullBack)` | **Möller–Trumbore**: distance and barycentric coordinates, optionally only the front side (clockwise, the left-handed front face) |
+| `pickClosest(ray, boxes)` | the nearest box hit, by index |
+
+- `rayFromScreen` works for perspective cameras (rays fan out from the eye) and orthographic ones (parallel rays).
+- `Plane` is `normal · p + distance = 0`; `planeFromPointNormal` builds one.
+- Picking whole meshes triangle by triangle comes with the renderer's mesh data (a BVH); physics raycasts come with Jolt (M8).
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path), `Math.Projection.*` (hand-checked infinite perspective, finite vs DirectXMath, orthographic, depth linearisation, Vulkan Y-flip), `Math.Camera.*` (view matrix, lens projection, world ↔ screen, camera-relative precision), `Math.Bounds.*` (building and containment, intersections, transformed boxes, reversed-infinite frustum, frustum vs volumes, batch cull = single tests).
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path), `Math.Projection.*` (hand-checked infinite perspective, finite vs DirectXMath, orthographic, depth linearisation, Vulkan Y-flip), `Math.Camera.*` (view matrix, lens projection, world ↔ screen, camera-relative precision), `Math.Bounds.*` (building and containment, intersections, transformed boxes, reversed-infinite frustum, frustum vs volumes, batch cull = single tests), `Math.Ray.*` (ray from screen, plane and sphere, box slabs, triangle, picking the closest box from a screen point).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).
