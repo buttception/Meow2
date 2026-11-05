@@ -118,7 +118,8 @@ struct Quat : DirectX::XMFLOAT4
     }
 };
 
-/// @brief A 4×4 matrix (64 bytes), row-major with row vectors (DirectXMath's convention: `v' = v × M`). The identity
+/// @brief A 4×4 matrix (64 bytes), row-major with row vectors (DirectXMath's convention: a vector is transformed as
+/// `vector × matrix`). The identity
 ///        by default.
 /// @par Thread safety
 /// Plain value; any thread may read a value nobody writes.
