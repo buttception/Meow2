@@ -45,10 +45,9 @@ namespace Meow2::Math
 /// @param b Value at t = 1.
 /// @param t Position between them; values outside 0..1 extrapolate (clamp `t` with saturate() to prevent that).
 /// @return The interpolated value.
-/// @note With libstdc++ (Linux), `std::lerp` is also visible as a global `::lerp`. After `using namespace Meow2::Math;`
-/// at
-///       global or function scope an unqualified `lerp(float, float, float)` is ambiguous: write `Math::lerp`, or call
-///       it from inside `namespace Meow2`.
+/// @note With libstdc++ (Linux), the standard library's lerp is also declared in the global namespace. After
+///       `using namespace Meow2::Math;` at global or function scope, an unqualified call with three floats is
+///       ambiguous: qualify it with `Math`, or call it from code inside `namespace Meow2`.
 [[nodiscard]] constexpr float lerp(float a, float b, float t) noexcept
 {
     return (1.0F - t) * a + t * b;
