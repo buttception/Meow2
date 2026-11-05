@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Math: easing curves (quad, cubic, sine, expo, back, elastic, bounce, … in, out and in-out) for tweens and UI, and splines (Catmull-Rom, Bézier, Hermite, and smooth rotation through keys); `SplinePath` follows a path through waypoints at constant speed, for camera rails and moving platforms (#118).
 - Math: `Transform` (position, rotation, scale) with conversion to and from matrices, moving points between local and parent space, combining for hierarchies, inverting and interpolating for smooth rendering between fixed steps; world positions have their own `WorldPosition` type so larger worlds can change it in one place (#116).
 - Math: rotation helpers: rotations from an axis and angle, from Euler angles (a documented order, round-trips, gimbal lock handled), towards a look direction or between two directions; combining with an explicit order, inverting, slerp along the shortest path, and comparing rotations (#114).
 - Math: colours: linear float `Color` for maths and lighting, 8-bit sRGB `Color8` for pickers, UI and images, with exact conversion between them (no more muddy blends), hex colours, HSV, premultiplied alpha and named colours (#112).

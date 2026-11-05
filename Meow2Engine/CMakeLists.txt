@@ -33,6 +33,7 @@ target_sources(Meow2Engine
         src/Core/Time/GameLoop.cpp
         src/Core/Time/GameLoopConfig.cpp
         src/Core/Version.cpp
+        src/Math/SplinePath.cpp
         src/Platform/FileSystem/FileSystem.cpp
         src/Platform/Input/InputSystem.cpp
         src/Platform/Input/Sdl/SdlGamepadSource.cpp
@@ -81,9 +82,11 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/GameLoopConfig.h
             include/Meow2/Math/Batch.h
             include/Meow2/Math/Color.h
+            include/Meow2/Math/Easing.h
             include/Meow2/Math/Quaternion.h
             include/Meow2/Math/Random.h
             include/Meow2/Math/Scalar.h
+            include/Meow2/Math/Spline.h
             include/Meow2/Math/Transform.h
             include/Meow2/Math/Types.h
             include/Meow2/Platform/FileSystem/FileSystem.h

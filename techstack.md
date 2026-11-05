@@ -336,6 +336,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Implemented (M3):** `Meow2/Math/Color.h`: `Color` (linear float RGBA) and `Color8` (8-bit sRGB), exact sRGB curve (every byte round-trips), `fromHex`, HSV, premultiplied alpha, linear `lerp`, `Colors::c_*` constants. See [docs/wiki/Math.md](docs/wiki/Math.md#colours).
 - **Implemented (M3):** `Meow2/Math/Quaternion.h`: `fromAxisAngle`/`toAxisAngle`, `fromEuler`/`toEuler` (roll Z → pitch X → yaw Y, gimbal lock handled), `lookRotation`, `fromToRotation`, `combine(first, then)`, `inverse`, `rotate`, `slerp` (shortest path), `angleBetween`, `nearlySameRotation`. See [docs/wiki/Math.md](docs/wiki/Math.md#quaternions).
 - **Implemented (M3):** `Meow2/Math/Transform.h`: `Transform` (`WorldPosition position`, `Quat rotation`, `Vec3 scale`; plain data, identity default), `WorldPosition` (= `Vec3` for now), to/from matrices, `transformPoint`/`inverseTransformPoint`/`transformDirection`, `combine(child, parent)`, `inverse` (exact for uniform scale), `lerp` (slerped rotation, for `render(alpha)`), `forward`/`right`/`up`. See [docs/wiki/Math.md](docs/wiki/Math.md#transform).
+- **Implemented (M3):** `Meow2/Math/Easing.h`: `ease(EaseCurve, EaseMode, t)` (Linear, Quad, Cubic, Quart, Sine, Expo, Circ, Back, Elastic, Bounce × In/Out/InOut; Out and InOut derived from In); `Meow2/Math/Spline.h`: `catmullRom`, `bezier`/`bezierTangent`, `hermite`, squad-based `catmullRom` for `Quat`, `SplinePath` (arc-length table + Newton step: constant speed within 0.2 %). See [docs/wiki/Math.md](docs/wiki/Math.md#easing-and-splines).
 
 ## 11. RHI
 
@@ -725,3 +726,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-05 — §10: colours implemented.
 - 2026-11-05 — §10: quaternion helpers implemented (Euler order roll → pitch → yaw).
 - 2026-11-05 — §10: `Transform` and the `WorldPosition` type implemented.
+- 2026-11-05 — §10: easing curves and splines (with constant-speed paths) implemented.
