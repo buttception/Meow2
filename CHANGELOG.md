@@ -21,7 +21,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - Window events: the windowing layer puts `WindowResized`, `WindowMoved`, `WindowStateChanged`, `WindowFocusChanged`, `WindowDisplayScaleChanged`, `WindowCloseRequested` and `QuitRequested` on the `EventBus` (one per kind of change per frame, with the final values). Player and Renderer stop on the close and quit events. `Platform::create` now takes the `EventBus`; `Window::id()` and `displayScale()` are new (#83).
 
 ### Changed
-- Roadmap: M2 is done (version 0.3.0); M3 (Math) is now a feature table: DirectXMath types and helpers, quaternions, transforms, reversed-Z projections, camera, bounding volumes and culling, rays and picking, and the transform hierarchy in the scene (#102).
+- Roadmap: M2 is done (version 0.3.0); M3 (Math) is now a feature table: DirectXMath types, SIMD batches, deterministic random numbers, colours, quaternions, transforms, easing curves and splines, reversed-Z projections, camera, bounding volumes and culling, rays and picking, vertex packing, and the transform hierarchy in the scene (#102).
 - Roadmap: M2 is now "Platform & scene foundation", with a feature table that adds 128-bit IDs (time-sorted, with a kind tag such as entity or asset) and an entity/component store on EnTT; techstack.md §24 and §25 describe both, including their threading rules (#81).
 
 ## [0.2.1] — 2026-11-02

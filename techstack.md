@@ -322,6 +322,12 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - Depth range **0..1**, **reversed infinite Z**: near plane maps to 1, infinity maps to 0. Depth buffer `D32_FLOAT`, clear to 0, compare `GREATER_EQUAL`. A custom `perspectiveReversedInfiniteLH(fovY, aspect, nearZ)` (not available in DirectXMath).
 - Vulkan: negative-height viewport flips Y so both backends share the same matrices.
 - glTF is right-handed (+Y up, +Z forward, +X left): the importer converts on load (negate X, fix winding).
+- **Large worlds** (decided 2026-11-05): `float` positions have about 1 mm of precision 10 km from the origin and about 8 mm at 100 km, enough for most games. Two cheap measures are taken now so bigger worlds stay possible without a rewrite:
+  - **camera-relative rendering** from the first renderer (M5): positions are made relative to the camera on the CPU, so the GPU only ever sees small numbers;
+  - **one `WorldPosition` type** for positions in the world (a `Vec3` today), so switching it to doubles, or adding a floating origin, changes one type rather than every system.
+
+  Doubles or a floating origin themselves (and Jolt's double-precision build) come with the terrain/streaming work, if a game needs worlds larger than a few kilometres.
+- **Noise** (Perlin/simplex) isn't planned for M3: most of it runs on the GPU in shaders; a CPU version comes with its first CPU user (terrain heights for physics, camera shake, procedural placement).
 
 ## 11. RHI
 
@@ -703,3 +709,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-03 — §3/§4/§25: EnTT v3.16.0 added (owner-approved) and is the third public-header exception (`Meow2/Scene`); `Scene` part 1 implemented; `MemTag::Scene`; the registry uses `Memory::ResourceAllocator` because EnTT doesn't build with `std::pmr::polymorphic_allocator`.
 - 2026-11-03 — §25: command buffers, transient entities and a signal-synced `entt::dense_map` ID map implemented; decision recorded: no double-buffered ECS (render overlap via the extract step).
 - 2026-11-03 — §3: virtual file system implemented (folder mounts, path rules, atomic writes, thread-safe reads).
+- 2026-11-05 — §10: large worlds (camera-relative rendering from M5, a single `WorldPosition` type; doubles or a floating origin deferred to terrain/streaming) and noise (GPU first, CPU with its first user).
