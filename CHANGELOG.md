@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Math: rotation helpers: rotations from an axis and angle, from Euler angles (a documented order, round-trips, gimbal lock handled), towards a look direction or between two directions; combining with an explicit order, inverting, slerp along the shortest path, and comparing rotations (#114).
 - Math: colours: linear float `Color` for maths and lighting, 8-bit sRGB `Color8` for pickers, UI and images, with exact conversion between them (no more muddy blends), hex colours, HSV, premultiplied alpha and named colours (#112).
 - Math: a seedable random number generator (PCG32) whose numbers are identical on every platform and compiler, for replays and procedural content: unbiased integer ranges, floats, chances, random directions and points in a sphere, with a separate stream per thread or system (#110).
 - Math: scalar helpers for angles (degrees ↔ radians, wrapping to −π..π), interpolation (`lerp` exact at both ends, its inverse, `remap` between ranges), `clamp`/`saturate` and `smoothstep` (#108).

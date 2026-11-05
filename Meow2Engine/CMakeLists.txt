@@ -81,6 +81,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/GameLoopConfig.h
             include/Meow2/Math/Batch.h
             include/Meow2/Math/Color.h
+            include/Meow2/Math/Quaternion.h
             include/Meow2/Math/Random.h
             include/Meow2/Math/Scalar.h
             include/Meow2/Math/Types.h
