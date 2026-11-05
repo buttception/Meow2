@@ -92,7 +92,7 @@ Rough order: window events → game loop → input → IDs → scene/ECS → fil
 
 **Released as `v0.3.0`** (tag on the merge of PR #102, with the owner's go-ahead).
 
-## M3 — Math ⬜
+## M3 — Math 🟨
 **Goal:** one coordinate convention, used consistently: math types and helpers, transforms and the transform hierarchy in the scene, a camera with reversed-Z projections, the bounding volumes and rays that culling (M5/M7) and editor picking (M9) need, and the general-purpose tools around them: SIMD batches, deterministic random numbers, colours, easing and splines, vertex packing.
 **Depends on:** M0 (math), M2 (the transform hierarchy lives in the `Scene`)
 
@@ -100,7 +100,7 @@ Rough order: DirectXMath + types → SIMD baseline → scalar helpers, random nu
 
 | Feature | Notes (techstack.md) | Status | Issue / PR |
 |---|---|---|---|
-| DirectXMath submodule (**⚠ needs the owner's OK**; latest tag `may2026`) + `sal.h` shim for Linux; `Meow2/Math` types: `Vec2/3/4`, `Quat`, `Mat4` for storage vs `XMVECTOR`/`XMMATRIX` for computation, load/store, constants, `nearlyEqual`, `std::formatter` and GoogleTest printers | §10 | ⬜ | |
+| DirectXMath submodule (`may2026`, owner-approved) + `sal.h` shim for Linux; `Meow2/Math` types: `Vec2/3/4`, `Quat`, `Mat4` for storage vs `XMVECTOR`/`XMMATRIX` for computation, load/store, constants, `nearlyEqual`, `std::formatter` and GoogleTest printers | §10 | ✅ | #103 / PR #104 |
 | SIMD: **AVX2 baseline on x64** (owner decision 2026-11-05; with FMA3 and F16C: `/arch:AVX2`, `-mavx2 -mfma -mf16c`, DirectXMath's `_XM_AVX2_INTRINSICS_`), a CMake option (`MEOW2_SIMD=AVX2|SSE4.2`) so it can be lowered; a CPU check at startup that shows a clear message on a CPU without AVX2 instead of crashing on an illegal instruction; NEON on arm64; alignment rules; batch helpers over arrays (transform N points, N spheres vs a frustum) for the systems that process thousands of items | §10, §19 | ⬜ | |
 | Scalar helpers: radians ↔ degrees, `lerp`, `clamp`, `saturate`, `wrapAngle`, `smoothstep` | §10 | ⬜ | |
 | Random numbers: a small, fast, seedable generator (PCG32 or xoshiro), one per system or thread, never global; our own ranges and distributions (floats, ints, unit vectors, points in a sphere), because `std::` distributions give different results on MSVC and libstdc++; the same sequence on every platform for replays | §10, §18 | ⬜ | |

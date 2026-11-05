@@ -8,6 +8,9 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+- Math: DirectXMath (`may2026`, new dependency) and the engine's math types: `Vec2/3/4`, `Quat` and `Mat4`/`Mat3x4` for storing values (zero or identity by default; a rotation is its own type), `load`/`store` to SIMD registers, the left-handed axis constants, `nearlyEqual` with an absolute and relative tolerance, and readable `std::format` output for logs (#104).
+
 ## [0.3.0] — 2026-11-05
 
 ### Added

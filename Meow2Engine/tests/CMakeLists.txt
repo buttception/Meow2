@@ -97,6 +97,14 @@ meow2_add_test_suite(
         Platform/WindowTests.cpp
     LIBRARIES SDL3::SDL3-static)
 
+# Math (DirectXMath types and helpers).
+meow2_add_test_suite(
+    TARGET    Meow2EngineMathTests
+    MODULE    Math
+    SOURCES
+        Math/MathPrinters.h
+        Math/TypesTests.cpp)
+
 # Scene (entities and components on EnTT).
 meow2_add_test_suite(
     TARGET    Meow2EngineSceneTests
