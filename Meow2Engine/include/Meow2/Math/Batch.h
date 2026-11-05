@@ -30,7 +30,7 @@ struct MinMax
 
 /// @brief Transforms points by a matrix (with translation and the perspective divide), all at once.
 /// @param points The input points.
-/// @param matrix The transform (row vectors: `p' = p × M`).
+/// @param matrix The transform (row vectors: the result is `point × matrix`).
 /// @param[out] out Receives the transformed points; must not overlap `points`.
 /// @pre `out.size() == points.size()` (asserted).
 inline void transformPoints(std::span<const Vec3> points, DirectX::FXMMATRIX matrix, std::span<Vec3> out) noexcept
