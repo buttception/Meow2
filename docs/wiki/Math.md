@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119), camera (#121), bounds and culling (#123), rays (#125) done; camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119), camera (#121), bounds and culling (#123), rays (#125), vertex packing (#127) done; camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -376,8 +376,25 @@ if (const auto hit = intersect(ray, v0, v1, v2)) { /* hit->distance, barycentric
 - `Plane` is `normal · p + distance = 0`; `planeFromPointNormal` builds one.
 - Picking whole meshes triangle by triangle comes with the renderer's mesh data (a BVH); physics raycasts come with Jolt (M8).
 
+## Vertex packing
+
+`#include <Meow2/Math/Packing.h>`: smaller vertices for the renderer. A vertex with a float position, normal, tangent and UV is 48 bytes; packed it is about 20. The GPU unpacks these formats for free while fetching vertices. Less memory and bandwidth means faster rendering.
+
+| Data | Packed as | Size | Error (tested) |
+|---|---|---|---|
+| any small-range float (UVs) | `toHalf` / `fromHalf` (IEEE half, F16C) | 2 B | relative 2⁻¹¹; above 65504 → ∞ |
+| 0..1 / −1..1 | `packUnorm8/16`, `packSnorm8/16` | 1–2 B | half a step; every 8-bit value round-trips exactly |
+| unit normal | `packOctahedral` (2 × SNORM16, `R16G16_SNORM`) | 4 B | < 0.0001 rad |
+| normal + tangent + handedness | `packTangentFrame` (quaternion, 4 × SNORM16) | 8 B | < 0.001 rad |
+| position | `quantizePosition(p, meshBounds)` (3 × UNORM16) | 6 B | `extents / 65535` per axis (0.015 mm on a 2 m object) |
+
+- **Normalised integers** follow the D3D12/Vulkan rules exactly (SNORM: `max(v / 127, −1)`; −128 is never written, so 0 stays exactly 0). Data packed here decodes on the GPU to the same values.
+- **Octahedral normals:** the sphere is projected onto an octahedron and unfolded into a square. The codes spread almost evenly over all directions, far better than storing x and y and rebuilding z.
+- **Tangent frames as a quaternion** ("QTangent"): tangent, bitangent and normal form a rotation, stored as a quaternion with `w ≥ 0`. The UV handedness (mirrored textures) is the sign of `w`, because `q` and `−q` are the same rotation. The bitangent is rebuilt as `handedness × cross(normal, tangent)`.
+- **Quantised positions** need the mesh's bounds at draw time (one multiply-add in the vertex shader, or folded into the world matrix).
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path), `Math.Projection.*` (hand-checked infinite perspective, finite vs DirectXMath, orthographic, depth linearisation, Vulkan Y-flip), `Math.Camera.*` (view matrix, lens projection, world ↔ screen, camera-relative precision), `Math.Bounds.*` (building and containment, intersections, transformed boxes, reversed-infinite frustum, frustum vs volumes, batch cull = single tests), `Math.Ray.*` (ray from screen, plane and sphere, box slabs, triangle, picking the closest box from a screen point).
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path), `Math.Projection.*` (hand-checked infinite perspective, finite vs DirectXMath, orthographic, depth linearisation, Vulkan Y-flip), `Math.Camera.*` (view matrix, lens projection, world ↔ screen, camera-relative precision), `Math.Bounds.*` (building and containment, intersections, transformed boxes, reversed-infinite frustum, frustum vs volumes, batch cull = single tests), `Math.Ray.*` (ray from screen, plane and sphere, box slabs, triangle, picking the closest box from a screen point), `Math.Packing.*` (half floats, normalised integers, octahedral normals, tangent frames, quantised positions).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).

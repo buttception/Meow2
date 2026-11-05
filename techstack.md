@@ -341,6 +341,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Implemented (M3):** `Meow2/Math/Camera.h`: `CameraLens` (perspective/orthographic), `viewMatrix(Transform)`, `projectionMatrix`, `CameraMatrices` (+ inverse view-projection), `worldToScreen` / `screenToWorld`, camera-relative rendering (`cameraRelative`, `cameraRelativeViewMatrix`: a scene 100 km out renders bit-identically to one at the origin). See [docs/wiki/Math.md](docs/wiki/Math.md#camera).
 - **Implemented (M3):** `Meow2/Math/Bounds.h`: `Aabb` (centre + extents), `Sphere`, `OrientedBox`, `Frustum` (planes from the view-projection matrix, reversed infinite Z handled), `Containment`; building helpers, `transformAabb` (Arvo), `contains`/`intersects` (OBB via DirectXCollision), `test(frustum, …)` (conservative), batch `cullSpheres` (SIMD). See [docs/wiki/Math.md](docs/wiki/Math.md#bounding-volumes-and-culling).
 - **Implemented (M3):** `Meow2/Math/Ray.h`: `Ray`, `Plane`, `rayFromScreen` (perspective + orthographic), `pointAt`, `intersect` with plane, sphere, AABB (slabs), oriented box and triangle (Möller–Trumbore, optional back-face culling), `pickClosest`. See [docs/wiki/Math.md](docs/wiki/Math.md#rays-and-picking).
+- **Implemented (M3):** `Meow2/Math/Packing.h`: half floats (F16C), UNORM/SNORM 8/16 with the GPU rules, octahedral normals (4 B, < 0.0001 rad), tangent frames as a quaternion (8 B, handedness in the sign of w), positions quantised to 16 bit in the mesh bounds (error `extents / 65535`). See [docs/wiki/Math.md](docs/wiki/Math.md#vertex-packing).
 
 ## 11. RHI
 
@@ -735,3 +736,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-05 — §10: camera maths and camera-relative rendering helpers implemented.
 - 2026-11-05 — §10: bounding volumes, the camera frustum and culling implemented.
 - 2026-11-05 — §10: rays and picking implemented.
+- 2026-11-05 — §10: vertex packing and quantisation implemented.
