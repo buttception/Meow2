@@ -104,6 +104,7 @@ meow2_add_test_suite(
     MODULE    Math
     SOURCES
         Math/BatchTests.cpp
+        Math/BoundsTests.cpp
         Math/CameraTests.cpp
         Math/ColorTests.cpp
         Math/EasingTests.cpp

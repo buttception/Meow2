@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Math: bounding volumes (boxes, spheres, rotated boxes) with containment and overlap tests, the camera frustum (also for the engine's far-plane-free projection), and frustum culling, including a fast batch cull of thousands of spheres (#124).
 - Math: camera maths: a lens (perspective or orthographic), view and projection matrices from a transform, world ↔ screen conversion, and camera-relative rendering, which keeps scenes far from the origin as precise as scenes near it (#122).
 - Math: reversed-Z projection matrices (perspective with no far plane, perspective with one, orthographic), depth back to distance, and the viewport flip that lets Vulkan and D3D12 share the same matrices (#120).
 - Math: easing curves (quad, cubic, sine, expo, back, elastic, bounce, … in, out and in-out) for tweens and UI, and splines (Catmull-Rom, Bézier, Hermite, and smooth rotation through keys); `SplinePath` follows a path through waypoints at constant speed, for camera rails and moving platforms (#118).
