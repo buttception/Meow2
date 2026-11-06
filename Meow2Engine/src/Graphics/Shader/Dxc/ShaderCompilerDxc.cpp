@@ -22,7 +22,6 @@
 #include <dxcapi.h>
 
 #include <algorithm>
-#include <cstring>
 #include <filesystem>
 #include <format>
 #include <string_view>
@@ -137,8 +136,7 @@ public:
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** object) override
     {
-        if (std::memcmp(&id, &__uuidof(IDxcIncludeHandler), sizeof(id)) != 0 &&
-            std::memcmp(&id, &__uuidof(IUnknown), sizeof(id)) != 0)
+        if (!IsEqualIID(id, __uuidof(IDxcIncludeHandler)) && !IsEqualIID(id, __uuidof(IUnknown)))
         {
             *object = nullptr;
             return E_NOINTERFACE;
