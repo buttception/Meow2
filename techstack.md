@@ -368,6 +368,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **No reflection library:** bindless has one fixed layout, so structs are shared between C++ and HLSL and checked by size.
 - **DXC doesn't optimise for a GPU:** DXIL and SPIR-V are portable; the driver compiles them for the exact GPU when a pipeline is created, on the player's machine (§11). So `Meow2Player` ships only cooked shaders, no DXC. Variants by GPU capability are ordinary option axes. DXC on a player's machine only makes sense for mods.
 - Offline compilation via a CMake step. Runtime hot reload where DXC is available (Renderer, Editor).
+- **Implemented (M4):** `ShaderCompiler` (`Meow2/Graphics/Shader/`): DXC loaded at runtime through `SharedLibrary`, SM 6.6, HLSL 2021, `-Zpr`, `-fvk-use-dx-layout`, includes through the VFS. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md).
 
 ## 13. Rendering verification (glTF sample scenes)
 
@@ -752,3 +753,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-05 — §10: vertex packing and quantisation implemented.
 - 2026-11-05 — §25: transform hierarchy implemented (parallel by depth level, dirty flags, previous world transform for interpolation).
 - 2026-11-06 — §3/§4/§11/§12: new §13a Assets; M4 plan: DXC v1.9.2609 pinned and downloaded, no SPIRV-Reflect, bindless and GPU-driven rendering (owner decision), cooked shaders only in `Meow2Player`, pipeline cache in M5.
+- 2026-11-06 — §12: `ShaderCompiler` implemented.

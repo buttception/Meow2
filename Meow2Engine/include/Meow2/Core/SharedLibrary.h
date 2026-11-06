@@ -1,0 +1,54 @@
+#pragma once
+
+/// @file
+/// @brief SharedLibrary: a DLL or `.so` loaded while the program runs, for optional tools such as the shader compiler.
+
+#include <Meow2/Core/Result.h>
+
+#include <filesystem>
+#include <string>
+
+namespace Meow2
+{
+/// @brief A loaded shared library; unloaded when destroyed.
+///
+/// For things an app may run without: a program linked against a DLL doesn't start if the DLL is missing, while this
+/// returns an error the app can handle.
+/// @par Thread safety
+/// Immutable after creation: symbol() may be called from any thread.
+/// @par Lifetime
+/// Function pointers from symbol() are valid only while the SharedLibrary lives.
+class SharedLibrary
+{
+public:
+    /// @brief Loads a library.
+    /// @param path Full path of the library file.
+    /// @return The library, or ErrorCode::NotFound with the OS's message.
+    [[nodiscard]] static Result<SharedLibrary> open(const std::filesystem::path& path);
+
+    /// @brief Takes over the loaded library.
+    /// @param other Left empty.
+    SharedLibrary(SharedLibrary&& other) noexcept;
+
+    /// @brief Unloads the current library and takes over another.
+    /// @param other Left empty.
+    /// @return This object.
+    SharedLibrary& operator=(SharedLibrary&& other) noexcept;
+
+    SharedLibrary(const SharedLibrary&) = delete;            ///< Not copyable: owns the loaded library.
+    SharedLibrary& operator=(const SharedLibrary&) = delete; ///< Not copyable: owns the loaded library.
+
+    /// @brief Unloads the library.
+    ~SharedLibrary();
+
+    /// @brief Looks up an exported symbol.
+    /// @param name The symbol's exact name.
+    /// @return Its address, or `nullptr` if the library doesn't export it.
+    [[nodiscard]] void* symbol(const std::string& name) const;
+
+private:
+    explicit SharedLibrary(void* handle) noexcept;
+
+    void* m_handle = nullptr; ///< `HMODULE` on Windows, the `dlopen` handle elsewhere.
+};
+} // namespace Meow2
