@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109) done; colours, quaternions, transforms, camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111) done; quaternions, transforms, camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -166,8 +166,30 @@ Random fresh = Random::fromEntropy();            // different every run; log fre
 - `Random` works with `<random>` and `std::shuffle`, but those results are platform-dependent again.
 - **Not for security:** a few outputs reveal the state. Tokens come from the OS.
 
+## Colours
+
+`#include <Meow2/Math/Color.h>`. Screens and image files store colours **gamma-encoded (sRGB)**: the 256 steps of a byte are spaced to look even to the eye, so they are *not* even in light intensity. sRGB 128 is only about 21 % of the light of 255. Blending, lighting and averaging are only correct on **linear** values, so the engine has two colour types:
+
+| Type | Encoding | Use |
+|---|---|---|
+| `Color` | linear float RGBA, opaque black by default; values above 1 are valid (HDR) | maths, lighting, blending, shader constants |
+| `Color8` | sRGB-encoded RGB bytes, linear alpha byte (RGBA8 image layout) | colour pickers, UI themes, image data, files |
+
+```cpp
+const Color tint = toLinear(fromHex(0xFF8000FFU));    // a designer's orange, decoded to linear
+const Color mixed = lerp(tint, Colors::c_white, 0.5F); // blend in linear space
+const Color8 bytes = toColor8(mixed);                  // encode back to sRGB bytes
+```
+
+- `srgbToLinear` / `linearToSrgb` use the exact sRGB curve (IEC 61966-2-1): a straight segment near black, then a 2.4 power. `toColor8(toLinear(c)) == c` for **every** byte value.
+- **Why it matters:** a 50 % blend of red and green in linear space is a bright yellow (sRGB 188, 188, 0). Done on sRGB bytes it is a dark olive (128, 128, 0), the "muddy blend" bug.
+- `toHsv` / `fromHsv`: hue in degrees [0, 360), saturation and value 0..1, for colour pickers (apply it to sRGB values, the ones the picker shows).
+- `premultiply` / `unpremultiply`: RGB × alpha. Premultiplied colours filter and blend correctly (no dark fringes when a sprite is scaled).
+- `Colors::c_white`, `c_black`, `c_grey` (sRGB 128, which *looks* middle grey), `c_red`, `c_green`, `c_blue`, `c_yellow`, `c_cyan`, `c_magenta`, `c_transparent`.
+- `load(Color)` / `storeColor()` for DirectXMath's `XMColor*` functions; `std::format` gives `rgba(1, 0.5, 0, 1)` and `#ff8000c0`.
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere).
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).
