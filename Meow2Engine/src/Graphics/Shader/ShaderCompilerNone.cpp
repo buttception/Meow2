@@ -26,6 +26,11 @@ Result<ShaderCompiler> ShaderCompiler::create(const FileSystem::FileSystem& /*fi
     return fail(ErrorCode::Unsupported, "this build has no shader compiler (MEOW2_SHADER_TOOLS=OFF)");
 }
 
+std::string ShaderCompiler::version() const
+{
+    return {};
+}
+
 Result<ShaderCompileOutput> ShaderCompiler::compile(const ShaderCompileDesc& /*desc*/) const
 {
     return fail(ErrorCode::Unsupported, "this build has no shader compiler (MEOW2_SHADER_TOOLS=OFF)");

@@ -9,6 +9,7 @@ configure_file(src/Core/Version.h.in "${meow2GeneratedDir}/Meow2/Core/Version.h"
 target_sources(Meow2Engine
     PRIVATE
         src/Assets/AssetManager.cpp
+        src/Assets/Shader/ShaderAsset.cpp
         src/Assets/Shader/ShaderMeta.cpp
         src/Core/Assert.cpp
         src/Core/CommandLine.cpp
@@ -56,6 +57,8 @@ target_sources(Meow2Engine
             "${meow2GeneratedDir}"
         FILES
             include/Meow2/Assets/AssetManager.h
+            include/Meow2/Assets/Shader/ShaderAsset.h
+            include/Meow2/Assets/Shader/ShaderCooker.h
             include/Meow2/Assets/Shader/ShaderMeta.h
             include/Meow2/Core/Assert.h
             include/Meow2/Core/Config/Config.h
@@ -135,8 +138,11 @@ endif()
 
 # The shader compiler: DXC's headers only, the library is loaded at runtime (techstack.md §12).
 if(MEOW2_SHADER_TOOLS)
-    target_sources(Meow2Engine PRIVATE src/Graphics/Shader/Dxc/ShaderCompilerDxc.cpp)
+    target_sources(Meow2Engine PRIVATE src/Graphics/Shader/Dxc/ShaderCompilerDxc.cpp
+        src/Assets/Shader/ShaderCooker.cpp)
     target_link_libraries(Meow2Engine PRIVATE Dxc::Headers)
+    set_source_files_properties(src/Graphics/Shader/Dxc/ShaderCompilerDxc.cpp PROPERTIES
+        COMPILE_DEFINITIONS "MEOW2_DXC_VERSION=\"${meow2DxcVersion}\"")
 else()
     target_sources(Meow2Engine PRIVATE src/Graphics/Shader/ShaderCompilerNone.cpp)
 endif()

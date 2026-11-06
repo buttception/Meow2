@@ -104,7 +104,8 @@ if(MEOW2_SHADER_TOOLS)
         TARGET    Meow2EngineShaderTests
         MODULE    Shader
         SOURCES
-            Graphics/Shader/ShaderCompilerTests.cpp)
+            Graphics/Shader/ShaderCompilerTests.cpp
+            Graphics/Shader/ShaderCookerTests.cpp)
     meow2_copy_dxc_runtime(Meow2EngineShaderTests)
 endif()
 
@@ -114,7 +115,17 @@ meow2_add_test_suite(
     MODULE    Assets
     SOURCES
         Assets/AssetManagerTests.cpp
+        Assets/ShaderAssetTests.cpp
         Assets/ShaderMetaTests.cpp)
+
+# Cooked shaders load with no DXC anywhere near the executable.
+add_test(NAME Assets.ShaderAsset.LoadsFromAFolderWithoutDxc
+    COMMAND ${CMAKE_COMMAND}
+        "-DMEOW2_TEST_EXE=$<TARGET_FILE:Meow2EngineAssetsTests>"
+        "-DMEOW2_FILTER=ShaderAsset.LoadsWithoutACompiler"
+        "-DMEOW2_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/no-dxc"
+        -P "${PROJECT_SOURCE_DIR}/cmake/RunWithoutDxc.cmake")
+set_tests_properties(Assets.ShaderAsset.LoadsFromAFolderWithoutDxc PROPERTIES LABELS "integration")
 
 # Math (DirectXMath types and helpers).
 meow2_add_test_suite(

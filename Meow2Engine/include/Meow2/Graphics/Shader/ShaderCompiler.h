@@ -128,6 +128,10 @@ public:
     ///         `path:line:column: error: …`, if the shader doesn't compile.
     [[nodiscard]] Result<ShaderCompileOutput> compile(const ShaderCompileDesc& desc) const;
 
+    /// @brief The compiler's version: part of a cooked shader's cache key.
+    /// @return The pinned DXC release, e.g. `v1.9.2609`.
+    [[nodiscard]] std::string version() const;
+
     /// @brief Backend state, defined in `src/Graphics/Shader/Dxc/`.
     struct Impl;
 

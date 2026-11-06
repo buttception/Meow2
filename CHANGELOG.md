@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Shaders: cooking turns a source and its `.meta` into a `.m2shader` holding every variant, skipping shaders whose source, includes or settings haven't changed; games load these with no compiler (#144).
 - Shaders: a shader's entry points, macros and permutation options are declared in its `.meta` file; code picks a variant by name, and a misspelt option is an error (#142).
 - Assets: an asset manager with stable IDs in `.meta` files next to each source, so moving a file breaks nothing, one shared loaded copy of each asset, and reloading that reaches every user (#140).
 - Shaders: `ShaderCompiler` turns HLSL into DXIL and SPIR-V through DXC, with macros, includes read through the file system, and errors that name file and line. DXC is loaded at runtime, so apps without it still start (#138).
