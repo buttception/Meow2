@@ -221,6 +221,11 @@ Result<ShaderCompiler> ShaderCompiler::create(const FileSystem::FileSystem& file
     return ShaderCompiler{std::make_unique<Impl>(files, std::move(*library), createInstance)};
 }
 
+std::string ShaderCompiler::version() const
+{
+    return MEOW2_DXC_VERSION;
+}
+
 Result<ShaderCompileOutput> ShaderCompiler::compile(const ShaderCompileDesc& desc) const
 {
     MEOW2_PROFILE_ZONE();

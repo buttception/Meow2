@@ -370,6 +370,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - Offline compilation via a CMake step. Runtime hot reload where DXC is available (Renderer, Editor).
 - **Implemented (M4):** `ShaderCompiler` (`Meow2/Graphics/Shader/`): DXC loaded at runtime through `SharedLibrary`, SM 6.6, HLSL 2021, `-Zpr`, `-fvk-use-dx-layout`, includes through the VFS. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md).
 - **Implemented (M4):** `Meow2/Assets/Shader/ShaderMeta.h`: `.meta` settings (entries, defines, options), `ShaderVariantKey` (mixed-radix index), `variantKey`, `variantDefines`; limit 4,096 variants. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#shader-settings-and-permutations).
+- **Implemented (M4):** `ShaderCooker` and `ShaderAsset` (`Meow2/Assets/Shader/`): `.m2shader` with every variant × entry point × target plus the `.meta` text; cache key over source, includes, `.meta`, options and DXC version; loads with no compiler. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#cooking).
 
 ## 13. Rendering verification (glTF sample scenes)
 
@@ -758,3 +759,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-06 — §12: `ShaderCompiler` implemented.
 - 2026-11-06 — §13a: asset core implemented.
 - 2026-11-06 — §12: shader settings and permutations implemented.
+- 2026-11-06 — §12: cooker and `.m2shader` implemented.
