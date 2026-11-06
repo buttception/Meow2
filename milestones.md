@@ -92,7 +92,7 @@ Rough order: window events → game loop → input → IDs → scene/ECS → fil
 
 **Released as `v0.3.0`** (tag on the merge of PR #102, with the owner's go-ahead).
 
-## M3 — Math 🟨
+## M3 — Math ✅
 **Goal:** one coordinate convention, used consistently: math types and helpers, transforms and the transform hierarchy in the scene, a camera with reversed-Z projections, the bounding volumes and rays that culling (M5/M7) and editor picking (M9) need, and the general-purpose tools around them: SIMD batches, deterministic random numbers, colours, easing and splines, vertex packing.
 **Depends on:** M0 (math), M2 (the transform hierarchy lives in the `Scene`)
 
@@ -114,9 +114,11 @@ Rough order: DirectXMath + types → SIMD baseline → scalar helpers, random nu
 | Rays and picking: a ray from a screen point; ray vs plane, sphere, AABB, triangle (editor picking, M9) | §10 | ✅ | #125 / PR #126 |
 | Vertex packing and quantisation: half floats, unorm/snorm 8/16, octahedral normals (2 × 16 bit), tangent frames as a packed quaternion, positions quantised to 16 bit inside a mesh's bounds; round-trip error bounds tested | §10, §11 | ✅ | #127 / PR #128 |
 | Transform hierarchy in the `Scene`: `LocalTransform`, `WorldTransform`, `Parent`; world transforms updated by depth level in parallel jobs with the SIMD batch helpers; dirty flags; the previous transform kept for `render(alpha)` | §23, §25 | ✅ | #129 / PR #130 |
-| Closing PR bumps the version to **0.4.0** | §21 | ⬜ | |
+| Closing PR bumps the version to **0.4.0** | §21 | ✅ | #131 / PR #132 |
 
 **Done when:** the projection matrices match hand-checked values in tests, a parented hierarchy of 100k entities updates its world transforms in parallel (TSan job green), a ray from a screen point picks the right AABB, the same seed gives the same random sequence on Windows and Linux CI, and packed vertices round-trip within their documented error.
+
+**Released as `v0.4.0`** (tag on the merge of PR #132, with the owner's go-ahead). Stacked PRs #108 → #130 implemented the rows; each one says what it covers.
 
 **Not in M3:** noise (Perlin/simplex): most noise is generated on the GPU in shaders; a CPU version comes with the first CPU user (terrain heights for physics, camera shake, procedural placement). Large-world precision: see techstack §10; only the cheap parts (camera-relative rendering, one `WorldPosition` type) are planned now.
 
@@ -212,3 +214,4 @@ Rough order: DirectXMath + types → SIMD baseline → scalar helpers, random nu
 - 2026-10-27 — M1 rescoped as "Core runtime" (old M1 Core & Memory + old M2 Logging & Crash, plus config, clock, events, Tracy, release packaging); old M3 Platform becomes M2 (with game loop and input design); later milestones renumbered (old M4 → M3 … old M13 → M12). RHI (M5) gains the frame arena, upload ring buffer and frame packet; handles move there.
 - 2026-11-02 — M2 renamed "Platform & scene foundation" and turned into a feature table; adds 128-bit IDs (techstack §24) and the scene/ECS on EnTT (§25, submodule pending approval), plus a "done when".
 - 2026-11-05 — M2 done (0.3.0); M3 (Math) expanded into a feature table with a "done when": types and helpers, SIMD baseline and batches, random numbers, colours, quaternions, transforms, easing and splines, projections, camera, bounds and culling, rays, vertex packing, transform hierarchy; DirectXMath submodule and the SIMD baseline pending owner decisions.
+- 2026-11-05 — M3 done (0.4.0): every row implemented as a stack of PRs (#108–#132).

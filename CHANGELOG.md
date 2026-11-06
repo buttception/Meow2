@@ -8,6 +8,8 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-11-05
+
 ### Added
 - Scene: parented transforms. Entities get a local transform relative to their parent and a world transform, updated once per step on all cores (by depth level), recomputing only what moved; the previous step is kept so rendering can interpolate smoothly between fixed steps (#130).
 - Math: vertex packing for smaller, faster meshes: half floats, 8/16-bit normalised integers that decode exactly like the GPU, normals in 4 bytes, the whole tangent frame in 8, and positions in 6, each with a tested error bound (#128).
@@ -23,6 +25,10 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - Math: scalar helpers for angles (degrees ↔ radians, wrapping to −π..π), interpolation (`lerp` exact at both ends, its inverse, `remap` between ranges), `clamp`/`saturate` and `smoothstep` (#108).
 - SIMD: everything is now built for AVX2 (with FMA3 and F16C) on x64, so the maths runs on DirectXMath's fastest paths (`MEOW2_SIMD=SSE4.2` builds for older CPUs). On a CPU without AVX2 the apps show a clear message at startup instead of crashing. Batch helpers transform thousands of points or directions at once and compute bounding boxes (#106).
 - Math: DirectXMath (`may2026`, new dependency) and the engine's math types: `Vec2/3/4`, `Quat` and `Mat4`/`Mat3x4` for storing values (zero or identity by default; a rotation is its own type), `load`/`store` to SIMD registers, the left-handed axis constants, `nearlyEqual` with an absolute and relative tolerance, and readable `std::format` output for logs (#104).
+
+### Changed
+- Roadmap: M3 (Math) is done (version 0.4.0) (#132).
+- Build: GCC and Clang no longer fuse multiplies and adds on their own (`-ffp-contract=off`), so floating-point results match MSVC bit for bit (#110).
 
 ## [0.3.0] — 2026-11-05
 

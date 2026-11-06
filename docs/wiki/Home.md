@@ -61,7 +61,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 
 ## Roadmap
 
-M0 (foundation), **M1 (core runtime, `v0.2.x`)** and **M2 (platform & scene foundation, `v0.3.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers, release zips, the game loop, window and input events, IDs, the scene with command buffers, and the virtual file system. The Qt editor window (M9) is in too. Next up is **M3, math**: transforms and their hierarchy, camera and reversed-Z projections, bounding volumes and culling, rays and picking. The full roadmap is in [milestones.md](../../milestones.md).
+M0 (foundation), **M1 (core runtime, `v0.2.x`)**, **M2 (platform & scene foundation, `v0.3.0`)** and **M3 (math, `v0.4.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers, release zips, the game loop, window and input events, IDs, the scene with command buffers, and the virtual file system, and the math: transforms and their hierarchy, camera and reversed-Z projections, bounding volumes and culling, rays and picking, random numbers, colours, easing and splines, and vertex packing ([Math](Math.md)). The Qt editor window (M9) is in too. Next up are **M4, shaders** (HLSL through DXC) and **M5, the RHI** (Vulkan and D3D12). The full roadmap is in [milestones.md](../../milestones.md).
 
 ## API reference
 
