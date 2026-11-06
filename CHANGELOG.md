@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Math: rays for picking and line of sight: a ray from a screen pixel through the camera, and hit tests against planes, spheres, boxes, rotated boxes and triangles, plus picking the closest of many boxes (the editor will use it to select objects with the mouse) (#126).
 - Math: bounding volumes (boxes, spheres, rotated boxes) with containment and overlap tests, the camera frustum (also for the engine's far-plane-free projection), and frustum culling, including a fast batch cull of thousands of spheres (#124).
 - Math: camera maths: a lens (perspective or orthographic), view and projection matrices from a transform, world ↔ screen conversion, and camera-relative rendering, which keeps scenes far from the origin as precise as scenes near it (#122).
 - Math: reversed-Z projection matrices (perspective with no far plane, perspective with one, orthographic), depth back to distance, and the viewport flip that lets Vulkan and D3D12 share the same matrices (#120).

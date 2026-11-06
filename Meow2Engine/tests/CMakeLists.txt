@@ -112,6 +112,7 @@ meow2_add_test_suite(
         Math/ProjectionTests.cpp
         Math/QuaternionTests.cpp
         Math/RandomTests.cpp
+        Math/RayTests.cpp
         Math/ScalarTests.cpp
         Math/SplineTests.cpp
         Math/TransformTests.cpp
