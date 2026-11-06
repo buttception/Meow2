@@ -2,7 +2,7 @@
 
 Shaders are written in HLSL and compiled with [DXC](https://github.com/microsoft/DirectXShaderCompiler) to DXIL (D3D12) and SPIR-V (Vulkan).
 
-- Status: 🟨 M4. DXC dependency (#135), `ShaderCompiler` (#137) done.
+- Status: 🟨 M4. DXC dependency (#135), `ShaderCompiler` (#137), shader settings and permutations (#141) done.
 
 ## DXC
 
@@ -42,8 +42,42 @@ Result<Shader::ShaderCompileOutput> output = compiler->compile({
 - **Conventions:** SM 6.6, HLSL 2021, row-major matrices (`-Zpr`) used as `mul(vector, matrix)` like `Meow2/Math`, so a `Mat4` goes to the GPU as it is. SPIR-V uses D3D's constant-buffer layout (`-fvk-use-dx-layout`), so a struct has one layout on both backends.
 - **Threads:** `compile()` may be called from several threads at once. On Windows the calls run in parallel. Off Windows a mutex runs them one at a time, because DXC changes the process-wide C locale there.
 
+## Shader settings and permutations
+
+`#include <Meow2/Assets/Shader/ShaderMeta.h>`: all of a shader's compile settings live in its `.meta`, next to the source.
+
+```toml
+id = "01900000-0000-8000-8100-000000000001"
+
+[[entry]]
+name = "vsMain"
+stage = "vertex"        # vertex, pixel, compute, amplification or mesh
+
+[defines]               # macros set in every variant
+USE_FOG = 1
+
+[options]               # one variant per combination: here 2 × 3 = 6
+SKINNED = [0, 1]
+QUALITY = ["LOW", "MID", "HIGH"]
+```
+
+To change how a shader compiles, you edit this file: add a macro under `[defines]`, or an axis under `[options]`. Values may be numbers, booleans (0/1) or strings.
+
+Code picks a variant by naming values, and options it doesn't name take their first value:
+
+```cpp
+const std::vector<Assets::ShaderOptionChoice> choices{{"SKINNED", "1"}};
+Result<Assets::ShaderVariantKey> key = Assets::variantKey(meta, choices);
+std::vector<Shader::ShaderDefine> defines = Assets::variantDefines(meta, *key);
+```
+
+- **Typos are errors.** An option or value the `.meta` doesn't declare returns `InvalidArgument`.
+- **A key is a number:** the variant's position among all combinations (a mixed-radix index), with options sorted by name, so their order in the file doesn't matter. Key 0 has every option at its first value.
+- **Options multiply.** Ten two-value axes are 1,024 variants, each compiled for two targets. Over `c_shaderVariantWarning` (256) the cooker warns, and over `c_shaderVariantLimit` (4,096) the `.meta` is rejected.
+- **GPU capabilities are ordinary options:** `WAVE_OPS = [0, 1]`, chosen at runtime by what the GPU supports.
+
 ## Tests
 
-`Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler. `Shader.ShaderCompilerTest.*`: both targets, defines, includes, errors with file and line.
+`Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler. `Shader.ShaderCompilerTest.*`: both targets, defines, includes, errors with file and line. `Assets.ShaderMeta.*`: parsing, bad files, keys and defaults.
 
 See also: techstack.md §4, §12.
