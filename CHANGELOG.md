@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Shaders: hot reload recompiles a shader on a job when its source, `.meta` or includes change while an app runs; a broken edit keeps the old shader and reports file and line (#150).
 - Shaders: the bindless contract every shader follows, with one binding layout for the whole engine and structs compiled by both C++ and HLSL so they can't drift apart (#148).
 - Shaders: a normal build cooks everything in `shaders/` with the new `Meow2ShaderCompiler` tool, and a shader that doesn't compile fails the build with file and line (#146).
 - Shaders: cooking turns a source and its `.meta` into a `.m2shader` holding every variant, skipping shaders whose source, includes or settings haven't changed; games load these with no compiler (#144).

@@ -2,7 +2,7 @@
 
 Shaders are written in HLSL and compiled with [DXC](https://github.com/microsoft/DirectXShaderCompiler) to DXIL (D3D12) and SPIR-V (Vulkan).
 
-- Status: 🟨 M4. DXC dependency (#135), `ShaderCompiler` (#137), shader settings and permutations (#141), cooking (#143), the build step (#145), the bindless contract (#147) done.
+- Status: 🟨 M4. DXC dependency (#135), `ShaderCompiler` (#137), shader settings and permutations (#141), cooking (#143), the build step (#145), the bindless contract (#147), hot reload (#149) done.
 
 ## DXC
 
@@ -147,8 +147,27 @@ float4 psMain(VertexOutput input) : SV_Target
 - **D3D12** needs SM 6.6. **Vulkan** works through DXC's default emulation, with descriptor indexing and `VK_EXT_mutable_descriptor_type`, so the same HLSL compiles for both. The M5 RHI creates the matching heap and root signature.
 - `shaders/BindlessProbe.hlsl` exercises all of it for both targets, and CI runs `spirv-val` over the SPIR-V.
 
+## Hot reload
+
+`#include <Meow2/Assets/Shader/ShaderHotReload.h>`: edit a shader while an app runs, and it recompiles on a job.
+
+```cpp
+Assets::ShaderHotReload hotReload{{.assets = assets, .cooker = cooker, .jobs = jobs, .events = events, .log = log}};
+hotReload.watchAll();                       // cooks what's stale, learns each shader's includes
+
+hotReload.poll();                           // a couple of times per second, from the game loop
+
+auto onReload = events.subscribe<Assets::ShaderReloaded>([&](const auto& e) { rebuildPipelines(e.id); });
+```
+
+- **What's watched:** each shader's source, its `.meta` and every file it includes. New includes are picked up after each reload.
+- **It polls file times.** That's the same code on every platform, and it copes with editors that save by replacing a file. It reads one timestamp per file, so poll a couple of times a second, not every frame.
+- **Compiles run on a job**, so the main thread never stalls. Handles see the new shader through `AssetManager::reload`, and `ShaderReloaded` arrives at the next `dispatchQueued()`.
+- **A broken edit keeps the old shader running.** The compiler's messages go to the log and to `ShaderReloadFailed`, with file and line. Saving a fix reloads it, with no restart.
+- **Needs DXC:** Renderer and Editor, not Player. It's wired into an app with the Renderer (M6), since nothing can draw a shader yet.
+
 ## Tests
 
-`Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler. `Shader.ShaderCompilerTest.*`: both targets, defines, includes, errors with file and line. `Assets.ShaderMeta.*`: parsing, bad files, keys and defaults. `Assets.ShaderFile.*`, `Assets.ShaderAsset.*`, `Shader.ShaderCookerTest.*`: the file format, loading without DXC, the cache. `Build.Shaders.CookStep`: the tool end to end. `Shader.BindlessTest.*`: the repository's shaders on both targets, and `spirv-val`.
+`Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler. `Shader.ShaderCompilerTest.*`: both targets, defines, includes, errors with file and line. `Assets.ShaderMeta.*`: parsing, bad files, keys and defaults. `Assets.ShaderFile.*`, `Assets.ShaderAsset.*`, `Shader.ShaderCookerTest.*`: the file format, loading without DXC, the cache. `Build.Shaders.CookStep`: the tool end to end. `Shader.BindlessTest.*`: the repository's shaders on both targets, and `spirv-val`. `Shader.ShaderHotReloadTest.*`: edits reach handles, broken edits keep the old shader.
 
 See also: techstack.md §4, §12.
