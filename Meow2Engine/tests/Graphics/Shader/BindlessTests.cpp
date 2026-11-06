@@ -135,9 +135,10 @@ TEST_F(BindlessTest, SpirvPassesTheValidator)
             stream.write(reinterpret_cast<const char*>(output->bytecode.data()),
                          static_cast<std::streamsize>(output->bytecode.size()));
         }
-        // The outer quotes are for cmd.exe, which strips one pair when a command starts with a quote.
-        const std::string command =
-            std::format("\"\"{}\" --target-env vulkan1.3 \"{}\"\"", MEOW2_SPIRV_VAL, file.string());
+        std::string command = std::format("\"{}\" --target-env vulkan1.3 \"{}\"", MEOW2_SPIRV_VAL, file.string());
+#if defined(_WIN32)
+        command = std::format("\"{}\"", command); // cmd.exe strips one pair of quotes when a command starts with one
+#endif
         EXPECT_EQ(std::system(command.c_str()), 0) << shader.path << " " << shader.entry;
     }
 #endif
