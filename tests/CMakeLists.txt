@@ -25,6 +25,17 @@ if(MEOW2_SHADER_TOOLS)
         ENVIRONMENT "LD_LIBRARY_PATH=${MEOW2_DXC_LIBRARY_DIR}")
 endif()
 
+# The build step end to end: cook, nothing to do, one shader edited, a broken shader.
+if(MEOW2_SHADER_TOOLS)
+    add_test(NAME Build.Shaders.CookStep
+        COMMAND ${CMAKE_COMMAND}
+            "-DMEOW2_TOOL=$<TARGET_FILE:Meow2ShaderCompiler>"
+            "-DMEOW2_SHADERS=${PROJECT_SOURCE_DIR}/shaders"
+            "-DMEOW2_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/shader-tool"
+            -P "${PROJECT_SOURCE_DIR}/cmake/TestShaderTool.cmake")
+    set_tests_properties(Build.Shaders.CookStep PROPERTIES LABELS "integration")
+endif()
+
 # .editorconfig basics for every tracked text file (needs git to list them).
 find_package(Git QUIET)
 if(GIT_FOUND)

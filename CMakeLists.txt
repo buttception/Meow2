@@ -72,12 +72,20 @@ include(Meow2Packaging) # meow2_install_app(); meow2_package() is called at the 
 if(MEOW2_BUILD_TESTS)
     include(Meow2Tests)
 endif()
+include(Meow2Shaders)
 include(Meow2Format)
 include(Meow2Docs)
 include(Meow2GitHooks)
 
 # ---- Projects ---------------------------------------------------------------
 add_subdirectory(Meow2Engine)
+
+if(MEOW2_SHADER_TOOLS)
+    add_subdirectory(Meow2ShaderCompiler)
+    meow2_add_shaders(Meow2Shaders
+        SOURCE_DIR "${PROJECT_SOURCE_DIR}/shaders"
+        OUTPUT_DIR "${PROJECT_BINARY_DIR}/cooked")
+endif()
 
 if(MEOW2_BUILD_EDITOR)
     add_subdirectory(Meow2Editor)

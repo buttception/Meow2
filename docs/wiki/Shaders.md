@@ -2,7 +2,7 @@
 
 Shaders are written in HLSL and compiled with [DXC](https://github.com/microsoft/DirectXShaderCompiler) to DXIL (D3D12) and SPIR-V (Vulkan).
 
-- Status: 🟨 M4. DXC dependency (#135), `ShaderCompiler` (#137), shader settings and permutations (#141), cooking (#143) done.
+- Status: 🟨 M4. DXC dependency (#135), `ShaderCompiler` (#137), shader settings and permutations (#141), cooking (#143), the build step (#145) done.
 
 ## DXC
 
@@ -103,8 +103,24 @@ Result<std::span<const std::byte>> code = loaded->bytecode(*key, "psMain", Shade
 - **The file format** is versioned (`c_shaderFileVersion`), and every length is checked when reading. A corrupt file is an error, and an old one is simply recooked.
 - **The `cooked` mount** is set up by the composition root: read-write for the cooker, read-only for a game.
 
+## The build step
+
+Shaders live in `shaders/`, each with its `.meta`. A normal build cooks them all into `<build>/cooked/shaders/`: Debug builds cook with debug info, other configurations optimised.
+
+**To add a shader:**
+1. Write `shaders/Sky.hlsl`.
+2. Create its `.meta` with a new ID:
+   ```bash
+   Meow2ShaderCompiler --source shaders --import Sky.hlsl
+   ```
+3. Add its `[[entry]]` blocks to `Sky.hlsl.meta` and commit both files.
+
+The build runs `Meow2ShaderCompiler --source shaders --output <build>/cooked` every time. It's the tool, not CMake, that knows what changed, because only it can see `#include`s through the cache keys. With nothing to do it costs a few milliseconds per shader. A shader that doesn't compile fails the build, with `shaders/Sky.hlsl:12:5: error: …`.
+
+`meow2_add_shaders(<target> SOURCE_DIR <folder> OUTPUT_DIR <folder>)` (`cmake/Meow2Shaders.cmake`) adds the same step for another folder. Other tool options are `--debug` and `--force`.
+
 ## Tests
 
-`Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler. `Shader.ShaderCompilerTest.*`: both targets, defines, includes, errors with file and line. `Assets.ShaderMeta.*`: parsing, bad files, keys and defaults. `Assets.ShaderFile.*`, `Assets.ShaderAsset.*`, `Shader.ShaderCookerTest.*`: the file format, loading without DXC, the cache.
+`Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler. `Shader.ShaderCompilerTest.*`: both targets, defines, includes, errors with file and line. `Assets.ShaderMeta.*`: parsing, bad files, keys and defaults. `Assets.ShaderFile.*`, `Assets.ShaderAsset.*`, `Shader.ShaderCookerTest.*`: the file format, loading without DXC, the cache. `Build.Shaders.CookStep`: the tool end to end.
 
 See also: techstack.md §4, §12.
