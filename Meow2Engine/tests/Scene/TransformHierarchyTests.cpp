@@ -127,7 +127,6 @@ TEST_F(TransformHierarchyTest, Reparenting)
     m_hierarchy.update();
     EXPECT_TRUE(Math::nearlyEqual(worldPosition(item), Math::Vec3{0.0F, 1.0F, 0.0F})) << "now a root";
     EXPECT_EQ(m_hierarchy.levelCount(), 2U);
-
 }
 
 TEST_F(TransformHierarchyTest, CycleAsserts)
