@@ -657,7 +657,7 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - **Two identities per entity:** `entt::entity` (32 bits: index + version) is the fast runtime handle used by systems; `EntityId` (§24) is the saved identity used by scene files, prefabs, undo, the editor and MCP. `Scene` owns the `entt::registry`, every entity carries an `IdComponent`, and `Scene` keeps an `EntityId → entt::entity` map.
 - **Components are plain data structs** (§16), like events (§22). Behaviour lives in systems that iterate views.
 - **Memory:** EnTT's storages take an allocator. The registry uses `Memory::ResourceAllocator` (a plain allocator over a `memory_resource`; `std::pmr::polymorphic_allocator` doesn't compile with EnTT because of its uses-allocator `construct`) over a `TaggedResource`, so everything is counted under `MemTag::Scene` (§6).
-- **Transforms** need M3's math; until then the scene holds only IDs and non-spatial components.
+- **Transforms** (M3): `LocalTransform`, `WorldTransform` (a matrix, exact under non-uniform scale), `PreviousWorldTransform` and `Parent`, kept up to date by `TransformHierarchy` (see below).
 - **Threading** (the registry isn't thread-safe):
   1. **Structural changes** (create or destroy entities, add or remove components) happen only on the main thread. Jobs record them in **per-thread command buffers** (allocated from the frame arena), which the main thread applies at fixed points in the frame (§23). EnTT has no command buffers, so the engine provides them.
   2. **Every component pool is created at startup** (`registry.storage<T>()` for each registered component type). EnTT otherwise creates a pool on first use, and a first use on a worker thread would be a race.
@@ -669,6 +669,7 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - **Implemented (M2, part 1):** EnTT v3.16.0 submodule (`EnTT::EnTT`, PUBLIC); `Meow2::Scene::Scene` (`Meow2/Scene/Scene.h`): `create`, `createWithId` (`Result`), `destroy`, `find`, `idOf`, `registerComponent<T>()`, `registry()`; `IdComponent`, `NameComponent`; owner-thread asserts; `Memory::TaggedResource` + `Memory::ResourceAllocator` put all of it under `MemTag::Scene`. Part 2 below. See [docs/wiki/Scene.md](docs/wiki/Scene.md).
 - **Implemented (M2, part 2):** `SceneCommands` per job thread (`scene.commands(threadIndex)`: `spawn`, `spawnTransient`, `destroy`, `emplace`, `remove`; asserts the type is registered), `Scene::applyCommands()` (buffers in thread order, stale handles skipped); `createTransient()` (no `IdComponent`); the ID map is an `entt::dense_map` kept in sync by `on_construct`/`on_destroy<IdComponent>` signals. Commands are `std::function`s in a vector per thread until the frame arena (M5).
 - **No double-buffered ECS** (decided 2026-11-03): systems run in parallel on one copy of the data (parallel views, read/write-scheduled systems, command buffers). Overlapping rendering with the next frame's simulation is done by the extract step (§23, M5): only render data is copied into a frame packet. A full double buffer would copy every component every frame and add a frame of gameplay lag; only `Transform` keeps a previous copy, for `render(alpha)` interpolation.
+- **Implemented (M3):** `Meow2::Scene::TransformHierarchy` (`Meow2/Scene/TransformHierarchy.h`): depth levels rebuilt only after structural changes (EnTT signals), one `parallelFor` per level, dirty/changed flags so unchanged subtrees are skipped, `savePrevious()` + `interpolatedWorld(entity, alpha)` for `render(alpha)`, cycle check in `setParent`, children of destroyed parents become roots. See [docs/wiki/Scene.md](docs/wiki/Scene.md#transforms-and-the-hierarchy).
 
 ---
 
@@ -737,3 +738,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-05 — §10: bounding volumes, the camera frustum and culling implemented.
 - 2026-11-05 — §10: rays and picking implemented.
 - 2026-11-05 — §10: vertex packing and quantisation implemented.
+- 2026-11-05 — §25: transform hierarchy implemented (parallel by depth level, dirty flags, previous world transform for interpolation).

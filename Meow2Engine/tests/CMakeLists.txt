@@ -124,4 +124,5 @@ meow2_add_test_suite(
     TARGET    Meow2EngineSceneTests
     MODULE    Scene
     SOURCES
-        Scene/SceneTests.cpp)
+        Scene/SceneTests.cpp
+        Scene/TransformHierarchyTests.cpp)

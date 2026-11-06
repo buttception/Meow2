@@ -44,6 +44,7 @@ target_sources(Meow2Engine
         src/Platform/Window/Sdl/WindowSdl.cpp
         src/Platform/Window/WindowConfig.cpp
         src/Scene/Scene.cpp
+        src/Scene/TransformHierarchy.cpp
     PUBLIC
         # A header FILE_SET makes the base dirs PUBLIC include directories and
         # lists the headers in IDEs. Public headers go in include/Meow2/<Subsystem>/[<Module>/].
@@ -105,6 +106,7 @@ target_sources(Meow2Engine
             include/Meow2/Platform/Window/WindowConfig.h
             include/Meow2/Platform/Window/WindowEvents.h
             include/Meow2/Scene/Scene.h
+            include/Meow2/Scene/TransformHierarchy.h
             "${meow2GeneratedDir}/Meow2/Core/Version.h")
 
 # OS-specific implementations (AGENTS.md: only in Win32/Linux/Android backend folders).
