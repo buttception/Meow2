@@ -89,6 +89,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/FrameClock.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
+            include/Meow2/Graphics/Shader/BindlessLayout.h
             include/Meow2/Graphics/Shader/ShaderCompiler.h
             include/Meow2/Math/Batch.h
             include/Meow2/Math/Bounds.h
@@ -147,6 +148,8 @@ else()
     target_sources(Meow2Engine PRIVATE src/Graphics/Shader/ShaderCompilerNone.cpp)
 endif()
 
+# Meow2Shared.hlsli, the structs shared with HLSL, is included by Meow2/Graphics/Shader/BindlessLayout.h.
+target_include_directories(Meow2Engine PUBLIC "${PROJECT_SOURCE_DIR}/shaders")
 target_include_directories(Meow2Engine PRIVATE src)
 
 # Build metadata for getVersionString() ("0.1.0+g1a2b3c4", techstack.md §21). The git commit is read on every build,

@@ -104,9 +104,16 @@ if(MEOW2_SHADER_TOOLS)
         TARGET    Meow2EngineShaderTests
         MODULE    Shader
         SOURCES
+            Graphics/Shader/BindlessTests.cpp
             Graphics/Shader/ShaderCompilerTests.cpp
             Graphics/Shader/ShaderCookerTests.cpp)
     meow2_copy_dxc_runtime(Meow2EngineShaderTests)
+    target_compile_definitions(Meow2EngineShaderTests PRIVATE MEOW2_SHADERS_DIR="${PROJECT_SOURCE_DIR}/shaders")
+    # Optional locally (Vulkan SDK), installed in Linux CI.
+    find_program(MEOW2_SPIRV_VAL spirv-val HINTS "$ENV{VULKAN_SDK}/Bin" "$ENV{VULKAN_SDK}/bin")
+    if(MEOW2_SPIRV_VAL)
+        target_compile_definitions(Meow2EngineShaderTests PRIVATE MEOW2_SPIRV_VAL="${MEOW2_SPIRV_VAL}")
+    endif()
 endif()
 
 # Assets (the asset core).

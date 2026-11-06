@@ -1,0 +1,13 @@
+id = "01a1b158-0216-8000-808e-12fd3223a2ac"
+
+[[entry]]
+name = "vsMain"
+stage = "vertex"
+
+[[entry]]
+name = "psMain"
+stage = "pixel"
+
+[[entry]]
+name = "csMain"
+stage = "compute"

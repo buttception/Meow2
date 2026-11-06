@@ -1,0 +1,46 @@
+// The bindless contract (techstack.md §11): every shader includes this file.
+//
+// There's one binding layout in the whole engine: push constants, and the global descriptor heap. A shader reads the
+// indices it needs from g_push and fetches its resources from the heap with the helpers below. Nothing else is bound,
+// which is what lets a compute shader drive thousands of draws.
+#ifndef MEOW2_COMMON_HLSLI
+#define MEOW2_COMMON_HLSLI
+
+#include "Meow2Shared.hlsli"
+
+// Vulkan: push constants. D3D12: root constants in b0. The attribute is ignored when compiling for D3D12.
+[[vk::push_constant]] ConstantBuffer<PushConstants> g_push : register(b0);
+
+/// A raw buffer from the heap. Buffers are ByteAddressBuffers, so one heap slot type serves every struct.
+ByteAddressBuffer heapBuffer(uint index)
+{
+    ByteAddressBuffer buffer = ResourceDescriptorHeap[index];
+    return buffer;
+}
+
+/// The frame's constants.
+FrameConstants frameConstants()
+{
+    return heapBuffer(g_push.frameBuffer).Load<FrameConstants>(0);
+}
+
+/// The current instance.
+InstanceData instanceData()
+{
+    return heapBuffer(g_push.instanceBuffer).Load<InstanceData>(g_push.instance * sizeof(InstanceData));
+}
+
+/// Element `element` of an array of T in a buffer from the heap.
+template <typename T>
+T loadElement(uint bufferIndex, uint element)
+{
+    return heapBuffer(bufferIndex).Load<T>(element * sizeof(T));
+}
+
+// HLSL's half of the size checks; BindlessLayout.h has the C++ half.
+// A wrong size makes an array of negative length, a compile error: DXC has no global _Static_assert.
+typedef uint Meow2CheckPushConstants[sizeof(PushConstants) == 16 ? 1 : -1];
+typedef uint Meow2CheckFrameConstants[sizeof(FrameConstants) == 224 ? 1 : -1];
+typedef uint Meow2CheckInstanceData[sizeof(InstanceData) == 80 ? 1 : -1];
+
+#endif
