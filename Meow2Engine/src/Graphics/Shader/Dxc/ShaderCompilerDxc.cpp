@@ -100,6 +100,11 @@ const wchar_t* profileOf(ShaderStage stage)
     return L"";
 }
 
+// COM interfaces have no virtual destructor on purpose: objects end through Release(), never `delete` through a base.
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnon-virtual-dtor"
+#endif
 /// @brief Serves `#include`s from the FileSystem, and records them. Lives on the stack of one compile() call.
 class IncludeHandler final : public IDxcIncludeHandler
 {
@@ -161,6 +166,9 @@ private:
     IDxcUtils& m_utils;
     std::vector<std::string>& m_includes;
 };
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 } // namespace
 
 /// @brief The loaded DXC library.

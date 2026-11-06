@@ -82,10 +82,12 @@ bool isSpirv(const std::vector<std::byte>& bytecode)
     return magic == 0x07230203U;
 }
 
+#if defined(_WIN32)
 bool isDxil(const std::vector<std::byte>& bytecode)
 {
     return bytecode.size() > 4 && std::memcmp(bytecode.data(), "DXBC", 4) == 0;
 }
+#endif
 } // namespace
 
 TEST_F(ShaderCompilerTest, CompilesToSpirv)
