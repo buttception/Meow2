@@ -334,6 +334,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Implemented (M3):** `Meow2/Math/Scalar.h`: `toRadians`/`toDegrees`, `lerp` (exact at both ends), `inverseLerp`, `remap`, `clamp`, `saturate`, `wrapAngle` (to [−π, π)), `smoothstep` (HLSL). See [docs/wiki/Math.md](docs/wiki/Math.md#scalar-helpers).
 - **Implemented (M3):** `Meow2/Math/Random.h`: `Random` (PCG32, seed + stream, never global), unbiased integer ranges, exact `[0, 1)` floats, `chance`, `unitVector`, `pointInSphere`, `fromEntropy()`; bit-identical on every platform (no `std::` distributions, no libm, `-ffp-contract=off` on GCC/Clang). See [docs/wiki/Math.md](docs/wiki/Math.md#random-numbers).
 - **Implemented (M3):** `Meow2/Math/Color.h`: `Color` (linear float RGBA) and `Color8` (8-bit sRGB), exact sRGB curve (every byte round-trips), `fromHex`, HSV, premultiplied alpha, linear `lerp`, `Colors::c_*` constants. See [docs/wiki/Math.md](docs/wiki/Math.md#colours).
+- **Implemented (M3):** `Meow2/Math/Quaternion.h`: `fromAxisAngle`/`toAxisAngle`, `fromEuler`/`toEuler` (roll Z → pitch X → yaw Y, gimbal lock handled), `lookRotation`, `fromToRotation`, `combine(first, then)`, `inverse`, `rotate`, `slerp` (shortest path), `angleBetween`, `nearlySameRotation`. See [docs/wiki/Math.md](docs/wiki/Math.md#quaternions).
 
 ## 11. RHI
 
@@ -721,3 +722,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-05 — §10: scalar helpers implemented.
 - 2026-11-05 — §10: deterministic random numbers (PCG32) implemented; GCC/Clang build with `-ffp-contract=off` so float results match MSVC.
 - 2026-11-05 — §10: colours implemented.
+- 2026-11-05 — §10: quaternion helpers implemented (Euler order roll → pitch → yaw).

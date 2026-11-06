@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111) done; quaternions, transforms, camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113) done; transforms, camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -188,8 +188,38 @@ const Color8 bytes = toColor8(mixed);                  // encode back to sRGB by
 - `Colors::c_white`, `c_black`, `c_grey` (sRGB 128, which *looks* middle grey), `c_red`, `c_green`, `c_blue`, `c_yellow`, `c_cyan`, `c_magenta`, `c_transparent`.
 - `load(Color)` / `storeColor()` for DirectXMath's `XMColor*` functions; `std::format` gives `rgba(1, 0.5, 0, 1)` and `#ff8000c0`.
 
+## Quaternions
+
+`#include <Meow2/Math/Quaternion.h>`: a unit quaternion stores a rotation of *angle* about a unit *axis* as `(axis·sin(angle/2), cos(angle/2))`. It has no gimbal lock, interpolates smoothly, takes 16 bytes and stays a pure rotation (just `normalize` it now and then). **`q` and `−q` are the same rotation.**
+
+**Direction of positive angles** (left-handed, DirectXMath's rule): clockwise seen from the axis's positive end. So:
+- a positive turn about up turns forward to the **right**;
+- a positive pitch tilts forward **down**;
+- a positive roll turns right towards **up**.
+
+| Function | Does |
+|---|---|
+| `fromAxisAngle(axis, angle)`, `toAxisAngle(q)` | axis-angle ↔ quaternion (angle 0..π, the short way) |
+| `fromEuler({pitch, yaw, roll})`, `toEuler(q)` | Euler angles, applied **roll (Z) → pitch (X) → yaw (Y)** |
+| `lookRotation(forward, up = c_up)` | turn +Z to `forward`, keep +Y up (never rolls) |
+| `fromToRotation(a, b)` | the shortest rotation from direction `a` to `b` |
+| `combine(first, then)` | apply `first`, then `then` |
+| `inverse(q)`, `normalize(q)`, `rotate(q, v)` | undo, re-normalise, apply to a vector |
+| `slerp(a, b, t)` | constant angular speed, the short way round |
+| `angleBetween(a, b)`, `nearlySameRotation(a, b)` | compare rotations (treats `q` and `−q` as equal) |
+
+```cpp
+const Quat aim = lookRotation(target - eye);              // face the target, stay upright
+const Quat turned = combine(current, fromAxisAngle(c_up, yawSpeed * dt));
+const Vec3 angles = toEuler(rotation);                    // for the inspector: degrees via toDegrees()
+```
+
+- **Why that Euler order?** Yaw turns about the world's up, pitch then tilts about the already-turned right axis, and roll banks about the view direction. That is how a camera or a character moves, and it is DirectXMath's `RollPitchYaw` order.
+- **Gimbal lock** in `toEuler`: looking straight up or down, yaw and roll turn about the same axis, so roll comes back as 0 and yaw holds the whole turn. The rotation itself is unchanged.
+- **`combine`, not `operator*`:** the order of quaternion products is a classic bug source (`XMQuaternionMultiply(a, b)` applies `a` first, while maths notation `b·a` means the same thing). A name that says the order avoids it.
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending).
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).
