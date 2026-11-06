@@ -85,6 +85,7 @@ target_sources(Meow2Engine
             include/Meow2/Math/Camera.h
             include/Meow2/Math/Color.h
             include/Meow2/Math/Easing.h
+            include/Meow2/Math/Packing.h
             include/Meow2/Math/Projection.h
             include/Meow2/Math/Quaternion.h
             include/Meow2/Math/Random.h

@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Math: vertex packing for smaller, faster meshes: half floats, 8/16-bit normalised integers that decode exactly like the GPU, normals in 4 bytes, the whole tangent frame in 8, and positions in 6, each with a tested error bound (#128).
 - Math: rays for picking and line of sight: a ray from a screen pixel through the camera, and hit tests against planes, spheres, boxes, rotated boxes and triangles, plus picking the closest of many boxes (the editor will use it to select objects with the mouse) (#126).
 - Math: bounding volumes (boxes, spheres, rotated boxes) with containment and overlap tests, the camera frustum (also for the engine's far-plane-free projection), and frustum culling, including a fast batch cull of thousands of spheres (#124).
 - Math: camera maths: a lens (perspective or orthographic), view and projection matrices from a transform, world ↔ screen conversion, and camera-relative rendering, which keeps scenes far from the origin as precise as scenes near it (#122).
