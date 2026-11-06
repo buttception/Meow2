@@ -24,6 +24,7 @@ Build output goes to `<build dir>/bin` (executables) and `<build dir>/lib` (libr
 | `MEOW2_BUILD_EDITOR` | ON | Build `Meow2Editor` |
 | `MEOW2_BUILD_PLAYER` | ON | Build `Meow2Player` |
 | `MEOW2_BUILD_RENDERER` | ON | Build `Meow2Renderer` |
+| `MEOW2_SHADER_TOOLS` | ON | Download the pinned DXC ([Shaders](Shaders.md)) |
 
 The engine library is always built.
 

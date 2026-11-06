@@ -130,7 +130,7 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 
 | Feature | Notes (techstack.md) | Status | Issue / PR |
 |---|---|---|---|
-| DXC dependency: pinned release v1.9.2609, downloaded at configure time with a SHA-256 check, same version on Linux and Windows and in CI; development only for now (not in the release zip, see techstack §4) | §4, §12 | ⬜ | |
+| DXC dependency: pinned release v1.9.2609, downloaded at configure time with a SHA-256 check, same version on Linux and Windows and in CI; development only for now (not in the release zip, see techstack §4) | §4, §12 | ✅ | #135 / PR #136 |
 | `ShaderCompiler`: HLSL → DXIL and SPIR-V (SM 6.6, Vulkan 1.3), debug and optimised, defines, includes through the VFS, errors with file and line as `Result` | §12 | ⬜ | |
 | Asset core: `AssetManager`, `.meta` sidecars with stable `AssetId`s, typed handles, loading through the VFS, thread-safe, `MemTag::Assets` | §13a, §24 | ⬜ | |
 | Shader assets and permutations: entry points, option axes and defines in the `.meta`, `ShaderVariantKey`, unknown options rejected, a warning on too many variants | §12 | ⬜ | |

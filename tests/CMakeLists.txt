@@ -16,6 +16,15 @@ if(MEOW2_WARNINGS_AS_ERRORS)
     set_tests_properties(Build.Warnings.AreErrors PROPERTIES LABELS "integration")
 endif()
 
+# The pinned DXC runs (cmake/Meow2Dxc.cmake): the download, its hash and the unpacking all worked.
+if(MEOW2_SHADER_TOOLS)
+    add_test(NAME Build.Dxc.PinnedCompilerRuns COMMAND "${MEOW2_DXC_EXECUTABLE}" --version)
+    set_tests_properties(Build.Dxc.PinnedCompilerRuns PROPERTIES
+        LABELS "integration"
+        PASS_REGULAR_EXPRESSION "1\.9"
+        ENVIRONMENT "LD_LIBRARY_PATH=${MEOW2_DXC_LIBRARY_DIR}")
+endif()
+
 # .editorconfig basics for every tracked text file (needs git to list them).
 find_package(Git QUIET)
 if(GIT_FOUND)

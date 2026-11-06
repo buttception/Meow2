@@ -46,8 +46,9 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |
 | Events (`EventBus`) | [Events](Events.md) | ✅ M1 |
 | IDs (128-bit, kind tag, lock-free generator) | [Ids](Ids.md) | ✅ M2 |
-| Math (DirectXMath types, load/store, constants) | [Math](Math.md) | 🟨 M3 |
+| Math (types, SIMD, random numbers, colours, quaternions, transforms, splines, camera, bounds, rays, packing) | [Math](Math.md) | ✅ M3 |
 | Scene (entities and components on EnTT, command buffers) | [Scene](Scene.md) | ✅ M2 |
+| Shaders (HLSL through DXC) | [Shaders](Shaders.md) | 🟨 M4 |
 | Jobs (`JobSystem`, enkiTS) | [Jobs](Jobs.md) | ✅ M1 |
 | Profiling (Tracy) | [Profiling](Profiling.md) | ✅ M1 |
 | Releases (zip, GitHub Releases) | [Releases](Releases.md) | ✅ M1 |

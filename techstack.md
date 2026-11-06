@@ -108,6 +108,7 @@ Examples:
 | `MEOW2_GPU_TESTS` | OFF | Tests needing a GPU (labels `gpu`, `visual`) |
 | `MEOW2_PHYSICS_BACKEND` | `Jolt` | `Jolt` now; `PhysX`, `Box3D` reserved |
 | `MEOW2_SIMD` | `AVX2` | x64 instruction set for the whole build: `AVX2` (+ FMA3, F16C) or `SSE4.2`; every app checks the CPU at startup (§10) |
+| `MEOW2_SHADER_TOOLS` | ON | Downloads the pinned DXC (`MEOW2_DXC_DIR` uses an unpacked release instead); off, shaders can't be compiled, only loaded |
 
 ### Presets
 `windows-msvc-{debug,relwithdebinfo,release}`, `linux-clang-{debug,relwithdebinfo,release}`, later `android-arm64-*`.

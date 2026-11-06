@@ -65,6 +65,7 @@ enable_testing()
 include(Meow2Sanitizers) # before the external libraries: they must be instrumented too
 include(Meow2Simd)       # after the sanitizers, before the external libraries: one instruction set everywhere
 include(Meow2External)
+include(Meow2Dxc)
 include(Meow2SmokeTest)
 include(Meow2Subsystem)
 include(Meow2Packaging) # meow2_install_app(); meow2_package() is called at the end
