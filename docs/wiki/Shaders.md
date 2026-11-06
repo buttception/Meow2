@@ -2,7 +2,7 @@
 
 Shaders are written in HLSL and compiled with [DXC](https://github.com/microsoft/DirectXShaderCompiler) to DXIL (D3D12) and SPIR-V (Vulkan).
 
-- Status: 🟨 M4. DXC dependency (#135) done.
+- Status: 🟨 M4. DXC dependency (#135), `ShaderCompiler` (#137) done.
 
 ## DXC
 
@@ -19,8 +19,31 @@ To change the version, update `meow2DxcVersion`, the two archive names and the t
 
 **DXC doesn't optimise for a GPU.** DXIL and SPIR-V are portable; the GPU driver compiles them to machine code for the exact GPU when a pipeline is created, on the player's machine.
 
+## ShaderCompiler
+
+`#include <Meow2/Graphics/Shader/ShaderCompiler.h>`: compiles one entry point of an HLSL file.
+
+```cpp
+Result<Shader::ShaderCompiler> compiler = Shader::ShaderCompiler::create(files);
+const std::vector<Shader::ShaderDefine> defines{{"SKINNED", "1"}};
+Result<Shader::ShaderCompileOutput> output = compiler->compile({
+    .path = "assets/shaders/Sky.hlsl",
+    .entryPoint = "psMain",
+    .stage = Shader::ShaderStage::Pixel,
+    .target = Shader::ShaderTarget::Spirv,      // or Dxil
+    .optimization = Shader::ShaderOptimization::Debug,
+    .defines = defines,
+});
+```
+
+- **DXC is loaded, not linked.** `create()` opens `dxcompiler` from the executable's folder and returns `NotFound` if it isn't there. An app linked against DXC wouldn't start without it. Player never creates a compiler, so it needs no DXC.
+- **Includes go through the FileSystem**, relative to the including file. `output.includes` lists every included file, for dependency tracking.
+- **Errors** are `ErrorCode::ParseError` with DXC's text: `shaders/Sky.hlsl:12:5: error: …`.
+- **Conventions:** SM 6.6, HLSL 2021, row-major matrices (`-Zpr`) used as `mul(vector, matrix)` like `Meow2/Math`, so a `Mat4` goes to the GPU as it is. SPIR-V uses D3D's constant-buffer layout (`-fvk-use-dx-layout`), so a struct has one layout on both backends.
+- **Threads:** `compile()` may run on several threads at once.
+
 ## Tests
 
-`Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler.
+`Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler. `Shader.ShaderCompilerTest.*`: both targets, defines, includes, errors with file and line.
 
 See also: techstack.md §4, §12.

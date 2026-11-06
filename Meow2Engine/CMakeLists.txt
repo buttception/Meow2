@@ -77,10 +77,12 @@ target_sources(Meow2Engine
             include/Meow2/Core/Process.h
             include/Meow2/Core/Profiling/Profile.h
             include/Meow2/Core/Result.h
+            include/Meow2/Core/SharedLibrary.h
             include/Meow2/Core/Time/FixedTimestep.h
             include/Meow2/Core/Time/FrameClock.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
+            include/Meow2/Graphics/Shader/ShaderCompiler.h
             include/Meow2/Math/Batch.h
             include/Meow2/Math/Bounds.h
             include/Meow2/Math/Camera.h
@@ -115,13 +117,24 @@ if(WIN32)
     target_sources(Meow2Engine PRIVATE
         src/Core/Crash/Win32/CrashHandlerWin32.cpp
         src/Core/Win32/DebuggerWin32.cpp
-        src/Core/Win32/ProcessWin32.cpp)
+        src/Core/Win32/ProcessWin32.cpp
+        src/Core/Win32/SharedLibraryWin32.cpp)
     target_link_libraries(Meow2Engine PRIVATE dbghelp) # MiniDumpWriteDump
 else()
     target_sources(Meow2Engine PRIVATE
         src/Core/Crash/Linux/CrashHandlerLinux.cpp
         src/Core/Linux/DebuggerLinux.cpp
-        src/Core/Linux/ProcessLinux.cpp)
+        src/Core/Linux/ProcessLinux.cpp
+        src/Core/Linux/SharedLibraryLinux.cpp)
+    target_link_libraries(Meow2Engine PRIVATE ${CMAKE_DL_LIBS}) # dlopen
+endif()
+
+# The shader compiler: DXC's headers only, the library is loaded at runtime (techstack.md §12).
+if(MEOW2_SHADER_TOOLS)
+    target_sources(Meow2Engine PRIVATE src/Graphics/Shader/Dxc/ShaderCompilerDxc.cpp)
+    target_link_libraries(Meow2Engine PRIVATE Dxc::Headers)
+else()
+    target_sources(Meow2Engine PRIVATE src/Graphics/Shader/ShaderCompilerNone.cpp)
 endif()
 
 target_include_directories(Meow2Engine PRIVATE src)

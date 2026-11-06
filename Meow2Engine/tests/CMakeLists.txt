@@ -98,6 +98,16 @@ meow2_add_test_suite(
         Platform/WindowTests.cpp
     LIBRARIES SDL3::SDL3-static)
 
+# Shader compiler (needs DXC, which lands next to the test executable).
+if(MEOW2_SHADER_TOOLS)
+    meow2_add_test_suite(
+        TARGET    Meow2EngineShaderTests
+        MODULE    Shader
+        SOURCES
+            Graphics/Shader/ShaderCompilerTests.cpp)
+    meow2_copy_dxc_runtime(Meow2EngineShaderTests)
+endif()
+
 # Math (DirectXMath types and helpers).
 meow2_add_test_suite(
     TARGET    Meow2EngineMathTests
