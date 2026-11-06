@@ -12,7 +12,9 @@ namespace Meow2
 {
 Result<SharedLibrary> SharedLibrary::open(const std::filesystem::path& path)
 {
-    void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+    // RTLD_NODELETE: the code stays mapped after dlclose. C++ libraries such as DXC keep global objects that can't
+    // survive being unloaded and reloaded, and unloading them only saves address space.
+    void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
     if (handle == nullptr)
     {
         return fail(ErrorCode::NotFound, std::format("{}: {}", path.string(), dlerror()));
