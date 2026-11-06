@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Assets: an asset manager with stable IDs in `.meta` files next to each source, so moving a file breaks nothing, one shared loaded copy of each asset, and reloading that reaches every user (#140).
 - Shaders: `ShaderCompiler` turns HLSL into DXIL and SPIR-V through DXC, with macros, includes read through the file system, and errors that name file and line. DXC is loaded at runtime, so apps without it still start (#138).
 - Shaders: the build downloads a pinned DXC (v1.9.2609) and checks its hash, so every machine compiles shaders with the same compiler (#136).
 

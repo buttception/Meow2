@@ -132,7 +132,7 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 |---|---|---|---|
 | DXC dependency: pinned release v1.9.2609, downloaded at configure time with a SHA-256 check, same version on Linux and Windows and in CI; development only for now (not in the release zip, see techstack §4) | §4, §12 | ✅ | #135 / PR #136 |
 | `ShaderCompiler`: HLSL → DXIL and SPIR-V (SM 6.6, Vulkan 1.3), debug and optimised, defines, includes through the VFS, errors with file and line as `Result` | §12 | ✅ | #137 / PR #138 |
-| Asset core: `AssetManager`, `.meta` sidecars with stable `AssetId`s, typed handles, loading through the VFS, thread-safe, `MemTag::Assets` | §13a, §24 | ⬜ | |
+| Asset core: `AssetManager`, `.meta` sidecars with stable `AssetId`s, typed handles, loading through the VFS, thread-safe, `MemTag::Assets` | §13a, §24 | ✅ | #139 / PR #140 |
 | Shader assets and permutations: entry points, option axes and defines in the `.meta`, `ShaderVariantKey`, unknown options rejected, a warning on too many variants | §12 | ⬜ | |
 | Cooker and `.m2shader`: both bytecodes per variant, versioned file, cache key from source, includes, flags, defines and compiler version | §12 | ⬜ | |
 | Build step: `Meow2ShaderCompiler` tool, `meow2_add_shaders()` in CMake, `shaders/` folder; only changed variants recook | §12 | ⬜ | |
