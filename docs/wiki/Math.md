@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115) done; camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117) done; camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -244,8 +244,44 @@ const DirectX::XMMATRIX world = toMatrix(shown);
 - **`WorldPosition`** is the type of `position`, a `Vec3` today. Every world position uses this one name, so larger worlds can later move to doubles or a floating origin in one place (techstack.md §10).
 - **No shear:** a transform can't represent a rotated child under a parent that scales non-uniformly (e.g. (2, 1, 1)); in reality that child would be sheared. `combine` and `inverse` are exact for uniform parent scales. `inverseTransformPoint` and the matrices are exact in every case.
 
+## Easing and splines
+
+### Easing
+
+`#include <Meow2/Math/Easing.h>`: an easing curve maps progress `t` (0..1, linear in time) to eased progress. A panel then slides in fast and settles gently instead of moving at constant speed.
+
+```cpp
+const float t = saturate(elapsed / duration);
+panel.x = lerp(hiddenX, shownX, ease(EaseCurve::Cubic, EaseMode::Out, t));
+```
+
+- **Curves:** `Linear`, `Quad`, `Cubic`, `Quart`, `Sine`, `Expo`, `Circ`, `Back` (pulls back first), `Elastic` (springy), `Bounce`. The formulas are the ones shown on [easings.net](https://easings.net).
+- **Modes:** `In` (slow start), `Out` (slow end), `InOut` (both). Each curve is defined once in its *In* form. *Out* is its mirror `1 − in(1 − t)`, and *InOut* uses *In* for the first half and *Out* for the second.
+- Two small enums instead of 30 functions, so a component, a config file or the editor can store the choice.
+- Every curve gives 0 at t = 0 and 1 at t = 1; `Back` and `Elastic` leave 0..1 in between. `t` outside 0..1 is clamped.
+
+### Splines
+
+`#include <Meow2/Math/Spline.h>`:
+
+| Curve | Passes through | Shaped by | Use |
+|---|---|---|---|
+| `catmullRom(p0, p1, p2, p3, t)` | every point (`p1` → `p2`) | its neighbours | paths through waypoints, camera rails |
+| `bezier(p0, p1, p2, p3, t)`, `bezierTangent` | first and last | two handles | hand-shaped curves, editor handles |
+| `hermite(p0, m0, p1, m1, t)` | both ends | explicit end tangents | animation curves, joining pieces smoothly |
+| `catmullRom(q0, q1, q2, q3, t)` on `Quat` | every key | neighbours (squad) | smooth rotation through keys |
+
+**Moving at constant speed: `SplinePath`.** The `t` of a curve is not distance: the curve moves faster where its points are far apart, so advancing `t` evenly looks jerky. `SplinePath` builds a Catmull-Rom path through any number of points and an **arc-length table** (the length so far at 32 samples per segment). `pointAtDistance(metres)` then looks up `t` by binary search and refines it with one Newton step. Equal distance steps come out equally spaced within 0.2 %.
+
+```cpp
+const SplinePath rail{waypoints};
+distance = std::min(distance + speed * dt, rail.length());
+camera.position = rail.pointAtDistance(distance);
+camera.rotation = lookRotation(rail.tangentAtDistance(distance));
+```
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions).
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).
