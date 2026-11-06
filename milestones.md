@@ -122,21 +122,38 @@ Rough order: DirectXMath + types → SIMD baseline → scalar helpers, random nu
 
 **Not in M3:** noise (Perlin/simplex): most noise is generated on the GPU in shaders; a CPU version comes with the first CPU user (terrain heights for physics, camera shake, procedural placement). Large-world precision: see techstack §10; only the cheap parts (camera-relative rendering, one `WorldPosition` type) are planned now.
 
-## M4 — Shaders ⬜
-**Goal:** HLSL compiled for both APIs.
-**Depends on:** M0
+## M4 — Shaders and assets 🟨
+**Goal:** one HLSL source compiled to DXIL and SPIR-V, managed as assets (source → cooked object) with permutations and macros set in one place, built by CMake, reloadable while an app runs, and ready for a bindless, GPU-driven renderer.
+**Depends on:** M2 (file system, IDs, events), M1 (jobs, config)
 
-- `ShaderCompiler` over DXC (DXIL + SPIR-V)
-- CMake shader build step
-- Reflection → binding layouts
-- Hot reload (used by Meow2Renderer)
+Rough order: DXC → compiler → asset core → shader assets and permutations → cooker → build step → bindless contract → hot reload.
+
+| Feature | Notes (techstack.md) | Status | Issue / PR |
+|---|---|---|---|
+| DXC dependency: pinned release v1.9.2609, downloaded at configure time with a SHA-256 check, same version on Linux and Windows and in CI; development only for now (not in the release zip, see techstack §4) | §4, §12 | ⬜ | |
+| `ShaderCompiler`: HLSL → DXIL and SPIR-V (SM 6.6, Vulkan 1.3), debug and optimised, defines, includes through the VFS, errors with file and line as `Result` | §12 | ⬜ | |
+| Asset core: `AssetManager`, `.meta` sidecars with stable `AssetId`s, typed handles, loading through the VFS, thread-safe, `MemTag::Assets` | §13a, §24 | ⬜ | |
+| Shader assets and permutations: entry points, option axes and defines in the `.meta`, `ShaderVariantKey`, unknown options rejected, a warning on too many variants | §12 | ⬜ | |
+| Cooker and `.m2shader`: both bytecodes per variant, versioned file, cache key from source, includes, flags, defines and compiler version | §12 | ⬜ | |
+| Build step: `Meow2ShaderCompiler` tool, `meow2_add_shaders()` in CMake, `shaders/` folder; only changed variants recook | §12 | ⬜ | |
+| Bindless contract: `Common.hlsli`, heap access through `ResourceDescriptorHeap`, push-constant layout, structs shared between C++ and HLSL with size checks | §11, §12 | ⬜ | |
+| Hot reload: watch sources and `.meta` files, recompile on a job, `ShaderReloaded` on the `EventBus`; a failed compile keeps the old shader | §12, §22 | ⬜ | |
+| Closing PR bumps the version to **0.5.0** | §21 | ⬜ | |
+
+**Done when:** one shader with permutations cooks to DXIL and SPIR-V on Windows and to SPIR-V on Linux CI; the SPIR-V passes `spirv-val`; the same bindless HLSL compiles for both targets; editing an included file recooks only what depends on it, and a second cook does nothing; Player loads a `.m2shader` with no DXC present; a broken edit during hot reload logs file and line and keeps the old shader.
+
+**Not in M4:** GPU pipelines or running a shader (M5); glTF and textures as assets (M7, on the same asset core); the material system; a custom shader language; SPIRV-Reflect (bindless has one fixed binding layout, so reflection isn't needed; add it if a user appears).
 
 ## M5 — RHI ⬜
-**Goal:** draw with Vulkan and D3D12 through one interface, and switch between them while running.
+**Goal:** draw with Vulkan and D3D12 through one interface, and switch between them while running, with a bindless, GPU-driven core.
 **Depends on:** M2, M3, M4
 
 - RHI interface design (device, queues, command lists, resources by handle, barriers)
 - Typed handles (index + generation)
+- **Bindless:** one global descriptor heap (`VK_EXT_mutable_descriptor_type` on Vulkan, SM 6.6 heaps on D3D12), one fixed binding layout, resources addressed by index through push constants
+- **GPU-driven drawing:** indirect draws with a count buffer, vertex pulling (shaders decode the `Meow2/Math/Packing.h` formats from buffers), compute culling
+- **UAVs / storage buffers and CPU readback** (editor GPU picking, M9)
+- **Pipeline cache and up-front pipeline creation** (`VkPipelineCache`, `ID3D12PipelineLibrary`): no shader stutter; the driver's compile happens once per GPU and driver version
 - **Frame arena:** one `BlockArena` per frame in flight × worker thread, reset when that frame's GPU fence signals (§6)
 - **Upload ring buffer** per frame in flight (CPU-writable GPU memory, same fence-based reset) for GPU scene updates
 - **Frame packet / extract step:** `update` copies what the renderer needs into a frame-arena packet; the renderer only reads the packet (§23)
@@ -158,7 +175,7 @@ Rough order: DirectXMath + types → SIMD baseline → scalar helpers, random nu
 **Depends on:** M5, M6
 
 - `.gltf` / `.glb` importer, right-handed → left-handed conversion
-- GPU scene: persistent instance/material buffers, delta uploads through the upload ring
+- GPU scene (the main path): persistent instance/material buffers, delta uploads through the upload ring, compute culling
 - PBR materials (metallic-roughness), textures, normal maps
 - On-demand sample-asset fetch, scene browser
 - Visual regression tests (golden images per backend)
@@ -183,6 +200,7 @@ Rough order: DirectXMath + types → SIMD baseline → scalar helpers, random nu
 - `QtInputSource`: viewport keyboard/mouse → `InputSystem` while the viewport has focus (play mode / viewport camera)
 - Log console dock (ring-buffer sink)
 - Scene hierarchy, inspector, undo/redo
+- GPU picking: on a click, a scissored pass around the cursor appends `{entity, depth}` per pixel; sorted on the CPU, repeated clicks step down through transparent layers; alpha cutoff in the pick shader; gizmos win; `registry.valid()` checked after the delayed readback
 - **MCP server**: commands/queries as MCP tools, viewport screenshot, localhost + token, `--mcp`
 - Headless mode (`--headless`) + MCP integration tests in CI
 
@@ -215,3 +233,4 @@ Rough order: DirectXMath + types → SIMD baseline → scalar helpers, random nu
 - 2026-11-02 — M2 renamed "Platform & scene foundation" and turned into a feature table; adds 128-bit IDs (techstack §24) and the scene/ECS on EnTT (§25, submodule pending approval), plus a "done when".
 - 2026-11-05 — M2 done (0.3.0); M3 (Math) expanded into a feature table with a "done when": types and helpers, SIMD baseline and batches, random numbers, colours, quaternions, transforms, easing and splines, projections, camera, bounds and culling, rays, vertex packing, transform hierarchy; DirectXMath submodule and the SIMD baseline pending owner decisions.
 - 2026-11-05 — M3 done (0.4.0): every row implemented as a stack of PRs (#108–#132).
+- 2026-11-06 — M4 is now "Shaders and assets", a feature table: DXC pinned, `ShaderCompiler`, asset core, shader assets and permutations, cooker, build step, bindless contract, hot reload. M5 gains bindless, GPU-driven drawing, readback and pipeline caching; M7's GPU scene is the main path; M9 gains GPU picking.

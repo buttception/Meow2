@@ -75,7 +75,7 @@ Engine code is grouped by **subsystem**, then **module**, then (in `src/` only) 
 | `Scene` | files directly in `Scene/` (planned, §25) | — |
 | `Math` | files directly in `Math/` | — |
 | `Graphics` | `Rhi`, `Shader`, `Renderer` | `Vulkan`, `D3D12` (Rhi), `Dxc` (Shader) |
-| `Assets` | `Gltf`, `Registry` | — |
+| `Assets` | files directly in `Assets/` (asset core), `Shader`, `Gltf` | — |
 | `Physics` | files directly in `Physics/` | `Jolt` (later `PhysX`, `Box3D`) |
 | `GameUi` | files directly in `GameUi/` | — |
 | `Packaging` | files directly in `Packaging/` | — |
@@ -143,7 +143,7 @@ ctest --preset windows-msvc-debug -L unit
 | RHI | `IRhiDevice`, `IRhiCommandList`, `IRhiSwapchain`, resources by handle | Vulkan, D3D12 | §11 |
 | Shader | `ShaderCompiler` | DXC (HLSL → DXIL / SPIR-V) | Interface leaves room for a custom shader language (§12) |
 | Renderer | `Renderer`, render graph | on RHI only | |
-| Assets | `AssetImporter`, `AssetRegistry` | glTF **2.0** importer, `.gltf` and `.glb` (library **⚠ OPEN**: fastgltf / cgltf / tinygltf) | §13 |
+| Assets | `AssetManager`, `AssetImporter` | asset core and shader assets (M4, §13a); glTF **2.0** importer, `.gltf` and `.glb` (library **⚠ OPEN**: fastgltf / cgltf / tinygltf) | §13, §13a |
 | Physics | `PhysicsWorld`, `RigidBody`, `Shape`, `PhysicsDebugDraw` | **Jolt** | PhysX / Box3D selectable at build time later (§14) |
 | GameUI | `UiContext`, widgets | in-house, drawn via Renderer | Used by `Meow2Player` |
 | Packaging | `GamePackager` | in-house | Editor export |
@@ -188,7 +188,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | **Not submodules** | | | |
 | Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, aqtinstall 3.3.0 in a plain step in Linux CI (only GitHub-owned actions are allowed); found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
 | Vulkan SDK | validation layers, tools | — | LunarG installer (dev machines only) |
-| DXC | shader compiler | NCSA/MIT | prebuilt release binaries from Microsoft (or the copy in the Vulkan SDK) — not built from source |
+| DXC v1.9.2609 | shader compiler (§12) | NCSA/MIT (`dxcompiler`); Microsoft licence (`dxil`) | not a submodule: `cmake/Meow2Dxc.cmake` downloads the pinned release at configure time into the build folder and checks its SHA-256. Development only for now: not in the release zip, because the release's licence refers to a distributables list it doesn't contain. `Meow2Player` never ships it |
 | Doxygen ≥ 1.9.8 | API documentation (`docs` target, §16.1) | GPL-2.0 (tool only, not linked) | `winget install DimitriVanHeesch.Doxygen` (Windows), `apt install doxygen` (Linux CI). Optional locally: the `docs` target and test are skipped if it's missing; required in CI |
 
 Clone with: `git clone --recurse-submodules`. glTF sample assets are **not** submodules — they are fetched on demand (§13).
@@ -354,14 +354,19 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
   4. Recreate all GPU resources from their **CPU-side descriptions** (the renderer keeps a resource registry). Shaders are already compiled for both (DXIL + SPIR-V).
   - Rule this implies: nothing above the RHI may cache backend-native handles or pointers. Only engine handles, which are re-bound after the swap.
   - It costs a hitch of seconds, not a seamless switch. That is fine for comparing backends in Meow2Renderer.
+- **Bindless and GPU-driven** (owner decision 2026-11-06): one global descriptor heap and one fixed binding layout; shaders get indices through push constants and index `ResourceDescriptorHeap`. On Vulkan DXC emulates that with descriptor indexing and `VK_EXT_mutable_descriptor_type`; on D3D12 it needs SM 6.6. Drawing is indirect with a count buffer, vertices are pulled from buffers, culling runs in compute. Older GPUs and Android need a check before M12.
+- **Pipeline cache** and up-front pipeline creation: the driver compiles DXIL/SPIR-V to machine code for the exact GPU when a pipeline is created, so that result is cached on disk, once per GPU and driver version.
 - Resources are referenced by handles owned by the device (32-bit index + generation). **GPU resources don't get UUIDs** (§24): they exist only while the program runs, are recreated on every hot swap and are looked up every frame, so a 128-bit key would cost hashing for nothing. A resource may record the `AssetId` it was loaded from, for debugging and Tracy names.
 - Debug: validation layers / D3D12 debug layer, object names, validation messages routed to the `RHI` logger.
 
 ## 12. Shaders
 
 - Authored in **HLSL**. Compiled with **DXC** → DXIL (D3D12) and SPIR-V (Vulkan).
-- `ShaderCompiler` takes source + entry + stage + defines and returns bytecode + reflection. DXC is one implementation, so a **future custom shader language** can either compile to HLSL (and reuse DXC) or produce SPIR-V/DXIL directly.
-- Offline compilation via a CMake step. Runtime hot reload in Meow2Renderer.
+- `ShaderCompiler` takes source + entry + stage + defines and returns bytecode. DXC is one implementation, so a **future custom shader language** can either compile to HLSL (and reuse DXC) or produce SPIR-V/DXIL directly.
+- **Pipeline:** `Pbr.hlsl` + `Pbr.hlsl.meta` (ID, entry points, option axes, defines) → cooked by `Meow2ShaderCompiler` → `<AssetId>.m2shader` (both bytecodes per variant) → loaded as a shader asset; a variant is picked by option values.
+- **No reflection library:** bindless has one fixed layout, so structs are shared between C++ and HLSL and checked by size.
+- **DXC doesn't optimise for a GPU:** DXIL and SPIR-V are portable; the driver compiles them for the exact GPU when a pipeline is created, on the player's machine (§11). So `Meow2Player` ships only cooked shaders, no DXC. Variants by GPU capability are ordinary option axes. DXC on a player's machine only makes sense for mods.
+- Offline compilation via a CMake step. Runtime hot reload where DXC is available (Renderer, Editor).
 
 ## 13. Rendering verification (glTF sample scenes)
 
@@ -372,6 +377,12 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
   - then adds only `Models/<ModelName>/` to the sparse checkout, so only that model is downloaded.
 - Meow2Renderer has a scene browser listing the sample models, marking which are downloaded, and can open any local `.gltf` / `.glb`.
 - **Visual regression tests**: render a scene headlessly from a fixed camera, save PNG, and compare with an owner-approved golden image (per backend) using a tolerance (per-pixel threshold + % of pixels, or FLIP). CTest label `visual`. A new golden is only accepted after the owner has looked at it.
+
+## 13a. Assets (M4)
+
+- **Source → cooked object:** a source file, a `.meta` sidecar next to it holding its `AssetId` (§24) and import settings, and a cooked file named by the ID. Renaming a source keeps its ID.
+- **`AssetManager`** (concrete, injected, thread-safe): typed handles, loads through the VFS (§3), memory under `MemTag::Assets`. No virtuals: asset types are templates or a `std::variant`.
+- Shader assets come first (M4); meshes, textures and materials use the same core (M7).
 
 ## 14. Physics
 
@@ -739,3 +750,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-05 — §10: rays and picking implemented.
 - 2026-11-05 — §10: vertex packing and quantisation implemented.
 - 2026-11-05 — §25: transform hierarchy implemented (parallel by depth level, dirty flags, previous world transform for interpolation).
+- 2026-11-06 — §3/§4/§11/§12: new §13a Assets; M4 plan: DXC v1.9.2609 pinned and downloaded, no SPIRV-Reflect, bindless and GPU-driven rendering (owner decision), cooked shaders only in `Meow2Player`, pipeline cache in M5.

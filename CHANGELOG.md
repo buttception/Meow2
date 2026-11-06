@@ -8,7 +8,10 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
-## [0.4.0] — 2026-11-05
+### Changed
+- Roadmap: M4 is now "Shaders and assets", a feature table with an asset core, shader permutations and a bindless, GPU-driven direction for the renderer; editor picking moves to the GPU (#134).
+
+## [0.4.0] — 2026-11-06
 
 ### Added
 - Scene: parented transforms. Entities get a local transform relative to their parent and a world transform, updated once per step on all cores (by depth level), recomputing only what moved; the previous step is kept so rendering can interpolate smoothly between fixed steps (#130).
