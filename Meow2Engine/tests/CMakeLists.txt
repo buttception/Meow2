@@ -109,6 +109,7 @@ meow2_add_test_suite(
         Math/QuaternionTests.cpp
         Math/RandomTests.cpp
         Math/ScalarTests.cpp
+        Math/TransformTests.cpp
         Math/TypesTests.cpp)
 
 # Scene (entities and components on EnTT).

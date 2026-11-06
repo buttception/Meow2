@@ -106,7 +106,7 @@ Rough order: DirectXMath + types → SIMD baseline → scalar helpers, random nu
 | Random numbers: a small, fast, seedable generator (PCG32 or xoshiro), one per system or thread, never global; our own ranges and distributions (floats, ints, unit vectors, points in a sphere), because `std::` distributions give different results on MSVC and libstdc++; the same sequence on every platform for replays | §10, §18 | ✅ | #109 / PR #110 |
 | Colours: linear `Color` (float RGBA) and `Color8` (8-bit sRGB), exact sRGB ↔ linear conversion, HSV, premultiplied alpha, named constants | §10 | ✅ | #111 / PR #112 |
 | Quaternions: axis-angle, Euler angles with a documented order (yaw Y, pitch X, roll Z), look rotation, `slerp`, normalise, angle between | §10 | ✅ | #113 / PR #114 |
-| `Transform` (TRS: position, rotation, scale): to/from matrix, compose, inverse, transform a point/direction, interpolate (for `render(alpha)`) | §10, §23 | ⬜ | |
+| `Transform` (TRS: position, rotation, scale): to/from matrix, compose, inverse, transform a point/direction, interpolate (for `render(alpha)`) | §10, §23 | ✅ | #115 / PR #116 |
 | Easing and splines: the standard easing curves (quad, cubic, sine, expo, back, elastic, bounce; in/out/in-out); Catmull-Rom, cubic Bézier and Hermite splines for points and rotations; arc-length parameterisation (constant speed along a path) | §10 | ⬜ | |
 | Projections: reversed infinite-Z perspective and reversed-Z orthographic (left-handed, depth 0..1); the Vulkan Y-flip convention checked by tests | §10, §11 | ⬜ | |
 | Camera: view matrix from a transform, field of view/aspect/near, screen ↔ world (project/unproject), its frustum; camera-relative positions for rendering (§10 large worlds) | §10 | ⬜ | |

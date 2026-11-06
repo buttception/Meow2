@@ -84,6 +84,7 @@ target_sources(Meow2Engine
             include/Meow2/Math/Quaternion.h
             include/Meow2/Math/Random.h
             include/Meow2/Math/Scalar.h
+            include/Meow2/Math/Transform.h
             include/Meow2/Math/Types.h
             include/Meow2/Platform/FileSystem/FileSystem.h
             include/Meow2/Platform/Input/InputEvents.h
