@@ -1,6 +1,6 @@
 # Meow2 — Milestones
 
-A map of where the engine is heading, not a schedule. Work happens **as the owner asks for it**, one small feature (= 1 issue, 1 branch, 1 PR) at a time.
+A map of where the engine is heading, not a schedule. Work happens **as the owner asks for it**, in groups of related features (1 group = 1 issue, 1 branch, 1 PR, AGENTS.md §2) at a time.
 If a requested feature needs something from an earlier milestone that doesn't exist yet, the agent says so before starting.
 
 Status: ⬜ not started · 🟨 in progress · ✅ done
