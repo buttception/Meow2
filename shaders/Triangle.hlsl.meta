@@ -1,0 +1,12 @@
+id = "01a1b152-474c-8000-80bf-f974ca48024f"
+
+[[entry]]
+name = "vsMain"
+stage = "vertex"
+
+[[entry]]
+name = "psMain"
+stage = "pixel"
+
+[options]
+GRAYSCALE = [0, 1]

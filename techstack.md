@@ -36,6 +36,7 @@
 | `Meow2Renderer` | exe | Lightweight app to test rendering & shaders and **showcase engine capabilities**. Dev UI: Dear ImGui (docking). Loads glTF sample scenes. | `Meow2Engine`, imgui |
 | `Meow2Editor` | exe | Qt (≥ 6.8, tested with 6.12) editor: scene editing, asset import, game export. **Fully drivable through an MCP server** (§20), so AI agents can build in it | `Meow2Engine`, Qt6 |
 | `Meow2Player` | exe | Standalone game runtime the editor bundles on export. Uses the built-in UI. No ImGui, no Qt. | `Meow2Engine` |
+| `Meow2ShaderCompiler` | exe | Build tool: cooks `shaders/` (§12). Not shipped | `Meow2Engine` |
 | `*Tests` | exe | One GoogleTest executable per module (e.g. `Meow2EngineCoreTests`), registered with CTest | `Meow2Engine`, `GTest::gtest_main` |
 
 The rendering code (RHI, render graph, passes) lives in `Meow2Engine`. `Meow2Renderer` only drives and displays it.
@@ -371,6 +372,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Implemented (M4):** `ShaderCompiler` (`Meow2/Graphics/Shader/`): DXC loaded at runtime through `SharedLibrary`, SM 6.6, HLSL 2021, `-Zpr`, `-fvk-use-dx-layout`, includes through the VFS. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md).
 - **Implemented (M4):** `Meow2/Assets/Shader/ShaderMeta.h`: `.meta` settings (entries, defines, options), `ShaderVariantKey` (mixed-radix index), `variantKey`, `variantDefines`; limit 4,096 variants. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#shader-settings-and-permutations).
 - **Implemented (M4):** `ShaderCooker` and `ShaderAsset` (`Meow2/Assets/Shader/`): `.m2shader` with every variant × entry point × target plus the `.meta` text; cache key over source, includes, `.meta`, options and DXC version; loads with no compiler. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#cooking).
+- **Implemented (M4):** `Meow2ShaderCompiler` and `meow2_add_shaders()`: cooks `shaders/` into `<build>/cooked/` on every build (the cache keys make that cheap); `--import` writes a new `.meta`. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#the-build-step).
 
 ## 13. Rendering verification (glTF sample scenes)
 
@@ -760,3 +762,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-06 — §13a: asset core implemented.
 - 2026-11-06 — §12: shader settings and permutations implemented.
 - 2026-11-06 — §12: cooker and `.m2shader` implemented.
+- 2026-11-06 — §2/§12: shader build step implemented.

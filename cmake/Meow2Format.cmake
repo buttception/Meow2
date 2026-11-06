@@ -50,7 +50,7 @@ endif()
 message(STATUS "clang-format ${meow2ClangFormatMajor}: ${MEOW2_CLANG_FORMAT}")
 
 set(meow2FormatGlobs)
-foreach(dir Meow2Engine Meow2Renderer Meow2Editor Meow2Player tests)
+foreach(dir Meow2Engine Meow2Renderer Meow2Editor Meow2Player Meow2ShaderCompiler tests)
     foreach(ext h hpp cpp inl)
         list(APPEND meow2FormatGlobs "${PROJECT_SOURCE_DIR}/${dir}/*.${ext}")
     endforeach()
