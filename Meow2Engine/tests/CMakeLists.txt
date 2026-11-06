@@ -108,6 +108,13 @@ if(MEOW2_SHADER_TOOLS)
     meow2_copy_dxc_runtime(Meow2EngineShaderTests)
 endif()
 
+# Assets (the asset core).
+meow2_add_test_suite(
+    TARGET    Meow2EngineAssetsTests
+    MODULE    Assets
+    SOURCES
+        Assets/AssetManagerTests.cpp)
+
 # Math (DirectXMath types and helpers).
 meow2_add_test_suite(
     TARGET    Meow2EngineMathTests

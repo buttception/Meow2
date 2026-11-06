@@ -183,7 +183,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | GoogleTest v1.17.0 | unit tests (gmock off) | BSD-3 | submodule |
 | tl::expected v1.3.1 | `Result<T>` until C++23 `std::expected` (only the `std::expected`-compatible API is used) | CC0 | submodule; header-only, own INTERFACE target (its CMakeLists pulls in CTest/Catch2). **Public-header exception:** included by `Meow2/Core/Result.h` |
 | EnTT v3.16.0 | ECS for `Scene` (§25) | MIT | submodule; header-only, own INTERFACE target (`EnTT::EnTT`, linked PUBLIC). **Public-header exception:** `Meow2/Scene/Scene.h` exposes the registry and views. The registry allocates through `Memory::ResourceAllocator` (EnTT doesn't build with `std::pmr::polymorphic_allocator`) |
-| toml++ v3.4.0 | config files | MIT | submodule; header-only, own INTERFACE target, `TOML_EXCEPTIONS=0`; only included by `src/Core/Config/Config.cpp` |
+| toml++ v3.4.0 | config files | MIT | submodule; header-only, own INTERFACE target, `TOML_EXCEPTIONS=0`; only included by `src/Core/Config/Config.cpp` and `src/Assets/` |
 | enkiTS v1.12 | job system | zlib | submodule; static, C interface/examples off; only included by `src/Core/Jobs/Enkits/` |
 | Tracy v0.14.1 (client only) | CPU/GPU/memory profiler | BSD-3 | submodule; static, on demand, localhost only, no broadcast, its crash handler off; `TRACY_ENABLE` per configuration (Debug/RWDI). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
 | **Not submodules** | | | |
@@ -385,6 +385,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Source → cooked object:** a source file, a `.meta` sidecar next to it holding its `AssetId` (§24) and import settings, and a cooked file named by the ID. Renaming a source keeps its ID.
 - **`AssetManager`** (concrete, injected, thread-safe): typed handles, loads through the VFS (§3), memory under `MemTag::Assets`. No virtuals: asset types are templates or a `std::variant`.
 - Shader assets come first (M4); meshes, textures and materials use the same core (M7).
+- **Implemented (M4):** `Meow2/Assets/AssetManager.h`: `scan`, `importSource`, `load<T>`, `reload<T>`, `AssetHandle<T>`; `T` provides a static `loadAsset()`. See [docs/wiki/Assets.md](docs/wiki/Assets.md).
 
 ## 14. Physics
 
@@ -754,3 +755,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-05 — §25: transform hierarchy implemented (parallel by depth level, dirty flags, previous world transform for interpolation).
 - 2026-11-06 — §3/§4/§11/§12: new §13a Assets; M4 plan: DXC v1.9.2609 pinned and downloaded, no SPIRV-Reflect, bindless and GPU-driven rendering (owner decision), cooked shaders only in `Meow2Player`, pipeline cache in M5.
 - 2026-11-06 — §12: `ShaderCompiler` implemented.
+- 2026-11-06 — §13a: asset core implemented.

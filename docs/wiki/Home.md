@@ -49,6 +49,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Math (types, SIMD, random numbers, colours, quaternions, transforms, splines, camera, bounds, rays, packing) | [Math](Math.md) | ✅ M3 |
 | Scene (entities and components on EnTT, command buffers) | [Scene](Scene.md) | ✅ M2 |
 | Shaders (HLSL through DXC) | [Shaders](Shaders.md) | 🟨 M4 |
+| Assets (stable IDs, `.meta` sidecars, loading) | [Assets](Assets.md) | 🟨 M4 |
 | Jobs (`JobSystem`, enkiTS) | [Jobs](Jobs.md) | ✅ M1 |
 | Profiling (Tracy) | [Profiling](Profiling.md) | ✅ M1 |
 | Releases (zip, GitHub Releases) | [Releases](Releases.md) | ✅ M1 |
