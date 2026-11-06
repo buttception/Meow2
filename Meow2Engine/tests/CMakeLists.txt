@@ -105,6 +105,7 @@ meow2_add_test_suite(
     SOURCES
         Math/BatchTests.cpp
         Math/MathPrinters.h
+        Math/RandomTests.cpp
         Math/ScalarTests.cpp
         Math/TypesTests.cpp)
 
