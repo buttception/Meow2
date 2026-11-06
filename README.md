@@ -13,7 +13,7 @@ A modular C++20 game engine with Vulkan and Direct3D 12 behind a common RHI (swi
 
 ## Status
 
-🚧 Pre-alpha. **M3 (math) is done, version 0.4.0**: DirectXMath with an AVX2 baseline, deterministic random numbers, colours, quaternions, transforms and a parallel transform hierarchy in the scene, easing curves and splines, reversed-Z projections and camera maths (with camera-relative rendering), bounding volumes and frustum culling, rays and picking, and vertex packing. M2 (0.3.0) brought a fixed-timestep game loop, window and input events (keyboard, mouse, gamepads), 128-bit IDs, an entity/component scene on EnTT with command buffers for jobs, and a virtual file system; M1 (0.2.x) brought logging, crash dumps, memory tracking with leak checks, config files, events, a job system, the Tracy profiler, sanitizer CI and release zips (see [Releases](docs/wiki/Releases.md)). Next: M4 (shaders and assets) and M5 (the RHI). See [milestones.md](milestones.md).
+🚧 Pre-alpha. **M4 (shaders and assets) is done, version 0.5.0**: HLSL compiled to DXIL and SPIR-V through a pinned DXC, an asset manager with stable IDs, shader permutations declared in `.meta` files, cooking in the build, a bindless shader contract, and hot reload. M3 (0.4.0) brought DirectXMath with an AVX2 baseline, deterministic random numbers, colours, quaternions, transforms and a parallel transform hierarchy in the scene, easing curves and splines, reversed-Z projections and camera maths (with camera-relative rendering), bounding volumes and frustum culling, rays and picking, and vertex packing. M2 (0.3.0) brought a fixed-timestep game loop, window and input events (keyboard, mouse, gamepads), 128-bit IDs, an entity/component scene on EnTT with command buffers for jobs, and a virtual file system; M1 (0.2.x) brought logging, crash dumps, memory tracking with leak checks, config files, events, a job system, the Tracy profiler, sanitizer CI and release zips (see [Releases](docs/wiki/Releases.md)). Next: M5 (the RHI: Vulkan and D3D12, bindless and GPU-driven). See [milestones.md](milestones.md).
 
 ## Documentation
 
@@ -28,7 +28,7 @@ Requirements (Windows):
 - Visual Studio 2022 with the *Desktop development with C++* workload, CMake ≥ 3.25 on `PATH`, and Git.
 - **For the editor:** Qt ≥ 6.8 with the **MSVC 2022 64-bit** kit (tested with 6.12.0); see [Building → Qt](docs/wiki/Building.md#qt). Without Qt, everything except the editor builds, and configure says how to add it.
 - **To run** the apps: a 64-bit CPU with **AVX2** (Intel since 2013, AMD since 2015). Older CPUs get a clear message at startup; `-DMEOW2_SIMD=SSE4.2` builds for them ([Math → SIMD](docs/wiki/Math.md#simd)).
-- Later milestones add the Vulkan SDK.
+- Configuring downloads the pinned shader compiler (DXC, about 30 MB) once per checkout; `-DMEOW2_SHADER_TOOLS=OFF` skips it. Later milestones add the Vulkan SDK.
 
 Requirements (Linux): Clang 18 or GCC 13+, CMake ≥ 3.25, Ninja, Git, the X11/Wayland development packages SDL3 builds against ([Building](docs/wiki/Building.md#linux-packages)) and, for the editor, Qt ≥ 6.8 (`gcc_64`).
 
