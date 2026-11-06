@@ -8,6 +8,9 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+- Shaders: the build downloads a pinned DXC (v1.9.2609) and checks its hash, so every machine compiles shaders with the same compiler (#136).
+
 ### Changed
 - Roadmap: M4 is now "Shaders and assets", a feature table with an asset core, shader permutations and a bindless, GPU-driven direction for the renderer; editor picking moves to the GPU (#134).
 
