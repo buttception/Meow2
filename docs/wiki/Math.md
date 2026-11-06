@@ -4,7 +4,7 @@ The engine's math is built on Microsoft's [DirectXMath](https://github.com/micro
 
 - Header: `#include <Meow2/Math/Types.h>`. Namespace `Meow2::Math`.
 - Library: DirectXMath **`may2026`** (submodule `external/DirectXMath`). Its types may appear in public `Meow2/Math` headers (techstack.md §3).
-- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119) done; camera and more are next ([milestones](../../milestones.md)).
+- Status: 🟨 M3. Types and helpers (#103), the AVX2 baseline, CPU check and batch helpers (#105), scalar helpers (#107), random numbers (#109), colours (#111), quaternions (#113), transforms (#115), easing and splines (#117), projections (#119), camera (#121) done; camera and more are next ([milestones](../../milestones.md)).
 
 ## Store compact, compute in registers
 
@@ -302,8 +302,36 @@ camera.rotation = lookRotation(rail.tangentAtDistance(distance));
 
 **Vulkan and the Y axis.** In NDC, +Y is up; framebuffer rows count down from the top on both APIs. D3D12's viewport rule flips Y (`screenY = y + (1 − ndcY)·h/2`) and Vulkan's doesn't (`y + (1 + ndcY)·h/2`). With the same matrix, Vulkan's image would be upside down. `flipForVulkan(viewport)` returns the viewport with its origin on the bottom edge and a **negative height** (core since Vulkan 1.1). Every point then lands on the same pixel as on D3D12, and both backends share every matrix. `Math.Projection.VulkanYFlip` checks it.
 
+## Camera
+
+`#include <Meow2/Math/Camera.h>`: a camera is a `Transform` (where it is; it looks along its local +Z) plus a `CameraLens` (how it projects).
+
+```cpp
+CameraLens lens;                                         // 60° perspective, near 0.1, no far plane
+const CameraMatrices m = cameraMatrices(cameraTransform, lens, width / height);
+if (const auto screen = worldToScreen(enemyHead, m, viewport)) { drawHealthBar(screen->x, screen->y); }
+const Vec3 onNearPlane = screenToWorld({mouseX, mouseY, 1.0F}, m, viewport);
+```
+
+| Function | Does |
+|---|---|
+| `viewMatrix(transform)` | world → view space: the camera at the origin looking down +Z (scale ignored) |
+| `projectionMatrix(lens, aspect)` | reversed-Z perspective (no far plane) or orthographic |
+| `cameraMatrices(transform, lens, aspect)` | view, projection, view × projection and its inverse |
+| `worldToScreen(p, m, viewport)` | pixel x, y and depth; `std::nullopt` behind the camera |
+| `screenToWorld({x, y, depth}, m, viewport)` | back to the world; depth 1 is the near plane |
+| `cameraRelative(p, cameraPosition)`, `cameraRelativeViewMatrix(rotation)` | camera-relative rendering |
+
+**Camera-relative rendering** (techstack.md §10, large worlds). 100 km from the origin a float has steps of about 8 mm. The usual view matrix subtracts the camera's 100 km back out *inside* the matrix maths, where the rounding of the big numbers lands in the small result: objects jitter. Instead:
+1. subtract the camera position from each object's position first (`cameraRelative`, exact for nearby objects);
+2. use a view matrix with no translation (`cameraRelativeViewMatrix`).
+
+`Math.Camera.CameraRelativeKeepsPrecision` shows that a scene 100 km out then renders bit-identically to the same scene at the origin. The M5 renderer does this from its first frame.
+
+The camera's **frustum** (for culling) comes with the bounding-volume functions.
+
 ## Tests
 
-`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path), `Math.Projection.*` (hand-checked infinite perspective, finite vs DirectXMath, orthographic, depth linearisation, Vulkan Y-flip).
+`Math.Types.Layout` (sizes, defaults, `Quat` ≠ `Vec4`), `Math.LoadStore.RoundTrip`, `Math.Constants.LeftHanded`, `Math.NearlyEqual.AbsoluteAndRelative`, `Math.Format.ReadableOutput`, `Math.Simd.IntrinsicsOn`, `Math.Scalar.*` (angle conversion and wrapping, lerp and its inverse, remap, clamp, smoothstep), `Math.Random.*` (PCG reference sequence, golden values, bounds, bias, sphere), `Math.Color.*` (sRGB curve, exact byte round trip, hex, HSV, premultiplied alpha, blending), `Math.Quaternion.*` (axis-angle, Euler order and round trip, look and from-to rotations, combine order, slerp, angle between), `Math.Transform.*` (identity, matrix round trip, scale-rotate-translate order, combine vs matrices, inverse, interpolation, directions), `Math.Easing.*` (endpoints, known values, mirrored modes), `Math.Spline.*` (curves hit their points, rotation squad, constant-speed path), `Math.Projection.*` (hand-checked infinite perspective, finite vs DirectXMath, orthographic, depth linearisation, Vulkan Y-flip), `Math.Camera.*` (view matrix, lens projection, world ↔ screen, camera-relative precision).
 
 See also: techstack.md §10, [DirectXMath programming guide](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal).
