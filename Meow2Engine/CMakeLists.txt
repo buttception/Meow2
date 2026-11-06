@@ -9,6 +9,7 @@ configure_file(src/Core/Version.h.in "${meow2GeneratedDir}/Meow2/Core/Version.h"
 target_sources(Meow2Engine
     PRIVATE
         src/Assets/AssetManager.cpp
+        src/Assets/Shader/ShaderMeta.cpp
         src/Core/Assert.cpp
         src/Core/CommandLine.cpp
         src/Core/CommandLine.h
@@ -55,6 +56,7 @@ target_sources(Meow2Engine
             "${meow2GeneratedDir}"
         FILES
             include/Meow2/Assets/AssetManager.h
+            include/Meow2/Assets/Shader/ShaderMeta.h
             include/Meow2/Core/Assert.h
             include/Meow2/Core/Config/Config.h
             include/Meow2/Core/Crash/CrashHandler.h

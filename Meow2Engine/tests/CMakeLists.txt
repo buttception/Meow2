@@ -113,7 +113,8 @@ meow2_add_test_suite(
     TARGET    Meow2EngineAssetsTests
     MODULE    Assets
     SOURCES
-        Assets/AssetManagerTests.cpp)
+        Assets/AssetManagerTests.cpp
+        Assets/ShaderMetaTests.cpp)
 
 # Math (DirectXMath types and helpers).
 meow2_add_test_suite(

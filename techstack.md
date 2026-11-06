@@ -369,6 +369,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **DXC doesn't optimise for a GPU:** DXIL and SPIR-V are portable; the driver compiles them for the exact GPU when a pipeline is created, on the player's machine (§11). So `Meow2Player` ships only cooked shaders, no DXC. Variants by GPU capability are ordinary option axes. DXC on a player's machine only makes sense for mods.
 - Offline compilation via a CMake step. Runtime hot reload where DXC is available (Renderer, Editor).
 - **Implemented (M4):** `ShaderCompiler` (`Meow2/Graphics/Shader/`): DXC loaded at runtime through `SharedLibrary`, SM 6.6, HLSL 2021, `-Zpr`, `-fvk-use-dx-layout`, includes through the VFS. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md).
+- **Implemented (M4):** `Meow2/Assets/Shader/ShaderMeta.h`: `.meta` settings (entries, defines, options), `ShaderVariantKey` (mixed-radix index), `variantKey`, `variantDefines`; limit 4,096 variants. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#shader-settings-and-permutations).
 
 ## 13. Rendering verification (glTF sample scenes)
 
@@ -756,3 +757,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-06 — §3/§4/§11/§12: new §13a Assets; M4 plan: DXC v1.9.2609 pinned and downloaded, no SPIRV-Reflect, bindless and GPU-driven rendering (owner decision), cooked shaders only in `Meow2Player`, pipeline cache in M5.
 - 2026-11-06 — §12: `ShaderCompiler` implemented.
 - 2026-11-06 — §13a: asset core implemented.
+- 2026-11-06 — §12: shader settings and permutations implemented.
