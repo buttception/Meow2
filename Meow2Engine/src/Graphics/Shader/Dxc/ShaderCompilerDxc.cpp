@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <format>
+#include <mutex>
 #include <string_view>
 #include <utility>
 
@@ -174,9 +175,21 @@ private:
 /// @brief The loaded DXC library.
 struct ShaderCompiler::Impl
 {
+    Impl(const FileSystem::FileSystem& fileSystem, SharedLibrary dxc, DxcCreateInstanceProc create)
+        : files(fileSystem)
+        , library(std::move(dxc))
+        , createInstance(create)
+    {
+    }
+
     const FileSystem::FileSystem& files;  ///< Reads the sources.
     SharedLibrary library;                ///< dxcompiler; keeps createInstance valid.
     DxcCreateInstanceProc createInstance; ///< DXC's factory function.
+#if !defined(_WIN32)
+    /// @brief One compile at a time: off Windows, DXC's string conversions change the process-wide C locale (found by
+    ///        TSan). Windows compiles in parallel.
+    std::mutex compileMutex;
+#endif
 };
 
 ShaderCompiler::ShaderCompiler(std::unique_ptr<Impl> impl)
@@ -205,7 +218,7 @@ Result<ShaderCompiler> ShaderCompiler::create(const FileSystem::FileSystem& file
     {
         return fail(ErrorCode::Unsupported, "DxcCreateInstance isn't exported by the DXC library");
     }
-    return ShaderCompiler{std::make_unique<Impl>(Impl{files, std::move(*library), createInstance})};
+    return ShaderCompiler{std::make_unique<Impl>(files, std::move(*library), createInstance)};
 }
 
 Result<ShaderCompileOutput> ShaderCompiler::compile(const ShaderCompileDesc& desc) const
@@ -217,6 +230,10 @@ Result<ShaderCompileOutput> ShaderCompiler::compile(const ShaderCompileDesc& des
         return Unexpected<Error>{source.error()};
     }
 
+#if !defined(_WIN32)
+    // Held across Compile(), which reads includes through the FileSystem: that never calls back into the compiler.
+    const std::scoped_lock lock{m_impl->compileMutex};
+#endif
     ComPtr<IDxcUtils> utils;
     ComPtr<IDxcCompiler3> compiler;
     if (FAILED(m_impl->createInstance(CLSID_DxcUtils, __uuidof(IDxcUtils), utils.out())) ||

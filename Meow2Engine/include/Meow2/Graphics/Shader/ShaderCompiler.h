@@ -93,7 +93,9 @@ struct ShaderCompileOutput
 ///
 /// Sources and `#include`s are read through the FileSystem. An include is looked up relative to the including file.
 /// @par Thread safety
-/// Immutable after creation: compile() may run on several threads at once, one DXC compiler instance per call.
+/// Thread-safe: compile() may be called from several threads at once, with one DXC compiler instance per call. On
+/// Windows the calls run in parallel; elsewhere a mutex runs them one at a time, because DXC changes the process-wide C
+/// locale there.
 /// @par Lifetime
 /// The FileSystem must outlive it.
 class ShaderCompiler

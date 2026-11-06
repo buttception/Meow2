@@ -40,7 +40,7 @@ Result<Shader::ShaderCompileOutput> output = compiler->compile({
 - **Includes go through the FileSystem**, relative to the including file. `output.includes` lists every included file, for dependency tracking.
 - **Errors** are `ErrorCode::ParseError` with DXC's text: `shaders/Sky.hlsl:12:5: error: …`.
 - **Conventions:** SM 6.6, HLSL 2021, row-major matrices (`-Zpr`) used as `mul(vector, matrix)` like `Meow2/Math`, so a `Mat4` goes to the GPU as it is. SPIR-V uses D3D's constant-buffer layout (`-fvk-use-dx-layout`), so a struct has one layout on both backends.
-- **Threads:** `compile()` may run on several threads at once.
+- **Threads:** `compile()` may be called from several threads at once. On Windows the calls run in parallel. Off Windows a mutex runs them one at a time, because DXC changes the process-wide C locale there.
 
 ## Tests
 
