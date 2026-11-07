@@ -65,3 +65,7 @@ Two threads writing the *same* file at once is still a race on the file itself (
 - The apps don't mount anything yet; the first user is the asset system.
 
 See also: techstack.md §1 (portability rules), §3, §15, [Config](Config.md).
+
+## Implementation summary
+
+- virtual paths `<mount>/…` (no escaping a mount), folder mounts read-only/read-write, atomic writes, thread-safe (shared lock, no lock during I/O), mounts as a `std::variant`; see [docs/wiki/FileSystem.md](docs/wiki/FileSystem.md)

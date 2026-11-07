@@ -44,3 +44,7 @@ assets.reload<Texture>(*id);                                  // every handle se
 `Assets.AssetManagerTest.*`: `.meta` creation, nested scans, moves keep IDs, bad and duplicate `.meta` files, loading once, reloads, and jobs loading at once.
 
 See also: techstack.md §13a, §24.
+
+## Implementation summary
+
+- `Meow2/Assets/AssetManager.h`: `scan`, `importSource`, `load<T>`, `reload<T>`, `AssetHandle<T>`; `T` provides a static `loadAsset()`.

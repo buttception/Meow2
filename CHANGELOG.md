@@ -8,6 +8,9 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Changed
+- Docs: `techstack.md` keeps decisions and rules, with implementation detail in the wiki; M5 is planned as a feature table; agents group related features into larger PRs (#154).
+
 ## [0.5.0] — 2026-11-06
 
 ### Added

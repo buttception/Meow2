@@ -79,3 +79,7 @@ Imported assets will keep their ID in a `.meta` file next to the source file, so
 `Core.Uuid.*` (bit layout, text round trip in both cases, rejected text including a v4 UUID and kind 0, hashing and formatting), `Core.UuidGenerator.*` (more than 4096 IDs in one millisecond, the clock set back, sorting by time, 4 threads × 20000 IDs all unique and increasing per thread, random nodes), `Core.TypedId.KindIsChecked`. The TSan CI job runs the thread test.
 
 See also: techstack.md §24, [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562).
+
+## Implementation summary
+
+- `Meow2::Uuid`, `IdKind`, `TypedId<K>` (`EntityId`, `AssetId`, `SceneId`, `PrefabId`; `fromUuid()` checks the kind) in `Meow2/Core/Id/Uuid.h`, with `parse()`/`toString()`, `std::hash` and `std::formatter`; `UuidGenerator` (`Meow2/Core/Id/UuidGenerator.h`): random or given node, `next(kind)`, `next<K>()`, `next(kind, unixMs)`, one atomic CAS per ID.

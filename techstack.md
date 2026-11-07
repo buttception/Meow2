@@ -2,6 +2,7 @@
 
 > Source of truth for *what* Meow2 is built with and *how it is laid out*.
 > Process rules (branches, issues, PRs, permissions) live in [AGENTS.md](AGENTS.md).
+> This file holds decisions and rules. What has been built, and how it works, is in [docs/wiki/](docs/wiki/Home.md), one page per module.
 > Items marked **⚠ OPEN** are decisions still waiting on the project owner.
 
 ---
@@ -131,16 +132,16 @@ ctest --preset windows-msvc-debug -L unit
 | Memory | `std::pmr::memory_resource` — the one virtual allocator interface (no separate `IAllocator`) | `TrackingAllocator`, `MallocResource`, `BlockArena`, `FrameArena` (M5) | See §6 |
 | Log | `Logger`, `LogSink` | spdlog | §7 |
 | Crash | `CrashHandler` | Win32 minidumps; Linux/Android later (e.g. crashpad/breakpad) | §8 |
-| Config | `Config` | TOML via **toml++** | defaults (in code) → `Meow2<App>.toml` next to the exe (`--config`) → `--set key=value`; write-back on change. **Implemented (M1)**, see [docs/wiki/Config.md](docs/wiki/Config.md) |
+| Config | `Config` | TOML via **toml++** | defaults (in code) → `Meow2<App>.toml` next to the exe (`--config`) → `--set key=value`; write-back on change |
 | Time | `FrameClock` | `std::chrono::steady_clock` | §23 |
 | Events | `EventBus` | in-house | §22 |
 | Jobs | `JobSystem` | **enkiTS** | §19 |
-| Profiling | `MEOW2_PROFILE_*` macros | **Tracy** | Debug/RelWithDebInfo only; compiled out of Release. **Implemented (M1)**: zones, frame marks, thread names, per-tag memory plots; see [docs/wiki/Profiling.md](docs/wiki/Profiling.md) |
+| Profiling | `MEOW2_PROFILE_*` macros | **Tracy** | Debug/RelWithDebInfo only; compiled out of Release |
 | Id | `Uuid`, `EntityId`, `AssetId`, …, `UuidGenerator` | in-house, 128-bit snowflake-style UUIDv8 with a kind tag | §24 (M2) |
 | Scene | `Scene` (entities, components) | **EnTT** | §25 (M2) |
 | Platform / Window | `Platform`, `Window` | **SDL3** (§9) | One window; the editor's windows are Qt's |
 | Input | `InputSystem` + input sources | SDL3 sources (engine), Qt source (editor) | §9 |
-| FileSystem | `FileSystem` / VFS | native folders (`std::filesystem`); packages later; Android `AAssetManager` later | **Implemented (M2)**: virtual paths `<mount>/…` (no escaping a mount), folder mounts read-only/read-write, atomic writes, thread-safe (shared lock, no lock during I/O), mounts as a `std::variant`; see [docs/wiki/FileSystem.md](docs/wiki/FileSystem.md) |
+| FileSystem | `FileSystem` / VFS | native folders (`std::filesystem`); packages later; Android `AAssetManager` later | virtual paths `<mount>/…`, folder mounts, atomic writes |
 | Math | aliases + inline functions (no virtuals) | DirectXMath | §10 |
 | RHI | `IRhiDevice`, `IRhiCommandList`, `IRhiSwapchain`, resources by handle | Vulkan, D3D12 | §11 |
 | Shader | `ShaderCompiler` | DXC (HLSL → DXIL / SPIR-V) | Interface leaves room for a custom shader language (§12) |
@@ -205,7 +206,7 @@ Clone with: `git clone --recurse-submodules`. glTF sample assets are **not** sub
 | RelWithDebInfo | on (`/O2`) | on (cheap ones) | debug+ | yes | yes | yes | yes | profiling, testing, crash-dump analysis |
 | Release | full (`/O2 /GL`, LTO) | off | info+ | no (GUI subsystem) | no | compiled out | yes | exported games, release zips |
 
-PDBs are kept for every build, so crash dumps can be symbolicated. Release zips include the PDBs of that build (§21), so dumps from players can be read later. **Implemented (M1):** `/Zi` in every configuration and `/DEBUG /OPT:REF /OPT:ICF` for Release (top-level `CMakeLists.txt`).
+PDBs are kept for every build, so crash dumps can be symbolicated. Release zips include the PDBs of that build (§21), so dumps from players can be read later.
 
 ---
 
@@ -226,14 +227,12 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
 
 - **`MallocResource`**: upstream of everything, calls `malloc`/`free` directly (never `new`, so the override can't recurse).
 - **`TrackingAllocator`** (Debug/RelWithDebInfo): wraps an upstream resource. Each block gets a small header (magic, size, tag), and counters are kept per `MemTag` (current, peak, allocation count). A `ScopedLeakCheck` in each app logs the leaks by tag at the end of `main`. In Release, `MallocResource` is used directly with no headers.
-  - **Implemented (M1):** `Meow2::Memory::TrackingAllocator` and `MallocResource` (`Meow2/Core/Memory/`). Header in front of each allocation, 16 `0xFD` guard bytes behind it (overrun check on free), lock-free `std::atomic` counters per tag, `allocateTagged()` for library hooks, `leakReport()`. Asserts on foreign/double frees and size mismatches. `MallocResource` handles large alignments portably (over-allocate, original pointer stored in front). `MemTagScope` (thread-local current tag) is implemented too.
 - **`MemTag`**: one per subsystem (`General`, `Logging`, `Config`, `Jobs`, `Events`, `Platform`, `Renderer`, `Rhi`, `Physics`, `Assets`, `Editor`, `ImGui`, `Profiler`, `Scene`, …). The stats feed the memory window in Meow2Renderer and Tracy's memory view.
 - **Libraries with an allocator hook** (SDL `SDL_SetMemoryFunctions`, Jolt `JPH::Allocate/Free`, ImGui `SetAllocatorFunctions`, enkiTS custom allocator, VMA/D3D12MA CPU callbacks) call `globalTracker().allocateTagged()` directly with their own tag (added with each library). **SDL: implemented (M2).** Most hooks are C functions without a user-data pointer, so they reach the process-wide tracker (§18).
 - **Everything else** (spdlog, toml++, Tracy, `std::make_unique`, …) goes through a **global `operator new`/`delete` override** (Debug/RelWithDebInfo). **Not in Meow2Editor:** on Windows every DLL binds `new`/`delete` itself, and Qt's DLLs delete objects the exe allocated (parent widgets delete their children), so a replaced `operator new` would hand tracked blocks to the C runtime's `free`. The editor uses the normal heap; its library hooks are still tracked, tagged with the thread-local current tag (`MemTagScope` sets it for a scope, default `General`). No double counting: hooked libraries never go through `new`.
   - It replaces every variant: plain, array, aligned (`std::align_val_t`), `nothrow`, and sized delete.
   - **The tracker behind it lives for the whole process** (`globalTracker()`: `constinit`, never destroyed), not in the composition root. Memory allocated during `main` can be freed after `main` returns (static destructors), so the tracker must exist from before the first to after the last allocation. (The first plan, a tracker owned by `main` plus a `MallocResource` fallback outside it, would have left those late `delete`s with no tracker to go to.)
   - It's defined in a source file compiled into **each executable** (`meow2_track_global_new(<target>)`), never in the static library, where the linker could silently drop it. `MEOW2_MEMORY_TRACKING=0` turns it off (sanitizer builds).
-  - **Implemented (M1):** `Meow2/Core/Memory/GlobalTracking.h` (`globalTracker()`), `src/Core/Memory/GlobalNewDelete.cpp` (all 20 replaceable forms), and `ScopedLeakCheck` (`Meow2/Core/Memory/LeakCheck.h`) in all three apps, checked by the `Smoke.<App>.NoLeaks` tests. See [docs/wiki/Memory.md](docs/wiki/Memory.md).
 - **`BlockArena`** (`std::pmr::memory_resource`, not thread-safe; one per thread where needed):
   - **Size-class block lists:** requests ≤ 8 KiB go into 64 KiB blocks, ≤ 128 KiB into 1 MiB blocks, larger ones (or alignments above 4 KiB) get a dedicated block of exactly their size plus a small header. So the unused tail of a block is at most ~12.5 % of it. Unused bytes are accepted; blocks are never combined.
   - **Allocate** bumps a pointer in the current block of the size class. If the request doesn't fit, it moves to the next block in that list (reusing an existing one) or allocates a new block from upstream and links it.
@@ -242,7 +241,6 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
   - **`trim(keepBytes)`** gives unused blocks (no allocation since the last reset) back to upstream until at most `keepBytes` stay reserved, e.g. a recent high-water mark of `usedBytes()`. So a one-off spike (e.g. a level load) doesn't hold memory forever.
   - **No defragmentation needed:** nothing is freed individually, so no holes form inside an arena, and the upstream heap sees few, same-sized, long-lived blocks. Defragmentation is a topic for long-lived GPU heaps (VMA/D3D12MA), not for arenas.
   - Every arena has a `MemTag`; it allocates its blocks inside a `MemTagScope` of that tag, so a `TrackingAllocator` upstream counts them under it.
-  - **Implemented (M1):** `Meow2::Memory::BlockArena` and `MemTag` (`Meow2/Core/Memory/`). Block headers live at the start of each block, so the arena never allocates bookkeeping of its own.
 - **Debug fill patterns** (Debug/RelWithDebInfo, `Meow2/Core/Memory/DebugFill.h`): allocators fill memory they hand out with `0xCD`, freed or reset memory with `0xDD`, and guard bytes with `0xFD` (the Microsoft debug-CRT values). On by default, switchable per allocator at runtime (profiling), compiled out of Release (`MEOW2_MEMORY_DEBUG_FILL`). `BlockArena` and `TrackingAllocator` do it, so every tracked `new` gets it too. See [docs/wiki/Memory.md](docs/wiki/Memory.md).
 - **`FrameArena`** (M5, with the renderer): `framesInFlight × workerThreads` `BlockArena`s. `beginFrame(frameIndex)` resets that frame's arenas after the frame's GPU fence has signalled; `current()` returns the calling thread's arena (thread index from the job system). Frame-scoped data only: a container must never outlive the reset of the arena it uses.
 - Pool and stack allocators are added when a concrete user appears.
@@ -257,12 +255,11 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
 - **Logger names = which binary is logging.** The engine is a static library inside each executable, so this is done with names, not detection: the composition root creates an `Engine` logger (injected into engine code) and an app logger (`Editor`, `Renderer`, `Player`). Both write to the same sinks. Sub-names such as `Engine.RHI` are possible later.
 - **Sinks:**
   - **File:** one file per run, `Meow2<App>_<yyyy-mm-dd_hh-mm-ss>.log`, in the log folder, rotating by size. All configs.
-  - **Console (stdout, colour):** Debug and RelWithDebInfo only. Release executables are built with the Windows GUI subsystem, so there's no console window. **Implemented (M1):** `meow2_gui_subsystem_in_release(<target>)` (`cmake/Meow2Subsystem.cmake`: `WIN32_EXECUTABLE` in Release/MinSizeRel plus `/ENTRY:mainCRTStartup`, so `main` stays the entry point), checked by `Build.Subsystem.<App>`.
+  - **Console (stdout, colour):** Debug and RelWithDebInfo only. Release executables are built with the Windows GUI subsystem, so there's no console window.
   - **In-app console:** thread-safe ring buffer (`ConsoleRingSink`) designed in M1, shown as an ImGui window in Meow2Renderer (M6) and a Qt dock in Meow2Editor (M9). Qt widgets are updated only on the GUI thread (queued connection).
   - Android `logcat` sink later.
 - **Log folder:** `logs/` **next to the executable** by default. A `--log-dir <path>` command-line option (or `log.dir` in the config) overrides it. When the executable is launched from the Visual Studio solution, CMake sets the debugger's command arguments (`VS_DEBUGGER_COMMAND_ARGUMENTS`) to `--log-dir <repo>/logs`, so runs from the IDE log into the repo's `logs/` folder (git-ignored). Run directly, the same exe logs next to itself.
 - Loggers are thread-safe (`_mt` sinks). The crash handler flushes all loggers.
-- **Implemented (M1):** `Meow2/Core/Log/` — `LogSystem` (sinks, `createLogger`), `Logger` (`std::format` messages, `[[noreturn]] fatal`), `ScopedAssertLogging` (failed asserts → `error` + flush). Messages are formatted with `std::format` and passed to spdlog as plain text; `warn` and above flush immediately. See [docs/wiki/Logging.md](docs/wiki/Logging.md).
 
 ## 8. Crash dumps (Windows)
 
@@ -271,13 +268,6 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
 - **All configurations, Release included**: Release is what players run, so its dumps matter most. Release zips ship the matching PDBs (§21).
 - Not written when a debugger is attached (the debugger gets the exception instead).
 - Tested by a `windows`-labelled test that crashes a child process on purpose and checks the `.dmp` exists.
-- **Implemented (M1):** `Meow2::Crash::CrashHandler` (`Meow2/Core/Crash/CrashHandler.h`, RAII, owned by the composition root, takes the dump path and the engine Logger).
-  - The crashing thread only signals a watchdog thread created at startup, which writes the dump, logs it and flushes.
-  - Crashes without an exception context (abort, terminate, purecall, invalid parameter) raise a private structured exception, so the dump has a CPU context.
-  - The abort message box, Windows Error Reporting and Debug-CRT dialogs are suppressed.
-  - Dumps use `MiniDumpWithIndirectlyReferencedMemory | ThreadInfo | HandleData | UnloadedModules`.
-  - Tested by `Meow2CrashProbe` + `cmake/RunCrashProbe.cmake` for 9 crash kinds.
-  - Linux/Android: no-op backend until crashpad/breakpad (M12).
 
   See [docs/wiki/CrashDumps.md](docs/wiki/CrashDumps.md).
 - GPU faults: D3D12 DRED, Vulkan `VK_EXT_device_fault` where available. Logged on device loss.
@@ -289,9 +279,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
 - **Dockable windows (future):**
   - Meow2Renderer: Dear ImGui docking branch + multi-viewports (tool windows can be dragged out into real OS windows; ImGui has an SDL3 platform backend for this).
   - Meow2Editor: Qt `QDockWidget`s. The viewport is a Qt widget, and the RHI renders into its native handle. **The editor never creates SDL windows**: Qt owns them.
-  - **Implemented (M9, main window only):** `EditorMainWindow` + `ViewportWidget` (native child window, `nativeHandle()` → the same `NativeWindowHandle` as SDL windows), placed from and saved to the same `window.*` config keys. See [docs/wiki/Editor.md](docs/wiki/Editor.md).
 - Meow2Player and Meow2Renderer: one SDL3 window, fullscreen/windowed. Window events (resize, close, focus, DPI) are published on the `EventBus` (§22).
-- **Implemented (M2):** `Meow2::Platform::Platform` (owns SDL's init, one per process, `pumpEvents(wait)`, SDL memory hook → `MemTag::Platform`) and `Window` (pimpl, `WindowDesc`, polled state: bounds, restored bounds, pixel size, maximized/minimized/focused, fullscreen, close request; `nativeHandle()` for the RHI). `windowDescFromConfig` / `storeWindowState` keep the `window.*` keys in the app's config. `platform.videoDriver = "offscreen"` runs without a desktop (tests, CI). See [docs/wiki/Window.md](docs/wiki/Window.md). **Window events on the `EventBus` (M2):** `pumpEvents()` enqueues `WindowResized`, `WindowMoved`, `WindowStateChanged`, `WindowFocusChanged`, `WindowDisplayScaleChanged`, `WindowCloseRequested` and `QuitRequested` (`Meow2/Platform/Window/WindowEvents.h`), coalesced to one per kind per pump; `Platform` gets the bus injected.
 
 ### Input
 
@@ -315,8 +303,6 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Mouse capture** (relative mode) is done by the active source: SDL relative mouse mode, or a Qt cursor hide + warp.
 - **Editor rule:** editor actions (Ctrl+Z, Delete, gizmo shortcuts) are Qt shortcuts that issue editor commands (§20) and never go through `InputSystem`. `InputSystem` serves the game (play mode, future scripting) and the viewport camera.
 - **Later:** an action layer ("Jump" = Space or gamepad A) on top of `InputSystem`, with bindings in the TOML config.
-- **Implemented (M2):** `Meow2::Input::InputSystem` (`Meow2/Platform/Input/`): `submit(InputEvent)` (a `std::variant` of raw input structs), `beginFrame()`, frame edges and the fixed-step latch (`fixedWasPressed`, `endFixedStep()`), mouse position/delta/wheel, gamepads by `GamepadId`, `releaseAll()` on focus loss; bus events `KeyPressed` (with `repeat`), `KeyReleased`, `MouseButtonChanged`, `MouseMoved`, `MouseWheelScrolled`, `TextEntered`, `GamepadConnected`/`Disconnected`, `GamepadButtonChanged`. Player and Renderer call it from the game loop. See [docs/wiki/Input.md](docs/wiki/Input.md).
-- **Implemented (M2):** `SdlInputSource` (keyboard, mouse, text) and `SdlGamepadSource` (`create()` → `Result`, opens pads on `GAMEPAD_ADDED`, `GamepadId` = SDL joystick id) in `src/Platform/Input/Sdl/`; `Platform::pumpEvents()` passes non-window SDL events to registered handlers. Player and Renderer only (the editor gets `QtInputSource` in M9). Tested with pushed SDL events and an SDL virtual gamepad.
 
 ## 10. Math & coordinates
 
@@ -331,19 +317,6 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 
   Doubles or a floating origin themselves (and Jolt's double-precision build) come with the terrain/streaming work, if a game needs worlds larger than a few kilometres.
 - **Noise** (Perlin/simplex) isn't planned for M3: most of it runs on the GPU in shaders; a CPU version comes with its first CPU user (terrain heights for physics, camera shake, procedural placement).
-- **Implemented (M3):** `Meow2/Math/Types.h`: `Vec2/3/4`, `Quat`, `Mat4`, `Mat3x4` derived from DirectXMath's `XMFLOAT*` (zero/identity defaults; `Quat` distinct from `Vec4`), `load()` / `storeVec3()`…, `c_right/c_up/c_forward`, `c_pi`…, `nearlyEqual` (absolute + relative), `std::formatter`s. See [docs/wiki/Math.md](docs/wiki/Math.md).
-- **Implemented (M3):** `MEOW2_SIMD` (`cmake/Meow2Simd.cmake`, global flags, AVX2 default); `Meow2CpuCheck` (`<Meow2/Core/CpuFeatures.h>`: CPUID + XGETBV, compiled without the SIMD flags, message box on Windows) called first in every app's `main`; `Meow2/Math/Batch.h`: `transformPoints`, `transformDirections`, `computeMinMax` over DirectXMath's stream functions. See [docs/wiki/Math.md](docs/wiki/Math.md#simd).
-- **Implemented (M3):** `Meow2/Math/Scalar.h`: `toRadians`/`toDegrees`, `lerp` (exact at both ends), `inverseLerp`, `remap`, `clamp`, `saturate`, `wrapAngle` (to [−π, π)), `smoothstep` (HLSL). See [docs/wiki/Math.md](docs/wiki/Math.md#scalar-helpers).
-- **Implemented (M3):** `Meow2/Math/Random.h`: `Random` (PCG32, seed + stream, never global), unbiased integer ranges, exact `[0, 1)` floats, `chance`, `unitVector`, `pointInSphere`, `fromEntropy()`; bit-identical on every platform (no `std::` distributions, no libm, `-ffp-contract=off` on GCC/Clang). See [docs/wiki/Math.md](docs/wiki/Math.md#random-numbers).
-- **Implemented (M3):** `Meow2/Math/Color.h`: `Color` (linear float RGBA) and `Color8` (8-bit sRGB), exact sRGB curve (every byte round-trips), `fromHex`, HSV, premultiplied alpha, linear `lerp`, `Colors::c_*` constants. See [docs/wiki/Math.md](docs/wiki/Math.md#colours).
-- **Implemented (M3):** `Meow2/Math/Quaternion.h`: `fromAxisAngle`/`toAxisAngle`, `fromEuler`/`toEuler` (roll Z → pitch X → yaw Y, gimbal lock handled), `lookRotation`, `fromToRotation`, `combine(first, then)`, `inverse`, `rotate`, `slerp` (shortest path), `angleBetween`, `nearlySameRotation`. See [docs/wiki/Math.md](docs/wiki/Math.md#quaternions).
-- **Implemented (M3):** `Meow2/Math/Transform.h`: `Transform` (`WorldPosition position`, `Quat rotation`, `Vec3 scale`; plain data, identity default), `WorldPosition` (= `Vec3` for now), to/from matrices, `transformPoint`/`inverseTransformPoint`/`transformDirection`, `combine(child, parent)`, `inverse` (exact for uniform scale), `lerp` (slerped rotation, for `render(alpha)`), `forward`/`right`/`up`. See [docs/wiki/Math.md](docs/wiki/Math.md#transform).
-- **Implemented (M3):** `Meow2/Math/Easing.h`: `ease(EaseCurve, EaseMode, t)` (Linear, Quad, Cubic, Quart, Sine, Expo, Circ, Back, Elastic, Bounce × In/Out/InOut; Out and InOut derived from In); `Meow2/Math/Spline.h`: `catmullRom`, `bezier`/`bezierTangent`, `hermite`, squad-based `catmullRom` for `Quat`, `SplinePath` (arc-length table + Newton step: constant speed within 0.2 %). See [docs/wiki/Math.md](docs/wiki/Math.md#easing-and-splines).
-- **Implemented (M3):** `Meow2/Math/Projection.h`: `perspectiveReversedInfiniteLH` (default), `perspectiveReversedLH`, `orthographicReversedLH`, `viewDistanceFromDepth`, `Viewport` + `ndcToScreen` + `flipForVulkan` (negative-height viewport, same matrices on both backends). See [docs/wiki/Math.md](docs/wiki/Math.md#projections).
-- **Implemented (M3):** `Meow2/Math/Camera.h`: `CameraLens` (perspective/orthographic), `viewMatrix(Transform)`, `projectionMatrix`, `CameraMatrices` (+ inverse view-projection), `worldToScreen` / `screenToWorld`, camera-relative rendering (`cameraRelative`, `cameraRelativeViewMatrix`: a scene 100 km out renders bit-identically to one at the origin). See [docs/wiki/Math.md](docs/wiki/Math.md#camera).
-- **Implemented (M3):** `Meow2/Math/Bounds.h`: `Aabb` (centre + extents), `Sphere`, `OrientedBox`, `Frustum` (planes from the view-projection matrix, reversed infinite Z handled), `Containment`; building helpers, `transformAabb` (Arvo), `contains`/`intersects` (OBB via DirectXCollision), `test(frustum, …)` (conservative), batch `cullSpheres` (SIMD). See [docs/wiki/Math.md](docs/wiki/Math.md#bounding-volumes-and-culling).
-- **Implemented (M3):** `Meow2/Math/Ray.h`: `Ray`, `Plane`, `rayFromScreen` (perspective + orthographic), `pointAt`, `intersect` with plane, sphere, AABB (slabs), oriented box and triangle (Möller–Trumbore, optional back-face culling), `pickClosest`. See [docs/wiki/Math.md](docs/wiki/Math.md#rays-and-picking).
-- **Implemented (M3):** `Meow2/Math/Packing.h`: half floats (F16C), UNORM/SNORM 8/16 with the GPU rules, octahedral normals (4 B, < 0.0001 rad), tangent frames as a quaternion (8 B, handedness in the sign of w), positions quantised to 16 bit in the mesh bounds (error `extents / 65535`). See [docs/wiki/Math.md](docs/wiki/Math.md#vertex-packing).
 
 ## 11. RHI
 
@@ -360,6 +333,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Pipeline cache** and up-front pipeline creation: the driver compiles DXIL/SPIR-V to machine code for the exact GPU when a pipeline is created, so that result is cached on disk, once per GPU and driver version.
 - Resources are referenced by handles owned by the device (32-bit index + generation). **GPU resources don't get UUIDs** (§24): they exist only while the program runs, are recreated on every hot swap and are looked up every frame, so a 128-bit key would cost hashing for nothing. A resource may record the `AssetId` it was loaded from, for debugging and Tracy names.
 - Debug: validation layers / D3D12 debug layer, object names, validation messages routed to the `RHI` logger.
+- **Debug tools** (owner decision 2026-11-07): RenderDoc is the baseline on both backends, with in-app capture and pass markers. PIX is for D3D12 (timing, and ray tracing later). NVIDIA Nsight Graphics is for deep GPU profiling and ray tracing. Markers go through one RHI call, so all three show the same pass names.
 
 ## 12. Shaders
 
@@ -369,12 +343,6 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **No reflection library:** bindless has one fixed layout, so structs are shared between C++ and HLSL and checked by size.
 - **DXC doesn't optimise for a GPU:** DXIL and SPIR-V are portable; the driver compiles them for the exact GPU when a pipeline is created, on the player's machine (§11). So `Meow2Player` ships only cooked shaders, no DXC. Variants by GPU capability are ordinary option axes. DXC on a player's machine only makes sense for mods.
 - Offline compilation via a CMake step. Runtime hot reload where DXC is available (Renderer, Editor).
-- **Implemented (M4):** `ShaderCompiler` (`Meow2/Graphics/Shader/`): DXC loaded at runtime through `SharedLibrary`, SM 6.6, HLSL 2021, `-Zpr`, `-fvk-use-dx-layout`, includes through the VFS. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md).
-- **Implemented (M4):** `Meow2/Assets/Shader/ShaderMeta.h`: `.meta` settings (entries, defines, options), `ShaderVariantKey` (mixed-radix index), `variantKey`, `variantDefines`; limit 4,096 variants. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#shader-settings-and-permutations).
-- **Implemented (M4):** `ShaderCooker` and `ShaderAsset` (`Meow2/Assets/Shader/`): `.m2shader` with every variant × entry point × target plus the `.meta` text; cache key over source, includes, `.meta`, options and DXC version; loads with no compiler. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#cooking).
-- **Implemented (M4):** `Meow2ShaderCompiler` and `meow2_add_shaders()`: cooks `shaders/` into `<build>/cooked/` on every build (the cache keys make that cheap); `--import` writes a new `.meta`. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#the-build-step).
-- **Implemented (M4):** `shaders/Common.hlsli` and `Meow2Shared.hlsli` (with `Meow2/Graphics/Shader/BindlessLayout.h`): 16 bytes of push constants, `ResourceDescriptorHeap`, structs compiled by C++ and HLSL with size checks on both sides; `spirv-val` in CI. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#the-bindless-contract).
-- **Implemented (M4):** `ShaderHotReload` (`Meow2/Assets/Shader/ShaderHotReload.h`): polls file times, cooks on a job, `ShaderReloaded` / `ShaderReloadFailed` on the `EventBus`; a failed compile keeps the old shader. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#hot-reload).
 
 ## 13. Rendering verification (glTF sample scenes)
 
@@ -391,7 +359,6 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Source → cooked object:** a source file, a `.meta` sidecar next to it holding its `AssetId` (§24) and import settings, and a cooked file named by the ID. Renaming a source keeps its ID.
 - **`AssetManager`** (concrete, injected, thread-safe): typed handles, loads through the VFS (§3), memory under `MemTag::Assets`. No virtuals: asset types are templates or a `std::variant`.
 - Shader assets come first (M4); meshes, textures and materials use the same core (M7).
-- **Implemented (M4):** `Meow2/Assets/AssetManager.h`: `scan`, `importSource`, `load<T>`, `reload<T>`, `AssetHandle<T>`; `T` provides a static `loadAsset()`. See [docs/wiki/Assets.md](docs/wiki/Assets.md).
 
 ## 14. Physics
 
@@ -515,7 +482,6 @@ The engine starts single-threaded but every module is written so it can run on w
   - `threadIndex()` gives each worker a stable index, used to pick per-thread arenas (§6) without locks;
   - its custom-allocator callbacks go to the `TrackingAllocator` (`MemTag::Jobs`), and its profiler callbacks name the threads in Tracy;
   - Jolt's job interface is implemented on top of it (M8).
-  - **Implemented (M1):** `Meow2::Jobs::JobSystem` + `Job` (`Meow2/Core/Jobs/JobSystem.h`): `parallelFor`, `run`, `runOnMainThread` (pinned to thread 0), `wait` (the waiting thread runs jobs), `threadIndex`; allocator hook → `MemTag::Jobs`; `jobs.threadCount` in the config. Profiler callbacks come with Tracy. See [docs/wiki/Jobs.md](docs/wiki/Jobs.md).
 
   Long-lived threads are only created by the job system or the composition root.
 - **The game loop itself is not threaded** (§23): one main thread runs the phases in order, and the parallelism lives inside phases as jobs.
@@ -536,7 +502,6 @@ The engine starts single-threaded but every module is written so it can run on w
 
   The presets are `linux-clang-asan` (ASan + UBSan, from the start of M1) and `linux-clang-tsan` (added with the job system), each run as its own CI job on GitHub-hosted runners. That doesn't slow down local or Windows builds; the tests themselves run 2–15× slower in those jobs. An optional local `windows-msvc-asan` preset (MSVC `/fsanitize=address`) can be added for Windows-only code.
 
-  **Implemented (M1):** `MEOW2_SANITIZER=address|thread` (`cmake/Meow2Sanitizers.cmake`, flags for every target incl. third-party, memory tracking off), presets `linux-clang-asan` and `linux-clang-tsan` (no editor, no profiling), CI jobs `Linux (Clang ASan+UBSan)` and `Linux (Clang TSan)`. See [docs/wiki/Testing.md](docs/wiki/Testing.md#sanitizers).
 
 ## 20. Editor automation: commands + MCP server
 
@@ -570,14 +535,13 @@ Requirement: **anything a user can do in the editor, an AI agent can do through 
 - **Feature PRs don't change the version.** Every one would edit the same `VERSION` line, so any two open PRs would conflict, and a number that moves with every merge says no more than the commit hash.
 - **Tags:** after the milestone-closing PR is merged, its merge commit on `main` gets an annotated tag `vX.Y.Z` (e.g. `v0.1.0`). Tags are never moved or deleted.
 - **Patch releases:** branch `release/0.Y` from the tag `v0.Y.0`, fix there (or cherry-pick the fix from `main`), bump PATCH, tag `v0.Y.Z`. `main` keeps going towards the next MINOR.
-- **Builds between releases** are identified by the git commit: the version string gets SemVer build metadata, `0.1.0+g1a2b3c4` (`+g` + short hash, `.dirty` if the tree had local changes), so logs and crash dumps say exactly what was built. **Implemented (M1):** `getVersionString()` returns `x.y.z+g<hash>[.dirty]`, `getBuildMetadata()` the `g…` part; `cmake/GitVersion.cmake` refreshes it on every build (see [docs/wiki/Building.md](docs/wiki/Building.md#engine-version)).
+- **Builds between releases** are identified by the git commit: the version string gets SemVer build metadata, `0.1.0+g1a2b3c4` (`+g` + short hash, `.dirty` if the tree had local changes), so logs and crash dumps say exactly what was built.
 - **Releases (from v0.2.0):** every MINOR (and PATCH) tag gets a GitHub Release with a zip that **runs out of the box** on a Windows PC:
   - `Meow2-<version>-windows-x64.zip`, containing the Release build of the executables, their **PDBs** (so `.dmp` files from that version can be read), the MSVC runtime DLLs (app-local, via CMake's `InstallRequiredSystemLibraries`), and any third-party DLLs.
   - Built with CMake install rules + CPack (`ZIP` generator).
   - **Release notes = that version's section of [`CHANGELOG.md`](CHANGELOG.md)** ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format). Every PR adds its lines under `[Unreleased]`; the milestone-closing PR renames that section to the new version.
   - A `release.yml` workflow triggered by a `v*` tag: the self-hosted Windows runner builds, tests and packages, and uploads the zip as an artifact. A separate job on a GitHub-hosted runner, the only one with `contents: write`, creates the Release and attaches the zip, so no write token ever reaches the owner's PC (§ CI safety in AGENTS.md §5).
   - The editor is in the zip too, with Qt deployed next to it (Qt's deploy script).
-  - **Implemented (M1):** `cmake/Meow2Packaging.cmake` (`meow2_install_app`, `meow2_package`), `cmake/TestPackage.cmake` (runs each app from the unpacked zip), `cmake/ReleaseNotes.cmake`, `.github/workflows/release.yml`. See [docs/wiki/Releases.md](docs/wiki/Releases.md).
 
 ## 22. Events
 
@@ -604,13 +568,11 @@ m_events.publish(WindowResized{1600, 900});   // main thread only; delivered imm
 
   Signal/slot libraries (sigslot, Boost.Signals2) fix the lifetimes, but the listener still needs a reference to the emitter. `entt::dispatcher` is the same design as this bus; it's worth reconsidering if EnTT is adopted for the scene/ECS later.
 - **Threading (§19):** subscribe, unsubscribe, `publish` and dispatch run on the main thread; `enqueue` runs on any thread.
-- **Implemented (M1):** `Meow2::Events::EventBus` + `Subscription` (`Meow2/Core/Events/EventBus.h`). Double-buffered queue (two `BlockArena`s), delivery without the lock, subscribe/unsubscribe during dispatch deferred. The list of queued events is a plain vector: a container allocating from the arena would lose its MSVC Debug bookkeeping on `reset()`. See [docs/wiki/Events.md](docs/wiki/Events.md).
 - Input (§9) publishes `KeyPressed`, `KeyReleased`, `MouseButtonChanged`, `MouseMoved`, `GamepadConnected`, `TextInput`; the platform layer publishes window events.
 
 ## 23. Game loop & time
 
 - **`FrameClock`**: `std::chrono::steady_clock`, delta time in seconds (`double` for accumulation, `float` handed to gameplay), frame counter, total time. The delta is clamped to `c_maxFrameDt` (0.25 s), so a breakpoint or a stall doesn't trigger hundreds of catch-up steps (the "spiral of death").
-  - **Implemented (M1):** `Meow2::Time::FrameClock` (`Meow2/Core/Time/FrameClock.h`): `tick()` / `tick(TimePoint)` (explicit time for tests), clamped `deltaSeconds()` + `deltaSecondsFloat()`, `unclampedDeltaSeconds()`, `wasClamped()`, `frameCount()`, `totalSeconds()` (sum of clamped deltas); limit `c_maxFrameDeltaSeconds` = 0.25 s. The apps count their frames with it. See [docs/wiki/FrameClock.md](docs/wiki/FrameClock.md).
 - **Fixed timestep with an accumulator** (see Glenn Fiedler, ["Fix Your Timestep!"](https://gafferongames.com/post/fix_your_timestep/)). One iteration of the loop is `tick()`:
 
 ```cpp
@@ -640,7 +602,6 @@ void Application::tick()
 - **`update`** runs once per frame with the real (clamped) delta.
 - **`render(alpha)`** interpolates between the previous and current fixed-step state, so motion is smooth when the frame rate and the fixed rate don't line up.
 - **`tick()`, not `run()`:** Player and Renderer call `while (app.isRunning()) app.tick();`. The editor calls `tick()` from a Qt timer, because Qt owns its event loop.
-- **Implemented (M2):** `Meow2::Time::GameLoop` (`Meow2/Core/Time/GameLoop.h`): callbacks `pumpEvents`, `fixedUpdate(dt)`, `update(dt)`, `render(alpha)` (`std::function`s, any may be empty), dispatch after the pump and after update, Tracy zones + frame mark; `FixedTimestep` (the accumulator; over `maxFixedStepsPerFrame` the excess is dropped, keeping the fraction of a step); `loop.fixedStepHz` and `loop.maxFixedSteps` in the config (`GameLoopConfig.h`). See [docs/wiki/GameLoop.md](docs/wiki/GameLoop.md).
 - **Threading:** the phases run in order on the main thread, and the parallelism is inside them (jobs, §19). There's no render thread or double-buffered simulation for now. The **extract step** (M5) copies what the renderer needs into a frame packet allocated from the frame arena, and the renderer reads only the packet. If a render thread is added later, the packet becomes the hand-off, and nothing else changes.
 
 ## 24. IDs (M2)
@@ -668,7 +629,6 @@ Things that are **saved and referenced across runs** (entities, assets, scenes, 
 - **Not secret:** IDs contain their creation time and are guessable; never use them as tokens (the MCP token is separate random data, §20).
 - **Threading:** one `UuidGenerator`, created by the composition root and injected, is thread-safe without a lock: time and sequence live in one `std::atomic<std::uint64_t>`, and `next()` advances it with a compare-and-swap (`max(now, last + 1)`). That handles millions of IDs per second, far more than entity creation needs. If profiling ever shows contention, each job thread gets its own generator with the thread index in the node bits.
 - **Options considered:** UUIDv4 (random: no order, no room for a kind), UUIDv7 (ordered, but no kind field), 64-bit Snowflake (needs a unique worker ID per machine, handed out by someone, and few spare bits), a hash of the name or path (changes on rename), a runtime counter (not stable across runs).
-- **Implemented (M2):** `Meow2::Uuid`, `IdKind`, `TypedId<K>` (`EntityId`, `AssetId`, `SceneId`, `PrefabId`; `fromUuid()` checks the kind) in `Meow2/Core/Id/Uuid.h`, with `parse()`/`toString()`, `std::hash` and `std::formatter`; `UuidGenerator` (`Meow2/Core/Id/UuidGenerator.h`): random or given node, `next(kind)`, `next<K>()`, `next(kind, unixMs)`, one atomic CAS per ID. See [docs/wiki/Ids.md](docs/wiki/Ids.md).
 
 ## 25. Scene & ECS (M2)
 
@@ -686,10 +646,7 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
   5. **Signals** (`on_construct`, `on_destroy`) run on the thread making the change, so in practice the main thread; anything other subsystems should hear about goes on the `EventBus`.
   6. **Later:** systems declare which components they read and write, `entt::organizer` builds a dependency graph from that, and the graph runs as enkiTS tasks with dependencies, with no locks inside systems.
 - **Why EnTT:** sparse-set storage (fast add/remove, cache-friendly iteration), widely used, MIT; `entt::dispatcher` was already noted as the same design as our `EventBus` (§22). The bus stays ours.
-- **Implemented (M2, part 1):** EnTT v3.16.0 submodule (`EnTT::EnTT`, PUBLIC); `Meow2::Scene::Scene` (`Meow2/Scene/Scene.h`): `create`, `createWithId` (`Result`), `destroy`, `find`, `idOf`, `registerComponent<T>()`, `registry()`; `IdComponent`, `NameComponent`; owner-thread asserts; `Memory::TaggedResource` + `Memory::ResourceAllocator` put all of it under `MemTag::Scene`. Part 2 below. See [docs/wiki/Scene.md](docs/wiki/Scene.md).
-- **Implemented (M2, part 2):** `SceneCommands` per job thread (`scene.commands(threadIndex)`: `spawn`, `spawnTransient`, `destroy`, `emplace`, `remove`; asserts the type is registered), `Scene::applyCommands()` (buffers in thread order, stale handles skipped); `createTransient()` (no `IdComponent`); the ID map is an `entt::dense_map` kept in sync by `on_construct`/`on_destroy<IdComponent>` signals. Commands are `std::function`s in a vector per thread until the frame arena (M5).
 - **No double-buffered ECS** (decided 2026-11-03): systems run in parallel on one copy of the data (parallel views, read/write-scheduled systems, command buffers). Overlapping rendering with the next frame's simulation is done by the extract step (§23, M5): only render data is copied into a frame packet. A full double buffer would copy every component every frame and add a frame of gameplay lag; only `Transform` keeps a previous copy, for `render(alpha)` interpolation.
-- **Implemented (M3):** `Meow2::Scene::TransformHierarchy` (`Meow2/Scene/TransformHierarchy.h`): depth levels rebuilt only after structural changes (EnTT signals), one `parallelFor` per level, dirty/changed flags so unchanged subtrees are skipped, `savePrevious()` + `interpolatedWorld(entity, alpha)` for `render(alpha)`, cycle check in `setParent`, children of destroyed parents become roots. See [docs/wiki/Scene.md](docs/wiki/Scene.md#transforms-and-the-hierarchy).
 
 ---
 
@@ -767,3 +724,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-06 — §2/§12: shader build step implemented.
 - 2026-11-06 — §12: bindless shader contract implemented.
 - 2026-11-06 — §12: shader hot reload implemented.
+- 2026-11-07 — Implementation notes moved to `docs/wiki/`; this file keeps decisions and rules. §11: debug tools (RenderDoc baseline, PIX and Nsight).

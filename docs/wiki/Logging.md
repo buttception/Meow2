@@ -105,3 +105,7 @@ Its destructor restores the previous handler.
 - The in-app console window (ImGui in Meow2Renderer, a Qt dock in Meow2Editor) gets its ring-buffer sink with those apps (M6/M9).
 - The runtime level from `config.toml` comes with the Config feature.
 - Release builds are GUI-subsystem executables (no console window) since #61.
+
+## Implementation summary
+
+- `Meow2/Core/Log/` — `LogSystem` (sinks, `createLogger`), `Logger` (`std::format` messages, `[[noreturn]] fatal`), `ScopedAssertLogging` (failed asserts → `error` + flush). Messages are formatted with `std::format` and passed to spdlog as plain text; `warn` and above flush immediately.

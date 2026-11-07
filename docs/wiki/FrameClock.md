@@ -60,3 +60,7 @@ Clamping to 0.25 s turns any pause into at most a quarter-second step. The game 
 - Tracy frame marks.
 
 See also: techstack.md §23, [Window](Window.md), [Editor](Editor.md).
+
+## Implementation summary
+
+- `Meow2::Time::FrameClock` (`Meow2/Core/Time/FrameClock.h`): `tick()` / `tick(TimePoint)` (explicit time for tests), clamped `deltaSeconds()` + `deltaSecondsFloat()`, `unclampedDeltaSeconds()`, `wasClamped()`, `frameCount()`, `totalSeconds()` (sum of clamped deltas); limit `c_maxFrameDeltaSeconds` = 0.25 s. The apps count their frames with it.

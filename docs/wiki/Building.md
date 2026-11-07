@@ -229,3 +229,7 @@ The apps print and log `getVersionString()` at start, so every log (and the cras
 - While a milestone is being worked on, `main` still says the last version (e.g. 0.1.0). The commit in the version string (`0.1.0+g1a2b3c4`, [SemVer build metadata](https://semver.org/#spec-item-10)) tells such builds apart.
 - `git describe --tags` shows where a checkout is relative to the last release, e.g. `v0.1.0-12-g1a2b3c4` = 12 commits after 0.1.0.
 - Full rules: [techstack.md §21](../../techstack.md) and [AGENTS.md §2.7](../../AGENTS.md).
+
+## Implementation summary
+
+- `getVersionString()` returns `x.y.z+g<hash>[.dirty]`, `getBuildMetadata()` the `g…` part; `cmake/GitVersion.cmake` refreshes it on every build (see [docs/wiki/Building.md](docs/wiki/Building.md#engine-version)).

@@ -171,3 +171,9 @@ auto onReload = events.subscribe<Assets::ShaderReloaded>([&](const auto& e) { re
 `Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler. `Shader.ShaderCompilerTest.*`: both targets, defines, includes, errors with file and line. `Assets.ShaderMeta.*`: parsing, bad files, keys and defaults. `Assets.ShaderFile.*`, `Assets.ShaderAsset.*`, `Shader.ShaderCookerTest.*`: the file format, loading without DXC, the cache. `Build.Shaders.CookStep`: the tool end to end. `Shader.BindlessTest.*`: the repository's shaders on both targets, and `spirv-val`. `Shader.ShaderHotReloadTest.*`: edits reach handles, broken edits keep the old shader.
 
 See also: techstack.md §4, §12.
+
+## Implementation summary
+
+- `ShaderCompiler` (`Meow2/Graphics/Shader/`): DXC loaded at runtime through `SharedLibrary`, SM 6.6, HLSL 2021, `-Zpr`, `-fvk-use-dx-layout`, includes through the VFS.
+- `Meow2ShaderCompiler` and `meow2_add_shaders()`: cooks `shaders/` into `<build>/cooked/` on every build (the cache keys make that cheap); `--import` writes a new `.meta`.
+- `shaders/Common.hlsli` and `Meow2Shared.hlsli` (with `Meow2/Graphics/Shader/BindlessLayout.h`): 16 bytes of push constants, `ResourceDescriptorHeap`, structs compiled by C++ and HLSL with size checks on both sides; `spirv-val` in CI.

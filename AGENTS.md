@@ -170,7 +170,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - **Wiki** — every feature PR adds or updates a page in `docs/wiki/` (Markdown, one page per module, e.g. `docs/wiki/Logging.md`, plus `docs/wiki/Home.md` as the index).
   The pages are written as user/developer docs: what the feature does, how to use it, and how it works.
   `docs/wiki/` is the source of truth. It is published to the GitHub wiki (`Meow2.wiki.git`) when the agent has repo access; otherwise the owner publishes it.
-- **techstack.md** — update it when a stack decision changes, and add a Changelog line.
+- **techstack.md** — decisions and rules only. Update it when a stack decision changes, and add a Changelog line. What was built and how it works goes in the wiki page, not here: this file loads into every session, so it stays short. When picking up a module, start from the index in `docs/wiki/Home.md`.
 - **milestones.md** — the roadmap. Update a feature's status and issue/PR link in every PR.
 - **CHANGELOG.md** — user-facing changes per version ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format). Every PR adds to `[Unreleased]`; each release's notes come from it (§2.7).
 
@@ -218,3 +218,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-29 — §3: tl::expected (via `Meow2/Core/Result.h`) is a public-header exception; expected failures return `Result<T>` using only the `std::expected`-compatible API.
 - 2026-11-03 — §3: EnTT in `Meow2/Scene` is a public-header exception (its registry and views are the Scene API), approved by the owner.
 - 2026-11-06 — §2: fewer, larger PRs: one PR holds a group of related features instead of one small feature, because CI runs in full per PR; avoid long stacks (owner decision).
+- 2026-11-07 — §4: techstack.md keeps decisions and rules; implementation detail lives in the wiki, read on demand.
