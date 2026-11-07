@@ -106,7 +106,8 @@ if(MEOW2_SHADER_TOOLS)
         SOURCES
             Graphics/Shader/BindlessTests.cpp
             Graphics/Shader/ShaderCompilerTests.cpp
-            Graphics/Shader/ShaderCookerTests.cpp)
+            Graphics/Shader/ShaderCookerTests.cpp
+            Graphics/Shader/ShaderHotReloadTests.cpp)
     meow2_copy_dxc_runtime(Meow2EngineShaderTests)
     target_compile_definitions(Meow2EngineShaderTests PRIVATE MEOW2_SHADERS_DIR="${PROJECT_SOURCE_DIR}/shaders")
     # Optional locally (Vulkan SDK), installed in Linux CI.

@@ -137,7 +137,7 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 | Cooker and `.m2shader`: bytecode per variant, entry point and target, versioned file, cache key from source, includes, `.meta`, flags and compiler version; `ShaderAsset` loads it with no compiler | §12 | ✅ | #143 / PR #144 |
 | Build step: `Meow2ShaderCompiler` tool, `meow2_add_shaders()` in CMake, `shaders/` folder; only changed shaders recook | §12 | ✅ | #145 / PR #146 |
 | Bindless contract: `Common.hlsli`, heap access through `ResourceDescriptorHeap`, push-constant layout, structs shared between C++ and HLSL with size checks | §11, §12 | ✅ | #147 / PR #148 |
-| Hot reload: watch sources and `.meta` files, recompile on a job, `ShaderReloaded` on the `EventBus`; a failed compile keeps the old shader | §12, §22 | ⬜ | |
+| Hot reload: watch sources and `.meta` files, recompile on a job, `ShaderReloaded` on the `EventBus`; a failed compile keeps the old shader | §12, §22 | ✅ | #149 / PR #150 |
 | Closing PR bumps the version to **0.5.0** | §21 | ⬜ | |
 
 **Done when:** one shader with permutations cooks to DXIL and SPIR-V on Windows and to SPIR-V on Linux CI; the SPIR-V passes `spirv-val`; the same bindless HLSL compiles for both targets; editing an included file recooks only what depends on it, and a second cook does nothing; Player loads a `.m2shader` with no DXC present; a broken edit during hot reload logs file and line and keeps the old shader.
