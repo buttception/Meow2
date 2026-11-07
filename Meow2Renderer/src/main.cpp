@@ -23,8 +23,10 @@
 #include <Meow2/Core/Version.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
+#include <Meow2/Graphics/Rhi/RenderDocCapture.h>
 #include <Meow2/Math/Color.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
+#include <Meow2/Platform/Input/InputEvents.h>
 #include <Meow2/Platform/Input/InputSystem.h>
 #include <Meow2/Platform/Input/SdlGamepadSource.h>
 #include <Meow2/Platform/Input/SdlInputSource.h>
@@ -136,6 +138,17 @@ int main(int argc, char** argv)
 
     // The GPU (techstack.md §11). SDL's offscreen driver has no window to draw to, so smoke runs and CI need no GPU.
     Meow2::Log::Logger rhiLog = logSystem.createLogger("RHI");
+    // F11 captures a frame when the app was launched from RenderDoc. rhi.captureFrame does it with no keyboard.
+    Meow2::Rhi::RenderDocCapture renderDoc{rhiLog};
+    const std::int64_t captureFrame = config.getInt("rhi.captureFrame", 0);
+    const Meow2::Events::Subscription onCaptureKey = events.subscribe<Meow2::Input::KeyPressed>(
+        [&renderDoc](const Meow2::Input::KeyPressed& e)
+        {
+            if (e.key == Meow2::Input::Key::F11 && !e.repeat)
+            {
+                renderDoc.capture();
+            }
+        });
     std::unique_ptr<Meow2::Rhi::IRhiDevice> device;
     std::unique_ptr<Meow2::Rhi::IRhiSwapchain> swapchain; // destroyed first: declared after the device
     // Cooked shaders are next to the exe. Pipelines compiled by the driver are saved there too, in cache/, so a second
@@ -219,8 +232,11 @@ int main(int argc, char** argv)
         }
     }
 
+    Meow2::Time::FrameClock clock;
+
     // One frame of drawing. Returns false if the GPU stopped working.
-    const auto renderFrame = [&device, &swapchain, &window, &appLog, &pipelines, &trianglePipeline, &triangleVertices]
+    const auto renderFrame = [&device, &swapchain, &window, &appLog, &pipelines, &trianglePipeline, &triangleVertices,
+                              &renderDoc, &clock, captureFrame]
     {
         const auto width = static_cast<std::uint32_t>(window->pixelWidth());
         const auto height = static_cast<std::uint32_t>(window->pixelHeight());
@@ -232,6 +248,10 @@ int main(int argc, char** argv)
                 return false;
             }
         }
+        if (captureFrame > 0 && static_cast<std::int64_t>(clock.frameCount()) == captureFrame)
+        {
+            renderDoc.capture();
+        }
         Meow2::Result<Meow2::Rhi::IRhiCommandList*> list = device->beginFrame();
         if (!list)
         {
@@ -240,6 +260,7 @@ int main(int argc, char** argv)
         }
         if (device->acquire(*swapchain))
         {
+            const Meow2::Rhi::ScopedMarker marker{**list, "Triangle pass"};
             (*list)->beginRendering(*swapchain, Meow2::Math::Color{.r = 0.02F, .g = 0.03F, .b = 0.06F});
             if (trianglePipeline)
             {
@@ -262,7 +283,6 @@ int main(int argc, char** argv)
     // The game loop (techstack.md §23): events, fixedUpdate × n, update, render. Nothing to simulate yet.
     // app.quitAfterFrames ends a smoke run.
     const std::int64_t quitAfterFrames = config.getInt("app.quitAfterFrames", 0);
-    Meow2::Time::FrameClock clock;
     Meow2::Time::GameLoop loop{
         clock,
         events,

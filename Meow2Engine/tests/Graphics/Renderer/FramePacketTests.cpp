@@ -52,7 +52,8 @@ TEST_F(FramePacketTest, CopiesRenderables)
     const entt::entity notDrawn = m_scene.create();
     static_cast<void>(notDrawn);
 
-    const FramePacket& packet = extractFrame(m_scene, {.width = 640, .height = 480}, m_arena);
+    const FrameView view{.width = 640, .height = 480};
+    const FramePacket& packet = extractFrame(m_scene, view, m_arena);
 
     ASSERT_EQ(packet.instances.size(), 1U);
     EXPECT_EQ(packet.instances[0].mesh, 7U);
@@ -77,7 +78,8 @@ TEST_F(FramePacketTest, PositionsAreCameraRelative)
 TEST_F(FramePacketTest, SurvivesSceneChanges)
 {
     const entt::entity entity = makeEntity(1.0F, {.mesh = 3});
-    const FramePacket& packet = extractFrame(m_scene, {}, m_arena);
+    const FrameView view;
+    const FramePacket& packet = extractFrame(m_scene, view, m_arena);
 
     m_scene.destroy(entity);
 

@@ -189,6 +189,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | enkiTS v1.12 | job system | zlib | submodule; static, C interface/examples off; only included by `src/Core/Jobs/Enkits/` |
 | Tracy v0.14.1 (client only) | CPU/GPU/memory profiler | BSD-3 | submodule; static, on demand, localhost only, no broadcast, its crash handler off; `TRACY_ENABLE` per configuration (Debug/RWDI). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
 | **Not submodules** | | | |
+| RenderDoc in-app API v1.47 | frame capture from inside the app (§11) | MIT | one header, `external/renderdoc/renderdoc_app.h`, copied unchanged (owner-approved): RenderDoc's whole repository would be a large submodule for one file. Only included by `src/Graphics/Rhi/RenderDocCapture.cpp` |
 | Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, aqtinstall 3.3.0 in a plain step in Linux CI (only GitHub-owned actions are allowed); found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
 | Vulkan SDK | validation layers, tools | — | LunarG installer (dev machines only) |
 | DXC v1.9.2609 | shader compiler (§12) | NCSA/MIT (`dxcompiler`); Microsoft licence (`dxil`) | not a submodule: `cmake/Meow2Dxc.cmake` downloads the pinned release at configure time into the build folder and checks its SHA-256. Development only for now: not in the release zip, because the release's licence refers to a distributables list it doesn't contain. `Meow2Player` never ships it |
@@ -729,3 +730,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-07 — §4: Vulkan-Headers, volk and VMA added (owner-approved).
 - 2026-11-07 — §11: heap bindings fixed and passed to DXC explicitly, because its default depends on what a shader declares.
 - 2026-11-07 — §19: command lists per job, parallel render graph recording (owner decision).
+- 2026-11-07 — §4: RenderDoc's in-app API header added (owner-approved).

@@ -169,7 +169,7 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 | 3 Frame infrastructure | `FrameArena` (reset by fence), upload ring, CPU readback | §6 | ✅ | #159 / PR #160 |
 | 3 | Frame packet / extract step in the game loop | §23 | ✅ | #159 / PR #160 |
 | 3 | Headless rendering: draw to a texture with no window and read it back (M7 golden images, CI) | §13 | ✅ | #159 / PR #160 |
-| 3 | Debug tools: pass markers, RenderDoc in-app capture; Tracy GPU zones; GPU memory stats per tag | §3, §11 | 🟨 markers, Tracy, memory stats; RenderDoc capture needs its header approved | #159 / PR #160 |
+| 3 | Debug tools: pass markers, RenderDoc in-app capture; Tracy GPU zones; GPU memory stats per tag | §3, §11 | ✅ | #159 / PR #160 |
 | 3 | Command lists per job thread, submitted in a given order; lookups that don't block each other | §11, §19 | ✅ | #159 / PR #160 |
 | 4 GPU-driven path | Render graph, small at first: passes and automatic barriers, compiled on the main thread and recorded in parallel, one job per pass or group of small passes (owner decision 2026-11-07); transient memory aliasing later | §3, §11, §19 | ⬜ | |
 | 4 | Vertex pulling with the `Packing.h` formats | §10 | ⬜ | |

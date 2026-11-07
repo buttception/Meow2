@@ -40,6 +40,7 @@ target_sources(Meow2Engine
         src/Graphics/Renderer/FramePacket.cpp
         src/Graphics/Renderer/FrameResources.cpp
         src/Graphics/Renderer/PipelineLibrary.cpp
+        src/Graphics/Rhi/RenderDocCapture.cpp
         src/Graphics/Rhi/RhiDevice.cpp
         src/Math/SplinePath.cpp
         src/Platform/FileSystem/FileSystem.cpp
@@ -102,6 +103,7 @@ target_sources(Meow2Engine
             include/Meow2/Graphics/Rhi/IRhiCommandList.h
             include/Meow2/Graphics/Rhi/IRhiDevice.h
             include/Meow2/Graphics/Rhi/IRhiSwapchain.h
+            include/Meow2/Graphics/Rhi/RenderDocCapture.h
             include/Meow2/Graphics/Rhi/RhiHandle.h
             include/Meow2/Graphics/Rhi/RhiTypes.h
             include/Meow2/Graphics/Shader/BindlessLayout.h
@@ -197,6 +199,8 @@ endif()
 # Meow2Shared.hlsli, the structs shared with HLSL, is included by Meow2/Graphics/Shader/BindlessLayout.h.
 target_include_directories(Meow2Engine PUBLIC "${PROJECT_SOURCE_DIR}/shaders")
 target_include_directories(Meow2Engine PRIVATE src)
+# RenderDoc's in-app API: one header, copied in unchanged (external/renderdoc/README.md).
+target_include_directories(Meow2Engine SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/external/renderdoc")
 
 # Build metadata for getVersionString() ("0.1.0+g1a2b3c4", techstack.md §21). The git commit is read on every build,
 # not only at configure time, so the version never names an old commit; GitVersion.cmake rewrites the private header

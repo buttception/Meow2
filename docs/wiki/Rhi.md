@@ -107,7 +107,7 @@ Each thread has its own command pool per frame slot, because a Vulkan pool can o
 
 ### Debugging
 
-`beginMarker(name)`, `endMarker()` and `ScopedMarker` name a region. RenderDoc, PIX and Nsight show them, and in Debug and RelWithDebInfo they're also GPU zones in Tracy. To capture a frame, launch the app from RenderDoc. Capturing from inside the app needs RenderDoc's header, which isn't in the repository yet.
+`beginMarker(name)`, `endMarker()` and `ScopedMarker` name a region. RenderDoc, PIX and Nsight show them, and in Debug and RelWithDebInfo they're also GPU zones in Tracy. To capture a frame, launch the app from RenderDoc, then press **F11** in Meow2Renderer. `Rhi::RenderDocCapture` looks for the library RenderDoc injected and never loads it, so an ordinary run is unchanged. `--set rhi.captureFrame=60` captures that frame with no keyboard, for scripts.
 
 `memoryStats()` gives the driver's totals and the bytes of live buffers and textures per `MemTag`, set with `BufferDesc::tag` and `TextureDesc::tag`.
 

@@ -22,6 +22,17 @@ Result<SharedLibrary> SharedLibrary::open(const std::filesystem::path& path)
     return SharedLibrary{handle};
 }
 
+Result<SharedLibrary> SharedLibrary::findLoaded(std::string_view name)
+{
+    // RTLD_NOLOAD: only finds what's already there.
+    void* handle = dlopen(std::string{name}.c_str(), RTLD_NOW | RTLD_NOLOAD);
+    if (handle == nullptr)
+    {
+        return fail(ErrorCode::NotFound, std::string{name});
+    }
+    return SharedLibrary{handle};
+}
+
 SharedLibrary::SharedLibrary(void* handle) noexcept
     : m_handle(handle)
 {
