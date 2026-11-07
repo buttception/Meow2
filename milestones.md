@@ -171,6 +171,7 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 | 3 | Headless rendering: draw to a texture with no window and read it back (M7 golden images, CI) | §13 | ✅ | #159 / PR #160 |
 | 3 | Debug tools: pass markers, RenderDoc in-app capture; Tracy GPU zones; GPU memory stats per tag | §3, §11 | ✅ | #159 / PR #160 |
 | 3 | Command lists per job thread, submitted in a given order; lookups that don't block each other | §11, §19 | ✅ | #159 / PR #160 |
+| 3 | RenderDoc loaded by the app; F11 opens the capture in its window | §11 | ✅ | #161 / PR #162 |
 | 4 GPU-driven path | Render graph, small at first: passes and automatic barriers, compiled on the main thread and recorded in parallel, one job per pass or group of small passes (owner decision 2026-11-07); transient memory aliasing later | §3, §11, §19 | ⬜ | |
 | 4 | Vertex pulling with the `Packing.h` formats | §10 | ⬜ | |
 | 4 | Indirect draws with a count buffer, compute frustum culling | §11 | ⬜ | |
@@ -178,6 +179,7 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 | 5 D3D12 parity | Submodules: D3D12MemoryAllocator, DirectX-Headers; Agility SDK | §4 | ⬜ | |
 | 5 | Everything above on D3D12, the same shared tests on both backends; PIX markers | §11 | ⬜ | |
 | 5 | Device loss reports: DRED on D3D12, `VK_EXT_device_fault` on Vulkan | §8 | ⬜ | |
+| 5 | Look into capturing from the app with PIX (D3D12) and Nsight Graphics (NVIDIA), as with RenderDoc; each needs its own SDK or library approved first | §11 | ⬜ | |
 | 6 Hot swap and close | Resource registry, recreate from CPU descriptions, swap on the same window | §11 | ⬜ | |
 | 6 | Closing PR bumps the version to **0.6.0** | §21 | ⬜ | |
 
@@ -192,6 +194,8 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 - ImGui docking shell (+ multi-viewport later)
 - Log console window (ring-buffer sink), frame stats, memory stats (per tag)
 - Backend switch button
+- Capture button: the same as F11, shown when a capture tool is attached
+- Settings window: debug tools on or off (`rhi.renderDoc` and the like), saved to the TOML config
 
 ## M7 — glTF & rendering verification ⬜
 **Goal:** load the Khronos glTF 2.0 sample scenes and catch rendering regressions automatically.
@@ -226,6 +230,7 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 - Log console dock (ring-buffer sink)
 - Scene hierarchy, inspector, undo/redo
 - GPU picking: on a click, a scissored pass around the cursor appends `{entity, depth}` per pixel; sorted on the CPU, repeated clicks step down through transparent layers; alpha cutoff in the pick shader; gizmos win; `registry.valid()` checked after the delayed readback
+- Capture button and debug-tool settings: an editor command like the rest, with nothing to undo, so MCP can capture a frame too; saved to the TOML config
 - **MCP server**: commands/queries as MCP tools, viewport screenshot, localhost + token, `--mcp`
 - Headless mode (`--headless`) + MCP integration tests in CI
 
@@ -262,3 +267,4 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 - 2026-11-06 — M4 done (0.5.0): every row implemented as a stack of PRs (#134–#152).
 - 2026-11-07 — M5 is now a feature table in six PRs, adding deferred destruction, a small render graph, headless rendering, a capability check, multiple swapchains, pipeline rebuilds on shader reload and debug tools. M7 gains meshoptimizer and meshlets as an optional path.
 - 2026-11-07 — M5 PR 3 gains command lists per job thread, and PR 4's render graph records passes in parallel (owner decision).
+- 2026-11-07 — Owner request: capture buttons and a debug-tool settings window in Renderer (M6) and Editor (M9), saved to the TOML config; PIX and Nsight in-app capture to look into with D3D12 (M5 PR 5).

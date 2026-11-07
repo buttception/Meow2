@@ -52,6 +52,12 @@ public:
     /// @return Its address, or `nullptr` if the library doesn't export it.
     [[nodiscard]] void* symbol(const std::string& name) const;
 
+    /// @brief Leaves the library loaded for the rest of the process, for libraries that can't be unloaded safely.
+    void keepLoaded()
+    {
+        m_handle = nullptr;
+    }
+
 private:
     explicit SharedLibrary(void* handle) noexcept;
 
