@@ -15,9 +15,9 @@ namespace Meow2::Assets
 /// @brief An image on the CPU: 8-bit RGBA, top row first, rows tightly packed. Plain data.
 struct Image
 {
-    std::uint32_t width = 0;       ///< Width in pixels.
-    std::uint32_t height = 0;      ///< Height in pixels.
-    std::vector<std::byte> pixels; ///< width × height × 4 bytes: R, G, B, A.
+    std::uint32_t width = 0;         ///< Width in pixels.
+    std::uint32_t height = 0;        ///< Height in pixels.
+    std::vector<std::byte> pixels{}; ///< width × height × 4 bytes: R, G, B, A.
 };
 
 /// @brief Decodes a PNG or JPEG file in memory, the two image formats of core glTF 2.0.

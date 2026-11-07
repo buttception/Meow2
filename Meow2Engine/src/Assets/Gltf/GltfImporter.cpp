@@ -19,6 +19,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 
@@ -161,7 +162,16 @@ std::vector<T> unpackFloats(const cgltf_accessor& accessor, std::size_t componen
     std::vector<T> values(accessor.count);
     for (std::size_t i = 0; i < accessor.count; ++i)
     {
-        std::memcpy(&values[i], &floats[i * components], sizeof(float) * std::min(components, sizeof(T) / 4));
+        const float* f = &floats[i * components];
+        if constexpr (std::is_same_v<T, Math::Vec3>)
+        {
+            values[i] = Math::Vec3{f[0], f[1], f[2]};
+        }
+        else
+        {
+            static_assert(std::is_same_v<T, Math::Vec2>, "Vec2 or Vec3");
+            values[i] = Math::Vec2{f[0], f[1]};
+        }
     }
     return values;
 }
@@ -283,8 +293,7 @@ std::optional<Math::Transform> localTransform(const cgltf_node& node)
     std::array<float, 16> m{};
     cgltf_node_transform_local(&node, m.data());
     // glTF stores column-major matrices for column vectors; read as rows, that's the row-vector matrix the engine uses.
-    DirectX::XMFLOAT4X4 rows{};
-    std::memcpy(&rows, m.data(), sizeof(rows));
+    DirectX::XMFLOAT4X4 rows{m.data()};
     for (int row = 0; row < 4; ++row)
     {
         for (int column = 0; column < 4; ++column)

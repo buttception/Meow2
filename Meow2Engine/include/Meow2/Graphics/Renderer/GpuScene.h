@@ -215,11 +215,11 @@ private:
     /// @brief A texture, its pixels kept for the next device, and its upload until the GPU has done it.
     struct TextureRecord
     {
-        Assets::Image image;        ///< CPU copy.
-        bool srgb = false;          ///< Which format.
-        std::string name;           ///< For debugging tools.
-        Rhi::TextureHandle texture; ///< On the current device.
-        Rhi::BufferHandle staging;  ///< Holds the pixels until the copy is recorded; unset after.
+        Assets::Image image{};        ///< CPU copy.
+        bool srgb = false;            ///< Which format.
+        std::string name{};           ///< For debugging tools.
+        Rhi::TextureHandle texture{}; ///< On the current device.
+        Rhi::BufferHandle staging{};  ///< Holds the pixels until the copy is recorded; unset after.
     };
     std::vector<TextureRecord> m_textures;
     std::vector<std::uint32_t> m_pendingTextures;  ///< Textures whose copy the next frame records.

@@ -33,7 +33,7 @@ enum class AlphaMode : std::uint8_t
 /// Texture fields are indices into ImportedModel::images, or -1 for none. Factors multiply the textures.
 struct ImportedMaterial
 {
-    std::string name;                                    ///< From the file; may be empty.
+    std::string name{};                                  ///< From the file; may be empty.
     Math::Color baseColorFactor{1.0F, 1.0F, 1.0F, 1.0F}; ///< Linear RGBA.
     std::int32_t baseColorImage = -1;                    ///< sRGB colour and alpha.
     float metallicFactor = 1.0F;                         ///< 0..1.
@@ -56,25 +56,25 @@ struct ImportedMaterial
 /// clockwise as the engine expects.
 struct ImportedPrimitive
 {
-    std::vector<Math::Vec3> positions;  ///< Model-space positions.
-    std::vector<Math::Vec3> normals;    ///< Unit normals; computed from the triangles when the file has none.
-    std::vector<Math::Vec2> uvs;        ///< First texture coordinate set; zeros when the file has none.
-    std::vector<std::uint32_t> indices; ///< Three per triangle, clockwise.
-    std::int32_t material = -1;         ///< Index into ImportedModel::materials, or -1 for the default material.
-    Math::Aabb bounds{};                ///< Box around the positions.
+    std::vector<Math::Vec3> positions{};  ///< Model-space positions.
+    std::vector<Math::Vec3> normals{};    ///< Unit normals; computed from the triangles when the file has none.
+    std::vector<Math::Vec2> uvs{};        ///< First texture coordinate set; zeros when the file has none.
+    std::vector<std::uint32_t> indices{}; ///< Three per triangle, clockwise.
+    std::int32_t material = -1;           ///< Index into ImportedModel::materials, or -1 for the default material.
+    Math::Aabb bounds{};                  ///< Box around the positions.
 };
 
 /// @brief A glTF mesh: its primitives share a node and a transform. Plain data.
 struct ImportedMesh
 {
-    std::string name;                          ///< From the file; may be empty.
-    std::vector<ImportedPrimitive> primitives; ///< At least one.
+    std::string name{};                          ///< From the file; may be empty.
+    std::vector<ImportedPrimitive> primitives{}; ///< At least one.
 };
 
 /// @brief A node of the scene tree. Plain data.
 struct ImportedNode
 {
-    std::string name;         ///< From the file; may be empty.
+    std::string name{};       ///< From the file; may be empty.
     Math::Transform local{};  ///< Relative to the parent, left-handed.
     std::int32_t parent = -1; ///< Index into ImportedModel::nodes, always lower than this node's; -1 for a root.
     std::int32_t mesh = -1;   ///< Index into ImportedModel::meshes, or -1.
@@ -83,11 +83,11 @@ struct ImportedNode
 /// @brief Everything imported from one glTF file. Plain data.
 struct ImportedModel
 {
-    std::vector<ImportedMesh> meshes;        ///< Every mesh with at least one triangle primitive.
-    std::vector<ImportedMaterial> materials; ///< Every material.
-    std::vector<Image> images;               ///< Decoded images, RGBA8.
-    std::vector<ImportedNode> nodes;         ///< The default scene's nodes, parents before children.
-    std::vector<std::string> warnings;       ///< What was skipped (points and lines, unknown extensions, …).
+    std::vector<ImportedMesh> meshes{};        ///< Every mesh with at least one triangle primitive.
+    std::vector<ImportedMaterial> materials{}; ///< Every material.
+    std::vector<Image> images{};               ///< Decoded images, RGBA8.
+    std::vector<ImportedNode> nodes{};         ///< The default scene's nodes, parents before children.
+    std::vector<std::string> warnings{};       ///< What was skipped (points and lines, unknown extensions, …).
 };
 
 /// @brief Imports a glTF 2.0 file, `.gltf` with its buffers and images or a single `.glb`.
