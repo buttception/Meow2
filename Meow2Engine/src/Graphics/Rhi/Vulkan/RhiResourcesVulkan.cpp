@@ -10,6 +10,7 @@
 #include <cstring>
 #include <format>
 #include <iterator>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -305,6 +306,9 @@ Result<BufferHandle> RhiDeviceVulkan::createBuffer(const BufferDesc& desc)
         return fail(ErrorCode::OutOfMemory, std::format("Buffer '{}': {}", desc.name, vulkanResultName(result)));
     }
     record.mapped = static_cast<std::byte*>(allocationInfo.pMappedData);
+    record.tag = desc.tag;
+    record.bytes = allocationInfo.size;
+    m_bytesByTag[static_cast<std::size_t>(record.tag)] += record.bytes;
     record.size = desc.size;
     setObjectName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(record.buffer), desc.name.c_str());
 
@@ -340,6 +344,7 @@ void RhiDeviceVulkan::destroy(BufferHandle buffer)
         [this, record]
         {
             vmaDestroyBuffer(m_allocator, record.buffer, record.allocation);
+            m_bytesByTag[static_cast<std::size_t>(record.tag)] -= record.bytes;
             const std::scoped_lock lock{m_resourceMutex};
             m_resourceSlots.release(record.heapIndex);
         });
@@ -347,7 +352,7 @@ void RhiDeviceVulkan::destroy(BufferHandle buffer)
 
 std::span<std::byte> RhiDeviceVulkan::mappedMemory(BufferHandle buffer)
 {
-    const std::scoped_lock lock{m_resourceMutex};
+    const std::shared_lock lock{m_resourceMutex};
     const BufferVulkan* found = m_buffers.get(buffer);
     if (found == nullptr || found->mapped == nullptr)
     {
@@ -358,14 +363,14 @@ std::span<std::byte> RhiDeviceVulkan::mappedMemory(BufferHandle buffer)
 
 std::uint32_t RhiDeviceVulkan::bindlessIndex(BufferHandle buffer)
 {
-    const std::scoped_lock lock{m_resourceMutex};
+    const std::shared_lock lock{m_resourceMutex};
     const BufferVulkan* found = m_buffers.get(buffer);
     return found != nullptr ? found->heapIndex : c_invalidBindlessIndex;
 }
 
 BufferVulkan RhiDeviceVulkan::buffer(BufferHandle handle)
 {
-    const std::scoped_lock lock{m_resourceMutex};
+    const std::shared_lock lock{m_resourceMutex};
     const BufferVulkan* found = m_buffers.get(handle);
     MEOW2_ASSERT(found != nullptr, "Stale buffer handle");
     return found != nullptr ? *found : BufferVulkan{};
@@ -405,12 +410,16 @@ Result<TextureHandle> RhiDeviceVulkan::createTexture(const TextureDesc& desc)
                                  .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
     VmaAllocationCreateInfo allocation{};
     allocation.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    VmaAllocationInfo allocationInfo{};
     if (const VkResult result =
-            vmaCreateImage(m_allocator, &info, &allocation, &record.image, &record.allocation, nullptr);
+            vmaCreateImage(m_allocator, &info, &allocation, &record.image, &record.allocation, &allocationInfo);
         result != VK_SUCCESS)
     {
         return fail(ErrorCode::OutOfMemory, std::format("Texture '{}': {}", desc.name, vulkanResultName(result)));
     }
+    record.tag = desc.tag;
+    record.bytes = allocationInfo.size;
+    m_bytesByTag[static_cast<std::size_t>(record.tag)] += record.bytes;
     setObjectName(VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>(record.image), desc.name.c_str());
 
     const VkImageViewCreateInfo viewInfo{
@@ -469,6 +478,7 @@ void RhiDeviceVulkan::destroy(TextureHandle texture)
         {
             vkDestroyImageView(m_device, record.view, nullptr);
             vmaDestroyImage(m_allocator, record.image, record.allocation);
+            m_bytesByTag[static_cast<std::size_t>(record.tag)] -= record.bytes;
             const std::scoped_lock lock{m_resourceMutex};
             m_resourceSlots.release(record.heapIndex);
             if (record.storageIndex != c_invalidBindlessIndex)
@@ -480,21 +490,21 @@ void RhiDeviceVulkan::destroy(TextureHandle texture)
 
 std::uint32_t RhiDeviceVulkan::bindlessIndex(TextureHandle texture)
 {
-    const std::scoped_lock lock{m_resourceMutex};
+    const std::shared_lock lock{m_resourceMutex};
     const TextureVulkan* found = m_textures.get(texture);
     return found != nullptr ? found->heapIndex : c_invalidBindlessIndex;
 }
 
 std::uint32_t RhiDeviceVulkan::bindlessStorageIndex(TextureHandle texture)
 {
-    const std::scoped_lock lock{m_resourceMutex};
+    const std::shared_lock lock{m_resourceMutex};
     const TextureVulkan* found = m_textures.get(texture);
     return found != nullptr ? found->storageIndex : c_invalidBindlessIndex;
 }
 
 TextureVulkan RhiDeviceVulkan::texture(TextureHandle handle)
 {
-    const std::scoped_lock lock{m_resourceMutex};
+    const std::shared_lock lock{m_resourceMutex};
     const TextureVulkan* found = m_textures.get(handle);
     MEOW2_ASSERT(found != nullptr, "Stale texture handle");
     return found != nullptr ? *found : TextureVulkan{};
@@ -583,7 +593,7 @@ void RhiDeviceVulkan::destroy(SamplerHandle sampler)
 
 std::uint32_t RhiDeviceVulkan::bindlessIndex(SamplerHandle sampler)
 {
-    const std::scoped_lock lock{m_resourceMutex};
+    const std::shared_lock lock{m_resourceMutex};
     const SamplerVulkan* found = m_samplers.get(sampler);
     return found != nullptr ? found->heapIndex : c_defaultSamplerIndex;
 }
@@ -719,10 +729,29 @@ void RhiDeviceVulkan::destroy(PipelineHandle pipeline)
 
 PipelineVulkan RhiDeviceVulkan::pipeline(PipelineHandle handle)
 {
-    const std::scoped_lock lock{m_resourceMutex};
+    const std::shared_lock lock{m_resourceMutex};
     const PipelineVulkan* found = m_pipelines.get(handle);
     MEOW2_ASSERT(found != nullptr, "Stale pipeline handle");
     return found != nullptr ? *found : PipelineVulkan{};
+}
+
+GpuMemoryStats RhiDeviceVulkan::memoryStats()
+{
+    GpuMemoryStats stats;
+    std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets{};
+    vmaGetHeapBudgets(m_allocator, budgets.data());
+    const VkPhysicalDeviceMemoryProperties* memory = nullptr;
+    vmaGetMemoryProperties(m_allocator, &memory);
+    for (std::uint32_t heap = 0; heap < memory->memoryHeapCount; ++heap)
+    {
+        stats.usedBytes += budgets[heap].usage;
+        stats.budgetBytes += budgets[heap].budget;
+    }
+    for (std::size_t tag = 0; tag < stats.bytesByTag.size(); ++tag)
+    {
+        stats.bytesByTag[tag] = m_bytesByTag[tag].load();
+    }
+    return stats;
 }
 
 std::vector<std::byte> RhiDeviceVulkan::pipelineCacheData()

@@ -60,6 +60,11 @@ void GameLoop::runFrame(double frameDeltaSeconds)
         m_events.dispatchQueued();
     }
 
+    if (m_callbacks.extract)
+    {
+        MEOW2_PROFILE_ZONE_NAMED("Extract");
+        m_callbacks.extract();
+    }
     if (m_callbacks.render)
     {
         MEOW2_PROFILE_ZONE_NAMED("Render");

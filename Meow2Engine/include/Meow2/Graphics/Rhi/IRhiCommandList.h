@@ -58,6 +58,13 @@ public:
     /// @param pipeline The pipeline.
     virtual void setPipeline(PipelineHandle pipeline) = 0;
 
+    /// @brief Opens a named region, shown by RenderDoc, PIX and Nsight, and as a GPU zone in Tracy.
+    /// @param name The name; copied.
+    virtual void beginMarker(const char* name) = 0;
+
+    /// @brief Closes the region opened last.
+    virtual void endMarker() = 0;
+
     /// @brief Sets the 16 bytes every shader reads as `g_push`.
     /// @param constants The indices.
     virtual void setPushConstants(const Shader::PushConstants& constants) = 0;
@@ -107,5 +114,32 @@ public:
 protected:
     /// @brief Only backends create command lists.
     IRhiCommandList() = default;
+};
+/// @brief Opens a marker for a scope.
+/// @par Thread safety
+/// Use on the thread recording the list.
+class ScopedMarker
+{
+public:
+    /// @brief Opens the marker.
+    /// @param list The list; must outlive this object.
+    /// @param name The name; copied.
+    ScopedMarker(IRhiCommandList& list, const char* name)
+        : m_list(list)
+    {
+        m_list.beginMarker(name);
+    }
+
+    /// @brief Closes the marker.
+    ~ScopedMarker()
+    {
+        m_list.endMarker();
+    }
+
+    ScopedMarker(const ScopedMarker&) = delete;            ///< Not copyable.
+    ScopedMarker& operator=(const ScopedMarker&) = delete; ///< Not copyable.
+
+private:
+    IRhiCommandList& m_list;
 };
 } // namespace Meow2::Rhi

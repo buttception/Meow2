@@ -24,6 +24,7 @@ target_sources(Meow2Engine
         src/Core/Log/LoggerImpl.h
         src/Core/Log/LogSystem.cpp
         src/Core/Memory/BlockArena.cpp
+        src/Core/Memory/FrameArena.cpp
         src/Core/Memory/GlobalTracking.cpp
         src/Core/Memory/LeakCheck.cpp
         src/Core/Memory/MallocResource.cpp
@@ -36,6 +37,8 @@ target_sources(Meow2Engine
         src/Core/Time/GameLoop.cpp
         src/Core/Time/GameLoopConfig.cpp
         src/Core/Version.cpp
+        src/Graphics/Renderer/FramePacket.cpp
+        src/Graphics/Renderer/FrameResources.cpp
         src/Graphics/Renderer/PipelineLibrary.cpp
         src/Graphics/Rhi/RhiDevice.cpp
         src/Math/SplinePath.cpp
@@ -76,6 +79,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Log/LogSystem.h
             include/Meow2/Core/Memory/BlockArena.h
             include/Meow2/Core/Memory/DebugFill.h
+            include/Meow2/Core/Memory/FrameArena.h
             include/Meow2/Core/Memory/GlobalTracking.h
             include/Meow2/Core/Memory/LeakCheck.h
             include/Meow2/Core/Memory/MallocResource.h
@@ -92,6 +96,8 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/FrameClock.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
+            include/Meow2/Graphics/Renderer/FramePacket.h
+            include/Meow2/Graphics/Renderer/FrameResources.h
             include/Meow2/Graphics/Renderer/PipelineLibrary.h
             include/Meow2/Graphics/Rhi/IRhiCommandList.h
             include/Meow2/Graphics/Rhi/IRhiDevice.h
@@ -152,6 +158,8 @@ if(MEOW2_RHI_VULKAN)
         src/Graphics/Rhi/Vulkan/RhiCommandListVulkan.cpp
         src/Graphics/Rhi/Vulkan/RhiDeviceVulkan.cpp
         src/Graphics/Rhi/Vulkan/RhiDeviceVulkan.h
+        src/Graphics/Rhi/Vulkan/RhiGpuProfilerVulkan.cpp
+        src/Graphics/Rhi/Vulkan/RhiGpuProfilerVulkan.h
         src/Graphics/Rhi/Vulkan/RhiResourcesVulkan.cpp
         src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.cpp
         src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.h
@@ -164,6 +172,7 @@ if(MEOW2_RHI_VULKAN)
         set_source_files_properties(
             src/Graphics/Rhi/Vulkan/RhiCommandListVulkan.cpp
             src/Graphics/Rhi/Vulkan/RhiDeviceVulkan.cpp
+            src/Graphics/Rhi/Vulkan/RhiGpuProfilerVulkan.cpp
             src/Graphics/Rhi/Vulkan/RhiResourcesVulkan.cpp
             src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.cpp
             PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers")

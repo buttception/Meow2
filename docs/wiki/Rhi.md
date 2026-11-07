@@ -93,6 +93,35 @@ Creating a pipeline is where the driver compiles shaders for the exact GPU, whic
 
 `Renderer::PipelineLibrary` builds pipelines from shader assets and remembers how. On `Assets::ShaderReloaded` it rebuilds what uses that shader. If a rebuild fails, it logs the error and keeps the old pipeline. Keep the `PipelineId` and ask `get()` for the handle each frame, because rebuilds change it.
 
+### Recording on several jobs
+
+Set `RhiDeviceDesc::recordingThreads` to `JobSystem::threadCount()`. Each job then asks for its own list:
+
+```cpp
+IRhiCommandList* list = *device->commandList(jobs.threadIndex());
+```
+
+Each thread has its own command pool per frame slot, because a Vulkan pool can only be used by one thread at a time. So jobs can record with no locks. Heap and resource lookups take a shared lock, so they don't block each other.
+
+`endFrame(lists)` submits every list in one call, in the order you give. The order jobs finish in doesn't matter. The frame's first list runs before them, and a hidden last list holds the barriers that hand swapchain images to the display.
+
+### Debugging
+
+`beginMarker(name)`, `endMarker()` and `ScopedMarker` name a region. RenderDoc, PIX and Nsight show them, and in Debug and RelWithDebInfo they're also GPU zones in Tracy. To capture a frame, launch the app from RenderDoc. Capturing from inside the app needs RenderDoc's header, which isn't in the repository yet.
+
+`memoryStats()` gives the driver's totals and the bytes of live buffers and textures per `MemTag`, set with `BufferDesc::tag` and `TextureDesc::tag`.
+
+### Frame resources
+
+These live in `Meow2/Graphics/Renderer/FrameResources.h`. Call each one's `beginFrame(device->frameSlot())` right after `IRhiDevice::beginFrame()`.
+
+- **`Memory::FrameArena`**: CPU scratch memory per frame slot and thread. A slot resets only when it comes round again, after the GPU has finished with it.
+- **`UploadRing`**: CPU-writable GPU memory for one frame. `allocate()` is lock-free, and a full ring returns an error.
+- **`ReadbackQueue`**: `request()` copies data toward the CPU, and the callback runs when that frame slot comes round again, so nothing stalls.
+- **`OffscreenTarget`**: draw with no window and read the pixels back, for golden images.
+
+`FramePacket` is what the renderer gets from the simulation. `GameLoopCallbacks::extract` runs after `update` and before `render`, and `extractFrame()` copies entities with `WorldTransform` and `Renderable` into the frame arena, camera relative. After that, the scene can change freely.
+
 ## Minimum GPU
 
 - Vulkan 1.3

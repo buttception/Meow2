@@ -6,6 +6,7 @@
 #include "Graphics/Rhi/Vulkan/RhiSwapchainVulkan.h"
 #include "Graphics/Rhi/Vulkan/VulkanRequirements.h"
 #include "Meow2/Core/Assert.h"
+#include "Meow2/Core/Memory/MemTag.h"
 #include "Meow2/Core/Platform.h"
 
 #include <algorithm>
@@ -368,6 +369,8 @@ Result<void> RhiDeviceVulkan::pickPhysicalDevice(const RhiDeviceDesc& desc)
 
 Result<void> RhiDeviceVulkan::createDevice(const RhiDeviceDesc& desc)
 {
+    MEOW2_ASSERT(desc.recordingThreads > 0, "At least one thread records");
+    m_recordingThreads = desc.recordingThreads;
     DeviceFeatures features;
     features.core.features.multiDrawIndirect = VK_TRUE;
     features.core.features.shaderInt64 = VK_TRUE;
@@ -458,7 +461,22 @@ Result<void> RhiDeviceVulkan::createDevice(const RhiDeviceDesc& desc)
         {
             return fail(ErrorCode::Unknown, std::format("Command buffer: {}", vulkanResultName(result)));
         }
+        // The last list holds the barriers that hand images to the display, after every job's list.
+        if (const VkResult result = vkAllocateCommandBuffers(m_device, &commands, &frame.last); result != VK_SUCCESS)
+        {
+            return fail(ErrorCode::Unknown, std::format("Command buffer: {}", vulkanResultName(result)));
+        }
+        frame.threads = std::vector<ThreadCommands>(desc.recordingThreads);
+        for (ThreadCommands& thread : frame.threads)
+        {
+            if (const VkResult result = vkCreateCommandPool(m_device, &pool, nullptr, &thread.pool);
+                result != VK_SUCCESS)
+            {
+                return fail(ErrorCode::Unknown, std::format("Command pool: {}", vulkanResultName(result)));
+            }
+        }
     }
+    m_gpuProfiler.connect(m_physicalDevice, m_device, m_queue, m_queueFamily);
     return {};
 }
 
@@ -477,11 +495,19 @@ RhiDeviceVulkan::~RhiDeviceVulkan()
         vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
         vkDestroyDescriptorPool(m_device, m_heapPool, nullptr);
         vkDestroyDescriptorSetLayout(m_device, m_heapLayout, nullptr);
+        m_gpuProfiler.disconnect();
         for (const Frame& frame : m_frames)
         {
             if (frame.pool != VK_NULL_HANDLE)
             {
                 vkDestroyCommandPool(m_device, frame.pool, nullptr);
+            }
+            for (const ThreadCommands& thread : frame.threads)
+            {
+                if (thread.pool != VK_NULL_HANDLE)
+                {
+                    vkDestroyCommandPool(m_device, thread.pool, nullptr);
+                }
             }
         }
         if (m_timeline != VK_NULL_HANDLE)
@@ -524,25 +550,73 @@ Result<IRhiCommandList*> RhiDeviceVulkan::beginFrame()
     }
     collectGarbage();
     vkResetCommandPool(m_device, frame.pool, 0);
-    const VkCommandBufferBeginInfo begin{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-                                         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
-    if (const VkResult result = vkBeginCommandBuffer(frame.commands, &begin); result != VK_SUCCESS)
+    for (ThreadCommands& thread : frame.threads)
     {
-        return fail(ErrorCode::Unknown, std::format("vkBeginCommandBuffer: {}", vulkanResultName(result)));
+        vkResetCommandPool(m_device, thread.pool, 0);
+        thread.used = 0;
     }
-    // Bound once per frame and never again: nothing else in the engine is ever bound (techstack.md §11).
-    const auto bindHeap = [this, &frame](VkPipelineBindPoint point)
+    if (Result<void> begun = beginCommands(frame.commands); !begun)
     {
-        vkCmdBindDescriptorSets(frame.commands, point, m_pipelineLayout, 0, 1, &m_heapSet, 0, nullptr);
-    };
-    bindHeap(VK_PIPELINE_BIND_POINT_GRAPHICS);
-    bindHeap(VK_PIPELINE_BIND_POINT_COMPUTE);
+        return Unexpected<Error>{begun.error()};
+    }
+    if (Result<void> begun = beginCommands(frame.last); !begun)
+    {
+        return Unexpected<Error>{begun.error()};
+    }
+    m_gpuProfiler.collect(frame.commands);
     m_commandList.setCommandBuffer(frame.commands);
     m_inFrame = true;
     return &m_commandList;
 }
 
-void RhiDeviceVulkan::recordSwapchainBarrier(const RhiSwapchainVulkan& swapchain, bool toPresent)
+Result<void> RhiDeviceVulkan::beginCommands(VkCommandBuffer commands)
+{
+    const VkCommandBufferBeginInfo begin{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                                         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
+    if (const VkResult result = vkBeginCommandBuffer(commands, &begin); result != VK_SUCCESS)
+    {
+        return fail(ErrorCode::Unknown, std::format("vkBeginCommandBuffer: {}", vulkanResultName(result)));
+    }
+    // Bound once per list and never again: nothing else in the engine is ever bound (techstack.md §11).
+    for (const VkPipelineBindPoint point : {VK_PIPELINE_BIND_POINT_GRAPHICS, VK_PIPELINE_BIND_POINT_COMPUTE})
+    {
+        vkCmdBindDescriptorSets(commands, point, m_pipelineLayout, 0, 1, &m_heapSet, 0, nullptr);
+    }
+    return {};
+}
+
+Result<IRhiCommandList*> RhiDeviceVulkan::commandList(std::uint32_t threadIndex)
+{
+    MEOW2_ASSERT(m_inFrame, "commandList() outside a frame");
+    MEOW2_ASSERT(threadIndex < m_recordingThreads, "RhiDeviceDesc::recordingThreads is too small");
+    const Memory::MemTagScope tag{Memory::MemTag::Rhi};
+    ThreadCommands& thread = m_frames[m_frameIndex].threads[threadIndex];
+    if (thread.used == thread.buffers.size())
+    {
+        const VkCommandBufferAllocateInfo info{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                                               .commandPool = thread.pool,
+                                               .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                                               .commandBufferCount = 1};
+        VkCommandBuffer buffer = VK_NULL_HANDLE;
+        if (const VkResult result = vkAllocateCommandBuffers(m_device, &info, &buffer); result != VK_SUCCESS)
+        {
+            return fail(ErrorCode::Unknown, std::format("Command buffer: {}", vulkanResultName(result)));
+        }
+        thread.buffers.push_back(buffer);
+        thread.lists.emplace_back(*this);
+    }
+    if (Result<void> begun = beginCommands(thread.buffers[thread.used]); !begun)
+    {
+        return Unexpected<Error>{begun.error()};
+    }
+    RhiCommandListVulkan& list = thread.lists[thread.used];
+    list.setCommandBuffer(thread.buffers[thread.used]);
+    ++thread.used;
+    return &list;
+}
+
+void RhiDeviceVulkan::recordSwapchainBarrier(VkCommandBuffer commands, const RhiSwapchainVulkan& swapchain,
+                                             bool toPresent)
 {
     VkImageMemoryBarrier2 barrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -569,7 +643,7 @@ void RhiDeviceVulkan::recordSwapchainBarrier(const RhiSwapchainVulkan& swapchain
     }
     const VkDependencyInfo dependency{
         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
-    vkCmdPipelineBarrier2(m_frames[m_frameIndex].commands, &dependency);
+    vkCmdPipelineBarrier2(commands, &dependency);
 }
 
 bool RhiDeviceVulkan::acquire(IRhiSwapchain& swapchain)
@@ -580,12 +654,12 @@ bool RhiDeviceVulkan::acquire(IRhiSwapchain& swapchain)
     {
         return false;
     }
-    recordSwapchainBarrier(target, false);
+    recordSwapchainBarrier(m_frames[m_frameIndex].commands, target, false);
     m_acquired.push_back(&target);
     return true;
 }
 
-Result<void> RhiDeviceVulkan::endFrame()
+Result<void> RhiDeviceVulkan::endFrame(std::span<IRhiCommandList* const> lists)
 {
     MEOW2_ASSERT(m_inFrame, "beginFrame() wasn't called");
     m_inFrame = false;
@@ -598,7 +672,7 @@ Result<void> RhiDeviceVulkan::endFrame()
     std::vector<std::uint32_t> imageIndices;
     for (const RhiSwapchainVulkan* swapchain : m_acquired)
     {
-        recordSwapchainBarrier(*swapchain, true);
+        recordSwapchainBarrier(frame.last, *swapchain, true);
         waits.push_back({.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                          .semaphore = swapchain->acquireSemaphore(m_frameIndex),
                          .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT});
@@ -609,9 +683,30 @@ Result<void> RhiDeviceVulkan::endFrame()
         swapchains.push_back(swapchain->handle());
         imageIndices.push_back(swapchain->imageIndex());
     }
-    if (const VkResult result = vkEndCommandBuffer(frame.commands); result != VK_SUCCESS)
+    MEOW2_ASSERT(!m_commandList.isOpen(), "The frame's list has rendering or a marker still open");
+    std::vector<VkCommandBuffer> buffers{frame.commands};
+    for (IRhiCommandList* list : lists)
     {
-        return fail(ErrorCode::Unknown, std::format("vkEndCommandBuffer: {}", vulkanResultName(result)));
+        const auto* recorded = static_cast<const RhiCommandListVulkan*>(list);
+        MEOW2_ASSERT(!recorded->isOpen(), "A list has rendering or a marker still open");
+        buffers.push_back(recorded->commandBuffer());
+    }
+    buffers.push_back(frame.last);
+    [[maybe_unused]] std::size_t recordedLists = 0;
+    for (const ThreadCommands& thread : frame.threads)
+    {
+        recordedLists += thread.used;
+    }
+    MEOW2_ASSERT(recordedLists == lists.size(), "endFrame() must get every list from commandList()");
+    std::vector<VkCommandBufferSubmitInfo> commands;
+    commands.reserve(buffers.size());
+    for (const VkCommandBuffer buffer : buffers)
+    {
+        if (const VkResult result = vkEndCommandBuffer(buffer); result != VK_SUCCESS)
+        {
+            return fail(ErrorCode::Unknown, std::format("vkEndCommandBuffer: {}", vulkanResultName(result)));
+        }
+        commands.push_back({.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, .commandBuffer = buffer});
     }
 
     frame.submittedValue = ++m_timelineValue;
@@ -619,13 +714,11 @@ Result<void> RhiDeviceVulkan::endFrame()
                        .semaphore = m_timeline,
                        .value = frame.submittedValue,
                        .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT});
-    const VkCommandBufferSubmitInfo commands{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-                                             .commandBuffer = frame.commands};
     const VkSubmitInfo2 submit{.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
                                .waitSemaphoreInfoCount = static_cast<std::uint32_t>(waits.size()),
                                .pWaitSemaphoreInfos = waits.data(),
-                               .commandBufferInfoCount = 1,
-                               .pCommandBufferInfos = &commands,
+                               .commandBufferInfoCount = static_cast<std::uint32_t>(commands.size()),
+                               .pCommandBufferInfos = commands.data(),
                                .signalSemaphoreInfoCount = static_cast<std::uint32_t>(signals.size()),
                                .pSignalSemaphoreInfos = signals.data()};
     const VkResult submitted = vkQueueSubmit2(m_queue, 1, &submit, VK_NULL_HANDLE);

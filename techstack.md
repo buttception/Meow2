@@ -493,7 +493,8 @@ The engine starts single-threaded but every module is written so it can run on w
 - Locks: `std::mutex` / `std::shared_mutex` with `std::scoped_lock`; never call into another subsystem or user callback while holding a lock; lock order documented where two locks are taken.
 - Atomics: `std::atomic` with the default (sequentially consistent) ordering unless a profiler shows a need, and then with a comment explaining the weaker ordering.
 - Logging is thread-safe (spdlog multi-threaded sinks); the Qt console sink marshals to the GUI thread.
-- RHI: command lists are recorded on any thread (one list per thread), submitted from one thread; resource creation on the device is thread-safe.
+- RHI: command lists are recorded on any thread (one list per job, one command pool per thread per frame in flight) and submitted from one thread, in an order the caller gives; resource creation on the device is thread-safe.
+- **Render graph** (owner decision 2026-11-07): compiled on the main thread, which fixes pass order and barriers; passes then record in parallel on jobs, one command list per pass or per group of small passes. One pass is never split across lists: Vulkan and D3D12 render passes don't span lists without extra machinery, and GPU-driven passes are few draws.
 - No mutable globals (§18) is the main threading rule: shared mutable state that isn't visible in a constructor is where data races hide.
 - **Sanitizers (M1):** compiler instrumentation that checks the program while the tests run.
   - **ASan** (AddressSanitizer): out-of-bounds access, use-after-free, double free, leaks.
@@ -727,3 +728,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-07 — Implementation notes moved to `docs/wiki/`; this file keeps decisions and rules. §11: debug tools (RenderDoc baseline, PIX and Nsight).
 - 2026-11-07 — §4: Vulkan-Headers, volk and VMA added (owner-approved).
 - 2026-11-07 — §11: heap bindings fixed and passed to DXC explicitly, because its default depends on what a shader declares.
+- 2026-11-07 — §19: command lists per job, parallel render graph recording (owner decision).

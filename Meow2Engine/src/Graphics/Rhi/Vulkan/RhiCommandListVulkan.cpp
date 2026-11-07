@@ -162,6 +162,28 @@ void RhiCommandListVulkan::setPipeline(PipelineHandle pipeline)
     vkCmdBindPipeline(m_commandBuffer, target.bindPoint, target.pipeline);
 }
 
+void RhiCommandListVulkan::beginMarker(const char* name)
+{
+    if (m_device.hasDebugUtils())
+    {
+        const VkDebugUtilsLabelEXT label{.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, .pLabelName = name};
+        vkCmdBeginDebugUtilsLabelEXT(m_commandBuffer, &label);
+    }
+    m_gpuZones.push(m_device.gpuProfiler(), m_commandBuffer, name);
+    ++m_openMarkers;
+}
+
+void RhiCommandListVulkan::endMarker()
+{
+    MEOW2_ASSERT(m_openMarkers > 0, "endMarker() without beginMarker()");
+    m_gpuZones.pop();
+    if (m_device.hasDebugUtils())
+    {
+        vkCmdEndDebugUtilsLabelEXT(m_commandBuffer);
+    }
+    --m_openMarkers;
+}
+
 void RhiCommandListVulkan::setPushConstants(const Shader::PushConstants& constants)
 {
     vkCmdPushConstants(m_commandBuffer, m_device.pipelineLayout(), VK_SHADER_STAGE_ALL, 0, sizeof(constants),

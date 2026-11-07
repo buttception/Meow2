@@ -48,6 +48,10 @@ struct GameLoopCallbacks
     /// @brief Once per frame with the frame's clamped delta in seconds (camera, animation, UI).
     std::function<void(double)> update{};
 
+    /// @brief Copies what the renderer needs out of the simulation, into a frame packet (techstack.md §23). After this,
+    /// the renderer reads only the packet.
+    std::function<void()> extract{};
+
     /// @brief Draws the frame. The parameter is alpha, 0..1: how far real time is between the last two fixed
     /// steps, for interpolating between their states.
     std::function<void(double)> render{};

@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include <Meow2/Core/Memory/MemTag.h>
 #include <Meow2/Graphics/Rhi/RhiHandle.h>
 #include <Meow2/Platform/Window/Window.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -88,10 +90,11 @@ using PipelineHandle = Handle<PipelineTag>; ///< A graphics or compute pipeline 
 /// @brief What to create a device with. Plain data.
 struct RhiDeviceDesc
 {
-    RhiBackend backend = RhiBackend::Vulkan;    ///< API to use.
-    std::string appName = "Meow2";              ///< Reported to the driver and to tools such as RenderDoc.
-    bool validation = false;                    ///< Enable the API's validation layer, if it's installed.
-    bool presentation = true;                   ///< False for a device that never opens a swapchain (headless).
+    RhiBackend backend = RhiBackend::Vulkan; ///< API to use.
+    std::string appName = "Meow2";           ///< Reported to the driver and to tools such as RenderDoc.
+    bool validation = false;                 ///< Enable the API's validation layer, if it's installed.
+    bool presentation = true;                ///< False for a device that never opens a swapchain (headless).
+    std::uint32_t recordingThreads = 1;      ///< Threads that may record at once: a command pool each, per frame slot.
     std::span<const std::byte> pipelineCache{}; ///< From IRhiDevice::pipelineCacheData(); ignored if from another GPU.
 };
 
@@ -109,9 +112,10 @@ struct RhiSwapchainDesc
 ///        and indirect arguments.
 struct BufferDesc
 {
-    std::uint64_t size = 0;                ///< Size in bytes; > 0.
-    RhiMemory memory = RhiMemory::GpuOnly; ///< Where it lives.
-    std::string name = "Buffer";           ///< Shown in debugging tools.
+    std::uint64_t size = 0;                   ///< Size in bytes; > 0.
+    RhiMemory memory = RhiMemory::GpuOnly;    ///< Where it lives.
+    Memory::MemTag tag = Memory::MemTag::Rhi; ///< What it counts under in GpuMemoryStats.
+    std::string name = "Buffer";              ///< Shown in debugging tools.
 };
 
 /// @brief What to create a texture with. Plain data. Every texture can be sampled and copied to and from.
@@ -123,6 +127,7 @@ struct TextureDesc
     std::uint32_t mipLevels = 1;              ///< Number of mip levels; >= 1.
     bool renderTarget = false;                ///< Can be drawn to (colour or depth, by its format).
     bool storage = false;                     ///< Can be written by shaders; gets a second heap slot.
+    Memory::MemTag tag = Memory::MemTag::Rhi; ///< What it counts under in GpuMemoryStats.
     std::string name = "Texture";             ///< Shown in debugging tools.
 };
 
@@ -177,6 +182,14 @@ struct ComputePipelineDesc
     std::span<const std::byte> code{}; ///< Compute shader bytecode for this device's backend.
     std::string entry = "csMain";      ///< Its entry point.
     std::string name = "Pipeline";     ///< Shown in debugging tools.
+};
+
+/// @brief How much GPU memory is in use. Plain data.
+struct GpuMemoryStats
+{
+    std::uint64_t usedBytes = 0;   ///< Everything this process uses, as the driver reports it.
+    std::uint64_t budgetBytes = 0; ///< What the OS says this process can use before things slow down.
+    std::array<std::uint64_t, Memory::c_memTagCount> bytesByTag{}; ///< Bytes of live buffers and textures, per MemTag.
 };
 
 /// @brief The GPU a device runs on. Plain data.
