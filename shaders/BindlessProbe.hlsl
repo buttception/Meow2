@@ -1,8 +1,6 @@
 // Proves the bindless contract compiles for both backends: a vertex shader that pulls its instance from a heap buffer,
-// a pixel shader that samples a texture picked by index, and a compute shader that writes through the heap.
+// a pixel shader that samples a texture and a sampler picked by index, and a compute shader that writes through the heap.
 #include "Common.hlsli"
-
-SamplerState g_sampler : register(s0);
 
 struct VertexOutput
 {
@@ -24,7 +22,7 @@ VertexOutput vsMain(uint vertexId : SV_VertexID)
 float4 psMain(VertexOutput input) : SV_Target
 {
     Texture2D<float4> albedo = ResourceDescriptorHeap[g_push.userData];
-    return albedo.Sample(g_sampler, input.uv);
+    return albedo.Sample(heapSampler(g_push.instance), input.uv);
 }
 
 [numthreads(64, 1, 1)]

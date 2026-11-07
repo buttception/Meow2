@@ -105,7 +105,7 @@ Result<std::span<const std::byte>> code = loaded->bytecode(*key, "psMain", Shade
 
 ## The build step
 
-Shaders live in `shaders/`, each with its `.meta`. A normal build cooks them all into `<build>/cooked/shaders/`: Debug builds cook with debug info, other configurations optimised.
+Shaders live in `shaders/`, each with its `.meta`. A normal build cooks them all into `<build>/bin/cooked/shaders/`: Debug builds cook with debug info, other configurations optimised.
 
 **To add a shader:**
 1. Write `shaders/Sky.hlsl`.
@@ -115,7 +115,7 @@ Shaders live in `shaders/`, each with its `.meta`. A normal build cooks them all
    ```
 3. Add its `[[entry]]` blocks to `Sky.hlsl.meta` and commit both files.
 
-The build runs `Meow2ShaderCompiler --source shaders --output <build>/cooked` every time. It's the tool, not CMake, that knows what changed, because only it can see `#include`s through the cache keys. With nothing to do it costs a few milliseconds per shader. A shader that doesn't compile fails the build, with `shaders/Sky.hlsl:12:5: error: …`.
+The build runs `Meow2ShaderCompiler --source shaders --output <build>/bin/cooked` every time. It's the tool, not CMake, that knows what changed, because only it can see `#include`s through the cache keys. With nothing to do it costs a few milliseconds per shader. A shader that doesn't compile fails the build, with `shaders/Sky.hlsl:12:5: error: …`.
 
 `meow2_add_shaders(<target> SOURCE_DIR <folder> OUTPUT_DIR <folder>)` (`cmake/Meow2Shaders.cmake`) adds the same step for another folder. Other tool options are `--debug` and `--force`.
 
@@ -172,8 +172,10 @@ auto onReload = events.subscribe<Assets::ShaderReloaded>([&](const auto& e) { re
 
 See also: techstack.md §4, §12.
 
+Heap bindings are fixed: on Vulkan, binding 0 is `SamplerDescriptorHeap` and binding 1 is `ResourceDescriptorHeap`, passed to DXC with `-fvk-bind-sampler-heap` and `-fvk-bind-resource-heap`. Left alone, DXC picks the binding from what a shader declares, so a shader with no sampler would stop matching the one layout every pipeline shares. Samplers come from the heap too, with `heapSampler(index)`; slot 0 is linear filtering with repeat addressing.
+
 ## Implementation summary
 
 - `ShaderCompiler` (`Meow2/Graphics/Shader/`): DXC loaded at runtime through `SharedLibrary`, SM 6.6, HLSL 2021, `-Zpr`, `-fvk-use-dx-layout`, includes through the VFS.
-- `Meow2ShaderCompiler` and `meow2_add_shaders()`: cooks `shaders/` into `<build>/cooked/` on every build (the cache keys make that cheap); `--import` writes a new `.meta`.
+- `Meow2ShaderCompiler` and `meow2_add_shaders()`: cooks `shaders/` into `<build>/bin/cooked/` on every build (the cache keys make that cheap); `--import` writes a new `.meta`.
 - `shaders/Common.hlsli` and `Meow2Shared.hlsli` (with `Meow2/Graphics/Shader/BindlessLayout.h`): 16 bytes of push constants, `ResourceDescriptorHeap`, structs compiled by C++ and HLSL with size checks on both sides; `spirv-val` in CI.

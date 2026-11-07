@@ -1,0 +1,146 @@
+/// @file
+/// @brief PipelineLibrary: building pipelines from shader assets.
+
+#include "Meow2/Graphics/Renderer/PipelineLibrary.h"
+
+#include "Meow2/Core/Assert.h"
+
+#include <format>
+#include <memory>
+#include <span>
+#include <utility>
+
+namespace Meow2::Renderer
+{
+namespace
+{
+/// @brief The bytecode format of a device's backend.
+/// @param backend The backend.
+/// @return The target.
+Shader::ShaderTarget targetOf(Rhi::RhiBackend backend)
+{
+    return backend == Rhi::RhiBackend::D3D12 ? Shader::ShaderTarget::Dxil : Shader::ShaderTarget::Spirv;
+}
+} // namespace
+
+PipelineLibrary::PipelineLibrary(const PipelineLibraryDeps& deps)
+    : m_deps(deps)
+    , m_onReload(
+          deps.events.subscribe<Assets::ShaderReloaded>([this](const Assets::ShaderReloaded& e) { rebuild(e.id); }))
+{
+}
+
+PipelineLibrary::~PipelineLibrary()
+{
+    for (const Entry& entry : m_entries)
+    {
+        m_deps.device.destroy(entry.handle);
+    }
+}
+
+Result<Rhi::PipelineHandle> PipelineLibrary::build(const Entry& entry)
+{
+    const AssetId shaderId = entry.compute ? entry.computeRequest.shader : entry.graphics.shader;
+    Result<Assets::AssetHandle<Assets::ShaderAsset>> handle = m_deps.assets.load<Assets::ShaderAsset>(shaderId);
+    if (!handle)
+    {
+        return Unexpected<Error>{handle.error()};
+    }
+    const std::shared_ptr<const Assets::ShaderAsset> shader = handle->get();
+    const std::span<const Assets::ShaderOptionChoice> options =
+        entry.compute ? std::span<const Assets::ShaderOptionChoice>{entry.computeRequest.options}
+                      : std::span<const Assets::ShaderOptionChoice>{entry.graphics.options};
+    Result<Assets::ShaderVariantKey> key = Assets::variantKey(shader->meta(), options);
+    if (!key)
+    {
+        return Unexpected<Error>{key.error()};
+    }
+    const Shader::ShaderTarget target = targetOf(m_deps.device.backend());
+    if (entry.compute)
+    {
+        Result<std::span<const std::byte>> code = shader->bytecode(*key, entry.computeRequest.entry, target);
+        if (!code)
+        {
+            return Unexpected<Error>{code.error()};
+        }
+        return m_deps.device.createComputePipeline(
+            {.code = *code, .entry = entry.computeRequest.entry, .name = entry.computeRequest.name});
+    }
+
+    const GraphicsPipelineRequest& request = entry.graphics;
+    Result<std::span<const std::byte>> vertex = shader->bytecode(*key, request.vertexEntry, target);
+    if (!vertex)
+    {
+        return Unexpected<Error>{vertex.error()};
+    }
+    Result<std::span<const std::byte>> pixel = shader->bytecode(*key, request.pixelEntry, target);
+    if (!pixel)
+    {
+        return Unexpected<Error>{pixel.error()};
+    }
+    return m_deps.device.createGraphicsPipeline({.vertexCode = *vertex,
+                                                 .vertexEntry = request.vertexEntry,
+                                                 .pixelCode = *pixel,
+                                                 .pixelEntry = request.pixelEntry,
+                                                 .colorFormat = request.colorFormat,
+                                                 .depthFormat = request.depthFormat,
+                                                 .depthWrite = request.depthWrite,
+                                                 .cull = request.cull,
+                                                 .name = request.name});
+}
+
+Result<PipelineId> PipelineLibrary::add(GraphicsPipelineRequest request)
+{
+    Entry entry;
+    entry.graphics = std::move(request);
+    Result<Rhi::PipelineHandle> pipeline = build(entry);
+    if (!pipeline)
+    {
+        return Unexpected<Error>{pipeline.error()};
+    }
+    entry.handle = *pipeline;
+    m_entries.push_back(std::move(entry));
+    return PipelineId{.index = static_cast<std::uint32_t>(m_entries.size() - 1)};
+}
+
+Result<PipelineId> PipelineLibrary::add(ComputePipelineRequest request)
+{
+    Entry entry;
+    entry.compute = true;
+    entry.computeRequest = std::move(request);
+    Result<Rhi::PipelineHandle> pipeline = build(entry);
+    if (!pipeline)
+    {
+        return Unexpected<Error>{pipeline.error()};
+    }
+    entry.handle = *pipeline;
+    m_entries.push_back(std::move(entry));
+    return PipelineId{.index = static_cast<std::uint32_t>(m_entries.size() - 1)};
+}
+
+Rhi::PipelineHandle PipelineLibrary::get(PipelineId id) const
+{
+    MEOW2_ASSERT(id.index < m_entries.size(), "This PipelineId isn't from this library");
+    return m_entries[id.index].handle;
+}
+
+void PipelineLibrary::rebuild(AssetId shader)
+{
+    for (Entry& entry : m_entries)
+    {
+        if ((entry.compute ? entry.computeRequest.shader : entry.graphics.shader) != shader)
+        {
+            continue;
+        }
+        Result<Rhi::PipelineHandle> pipeline = build(entry);
+        if (!pipeline)
+        {
+            MEOW2_LOG_ERROR(m_deps.log, "Keeping the old pipeline '{}': {}",
+                            entry.compute ? entry.computeRequest.name : entry.graphics.name, pipeline.error());
+            continue;
+        }
+        m_deps.device.destroy(entry.handle); // deferred: frames in flight may still use it
+        entry.handle = *pipeline;
+    }
+}
+} // namespace Meow2::Renderer

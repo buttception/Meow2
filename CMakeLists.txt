@@ -80,13 +80,16 @@ include(Meow2Docs)
 include(Meow2GitHooks)
 
 # ---- Projects ---------------------------------------------------------------
+set(MEOW2_COOKED_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/cooked")
 add_subdirectory(Meow2Engine)
 
 if(MEOW2_SHADER_TOOLS)
     add_subdirectory(Meow2ShaderCompiler)
     meow2_add_shaders(Meow2Shaders
         SOURCE_DIR "${PROJECT_SOURCE_DIR}/shaders"
-        OUTPUT_DIR "${PROJECT_BINARY_DIR}/cooked")
+        OUTPUT_DIR "${MEOW2_COOKED_DIR}")
+    # Next to the exes, where they're found at runtime, and in the release zip.
+    install(DIRECTORY "${MEOW2_COOKED_DIR}" DESTINATION ${MEOW2_INSTALL_DIR} OPTIONAL)
 endif()
 
 if(MEOW2_BUILD_EDITOR)

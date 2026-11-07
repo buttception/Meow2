@@ -78,7 +78,8 @@ protected:
         {
             if (m_device->acquire(swapchain))
             {
-                (*list)->clearSwapchain(swapchain, Math::Color{.r = 0.1F, .g = 0.2F, .b = 0.4F});
+                (*list)->beginRendering(swapchain, Math::Color{.r = 0.1F, .g = 0.2F, .b = 0.4F});
+                (*list)->endRendering();
             }
         };
         (clear(swapchains), ...);

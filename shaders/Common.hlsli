@@ -18,6 +18,13 @@ ByteAddressBuffer heapBuffer(uint index)
     return buffer;
 }
 
+/// A sampler from the sampler heap. Slot 0 is linear filtering with repeat addressing.
+SamplerState heapSampler(uint index)
+{
+    SamplerState sampler = SamplerDescriptorHeap[index];
+    return sampler;
+}
+
 /// The frame's constants.
 FrameConstants frameConstants()
 {
