@@ -181,6 +181,11 @@ void OffscreenTarget::end(Rhi::IRhiCommandList& list)
 {
     list.endRendering();
     list.barrier(m_texture, Rhi::ResourceState::ColorTarget, Rhi::ResourceState::CopySource);
+    copyToCpu(list);
+}
+
+void OffscreenTarget::copyToCpu(Rhi::IRhiCommandList& list)
+{
     list.copyTextureToBuffer(m_texture, m_readback);
     list.barrier(m_readback, Rhi::ResourceState::CopyTarget, Rhi::ResourceState::HostRead);
 }

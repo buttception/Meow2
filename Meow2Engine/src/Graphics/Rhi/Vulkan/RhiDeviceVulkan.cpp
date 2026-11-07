@@ -107,7 +107,8 @@ VulkanGpuFacts readGpuFacts(VkPhysicalDevice gpu, const VkPhysicalDeviceProperti
     facts.timelineSemaphore = features.v12.timelineSemaphore != VK_FALSE;
     facts.bufferDeviceAddress = features.v12.bufferDeviceAddress != VK_FALSE;
     facts.mutableDescriptorType = features.mutableDescriptor.mutableDescriptorType != VK_FALSE;
-    facts.multiDrawIndirect = features.core.features.multiDrawIndirect != VK_FALSE;
+    facts.multiDrawIndirect = features.core.features.multiDrawIndirect != VK_FALSE &&
+                              features.core.features.drawIndirectFirstInstance != VK_FALSE;
     facts.drawIndirectCount = features.v12.drawIndirectCount != VK_FALSE;
     facts.shaderInt64 = features.core.features.shaderInt64 != VK_FALSE;
     facts.bindlessDescriptors = features.core.features.shaderSampledImageArrayDynamicIndexing != VK_FALSE &&
@@ -373,6 +374,7 @@ Result<void> RhiDeviceVulkan::createDevice(const RhiDeviceDesc& desc)
     m_recordingThreads = desc.recordingThreads;
     DeviceFeatures features;
     features.core.features.multiDrawIndirect = VK_TRUE;
+    features.core.features.drawIndirectFirstInstance = VK_TRUE; // firstInstance carries the instance index
     features.core.features.shaderInt64 = VK_TRUE;
     features.core.features.samplerAnisotropy = VK_TRUE;
     features.core.features.fragmentStoresAndAtomics = VK_TRUE;

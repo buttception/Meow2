@@ -109,6 +109,12 @@ void RhiCommandListVulkan::startRendering(const VkRenderingAttachmentInfo& color
 
 void RhiCommandListVulkan::beginRendering(IRhiSwapchain& swapchain, std::optional<Math::Color> clear)
 {
+    beginRendering(swapchain, clear, TextureHandle{}, std::nullopt);
+}
+
+void RhiCommandListVulkan::beginRendering(IRhiSwapchain& swapchain, std::optional<Math::Color> clear,
+                                          TextureHandle depth, std::optional<float> clearDepth)
+{
     auto& target = static_cast<RhiSwapchainVulkan&>(swapchain);
     MEOW2_ASSERT(target.isAcquired(), "acquire() must return true before drawing to a swapchain");
     VkRenderingAttachmentInfo attachment{.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -120,7 +126,17 @@ void RhiCommandListVulkan::beginRendering(IRhiSwapchain& swapchain, std::optiona
     {
         attachment.clearValue.color = {{clear->r, clear->g, clear->b, clear->a}};
     }
-    startRendering(attachment, nullptr, target.extent());
+    VkRenderingAttachmentInfo depthAttachment{};
+    if (depth.isSet())
+    {
+        depthAttachment = {.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                           .imageView = m_device.texture(depth).view,
+                           .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                           .loadOp = loadOp(clearDepth.has_value()),
+                           .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
+        depthAttachment.clearValue.depthStencil = {.depth = clearDepth.value_or(0.0F), .stencil = 0};
+    }
+    startRendering(attachment, depth.isSet() ? &depthAttachment : nullptr, target.extent());
 }
 
 void RhiCommandListVulkan::beginRendering(const RenderTargets& targets)
@@ -194,6 +210,19 @@ void RhiCommandListVulkan::draw(std::uint32_t vertexCount, std::uint32_t instanc
 {
     MEOW2_ASSERT(m_rendering, "draw() outside beginRendering()");
     vkCmdDraw(m_commandBuffer, vertexCount, instanceCount, 0, 0);
+}
+
+void RhiCommandListVulkan::drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws)
+{
+    MEOW2_ASSERT(m_rendering, "drawIndirectCount() outside beginRendering()");
+    vkCmdDrawIndirectCount(m_commandBuffer, m_device.buffer(draws).buffer, 0, m_device.buffer(count).buffer, 0,
+                           maxDraws, sizeof(Shader::IndirectDraw));
+}
+
+void RhiCommandListVulkan::fillBuffer(BufferHandle buffer, std::uint32_t value)
+{
+    MEOW2_ASSERT(!m_rendering, "fillBuffer() inside beginRendering()");
+    vkCmdFillBuffer(m_commandBuffer, m_device.buffer(buffer).buffer, 0, VK_WHOLE_SIZE, value);
 }
 
 void RhiCommandListVulkan::dispatch(std::uint32_t x, std::uint32_t y, std::uint32_t z)

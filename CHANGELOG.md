@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Render graph: automatic barriers and passes recorded in parallel on jobs. GPU-driven drawing: compute frustum culling, indirect draws with a count buffer and vertex pulling. Meow2Renderer draws about 100,000 cubes this way (#164).
 - `rhi.renderDoc`: Meow2Renderer loads RenderDoc itself, and F11 captures a frame and opens it in the RenderDoc window (#162).
 - Frame infrastructure: `FrameArena`, `UploadRing`, `ReadbackQueue`, `OffscreenTarget`, a `FramePacket` with an `extract` phase in the game loop, command lists recorded on several jobs at once, pass markers, Tracy GPU zones, GPU memory stats per tag, and frame capture from inside the app when launched from RenderDoc (F11 in Meow2Renderer) (#160).
 - RHI: buffers, textures, samplers, a bindless heap, explicit barriers, graphics and compute pipelines with a cache on disk, and `PipelineLibrary`, which rebuilds pipelines when a shader is reloaded. Meow2Renderer draws a triangle whose vertices come through the heap (#158).
