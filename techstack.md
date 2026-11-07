@@ -328,7 +328,8 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
   1. A switch is requested; it runs at the next frame boundary.
   2. Wait for the GPU to go idle, then destroy every GPU object, the swapchain and the device.
   3. Create the new device and swapchain on the **same window**.
-  4. Recreate all GPU resources from their **CPU-side descriptions** (the renderer keeps a resource registry). Shaders are already compiled for both (DXIL + SPIR-V).
+  4. Recreate all GPU resources from their **CPU-side descriptions**. The registry is `Renderer::RenderDevice`'s list of device users: each owner of GPU objects releases them and makes them again from what it kept, because data derived from handles (a mesh record's heap indices) can only be rebuilt by its owner. Shaders are already compiled for both (DXIL + SPIR-V).
+  5. A switch that fails (no device, or an owner can't restore) goes back to the old backend, so the app keeps running.
   - Rule this implies: nothing above the RHI may cache backend-native handles or pointers. Only engine handles, which are re-bound after the swap.
   - It costs a hitch of seconds, not a seamless switch. That is fine for comparing backends in Meow2Renderer.
 - **Bindless and GPU-driven** (owner decision 2026-11-06): one global descriptor heap and one fixed binding layout (Vulkan: set 0, binding 0 the sampler heap, binding 1 the mutable resource heap, passed to DXC explicitly); shaders get indices through push constants and index `ResourceDescriptorHeap`. On Vulkan DXC emulates that with descriptor indexing and `VK_EXT_mutable_descriptor_type`; on D3D12 it needs SM 6.6. Drawing is indirect with a count buffer, vertices are pulled from buffers, culling runs in compute. Older GPUs and Android need a check before M12.
@@ -734,3 +735,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-07 — §19: command lists per job, parallel render graph recording (owner decision).
 - 2026-11-07 — §4: RenderDoc's in-app API header added (owner-approved).
 - 2026-11-07 — §4/§11: D3D12 backend: DirectX-Headers and D3D12MA added, the Agility SDK shipped next to each app (owner decision); enhanced barriers and tightly packed copies required.
+- 2026-11-07 — §11: hot swap implemented: `RenderDevice` device users are the resource registry; a failed switch goes back.

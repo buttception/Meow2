@@ -146,7 +146,7 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 
 **Not in M4:** GPU pipelines or running a shader (M5); glTF and textures as assets (M7, on the same asset core); the material system; a custom shader language; SPIRV-Reflect (bindless has one fixed binding layout, so reflection isn't needed; add it if a user appears).
 
-## M5 — RHI 🟨
+## M5 — RHI ✅
 **Goal:** draw through one interface on Vulkan and D3D12, bindless and GPU-driven from the start, and switch between them while running.
 **Depends on:** M2, M3, M4
 
@@ -180,10 +180,12 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 | 5 | Everything above on D3D12, the same shared tests on both backends; PIX markers | §11 | ✅ | #165 / PR #166 |
 | 5 | Device loss reports: DRED on D3D12, `VK_EXT_device_fault` on Vulkan | §8 | ✅ | #165 / PR #166 |
 | 5 | Look into capturing from the app with PIX (D3D12) and Nsight Graphics (NVIDIA), as with RenderDoc; each needs its own SDK or library approved first | §11 | ✅ | #165 / PR #166 |
-| 6 Hot swap and close | Resource registry, recreate from CPU descriptions, swap on the same window | §11 | ⬜ | |
-| 6 | Closing PR bumps the version to **0.6.0** | §21 | ⬜ | |
+| 6 Hot swap and close | Resource registry, recreate from CPU descriptions, swap on the same window | §11 | ✅ | #167 / PR #168 |
+| 6 | Closing PR bumps the version to **0.6.0** | §21 | ✅ | #167 / PR #168 |
 
 **Done when:** the same scene renders on both backends with validation clean; 100k instances are culled in compute and drawn indirectly; a second run creates pipelines from the cache; a Vulkan ↔ D3D12 swap works while running; readback returns the right pixels; a RenderDoc capture of a bindless frame opens and shows named passes.
+
+**Released as `v0.6.0`** once PR #168 is merged and tagged (with the owner's go-ahead).
 
 **Not in M5:** mesh shaders and meshlets (M7), ray tracing, HZB occlusion culling, HDR output, async compute.
 
@@ -269,3 +271,4 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 - 2026-11-07 — M5 PR 3 gains command lists per job thread, and PR 4's render graph records passes in parallel (owner decision).
 - 2026-11-07 — Owner request: capture buttons and a debug-tool settings window in Renderer (M6) and Editor (M9), saved to the TOML config; PIX and Nsight in-app capture to look into with D3D12 (M5 PR 5).
 - 2026-11-07 — M5 PR 5 done: D3D12 with the Agility SDK (owner decision), DRED and `VK_EXT_device_fault`.
+- 2026-11-07 — M5 done (0.6.0): hot swap between Vulkan and D3D12.

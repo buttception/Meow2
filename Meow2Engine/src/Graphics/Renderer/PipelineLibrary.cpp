@@ -25,6 +25,39 @@ Shader::ShaderTarget targetOf(Rhi::RhiBackend backend)
 
 PipelineLibrary::PipelineLibrary(const PipelineLibraryDeps& deps)
     : m_deps(deps)
+    , m_deviceUser(deps.device.addUser(
+          "Pipelines",
+          [this](Rhi::IRhiDevice& device)
+          {
+              for (Entry& entry : m_entries)
+              {
+                  device.destroy(entry.handle);
+                  entry.handle = {};
+              }
+          },
+          [this](Rhi::IRhiDevice& device) -> Result<void>
+          {
+              // build() uses the new device, which RenderDevice has made current already.
+              for (Entry& entry : m_entries)
+              {
+                  Result<Rhi::PipelineHandle> pipeline = build(entry);
+                  if (!pipeline)
+                  {
+                      // A failed restore isn't released, so destroy what this one did build.
+                      for (Entry& built : m_entries)
+                      {
+                          device.destroy(built.handle);
+                          built.handle = {};
+                      }
+                      return fail(pipeline.error().code,
+                                  std::format("'{}': {}",
+                                              entry.compute ? entry.computeRequest.name : entry.graphics.name,
+                                              pipeline.error().message));
+                  }
+                  entry.handle = *pipeline;
+              }
+              return {};
+          }))
     , m_onReload(
           deps.events.subscribe<Assets::ShaderReloaded>([this](const Assets::ShaderReloaded& e) { rebuild(e.id); }))
 {
@@ -32,9 +65,13 @@ PipelineLibrary::PipelineLibrary(const PipelineLibraryDeps& deps)
 
 PipelineLibrary::~PipelineLibrary()
 {
+    if (!m_deps.device.hasDevice())
+    {
+        return;
+    }
     for (const Entry& entry : m_entries)
     {
-        m_deps.device.destroy(entry.handle);
+        m_deps.device.device().destroy(entry.handle);
     }
 }
 
@@ -63,7 +100,7 @@ Result<Rhi::PipelineHandle> PipelineLibrary::build(const Entry& entry)
         {
             return Unexpected<Error>{code.error()};
         }
-        return m_deps.device.createComputePipeline(
+        return m_deps.device.device().createComputePipeline(
             {.code = *code, .entry = entry.computeRequest.entry, .name = entry.computeRequest.name});
     }
 
@@ -78,15 +115,15 @@ Result<Rhi::PipelineHandle> PipelineLibrary::build(const Entry& entry)
     {
         return Unexpected<Error>{pixel.error()};
     }
-    return m_deps.device.createGraphicsPipeline({.vertexCode = *vertex,
-                                                 .vertexEntry = request.vertexEntry,
-                                                 .pixelCode = *pixel,
-                                                 .pixelEntry = request.pixelEntry,
-                                                 .colorFormat = request.colorFormat,
-                                                 .depthFormat = request.depthFormat,
-                                                 .depthWrite = request.depthWrite,
-                                                 .cull = request.cull,
-                                                 .name = request.name});
+    return m_deps.device.device().createGraphicsPipeline({.vertexCode = *vertex,
+                                                          .vertexEntry = request.vertexEntry,
+                                                          .pixelCode = *pixel,
+                                                          .pixelEntry = request.pixelEntry,
+                                                          .colorFormat = request.colorFormat,
+                                                          .depthFormat = request.depthFormat,
+                                                          .depthWrite = request.depthWrite,
+                                                          .cull = request.cull,
+                                                          .name = request.name});
 }
 
 Result<PipelineId> PipelineLibrary::add(GraphicsPipelineRequest request)
@@ -139,7 +176,7 @@ void PipelineLibrary::rebuild(AssetId shader)
                             entry.compute ? entry.computeRequest.name : entry.graphics.name, pipeline.error());
             continue;
         }
-        m_deps.device.destroy(entry.handle); // deferred: frames in flight may still use it
+        m_deps.device.device().destroy(entry.handle); // deferred: frames in flight may still use it
         entry.handle = *pipeline;
     }
 }

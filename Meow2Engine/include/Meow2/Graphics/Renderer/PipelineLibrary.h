@@ -9,6 +9,7 @@
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Log/Logger.h>
 #include <Meow2/Core/Result.h>
+#include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 
 #include <cstdint>
@@ -49,7 +50,7 @@ struct PipelineId
 /// @brief What PipelineLibrary uses. Plain data; everything must outlive it.
 struct PipelineLibraryDeps
 {
-    Rhi::IRhiDevice& device;      ///< Creates the pipelines.
+    RenderDevice& device;         ///< Creates the pipelines, on whichever backend is running.
     Assets::AssetManager& assets; ///< Holds the shaders.
     Events::EventBus& events;     ///< Sends Assets::ShaderReloaded.
     Log::Logger& log;             ///< Receives rebuild errors.
@@ -61,6 +62,9 @@ struct PipelineLibraryDeps
 /// library remembers each request, and on Assets::ShaderReloaded it rebuilds everything that uses that shader. A
 /// rebuild that fails logs the error and keeps the old pipeline, so a running app never loses a pass. Callers keep a
 /// PipelineId and ask for the current handle each frame.
+///
+/// It's a RenderDevice user: when the backend changes it builds every pipeline again from its request, with that
+/// backend's bytecode.
 /// @par Thread safety
 /// Not thread-safe. Use on the thread that dispatches events.
 class PipelineLibrary
@@ -113,6 +117,7 @@ private:
 
     PipelineLibraryDeps m_deps;
     std::vector<Entry> m_entries;
+    DeviceUser m_deviceUser;         ///< Releases and rebuilds the pipelines when the backend changes.
     Events::Subscription m_onReload; ///< Last: it stops calling back before the members it uses go away.
 };
 } // namespace Meow2::Renderer
