@@ -2,7 +2,7 @@
 
 `#include <Meow2/Assets/AssetManager.h>`: finds assets by a stable ID and keeps one loaded copy of each.
 
-- Status: 🟨 M4. Asset core (#139) done. Shaders are the first asset type; meshes and textures come with M7.
+- Status: ✅ M4 (0.5.0). Asset core (#139) done. Shaders are the first asset type; meshes and textures come with M7.
 
 ## Source, `.meta`, cooked file
 

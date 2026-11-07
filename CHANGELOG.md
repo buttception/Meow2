@@ -8,6 +8,8 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-11-06
+
 ### Added
 - Shaders: hot reload recompiles a shader on a job when its source, `.meta` or includes change while an app runs; a broken edit keeps the old shader and reports file and line (#150).
 - Shaders: the bindless contract every shader follows, with one binding layout for the whole engine and structs compiled by both C++ and HLSL so they can't drift apart (#148).
@@ -19,6 +21,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - Shaders: the build downloads a pinned DXC (v1.9.2609) and checks its hash, so every machine compiles shaders with the same compiler (#136).
 
 ### Changed
+- Roadmap: M4 (shaders and assets) is done (version 0.5.0) (#152).
 - Roadmap: M4 is now "Shaders and assets", a feature table with an asset core, shader permutations and a bindless, GPU-driven direction for the renderer; editor picking moves to the GPU (#134).
 
 ## [0.4.0] — 2026-11-06

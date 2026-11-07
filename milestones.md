@@ -122,7 +122,7 @@ Rough order: DirectXMath + types → SIMD baseline → scalar helpers, random nu
 
 **Not in M3:** noise (Perlin/simplex): most noise is generated on the GPU in shaders; a CPU version comes with the first CPU user (terrain heights for physics, camera shake, procedural placement). Large-world precision: see techstack §10; only the cheap parts (camera-relative rendering, one `WorldPosition` type) are planned now.
 
-## M4 — Shaders and assets 🟨
+## M4 — Shaders and assets ✅
 **Goal:** one HLSL source compiled to DXIL and SPIR-V, managed as assets (source → cooked object) with permutations and macros set in one place, built by CMake, reloadable while an app runs, and ready for a bindless, GPU-driven renderer.
 **Depends on:** M2 (file system, IDs, events), M1 (jobs, config)
 
@@ -138,9 +138,11 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 | Build step: `Meow2ShaderCompiler` tool, `meow2_add_shaders()` in CMake, `shaders/` folder; only changed shaders recook | §12 | ✅ | #145 / PR #146 |
 | Bindless contract: `Common.hlsli`, heap access through `ResourceDescriptorHeap`, push-constant layout, structs shared between C++ and HLSL with size checks | §11, §12 | ✅ | #147 / PR #148 |
 | Hot reload: watch sources and `.meta` files, recompile on a job, `ShaderReloaded` on the `EventBus`; a failed compile keeps the old shader | §12, §22 | ✅ | #149 / PR #150 |
-| Closing PR bumps the version to **0.5.0** | §21 | ⬜ | |
+| Closing PR bumps the version to **0.5.0** | §21 | ✅ | #151 / PR #152 |
 
 **Done when:** one shader with permutations cooks to DXIL and SPIR-V on Windows and to SPIR-V on Linux CI; the SPIR-V passes `spirv-val`; the same bindless HLSL compiles for both targets; editing an included file recooks only what depends on it, and a second cook does nothing; Player loads a `.m2shader` with no DXC present; a broken edit during hot reload logs file and line and keeps the old shader.
+
+**Released as `v0.5.0`** (tag on the merge of PR #152, with the owner's go-ahead). DXC isn't in the release zip yet: `dxil.dll`'s licence refers to a distributables list the release doesn't contain.
 
 **Not in M4:** GPU pipelines or running a shader (M5); glTF and textures as assets (M7, on the same asset core); the material system; a custom shader language; SPIRV-Reflect (bindless has one fixed binding layout, so reflection isn't needed; add it if a user appears).
 
@@ -234,3 +236,4 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 - 2026-11-05 — M2 done (0.3.0); M3 (Math) expanded into a feature table with a "done when": types and helpers, SIMD baseline and batches, random numbers, colours, quaternions, transforms, easing and splines, projections, camera, bounds and culling, rays, vertex packing, transform hierarchy; DirectXMath submodule and the SIMD baseline pending owner decisions.
 - 2026-11-05 — M3 done (0.4.0): every row implemented as a stack of PRs (#108–#132).
 - 2026-11-06 — M4 is now "Shaders and assets", a feature table: DXC pinned, `ShaderCompiler`, asset core, shader assets and permutations, cooker, build step, bindless contract, hot reload. M5 gains bindless, GPU-driven drawing, readback and pipeline caching; M7's GPU scene is the main path; M9 gains GPU picking.
+- 2026-11-06 — M4 done (0.5.0): every row implemented as a stack of PRs (#134–#152).

@@ -2,7 +2,7 @@
 
 Shaders are written in HLSL and compiled with [DXC](https://github.com/microsoft/DirectXShaderCompiler) to DXIL (D3D12) and SPIR-V (Vulkan).
 
-- Status: 🟨 M4. DXC dependency (#135), `ShaderCompiler` (#137), shader settings and permutations (#141), cooking (#143), the build step (#145), the bindless contract (#147), hot reload (#149) done.
+- Status: ✅ M4 (0.5.0). DXC dependency (#135), `ShaderCompiler` (#137), shader settings and permutations (#141), cooking (#143), the build step (#145), the bindless contract (#147), hot reload (#149) done.
 
 ## DXC
 
