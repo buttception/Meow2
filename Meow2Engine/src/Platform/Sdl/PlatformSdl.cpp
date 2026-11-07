@@ -107,6 +107,11 @@ Platform::Impl& sdlPlatformImpl(Platform& platform)
     return *platform.m_impl;
 }
 
+void showErrorDialog(const std::string& title, const std::string& message)
+{
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title.c_str(), message.c_str(), nullptr);
+}
+
 Platform::Platform(std::unique_ptr<Impl> impl)
     : m_impl(std::move(impl))
 {

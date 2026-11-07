@@ -1,6 +1,6 @@
 /// @file
 /// @brief Meow2Renderer entry point (composition root). Sets up logging, crash dumps and settings,
-///        prints its name and the engine version (checked by the smoke tests) and opens its window.
+///        prints its name and the engine version (checked by the smoke tests), opens its window and clears it.
 
 #include <Meow2/Core/Config/Config.h>
 #include <Meow2/Core/CpuFeatures.h>
@@ -17,6 +17,8 @@
 #include <Meow2/Core/Time/GameLoop.h>
 #include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
+#include <Meow2/Graphics/Rhi/IRhiDevice.h>
+#include <Meow2/Math/Color.h>
 #include <Meow2/Platform/Input/InputSystem.h>
 #include <Meow2/Platform/Input/SdlGamepadSource.h>
 #include <Meow2/Platform/Input/SdlInputSource.h>
@@ -29,6 +31,8 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
+#include <utility>
 
 int main(int argc, char** argv)
 {
@@ -117,7 +121,70 @@ int main(int argc, char** argv)
             }
         });
 
-    // The game loop (techstack.md §23): events, fixedUpdate × n, update, render. Nothing to simulate or draw yet.
+    // The GPU (techstack.md §11). SDL's offscreen driver has no window to draw to, so smoke runs and CI need no GPU.
+    Meow2::Log::Logger rhiLog = logSystem.createLogger("RHI");
+    std::unique_ptr<Meow2::Rhi::IRhiDevice> device;
+    std::unique_ptr<Meow2::Rhi::IRhiSwapchain> swapchain; // destroyed first: declared after the device
+    if (const Meow2::Platform::NativeWindowHandle nativeWindow = window->nativeHandle();
+        nativeWindow.type != Meow2::Platform::NativeWindowType::None)
+    {
+        const bool validationByDefault = MEOW2_CONFIG_RELEASE == 0;
+        Meow2::Result<std::unique_ptr<Meow2::Rhi::IRhiDevice>> createdDevice = Meow2::Rhi::createRhiDevice(
+            {.appName = "Meow2Renderer", .validation = config.getBool("rhi.validation", validationByDefault)}, rhiLog);
+        if (!createdDevice)
+        {
+            MEOW2_LOG_ERROR(appLog, "Can't start the GPU: {}", createdDevice.error());
+            Meow2::Platform::showErrorDialog("Meow2Renderer", createdDevice.error().message);
+            return 1;
+        }
+        device = std::move(*createdDevice);
+        Meow2::Result<std::unique_ptr<Meow2::Rhi::IRhiSwapchain>> createdSwapchain =
+            device->createSwapchain({.window = nativeWindow,
+                                     .width = static_cast<std::uint32_t>(window->pixelWidth()),
+                                     .height = static_cast<std::uint32_t>(window->pixelHeight()),
+                                     .vsync = config.getBool("rhi.vsync", true),
+                                     .name = "Main window"});
+        if (!createdSwapchain)
+        {
+            MEOW2_LOG_ERROR(appLog, "Can't draw to the window: {}", createdSwapchain.error());
+            Meow2::Platform::showErrorDialog("Meow2Renderer", createdSwapchain.error().message);
+            return 1;
+        }
+        swapchain = std::move(*createdSwapchain);
+    }
+
+    // One frame of drawing: for now, a cleared window. Returns false if the GPU stopped working.
+    const auto renderFrame = [&device, &swapchain, &window, &appLog]
+    {
+        const auto width = static_cast<std::uint32_t>(window->pixelWidth());
+        const auto height = static_cast<std::uint32_t>(window->pixelHeight());
+        if (swapchain->needsResize() || width != swapchain->width() || height != swapchain->height())
+        {
+            if (const Meow2::Result<void> resized = swapchain->resize(width, height); !resized)
+            {
+                MEOW2_LOG_ERROR(appLog, "Can't resize the swapchain: {}", resized.error());
+                return false;
+            }
+        }
+        Meow2::Result<Meow2::Rhi::IRhiCommandList*> list = device->beginFrame();
+        if (!list)
+        {
+            MEOW2_LOG_ERROR(appLog, "Can't start a frame: {}", list.error());
+            return false;
+        }
+        if (device->acquire(*swapchain))
+        {
+            (*list)->clearSwapchain(*swapchain, Meow2::Math::Color{.r = 0.02F, .g = 0.03F, .b = 0.06F});
+        }
+        if (const Meow2::Result<void> ended = device->endFrame(); !ended)
+        {
+            MEOW2_LOG_ERROR(appLog, "Can't finish a frame: {}", ended.error());
+            return false;
+        }
+        return true;
+    };
+
+    // The game loop (techstack.md §23): events, fixedUpdate × n, update, render. Nothing to simulate yet.
     // app.quitAfterFrames ends a smoke run.
     const std::int64_t quitAfterFrames = config.getInt("app.quitAfterFrames", 0);
     Meow2::Time::FrameClock clock;
@@ -125,21 +192,26 @@ int main(int argc, char** argv)
         clock,
         events,
         Meow2::Time::gameLoopDescFromConfig(config, engineLog),
-        {// Sleeps up to 16 ms while idle instead of spinning a core, until the swapchain's vsync paces frames (M5).
-         // Input is applied right after the pump, so its events are in the loop's first dispatch.
+        {// Sleeps up to 16 ms while nothing is being drawn, instead of spinning a core. With a window, vsync paces
+         // frames. Input is applied right after the pump, so its events are in the loop's first dispatch.
          .pumpEvents =
-             [&platform, &input]
+             [&platform, &input, &window, &device]
          {
-             platform->pumpEvents(std::chrono::milliseconds{16});
+             const bool drawing = device != nullptr && !window->minimized();
+             platform->pumpEvents(std::chrono::milliseconds{drawing ? 0 : 16});
              input.beginFrame();
          },
          // Gameplay's fixed step goes before endFixedStep(), which ends this step's latched presses.
          .fixedUpdate = [&input](double) { input.endFixedStep(); },
-         .update =
-             [](double)
+         .update = [](double) { MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker()); }, // memory plots in Tracy
+         .render =
+             [&device, &window, &renderFrame, &running](double)
          {
-             MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker());
-         }}}; // memory plots in Tracy
+             if (device != nullptr && !window->minimized() && !renderFrame())
+             {
+                 running = false;
+             }
+         }}};
     while (running && (quitAfterFrames <= 0 || static_cast<std::int64_t>(clock.frameCount()) < quitAfterFrames))
     {
         loop.tick();

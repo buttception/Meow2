@@ -50,6 +50,8 @@ option(MEOW2_BUILD_EDITOR   "Build Meow2Editor"   ON)
 option(MEOW2_BUILD_PLAYER   "Build Meow2Player"   ON)
 option(MEOW2_BUILD_RENDERER "Build Meow2Renderer" ON)
 option(MEOW2_BUILD_TESTS    "Build unit tests (needs the googletest submodule)" ON)
+option(MEOW2_RHI_VULKAN    "Vulkan backend of the RHI" ON)
+option(MEOW2_GPU_TESTS     "Tests that need a GPU and a desktop (labels gpu, visual)" OFF)
 
 # ---- Output layout ----------------------------------------------------------
 # All executables (and later DLLs such as Qt's) land in one bin/ folder so they

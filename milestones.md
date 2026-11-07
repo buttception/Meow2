@@ -146,7 +146,7 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 
 **Not in M4:** GPU pipelines or running a shader (M5); glTF and textures as assets (M7, on the same asset core); the material system; a custom shader language; SPIRV-Reflect (bindless has one fixed binding layout, so reflection isn't needed; add it if a user appears).
 
-## M5 — RHI ⬜
+## M5 — RHI 🟨
 **Goal:** draw through one interface on Vulkan and D3D12, bindless and GPU-driven from the start, and switch between them while running.
 **Depends on:** M2, M3, M4
 
@@ -154,11 +154,11 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 
 | PR | Feature | Notes (techstack.md) | Status | Issue / PR |
 |---|---|---|---|---|
-| 1 Vulkan bring-up | Submodules: Vulkan-Headers, volk, VulkanMemoryAllocator | §4 | ⬜ | |
-| 1 | `IRhiDevice`, `IRhiCommandList`, `IRhiSwapchain`, `createRhiDevice(backend, desc)`, typed handles (index + generation) | §11 | ⬜ | |
-| 1 | Device and queues, validation messages to the `RHI` logger, object names | §11 | ⬜ | |
-| 1 | Capability check at startup: required features, a clear message on an unsupported GPU, a written minimum spec | §11 | ⬜ | |
-| 1 | Swapchains: more than one per device (ImGui viewports, the Qt viewport), resize, minimise; clear screen in Renderer | §9, §11 | ⬜ | |
+| 1 Vulkan bring-up | Submodules: Vulkan-Headers, volk, VulkanMemoryAllocator | §4 | ✅ | #155 / PR #156 |
+| 1 | `IRhiDevice`, `IRhiCommandList`, `IRhiSwapchain`, `createRhiDevice(backend, desc)`, typed handles (index + generation) | §11 | ✅ | #155 / PR #156 |
+| 1 | Device and queues, validation messages to the `RHI` logger, object names | §11 | ✅ | #155 / PR #156 |
+| 1 | Capability check at startup: required features, a clear message on an unsupported GPU, a written minimum spec | §11 | ✅ | #155 / PR #156 |
+| 1 | Swapchains: more than one per device (ImGui viewports, the Qt viewport), resize, minimise; clear screen in Renderer | §9, §11 | ✅ | #155 / PR #156 |
 | 2 Resources and first triangle | Buffers, textures, samplers through VMA under `MemTag::Rhi` | §6 | ⬜ | |
 | 2 | Deferred destruction: resources and bindless indices are freed only after the GPU has finished with them | §11 | ⬜ | |
 | 2 | Barriers (synchronization2), dynamic rendering | §11 | ⬜ | |
