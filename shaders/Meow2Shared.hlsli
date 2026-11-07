@@ -33,6 +33,10 @@ struct FrameConstants
     MEOW2_MATRIX(viewProjection); ///< view × projection.
     float4 cameraPosition;   ///< xyz: the camera in world space; w: unused.
     float4 viewport;         ///< xy: size in pixels; zw: 1 / size.
+    uint materialBuffer;     ///< Heap index of the MaterialData array; set by GpuScene.
+    uint materialCount;      ///< Materials in it. An instance with a higher index gets a colour from its index.
+    uint padding0;           ///< Pads to 16 bytes.
+    uint padding1;           ///< Pads to 16 bytes.
 };
 
 /// One drawn object, in a buffer the GPU reads and compute culling can edit.
@@ -66,6 +70,21 @@ struct PackedVertex
     uint xy;     ///< x and y as UNORM16, low half first, across the mesh's bounds.
     uint z;      ///< z as UNORM16.
     uint normal; ///< Octahedral normal.
+    uint uv;     ///< Texture coordinates as two half floats, u in the low half.
+};
+
+/// Bits of MaterialData::flags.
+#define MEOW2_MATERIAL_ALPHA_MASK 1u ///< Discard pixels whose alpha is below the cutoff.
+
+/// One material, in a buffer shaders read by index. Linear colours.
+struct MaterialData
+{
+    float4 baseColorFactor;  ///< Multiplies the base colour texture; RGBA.
+    float4 parameters;       ///< x: alpha cutoff; y: metallic; z: roughness; w: normal scale.
+    uint baseColorTexture;   ///< Heap index of an sRGB Texture2D, or 0 (no texture: white).
+    uint sampler;            ///< Sampler heap index.
+    uint flags;              ///< MEOW2_MATERIAL_* bits.
+    uint padding0;           ///< Pads to 16 bytes.
 };
 
 /// One mesh, in a buffer shaders read by index.

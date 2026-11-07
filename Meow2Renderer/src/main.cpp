@@ -4,6 +4,7 @@
 ///        scene of cubes.
 
 #include <Meow2/Assets/AssetManager.h>
+#include <Meow2/Assets/Gltf/GltfImporter.h>
 #include <Meow2/Core/Config/Config.h>
 #include <Meow2/Core/CpuFeatures.h>
 #include <Meow2/Core/Crash/CrashHandler.h>
@@ -25,6 +26,7 @@
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
+#include <Meow2/Graphics/Renderer/SceneModel.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 #include <Meow2/Graphics/Rhi/RenderDocCapture.h>
 #include <Meow2/Math/Camera.h>
@@ -40,6 +42,8 @@
 #include <Meow2/Platform/Window/Window.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
 #include <Meow2/Platform/Window/WindowEvents.h>
+#include <Meow2/Scene/Scene.h>
+#include <Meow2/Scene/TransformHierarchy.h>
 
 #include <algorithm>
 #include <array>
@@ -201,6 +205,60 @@ int main(int argc, char** argv)
     };
     const std::vector<std::byte> savedPipelines =
         files.readFile(pipelineCachePath(backend)).value_or(std::vector<std::byte>{});
+    // renderer.scene opens a glTF 2.0 file (.gltf or .glb) or a Khronos sample by name (DamagedHelmet), fetched with
+    // cmake -P cmake/FetchGltfSample.cmake <Name>. Empty: a grid of cubes.
+    Meow2::Scene::Scene world{ids, Meow2::Memory::globalTracker(), jobs.threadCount()};
+    Meow2::Scene::TransformHierarchy hierarchy{world, jobs};
+    std::optional<Meow2::Assets::ImportedModel> model;
+    if (const std::string sceneName = config.getString("renderer.scene", ""); !sceneName.empty())
+    {
+        std::filesystem::path file{sceneName};
+        if (file.extension() != ".gltf" && file.extension() != ".glb")
+        {
+            const std::filesystem::path samples{config.getString("renderer.sampleAssets", MEOW2_SAMPLE_ASSETS_DIR)};
+            file = samples / "Models" / sceneName / "glTF" / (sceneName + ".gltf");
+            if (!std::filesystem::exists(file))
+            {
+                file = samples / "Models" / sceneName / "glTF-Binary" / (sceneName + ".glb");
+            }
+        }
+        if (!std::filesystem::exists(file))
+        {
+            MEOW2_LOG_ERROR(appLog,
+                            "No scene '{}' (looked for {}). For a sample, fetch it first: cmake -P "
+                            "cmake/FetchGltfSample.cmake {}",
+                            sceneName, file.string(), sceneName);
+        }
+        else if (const Meow2::Result<void> mounted = files.mountDirectory("model", file.parent_path()); !mounted)
+        {
+            MEOW2_LOG_ERROR(appLog, "Can't open {}: {}", file.parent_path().string(), mounted.error());
+        }
+        else
+        {
+            const auto start = std::chrono::steady_clock::now();
+            Meow2::Result<Meow2::Assets::ImportedModel> imported =
+                Meow2::Assets::importGltf(files, "model/" + file.filename().string(), engineLog);
+            if (imported)
+            {
+                model = std::move(*imported);
+                MEOW2_LOG_INFO(
+                    appLog, "Imported {}: {} nodes, {} meshes, {} materials, {} images in {} ms",
+                    file.filename().string(), model->nodes.size(), model->meshes.size(), model->materials.size(),
+                    model->images.size(),
+                    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start)
+                        .count());
+            }
+            else
+            {
+                MEOW2_LOG_ERROR(appLog, "Can't import {}: {}", file.string(), imported.error());
+            }
+        }
+    }
+    Meow2::Renderer::RenderMeshes renderMeshes;
+    std::vector<Meow2::Shader::InstanceData> sceneInstances;
+    // The camera circles this sphere: the grid of cubes, or the model.
+    Meow2::Math::Vec3 viewCenter{0.0F, 0.0F, 0.0F};
+    float viewRadius = 70.0F;
     std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
     std::unique_ptr<Meow2::Renderer::GpuScene> scene;
     const Meow2::Platform::NativeWindowHandle nativeWindow = window->nativeHandle();
@@ -281,8 +339,19 @@ int main(int argc, char** argv)
         // A grid of cubes through the GPU-driven path (shaders/GpuDriven.hlsl). Without cooked shaders the window is
         // simply cleared: a machine with no DXC can still run.
         pipelines.emplace(Meow2::Renderer::PipelineLibraryDeps{*renderDevice, assets, events, rhiLog});
-        const auto instanceCount = static_cast<std::uint32_t>(
-            std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000));
+        std::uint32_t modelParts = 0;
+        if (model)
+        {
+            for (const Meow2::Assets::ImportedNode& node : model->nodes)
+            {
+                modelParts += node.mesh >= 0 ? static_cast<std::uint32_t>(
+                                                   model->meshes[static_cast<std::size_t>(node.mesh)].primitives.size())
+                                             : 0;
+            }
+        }
+        const auto instanceCount = model ? std::max(modelParts, 1U)
+                                         : static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+                                               config.getInt("renderer.instances", 100'000), 1, 1'000'000));
         const Meow2::Result<Meow2::Uuid> shaderUuid = Meow2::Uuid::parse("01a1b5e2-3c12-8000-80a4-7b19d2e6c053");
         const Meow2::Result<Meow2::AssetId> shaderId =
             shaderUuid.and_then([](const Meow2::Uuid& uuid) { return Meow2::AssetId::fromUuid(uuid); });
@@ -291,7 +360,33 @@ int main(int argc, char** argv)
                                               {.shader = shaderId.value_or(Meow2::AssetId{}),
                                                .instanceCapacity = instanceCount,
                                                .colorFormat = colorFormat});
-        if (createdScene)
+        if (createdScene && model)
+        {
+            scene = std::move(*createdScene);
+            Meow2::Result<std::vector<Meow2::AssetId>> meshIds =
+                Meow2::Renderer::uploadModel(*scene, *model, ids, renderMeshes, appLog);
+            if (meshIds)
+            {
+                static_cast<void>(Meow2::Renderer::instantiateModel(world, hierarchy, *model, *meshIds));
+                hierarchy.update();
+                if (const std::optional<Meow2::Math::Aabb> bounds =
+                        Meow2::Renderer::gatherInstances(world, renderMeshes, sceneInstances))
+                {
+                    viewCenter = bounds->center;
+                    viewRadius = std::max(std::sqrt(bounds->extents.x * bounds->extents.x +
+                                                    bounds->extents.y * bounds->extents.y +
+                                                    bounds->extents.z * bounds->extents.z),
+                                          0.01F);
+                }
+                scene->setInstances(sceneInstances);
+            }
+            else
+            {
+                MEOW2_LOG_ERROR(appLog, "Can't upload the model: {}", meshIds.error());
+            }
+            model.reset(); // the GPU scene keeps what it needs
+        }
+        else if (createdScene)
         {
             scene = std::move(*createdScene);
             const Meow2::Result<std::uint32_t> cube = scene->addMesh(Meow2::Renderer::makeCube());
@@ -359,7 +454,7 @@ int main(int argc, char** argv)
         return true;
     };
     const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &scene, &jobs, &depthTexture, &makeDepth,
-                              &renderDoc, &clock, &pendingSwap, captureFrame, swapAtFrame]
+                              &renderDoc, &clock, &pendingSwap, captureFrame, swapAtFrame, viewCenter, viewRadius]
     {
         if (swapAtFrame > 0 && static_cast<std::int64_t>(clock.frameCount()) == swapAtFrame)
         {
@@ -415,13 +510,16 @@ int main(int argc, char** argv)
         {
             if (scene)
             {
-                // The camera circles the grid, looking at its centre.
+                // The camera circles the scene, looking at its centre, far enough to see all of it.
                 const auto angle = static_cast<float>(clock.totalSeconds()) * 0.2F;
+                const float distance = viewRadius * 1.7F;
                 Meow2::Math::Transform camera;
-                camera.position =
-                    Meow2::Math::WorldPosition{std::sin(angle) * 120.0F, 30.0F, std::cos(angle) * -120.0F};
-                camera.rotation = Meow2::Math::lookRotation(
-                    Meow2::Math::Vec3{-camera.position.x, -camera.position.y, -camera.position.z});
+                camera.position = Meow2::Math::WorldPosition{viewCenter.x + std::sin(angle) * distance,
+                                                             viewCenter.y + distance * 0.25F,
+                                                             viewCenter.z - std::cos(angle) * distance};
+                camera.rotation = Meow2::Math::lookRotation(Meow2::Math::Vec3{viewCenter.x - camera.position.x,
+                                                                              viewCenter.y - camera.position.y,
+                                                                              viewCenter.z - camera.position.z});
                 const float aspect = static_cast<float>(swapchain->width()) / static_cast<float>(swapchain->height());
                 const Meow2::Math::CameraMatrices matrices =
                     Meow2::Math::cameraMatrices(camera, Meow2::Math::CameraLens{}, aspect);

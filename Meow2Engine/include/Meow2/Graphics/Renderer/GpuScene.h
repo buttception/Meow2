@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <Meow2/Assets/Texture/Image.h>
 #include <Meow2/Core/Result.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
@@ -17,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace Meow2::Renderer
@@ -29,17 +31,49 @@ struct GpuSceneDesc
     Rhi::RhiFormat colorFormat = Rhi::RhiFormat::Unknown; ///< Format of the colour target.
 };
 
-/// @brief A mesh ready to upload: quantised positions, octahedral normals, 32-bit indices. Plain data.
+/// @brief A mesh ready to upload: quantised positions, octahedral normals, half-float UVs, 32-bit indices. Plain data.
 struct MeshData
 {
-    std::vector<Shader::PackedVertex> vertices; ///< Math::quantizePosition() within `bounds`, Math::packOctahedral().
+    std::vector<Shader::PackedVertex> vertices; ///< Made by makeMesh() or packVertex().
     std::vector<std::uint32_t> indices;         ///< Three per triangle; clockwise faces the viewer.
     Math::Aabb bounds{};                        ///< The box the positions are quantised in.
 };
 
+/// @brief Encodes one vertex: its position quantised within `bounds`, an octahedral normal and half-float UVs.
+/// @param position Its position, inside `bounds`.
+/// @param normal   Its unit normal.
+/// @param uv       Its texture coordinates.
+/// @param bounds   The mesh's box.
+/// @return The packed vertex.
+[[nodiscard]] Shader::PackedVertex packVertex(const Math::Vec3& position, const Math::Vec3& normal,
+                                              const Math::Vec2& uv, const Math::Aabb& bounds);
+
+/// @brief Packs a mesh for upload.
+/// @param positions Positions.
+/// @param normals   Unit normals; as many as positions.
+/// @param uvs       Texture coordinates; as many as positions.
+/// @param indices   Three per triangle, clockwise.
+/// @param bounds    A box around the positions.
+/// @return The mesh.
+/// @pre The three vertex arrays are the same size (asserted).
+[[nodiscard]] MeshData makeMesh(std::span<const Math::Vec3> positions, std::span<const Math::Vec3> normals,
+                                std::span<const Math::Vec2> uvs, std::span<const std::uint32_t> indices,
+                                const Math::Aabb& bounds);
+
 /// @brief A unit cube, for test scenes.
-/// @return Its 24 vertices and 36 indices.
+/// @return Its 24 vertices and 36 indices, with UVs 0..1 on each face.
 [[nodiscard]] MeshData makeCube();
+
+/// @brief A material to add to a GpuScene. Plain data.
+struct MaterialDesc
+{
+    Math::Color baseColorFactor{1.0F, 1.0F, 1.0F, 1.0F}; ///< Linear RGBA; multiplies the texture.
+    std::int32_t baseColorTexture = -1;                  ///< From GpuScene::addTexture() (sRGB), or -1 for none.
+    bool alphaMask = false;                              ///< Discard pixels whose alpha is below `alphaCutoff`.
+    float alphaCutoff = 0.5F;                            ///< For `alphaMask`.
+    float metallic = 1.0F;                               ///< Kept for the PBR pass; 0..1.
+    float roughness = 1.0F;                              ///< Kept for the PBR pass; 0..1.
+};
 
 /// @brief The GPU-driven path: one compute pass culls every instance, and one indirect call draws what's left.
 ///
@@ -77,6 +111,18 @@ public:
     /// @param mesh The mesh.
     /// @return Its index, for Shader::InstanceData::mesh, or an error.
     [[nodiscard]] Result<std::uint32_t> addMesh(const MeshData& mesh);
+
+    /// @brief Uploads a texture at the start of the next frame, and keeps a copy for the next device.
+    /// @param image The pixels, RGBA8.
+    /// @param srgb  True for colour (base colour, emissive), false for data (normals, roughness).
+    /// @param name  Shown in debugging tools.
+    /// @return Its index, for MaterialDesc, or an error (an empty image, or the device refused).
+    [[nodiscard]] Result<std::uint32_t> addTexture(const Assets::Image& image, bool srgb, std::string name = "Texture");
+
+    /// @brief Adds a material, and keeps a copy for the next device.
+    /// @param material Its parameters.
+    /// @return Its index, for Shader::InstanceData::material, or an error when the scene has too many.
+    [[nodiscard]] Result<std::uint32_t> addMaterial(const MaterialDesc& material);
 
     /// @brief Sets every instance, and keeps a copy for the next device. Between frames: the GPU reads these while
     ///        drawing.
@@ -126,6 +172,17 @@ private:
     /// @return The first error.
     [[nodiscard]] Result<void> restoreBuffers(Rhi::IRhiDevice& device);
 
+    /// @brief Creates a texture and its staging buffer, to be copied by the next frame.
+    /// @param device The device.
+    /// @param index  Its place in m_textures.
+    /// @return An error from creating them.
+    [[nodiscard]] Result<void> createTexture(Rhi::IRhiDevice& device, std::uint32_t index);
+
+    /// @brief Writes a material's record, with the current heap index of its texture.
+    /// @param device The device.
+    /// @param index  Its place in the material buffer.
+    void writeMaterial(Rhi::IRhiDevice& device, std::uint32_t index);
+
     /// @brief Uploads one mesh and writes its record.
     /// @param device The device.
     /// @param mesh   The mesh.
@@ -154,6 +211,21 @@ private:
     std::vector<Rhi::BufferHandle> m_meshResources; ///< Vertex and index buffers.
     std::vector<MeshData> m_meshes;                 ///< CPU copies, for the next device.
     std::vector<Shader::InstanceData> m_instances;  ///< CPU copy, for the next device.
+
+    /// @brief A texture, its pixels kept for the next device, and its upload until the GPU has done it.
+    struct TextureRecord
+    {
+        Assets::Image image{};        ///< CPU copy.
+        bool srgb = false;            ///< Which format.
+        std::string name{};           ///< For debugging tools.
+        Rhi::TextureHandle texture{}; ///< On the current device.
+        Rhi::BufferHandle staging{};  ///< Holds the pixels until the copy is recorded; unset after.
+    };
+    std::vector<TextureRecord> m_textures;
+    std::vector<std::uint32_t> m_pendingTextures;  ///< Textures whose copy the next frame records.
+    std::vector<Rhi::BufferHandle> m_spentStaging; ///< Staging buffers to destroy once their copies are recorded.
+    std::vector<MaterialDesc> m_materials;         ///< CPU copies, for the next device.
+    Rhi::BufferHandle m_materialBuffer;
     Rhi::ResourceState m_drawState = Rhi::ResourceState::Undefined;
     Rhi::ResourceState m_countState = Rhi::ResourceState::Undefined;
     Rhi::ResourceState m_depthState = Rhi::ResourceState::Undefined;

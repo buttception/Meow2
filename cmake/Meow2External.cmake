@@ -158,6 +158,27 @@ set(meow2ProfilingEnabled "$<AND:$<BOOL:${MEOW2_PROFILING}>,$<NOT:$<CONFIG:Relea
 target_compile_definitions(TracyClient PUBLIC "$<${meow2ProfilingEnabled}:TRACY_ENABLE>")
 set_target_properties(TracyClient PROPERTIES FOLDER "External/Tracy")
 
+# ---- glTF and images (cgltf, stb_image; techstack.md §4, §13) ---------------------------------------
+# Both are single headers whose implementation is compiled once, in its own library, so the engine's warnings don't
+# apply to it. Only src/Assets/Gltf/ and src/Assets/Texture/ include them. Their memory goes through the engine's
+# allocator hooks (MemTag::Assets): cgltf's through its options, stb_image's through the meow2Stb* functions the
+# engine defines.
+set(meow2CgltfDir "${PROJECT_SOURCE_DIR}/external/cgltf")
+if(NOT EXISTS "${meow2CgltfDir}/cgltf.h")
+    message(FATAL_ERROR "cgltf is missing (${meow2CgltfDir} is empty).\n"
+                        "Fetch the submodules with:\n  git submodule update --init --recursive")
+endif()
+add_library(meow2_cgltf STATIC "${PROJECT_SOURCE_DIR}/Meow2Engine/src/Assets/Gltf/Cgltf.cpp")
+target_include_directories(meow2_cgltf SYSTEM PUBLIC "${meow2CgltfDir}")
+if(MSVC)
+    target_compile_definitions(meow2_cgltf PRIVATE _CRT_SECURE_NO_WARNINGS) # fopen and strncpy in its file loader
+endif()
+set_target_properties(meow2_cgltf PROPERTIES FOLDER "External")
+
+add_library(meow2_stb_image STATIC "${PROJECT_SOURCE_DIR}/Meow2Engine/src/Assets/Texture/StbImage.cpp")
+target_include_directories(meow2_stb_image SYSTEM PUBLIC "${PROJECT_SOURCE_DIR}/external/stb")
+set_target_properties(meow2_stb_image PROPERTIES FOLDER "External")
+
 # ---- Vulkan (headers, volk, VMA; techstack.md §4, §11) --------------------------------------------
 # The app never links the Vulkan loader: volk finds it at runtime, so a machine without Vulkan gets a clear error
 # (and D3D12 can still run). Only src/Graphics/Rhi/Vulkan/ includes these headers.

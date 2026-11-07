@@ -106,6 +106,18 @@ protected:
             instance.material = static_cast<std::uint32_t>(instances.size()) + 1;
             instances.push_back(instance);
         }
+        // The nearest cube gets a green texture, so restoring textures and material records is checked too.
+        Assets::Image green{.width = 2, .height = 2, .pixels = {}};
+        for (int i = 0; i < 4; ++i)
+        {
+            green.pixels.insert(green.pixels.end(), {std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}});
+        }
+        const Result<std::uint32_t> texture = m_scene->addTexture(green, true, "Green");
+        ASSERT_TRUE(texture) << texture.error().message;
+        const Result<std::uint32_t> material =
+            m_scene->addMaterial({.baseColorTexture = static_cast<std::int32_t>(*texture)});
+        ASSERT_TRUE(material) << material.error().message;
+        instances[0].material = *material;
         m_scene->setInstances(instances);
 
         // The target is the test's own: it lets go and comes back like any other device user.
@@ -228,6 +240,9 @@ TEST_F(RenderDeviceTest, RecreatingRestoresTheScene)
     makeScene();
     const FrameResult before = drawFrame();
     ASSERT_EQ(before.drawCount, 2U) << "two cubes in front of the camera";
+    const std::size_t centre = (std::size_t{c_size} / 2 * c_size + c_size / 2) * 4;
+    EXPECT_GT(std::to_integer<int>(before.pixels[centre + 1]), 100) << "the textured cube is green";
+    EXPECT_LT(std::to_integer<int>(before.pixels[centre]), 30);
     EXPECT_EQ(m_render->device().validationErrorCount(), 0U);
 
     ASSERT_TRUE(m_render->swapTo(Rhi::c_testBackend));

@@ -9,8 +9,11 @@ configure_file(src/Core/Version.h.in "${meow2GeneratedDir}/Meow2/Core/Version.h"
 target_sources(Meow2Engine
     PRIVATE
         src/Assets/AssetManager.cpp
+        src/Assets/Gltf/GltfImporter.cpp
+        src/Assets/LibraryMemory.h
         src/Assets/Shader/ShaderAsset.cpp
         src/Assets/Shader/ShaderMeta.cpp
+        src/Assets/Texture/Image.cpp
         src/Core/Assert.cpp
         src/Core/CommandLine.cpp
         src/Core/CommandLine.h
@@ -43,6 +46,7 @@ target_sources(Meow2Engine
         src/Graphics/Renderer/PipelineLibrary.cpp
         src/Graphics/Renderer/RenderDevice.cpp
         src/Graphics/Renderer/RenderGraph.cpp
+        src/Graphics/Renderer/SceneModel.cpp
         src/Graphics/Rhi/RenderDocCapture.cpp
         src/Graphics/Rhi/RhiDevice.cpp
         src/Math/SplinePath.cpp
@@ -66,10 +70,12 @@ target_sources(Meow2Engine
             "${meow2GeneratedDir}"
         FILES
             include/Meow2/Assets/AssetManager.h
+            include/Meow2/Assets/Gltf/GltfImporter.h
             include/Meow2/Assets/Shader/ShaderAsset.h
             include/Meow2/Assets/Shader/ShaderCooker.h
             include/Meow2/Assets/Shader/ShaderHotReload.h
             include/Meow2/Assets/Shader/ShaderMeta.h
+            include/Meow2/Assets/Texture/Image.h
             include/Meow2/Core/Assert.h
             include/Meow2/Core/Config/Config.h
             include/Meow2/Core/Crash/CrashHandler.h
@@ -106,6 +112,7 @@ target_sources(Meow2Engine
             include/Meow2/Graphics/Renderer/PipelineLibrary.h
             include/Meow2/Graphics/Renderer/RenderDevice.h
             include/Meow2/Graphics/Renderer/RenderGraph.h
+            include/Meow2/Graphics/Renderer/SceneModel.h
             include/Meow2/Graphics/Rhi/IRhiCommandList.h
             include/Meow2/Graphics/Rhi/IRhiDevice.h
             include/Meow2/Graphics/Rhi/IRhiSwapchain.h
@@ -255,6 +262,8 @@ target_link_libraries(Meow2Engine
         tl::expected
     PRIVATE
         SDL3::SDL3-static
+        meow2_cgltf
+        meow2_stb_image
         enkiTS
         Tracy::TracyClient
         spdlog::spdlog

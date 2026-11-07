@@ -187,30 +187,44 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 
 **Released as `v0.6.0`** once PR #168 is merged and tagged (with the owner's go-ahead).
 
-**Not in M5:** mesh shaders and meshlets (M7), ray tracing, HZB occlusion culling, HDR output, async compute.
+**Not in M5:** mesh shaders and meshlets, ray tracing, HZB occlusion culling, HDR output, async compute (all M13).
 
-## M6 — Meow2Renderer app ⬜
-**Goal:** a showcase / test bed for rendering.
+## M6 — glTF scenes and Meow2Renderer 🟨
+**Goal:** open the Khronos glTF 2.0 sample scenes in Meow2Renderer through the same `Scene` the editor and player use, draw them with metallic-roughness PBR on both backends, catch regressions with golden images, and give Renderer its ImGui shell. M6 and the old M7 are merged (owner decision 2026-11-07); it stops at PBR, and the rest goes to M13 (Advanced rendering).
 **Depends on:** M5
 
-- ImGui docking shell (+ multi-viewport later)
-- Log console window (ring-buffer sink), frame stats, memory stats (per tag)
-- Backend switch button
-- Capture button: the same as F11, shown when a capture tool is attached
-- Settings window: debug tools on or off (`rhi.renderDoc` and the like), saved to the TOML config
+Planned as five PRs. glTF is an import source, never the scene format: the engine's own `.m2scene` holds scenes (PR 2).
 
-## M7 — glTF & rendering verification ⬜
-**Goal:** load the Khronos glTF 2.0 sample scenes and catch rendering regressions automatically.
-**Depends on:** M5, M6
+| PR | Feature | Notes (techstack.md) | Status | Issue / PR |
+|---|---|---|---|---|
+| 1 glTF import and first light | cgltf v1.15 (submodule) and `stb_image.h` (copied in), owner-approved | §4 | ✅ | #169 / PR #170 |
+| 1 | Importer: `.gltf`/`.glb` through the VFS, data URIs, right- to left-handed, node tree, materials, PNG/JPEG images | §10, §13 | ✅ | #169 / PR #170 |
+| 1 | `MeshRenderer` and the bridge to the GPU scene: UVs, textures and materials in `GpuScene` (restored after a backend switch), instances gathered from the `Scene` | §25 | ✅ | #169 / PR #170 |
+| 1 | On-demand sample fetch (`cmake/FetchGltfSample.cmake`), `renderer.scene` | §13 | ✅ | #169 / PR #170 |
+| 2 Scene files | `.m2scene`: one text file per scene, entities sorted by `EntityId`, deterministic saving so git merges edits to different entities | §25 | ⬜ | |
+| 2 | Versions: a format version and one per component, up and down migrations, unknown components kept as they were, renames through aliases | §25 | ⬜ | |
+| 2 | Each app registers the components it knows and skips the rest (Renderer ignores scripts) | §25 | ⬜ | |
+| 2 | glTF import writes assets with `.meta` sidecars (stable `AssetId`s) and a prefab, so re-importing keeps edits | §13a | ⬜ | |
+| 3 PBR | Metallic-roughness PBR, normal maps with tangents, occlusion, emissive, vertex colours | §11 | ⬜ | |
+| 3 | `.m2texture`: cooked textures with a format field and mips from the start (BC7 later); glTF samplers; texture transforms | §13a | ⬜ | |
+| 3 | Double-sided materials and mirrored (negative-scale) nodes; alpha blending, sorted | §11 | ⬜ | |
+| 3 | Image-based lighting from an environment map | §11 | ⬜ | |
+| 4 Renderer app | Dear ImGui docking shell (submodule, needs approval), log console (ring-buffer sink), frame and memory stats per tag | §2, §7 | ⬜ | |
+| 4 | Backend switch button, capture button (the same as F11), settings window for debug tools saved to the TOML config | §11 | ⬜ | |
+| 4 | Scene browser: the sample list, which are downloaded, fetch on click, open any `.gltf`/`.glb`/`.m2scene` | §13 | ⬜ | |
+| 5 Verification and close | Golden-image tests per backend (label `visual`); new goldens only with the owner's sign-off | §13 | ⬜ | |
+| 5 | The 25 suggested scenes: test scenes first, then the showcase ones (DamagedHelmet the first goal) | §13 | ⬜ | |
+| 5 | **meshoptimizer** (submodule, needs approval): vertex cache and overdraw optimisation at import | §4 | ⬜ | |
+| 5 | Closing PR bumps the version to **0.7.0** | §21 | ⬜ | |
 
-- `.gltf` / `.glb` importer, right-handed → left-handed conversion
-- GPU scene (the main path): persistent instance/material buffers, delta uploads through the upload ring, compute culling
-- PBR materials (metallic-roughness), textures, normal maps
-- On-demand sample-asset fetch, scene browser
-- Visual regression tests (golden images per backend)
-- Sample scenes, one by one as requested
-- **meshoptimizer** (zeux, submodule, needs approval): vertex cache and overdraw optimisation on every mesh at import, simplification for LODs
-- **Meshlets**, as an optional path for dense static opaque meshes, not the only one: clusters from meshoptimizer, culled per cluster, drawn with mesh shaders where the GPU has them. The indirect path from M5 stays as the baseline for skinned, transparent and small meshes and for GPUs without mesh shaders (Android, older desktop)
+**Suggested scenes:** first light (Box, BoxTextured, Duck, Avocado); coordinates (OrientationTest, NegativeScaleTest, TextureCoordinateTest); PBR (MetalRoughSpheres, MetalRoughSpheresNoTextures, EnvironmentTest); normal maps (NormalTangentTest, NormalTangentMirrorTest); textures and colour (TextureSettingsTest, TextureTransformTest, VertexColorTest); transparency (AlphaBlendModeTest); showcase (DamagedHelmet, FlightHelmet, WaterBottle, BoomBox, Lantern, Corset, SciFiHelmet); stress (Sponza, ABeautifulGame).
+
+**Done when:** the suggested scenes open in Renderer on both backends with validation clean and match their golden images; a scene saved as `.m2scene` loads in Renderer with unknown components skipped; an old-version scene file upgrades.
+
+**Not in M6** (M13): animation and skinning, morph targets, Draco and meshopt compression, Basis Universal and BC7 textures, `KHR_materials_*` extensions, meshlets.
+
+## M7 — merged into M6
+glTF and rendering verification are part of M6 now (owner decision 2026-11-07). The number isn't reused.
 
 ## M8 — Physics ⬜
 **Goal:** rigid bodies via Jolt, swappable at build time later.
@@ -257,6 +271,16 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 - Linux (X11/Wayland) build + CI
 - Android (NDK, GameActivity, APK packaging)
 
+## M13 — Advanced rendering ⬜
+**Goal:** what comes after PBR, once the editor is up (owner decision 2026-11-07).
+**Depends on:** M6, M9
+
+- Animation: skinning, morph targets, glTF animation
+- Compression: Draco and meshopt meshes, Basis Universal and BC7 textures
+- `KHR_materials_*` extensions (clearcoat, transmission, sheen, …)
+- **Meshlets**, as an optional path for dense static opaque meshes, not the only one: clusters from meshoptimizer, culled per cluster, drawn with mesh shaders where the GPU has them. The indirect path from M5 stays as the baseline for skinned, transparent and small meshes and for GPUs without mesh shaders (Android, older desktop)
+- HZB occlusion culling, HDR output, async compute, ray tracing (PIX and Nsight for the ray-tracing pipeline)
+
 ---
 
 ## Changelog
@@ -272,3 +296,4 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 - 2026-11-07 — Owner request: capture buttons and a debug-tool settings window in Renderer (M6) and Editor (M9), saved to the TOML config; PIX and Nsight in-app capture to look into with D3D12 (M5 PR 5).
 - 2026-11-07 — M5 PR 5 done: D3D12 with the Agility SDK (owner decision), DRED and `VK_EXT_device_fault`.
 - 2026-11-07 — M5 done (0.6.0): hot swap between Vulkan and D3D12.
+- 2026-11-07 — M6 rewritten as a feature table: M7 merged in, stopping at PBR (owner decision); scene files, PBR, the ImGui shell and golden images planned as PRs 2–5; new M13 Advanced rendering takes animation, compression, material extensions and meshlets.

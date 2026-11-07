@@ -50,6 +50,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Scene (entities and components on EnTT, command buffers) | [Scene](Scene.md) | ✅ M2 |
 | Shaders (HLSL through DXC) | [Shaders](Shaders.md) | ✅ M4 |
 | Assets (stable IDs, `.meta` sidecars, loading) | [Assets](Assets.md) | ✅ M4 |
+| glTF import (`.gltf`/`.glb`, images, sample fetch) | [Gltf](Gltf.md) | 🟨 M6 |
 | RHI (Vulkan and D3D12, bindless, render graph, GPU-driven drawing, switching backends while running) | [Rhi](Rhi.md) | ✅ M5 |
 | Jobs (`JobSystem`, enkiTS) | [Jobs](Jobs.md) | ✅ M1 |
 | Profiling (Tracy) | [Profiling](Profiling.md) | ✅ M1 |

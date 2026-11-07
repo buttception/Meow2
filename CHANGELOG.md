@@ -8,6 +8,13 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+- glTF 2.0 import: `.gltf` and `.glb` files open in Meow2Renderer (`--set renderer.scene=Duck`, or a path) with their node tree, meshes and base colour textures, converted to the engine's left-handed space, on Vulkan and D3D12. `cmake -P cmake/FetchGltfSample.cmake <Model>` downloads Khronos sample models on demand (#170).
+
+### Changed
+- Roadmap: M6 is now "glTF scenes and Meow2Renderer", with the old M7 merged in and stopping at PBR; a new M13 holds advanced rendering (#170).
+- Vulkan GPUs need `shaderDemoteToHelperInvocation`, for `discard` in shaders (#170).
+
 ## [0.6.0] — 2026-11-07
 
 ### Added

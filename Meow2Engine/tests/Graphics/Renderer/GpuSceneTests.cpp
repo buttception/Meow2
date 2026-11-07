@@ -12,10 +12,13 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Graphics/Renderer/FrameResources.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
+#include <Meow2/Graphics/Renderer/SceneModel.h>
 #include <Meow2/Math/Bounds.h>
 #include <Meow2/Math/Camera.h>
 #include <Meow2/Math/Transform.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
+#include <Meow2/Scene/Scene.h>
+#include <Meow2/Scene/TransformHierarchy.h>
 
 #include <gtest/gtest.h>
 
@@ -243,5 +246,54 @@ TEST_F(GpuSceneTest, ReversedDepthKeepsTheNearestCube)
     m_scene->setInstances(nearOnly);
     EXPECT_EQ(runFrame(frustum), 1U);
     EXPECT_EQ(pixelAt(c_size / 2, c_size / 2), both);
+}
+TEST_F(GpuSceneTest, ModelDrawsWithItsTexture)
+{
+    makeScene(4);
+    // A quad 3 units in front of the camera, facing it, with a red texture: the importer's output, made by hand.
+    Assets::ImportedModel model;
+    Assets::Image red{.width = 2, .height = 2, .pixels = {}};
+    for (int i = 0; i < 4; ++i)
+    {
+        red.pixels.insert(red.pixels.end(), {std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}});
+    }
+    model.images.push_back(red);
+    Assets::ImportedMaterial material;
+    material.baseColorImage = 0;
+    model.materials.push_back(material);
+    Assets::ImportedPrimitive quad;
+    quad.positions = {{-1.0F, -1.0F, 0.0F}, {-1.0F, 1.0F, 0.0F}, {1.0F, 1.0F, 0.0F}, {1.0F, -1.0F, 0.0F}};
+    quad.normals.assign(4, Math::Vec3{0.0F, 0.0F, -1.0F});
+    quad.uvs = {{0.0F, 1.0F}, {0.0F, 0.0F}, {1.0F, 0.0F}, {1.0F, 1.0F}};
+    quad.indices = {0, 1, 2, 0, 2, 3}; // clockwise seen from the camera
+    quad.material = 0;
+    quad.bounds = {.center = {0.0F, 0.0F, 0.0F}, .extents = {1.0F, 1.0F, 0.0F}};
+    model.meshes.push_back({.name = "Quad", .primitives = {quad}});
+    Assets::ImportedNode node;
+    node.local.position = Math::WorldPosition{0.0F, 0.0F, 3.0F};
+    node.mesh = 0;
+    model.nodes.push_back(node);
+
+    RenderMeshes meshes;
+    const Result<std::vector<AssetId>> meshIds = uploadModel(*m_scene, model, m_ids, meshes, m_log);
+    ASSERT_TRUE(meshIds) << meshIds.error().message;
+    Scene::Scene world{m_ids, Memory::globalTracker()};
+    Scene::TransformHierarchy hierarchy{world, m_jobs};
+    const std::vector<entt::entity> entities = instantiateModel(world, hierarchy, model, *meshIds);
+    ASSERT_EQ(entities.size(), 1U);
+    hierarchy.update();
+    std::vector<Shader::InstanceData> instances;
+    const std::optional<Math::Aabb> bounds = gatherInstances(world, meshes, instances);
+    ASSERT_EQ(instances.size(), 1U);
+    ASSERT_TRUE(bounds);
+    EXPECT_NEAR(bounds->center.z, 3.0F, 1e-5F);
+    m_scene->setInstances(instances);
+    Math::Frustum frustum{};
+
+    EXPECT_EQ(runFrame(frustum), 1U);
+    const auto center = pixelAt(c_size / 2, c_size / 2);
+    EXPECT_GT(center[0], 100) << "red from the texture, lit";
+    EXPECT_LT(center[1], 30);
+    EXPECT_LT(center[2], 30);
 }
 } // namespace Meow2::Renderer

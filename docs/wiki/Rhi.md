@@ -239,7 +239,7 @@ Looked into for M6's capture button; nothing added yet, because each needs an SD
 - Vulkan 1.3
 - `VK_EXT_mutable_descriptor_type`, plus `VK_KHR_swapchain` to show a window
 - One queue family with graphics and compute
-- Dynamic rendering, synchronization2, timeline semaphores, buffer device address
+- Dynamic rendering, synchronization2, timeline semaphores, buffer device address, demote to helper invocation (`discard`)
 - Descriptor indexing for bindless: runtime arrays, partially bound, update after bind, dynamic and non-uniform indexing
 - Storage writes in vertex and pixel shaders
 - Multi-draw indirect, indirect draw count, 64-bit integers in shaders
