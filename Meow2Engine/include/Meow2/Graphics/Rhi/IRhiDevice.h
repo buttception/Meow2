@@ -70,10 +70,27 @@ public:
     /// @pre A frame is being recorded (asserted).
     [[nodiscard]] virtual bool acquire(IRhiSwapchain& swapchain) = 0;
 
-    /// @brief Submits the frame to the GPU and shows every acquired swapchain.
-    /// @return An error if the device was lost.
+    /// @brief A command list for one job, recording alongside others this frame.
+    ///
+    /// Each job records into its own list, and endFrame() submits them in the order it's given, so the order jobs
+    /// finish in doesn't matter. The heap is bound in every list; pipelines and push constants aren't shared.
+    /// @param threadIndex JobSystem::threadIndex() of the calling thread; < RhiDeviceDesc::recordingThreads.
+    /// @return The list, valid until endFrame(), or an error if Vulkan refuses.
     /// @pre A frame is being recorded (asserted).
-    [[nodiscard]] virtual Result<void> endFrame() = 0;
+    /// @note Safe from several threads at once, as long as each passes its own index.
+    [[nodiscard]] virtual Result<IRhiCommandList*> commandList(std::uint32_t threadIndex) = 0;
+
+    /// @brief Which frame slot is being recorded, for per-frame resources.
+    /// @return A number below c_maxFramesInFlight. After beginFrame(), the GPU has finished the last frame in this
+    /// slot.
+    [[nodiscard]] virtual std::uint32_t frameSlot() const = 0;
+
+    /// @brief Submits the frame to the GPU and shows every acquired swapchain.
+    /// @param lists Every list from commandList(), in the order the GPU should run them. They run after the list from
+    ///              beginFrame(), all in one submit.
+    /// @return An error if the device was lost.
+    /// @pre A frame is being recorded, and every job has finished recording (asserted).
+    [[nodiscard]] virtual Result<void> endFrame(std::span<IRhiCommandList* const> lists = {}) = 0;
 
     /// @brief Waits until the GPU has finished everything.
     virtual void waitIdle() = 0;
@@ -173,6 +190,11 @@ public:
     /// @return The bytes; empty if there's nothing or the driver refused.
     /// @note Thread-safe.
     [[nodiscard]] virtual std::vector<std::byte> pipelineCacheData() = 0;
+
+    /// @brief How much GPU memory is in use.
+    /// @return The driver's totals, and what this device's buffers and textures use per tag.
+    /// @note Thread-safe.
+    [[nodiscard]] virtual GpuMemoryStats memoryStats() = 0;
 
 protected:
     /// @brief Only backends create devices; use createRhiDevice().

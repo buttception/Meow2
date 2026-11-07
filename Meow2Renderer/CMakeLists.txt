@@ -2,6 +2,9 @@
 add_executable(Meow2Renderer src/main.cpp)
 target_link_libraries(Meow2Renderer PRIVATE Meow2::Engine)
 meow2_set_warnings(Meow2Renderer)
+if(TARGET Meow2Shaders)
+    add_dependencies(Meow2Renderer Meow2Shaders) # building or running Renderer alone still cooks its shaders
+endif()
 set_target_properties(Meow2Renderer PROPERTIES FOLDER "Apps")
 meow2_track_global_new(Meow2Renderer) # every new/delete through the memory tracker (Debug/RWDI)
 meow2_gui_subsystem_in_release(Meow2Renderer) # no console window in Release

@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Frame infrastructure: `FrameArena`, `UploadRing`, `ReadbackQueue`, `OffscreenTarget`, a `FramePacket` with an `extract` phase in the game loop, command lists recorded on several jobs at once, pass markers, Tracy GPU zones, GPU memory stats per tag, and frame capture from inside the app when launched from RenderDoc (F11 in Meow2Renderer) (#160).
 - RHI: buffers, textures, samplers, a bindless heap, explicit barriers, graphics and compute pipelines with a cache on disk, and `PipelineLibrary`, which rebuilds pipelines when a shader is reloaded. Meow2Renderer draws a triangle whose vertices come through the heap (#158).
 - RHI: `IRhiDevice`, `IRhiSwapchain` and `IRhiCommandList`, typed handles, and a Vulkan 1.3 backend that picks a GPU, reports what an unsuitable one is missing, and drives several swapchains. Meow2Renderer now clears its window through it (#156).
 

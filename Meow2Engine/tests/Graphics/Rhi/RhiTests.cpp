@@ -4,7 +4,9 @@
 #include "Graphics/Rhi/Vulkan/VulkanRequirements.h"
 
 #include <Meow2/Core/Log/LogSystem.h>
+#include <Meow2/Core/SharedLibrary.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
+#include <Meow2/Graphics/Rhi/RenderDocCapture.h>
 #include <Meow2/Graphics/Rhi/RhiHandle.h>
 
 #include <gtest/gtest.h>
@@ -122,6 +124,21 @@ TEST(Requirements, SwapchainOnlyNeededForPresentation)
     facts.extensions = {"VK_EXT_mutable_descriptor_type"};
     EXPECT_TRUE(missingVulkanRequirements(facts, false).empty());
     EXPECT_TRUE(mentions(missingVulkanRequirements(facts, true), "VK_KHR_swapchain"));
+}
+
+TEST(RenderDocCapture, WithoutRenderDocDoesNothing)
+{
+    Log::LogSystem logSystem{{.appName = "Test", .directory = {}, .console = false}};
+    Log::Logger log = logSystem.createLogger("RHI");
+    RenderDocCapture capture{log};
+    EXPECT_FALSE(capture.available());
+    capture.capture();
+    EXPECT_EQ(capture.captureCount(), 0U);
+}
+
+TEST(SharedLibrary, FindLoadedDoesNotLoad)
+{
+    EXPECT_FALSE(SharedLibrary::findLoaded("meow2-not-a-library"));
 }
 
 TEST(Device, D3D12NotBuiltIsAnError)

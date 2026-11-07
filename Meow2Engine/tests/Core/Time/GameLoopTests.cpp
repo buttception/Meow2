@@ -88,6 +88,24 @@ TEST_F(GameLoopTest, CallsPhasesInOrder)
     EXPECT_EQ(m_calls, expected);
 }
 
+TEST_F(GameLoopTest, ExtractRunsBeforeRender)
+{
+    std::string order;
+    Meow2::Time::FrameClock clock;
+    Meow2::Time::GameLoop loop{clock,
+                               m_events,
+                               {},
+                               {.update = [&order](double) { order += 'u'; },
+                                .extract = [&order] { order += 'e'; },
+                                .render =
+                                    [&order](double)
+                                {
+                                    order += 'r';
+                                }}};
+    loop.tick();
+    EXPECT_EQ(order, "uer");
+}
+
 TEST_F(GameLoopTest, RunsFixedStepsForElapsedTime)
 {
     constexpr double c_step = 1.0 / 60.0;

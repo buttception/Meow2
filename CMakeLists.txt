@@ -80,7 +80,13 @@ include(Meow2Docs)
 include(Meow2GitHooks)
 
 # ---- Projects ---------------------------------------------------------------
-set(MEOW2_COOKED_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/cooked")
+# Next to the exes. Multi-config generators (Visual Studio) put those in bin/<Config>/, so the path has to follow.
+get_property(meow2MultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(meow2MultiConfig)
+    set(MEOW2_COOKED_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/cooked")
+else()
+    set(MEOW2_COOKED_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/cooked")
+endif()
 add_subdirectory(Meow2Engine)
 
 if(MEOW2_SHADER_TOOLS)

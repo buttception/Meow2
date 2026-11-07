@@ -189,6 +189,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | enkiTS v1.12 | job system | zlib | submodule; static, C interface/examples off; only included by `src/Core/Jobs/Enkits/` |
 | Tracy v0.14.1 (client only) | CPU/GPU/memory profiler | BSD-3 | submodule; static, on demand, localhost only, no broadcast, its crash handler off; `TRACY_ENABLE` per configuration (Debug/RWDI). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
 | **Not submodules** | | | |
+| RenderDoc in-app API v1.47 | frame capture from inside the app (§11) | MIT | one header, `external/renderdoc/renderdoc_app.h`, copied unchanged (owner-approved): RenderDoc's whole repository would be a large submodule for one file. Only included by `src/Graphics/Rhi/RenderDocCapture.cpp` |
 | Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, aqtinstall 3.3.0 in a plain step in Linux CI (only GitHub-owned actions are allowed); found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
 | Vulkan SDK | validation layers, tools | — | LunarG installer (dev machines only) |
 | DXC v1.9.2609 | shader compiler (§12) | NCSA/MIT (`dxcompiler`); Microsoft licence (`dxil`) | not a submodule: `cmake/Meow2Dxc.cmake` downloads the pinned release at configure time into the build folder and checks its SHA-256. Development only for now: not in the release zip, because the release's licence refers to a distributables list it doesn't contain. `Meow2Player` never ships it |
@@ -493,7 +494,8 @@ The engine starts single-threaded but every module is written so it can run on w
 - Locks: `std::mutex` / `std::shared_mutex` with `std::scoped_lock`; never call into another subsystem or user callback while holding a lock; lock order documented where two locks are taken.
 - Atomics: `std::atomic` with the default (sequentially consistent) ordering unless a profiler shows a need, and then with a comment explaining the weaker ordering.
 - Logging is thread-safe (spdlog multi-threaded sinks); the Qt console sink marshals to the GUI thread.
-- RHI: command lists are recorded on any thread (one list per thread), submitted from one thread; resource creation on the device is thread-safe.
+- RHI: command lists are recorded on any thread (one list per job, one command pool per thread per frame in flight) and submitted from one thread, in an order the caller gives; resource creation on the device is thread-safe.
+- **Render graph** (owner decision 2026-11-07): compiled on the main thread, which fixes pass order and barriers; passes then record in parallel on jobs, one command list per pass or per group of small passes. One pass is never split across lists: Vulkan and D3D12 render passes don't span lists without extra machinery, and GPU-driven passes are few draws.
 - No mutable globals (§18) is the main threading rule: shared mutable state that isn't visible in a constructor is where data races hide.
 - **Sanitizers (M1):** compiler instrumentation that checks the program while the tests run.
   - **ASan** (AddressSanitizer): out-of-bounds access, use-after-free, double free, leaks.
@@ -727,3 +729,5 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-07 — Implementation notes moved to `docs/wiki/`; this file keeps decisions and rules. §11: debug tools (RenderDoc baseline, PIX and Nsight).
 - 2026-11-07 — §4: Vulkan-Headers, volk and VMA added (owner-approved).
 - 2026-11-07 — §11: heap bindings fixed and passed to DXC explicitly, because its default depends on what a shader declares.
+- 2026-11-07 — §19: command lists per job, parallel render graph recording (owner decision).
+- 2026-11-07 — §4: RenderDoc's in-app API header added (owner-approved).

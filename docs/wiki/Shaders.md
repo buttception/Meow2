@@ -105,7 +105,7 @@ Result<std::span<const std::byte>> code = loaded->bytecode(*key, "psMain", Shade
 
 ## The build step
 
-Shaders live in `shaders/`, each with its `.meta`. A normal build cooks them all into `<build>/bin/cooked/shaders/`: Debug builds cook with debug info, other configurations optimised.
+Shaders live in `shaders/`, each with its `.meta`. A normal build cooks them all into `cooked/shaders/` next to the executables: Debug builds cook with debug info, other configurations optimised.
 
 **To add a shader:**
 1. Write `shaders/Sky.hlsl`.

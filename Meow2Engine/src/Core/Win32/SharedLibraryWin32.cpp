@@ -27,6 +27,17 @@ Result<SharedLibrary> SharedLibrary::open(const std::filesystem::path& path)
     return SharedLibrary{handle};
 }
 
+Result<SharedLibrary> SharedLibrary::findLoaded(std::string_view name)
+{
+    HMODULE handle = nullptr;
+    // No flags: unlike GetModuleHandle, this adds a reference, which the destructor's FreeLibrary gives back.
+    if (GetModuleHandleExA(0, std::string{name}.c_str(), &handle) == 0)
+    {
+        return fail(ErrorCode::NotFound, std::string{name});
+    }
+    return SharedLibrary{handle};
+}
+
 SharedLibrary::SharedLibrary(void* handle) noexcept
     : m_handle(handle)
 {

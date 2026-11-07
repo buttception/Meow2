@@ -7,6 +7,7 @@
 #include <Meow2/Assets/Shader/ShaderHotReload.h>
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Id/UuidGenerator.h>
+#include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Platform.h>
@@ -361,6 +362,102 @@ TEST_F(RhiDrawTest, TextureSamplesThroughTheHeap)
     m_device->destroy(*texture);
     m_device->destroy(*sampler);
     m_device->destroy(upload);
+    m_device->destroy(pipeline);
+    m_device->destroy(target);
+    m_device->destroy(readback);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
+
+TEST_F(RhiDrawTest, MarkersAndMemoryStats)
+{
+    const GpuMemoryStats before = m_device->memoryStats();
+    const auto tag = static_cast<std::size_t>(Memory::MemTag::Physics);
+    const BufferHandle buffer =
+        *m_device->createBuffer({.size = 4096, .tag = Memory::MemTag::Physics, .name = "Tagged"});
+    const GpuMemoryStats during = m_device->memoryStats();
+    EXPECT_GE(during.bytesByTag[tag], before.bytesByTag[tag] + 4096);
+    EXPECT_GT(during.usedBytes, 0U);
+
+    runFrame(
+        [&](IRhiCommandList& list)
+        {
+            const ScopedMarker outer{list, "Outer"};
+            const ScopedMarker inner{list, "Inner"};
+            list.barrier(buffer, ResourceState::Undefined, ResourceState::ShaderWrite);
+        });
+
+    m_device->destroy(buffer);
+    m_device->waitIdle();
+    EXPECT_EQ(m_device->memoryStats().bytesByTag[tag], before.bytesByTag[tag]);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
+
+TEST_F(RhiDrawTest, ListsRecordedOnJobsSubmitInOrder)
+{
+    constexpr std::uint32_t c_lists = 8;
+    m_device.reset();
+    Result<std::unique_ptr<IRhiDevice>> device = createRhiDevice(
+        {.appName = "Meow2 tests", .validation = true, .presentation = false, .recordingThreads = c_lists}, m_log);
+    ASSERT_TRUE(device) << device.error().message;
+    m_device = std::move(*device);
+
+    const PipelineHandle pipeline = graphicsPipeline(c_triangleShader);
+    const TextureHandle target = makeTarget();
+    const BufferHandle readback = makeBuffer(sizeof(Pixel) * c_targetSize * c_targetSize, RhiMemory::Readback);
+    // One full-screen triangle per list, each a different shade of red.
+    std::vector<BufferHandle> vertices;
+    for (std::uint32_t i = 0; i < c_lists; ++i)
+    {
+        vertices.push_back(makeBuffer(sizeof(TriangleVertex) * 3, RhiMemory::Upload));
+        const float red = static_cast<float>(i + 1) / static_cast<float>(c_lists);
+        const std::array<TriangleVertex, 3> triangle{
+            TriangleVertex{{-1.0F, 3.0F, 0.5F, 1.0F}, {red, 0.0F, 0.0F, 1.0F}},
+            TriangleVertex{{3.0F, -1.0F, 0.5F, 1.0F}, {red, 0.0F, 0.0F, 1.0F}},
+            TriangleVertex{{-1.0F, -1.0F, 0.5F, 1.0F}, {red, 0.0F, 0.0F, 1.0F}}};
+        std::memcpy(m_device->mappedMemory(vertices[i]).data(), triangle.data(), sizeof(triangle));
+    }
+
+    Result<IRhiCommandList*> first = m_device->beginFrame();
+    ASSERT_TRUE(first);
+    (*first)->barrier(target, ResourceState::Undefined, ResourceState::ColorTarget);
+
+    Jobs::JobSystem jobs{{.threadCount = c_lists}, m_log};
+    std::vector<IRhiCommandList*> lists(c_lists);
+    Jobs::Job job = jobs.parallelFor(c_lists, 1,
+                                     [&](std::uint32_t begin, std::uint32_t end, std::uint32_t threadIndex)
+                                     {
+                                         for (std::uint32_t i = begin; i < end; ++i)
+                                         {
+                                             Result<IRhiCommandList*> list = m_device->commandList(threadIndex);
+                                             ASSERT_TRUE(list) << list.error().message;
+                                             lists[i] = *list;
+                                             const ScopedMarker marker{**list, "Job"};
+                                             (*list)->beginRendering(RenderTargets{.color = target});
+                                             (*list)->setPipeline(pipeline);
+                                             Shader::PushConstants push{};
+                                             push.userData = m_device->bindlessIndex(vertices[i]);
+                                             (*list)->setPushConstants(push);
+                                             (*list)->draw(3);
+                                             (*list)->endRendering();
+                                         }
+                                     });
+    jobs.wait(job);
+
+    Result<IRhiCommandList*> last = m_device->commandList(0);
+    ASSERT_TRUE(last);
+    lists.push_back(*last);
+    (*last)->barrier(target, ResourceState::ColorTarget, ResourceState::CopySource);
+    (*last)->copyTextureToBuffer(target, readback);
+    (*last)->barrier(readback, ResourceState::CopyTarget, ResourceState::HostRead);
+    ASSERT_TRUE(m_device->endFrame(lists));
+    m_device->waitIdle();
+
+    EXPECT_EQ(pixelAt(readback, 32, 32).r, 255) << "the last list in the order, whichever job finished last";
+
+    for (const BufferHandle buffer : vertices)
+    {
+        m_device->destroy(buffer);
+    }
     m_device->destroy(pipeline);
     m_device->destroy(target);
     m_device->destroy(readback);

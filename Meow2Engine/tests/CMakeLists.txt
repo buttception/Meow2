@@ -12,6 +12,7 @@ meow2_add_test_suite(
         Core/Log/LogTests.cpp
         Core/Memory/BlockArenaTests.cpp
         Core/Memory/CountingResource.h
+        Core/Memory/FrameArenaTests.cpp
         Core/Memory/MallocResourceTests.cpp
         Core/Memory/TaggedResourceTests.cpp
         Core/Memory/TrackingAllocatorTests.cpp
@@ -98,6 +99,12 @@ meow2_add_test_suite(
         Platform/WindowTests.cpp
     LIBRARIES SDL3::SDL3-static)
 
+# The frame packet.
+meow2_add_test_suite(
+    TARGET    Meow2EngineRendererTests
+    MODULE    Renderer
+    SOURCES   Graphics/Renderer/FramePacketTests.cpp)
+
 # RHI: handles and the requirements check need no GPU, and read the backend's private header.
 if(MEOW2_RHI_VULKAN)
     meow2_add_test_suite(
@@ -113,7 +120,7 @@ if(MEOW2_RHI_VULKAN AND MEOW2_GPU_TESTS AND MEOW2_SHADER_TOOLS)
         TARGET    Meow2EngineRhiGpuTests
         MODULE    RhiGpu
         LABELS    gpu
-        SOURCES   Graphics/Rhi/RhiDrawTests.cpp Graphics/Rhi/RhiGpuTests.cpp)
+        SOURCES   Graphics/Renderer/FrameResourcesTests.cpp Graphics/Rhi/RhiDrawTests.cpp Graphics/Rhi/RhiGpuTests.cpp)
     add_dependencies(Meow2EngineRhiGpuTests Meow2Shaders)
     target_compile_definitions(Meow2EngineRhiGpuTests PRIVATE MEOW2_COOKED_DIR="${MEOW2_COOKED_DIR}")
 endif()

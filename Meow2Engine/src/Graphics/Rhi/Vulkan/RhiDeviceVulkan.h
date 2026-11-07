@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "Graphics/Rhi/Vulkan/RhiGpuProfilerVulkan.h"
 #include "Meow2/Graphics/Rhi/IRhiDevice.h"
 
 // volk must come first, or VMA leaves out its volk import function.
@@ -14,9 +15,10 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
-#include <mutex>
+#include <shared_mutex>
 #include <string_view>
 #include <vector>
 
@@ -38,25 +40,29 @@ class RhiSwapchainVulkan;
 /// @brief A buffer's Vulkan objects. Plain data.
 struct BufferVulkan
 {
-    VkBuffer buffer = VK_NULL_HANDLE;   ///< The buffer.
-    VmaAllocation allocation = nullptr; ///< Its memory.
-    std::byte* mapped = nullptr;        ///< Mapped address; null for GPU-only memory.
-    std::uint64_t size = 0;             ///< Size in bytes.
-    std::uint32_t heapIndex = 0;        ///< Slot in the resource heap.
+    VkBuffer buffer = VK_NULL_HANDLE;         ///< The buffer.
+    VmaAllocation allocation = nullptr;       ///< Its memory.
+    std::byte* mapped = nullptr;              ///< Mapped address; null for GPU-only memory.
+    std::uint64_t size = 0;                   ///< Size in bytes.
+    Memory::MemTag tag = Memory::MemTag::Rhi; ///< Which GpuMemoryStats counter it's in.
+    std::uint64_t bytes = 0;                  ///< Memory it takes.
+    std::uint32_t heapIndex = 0;              ///< Slot in the resource heap.
 };
 
 /// @brief A texture's Vulkan objects. Plain data.
 struct TextureVulkan
 {
-    VkImage image = VK_NULL_HANDLE;        ///< The image.
-    VkImageView view = VK_NULL_HANDLE;     ///< A view of every mip level.
-    VmaAllocation allocation = nullptr;    ///< Its memory.
-    VkFormat format = VK_FORMAT_UNDEFINED; ///< Its format.
-    VkExtent2D extent{};                   ///< Size in pixels.
-    std::uint32_t mipLevels = 1;           ///< Mip levels.
-    bool depth = false;                    ///< A depth format.
-    std::uint32_t heapIndex = 0;           ///< Sampled slot in the resource heap.
-    std::uint32_t storageIndex = 0;        ///< Writable slot in the resource heap; 0 if it has none.
+    VkImage image = VK_NULL_HANDLE;           ///< The image.
+    VkImageView view = VK_NULL_HANDLE;        ///< A view of every mip level.
+    VmaAllocation allocation = nullptr;       ///< Its memory.
+    VkFormat format = VK_FORMAT_UNDEFINED;    ///< Its format.
+    VkExtent2D extent{};                      ///< Size in pixels.
+    std::uint32_t mipLevels = 1;              ///< Mip levels.
+    bool depth = false;                       ///< A depth format.
+    std::uint32_t heapIndex = 0;              ///< Sampled slot in the resource heap.
+    std::uint32_t storageIndex = 0;           ///< Writable slot in the resource heap; 0 if it has none.
+    Memory::MemTag tag = Memory::MemTag::Rhi; ///< Which GpuMemoryStats counter it's in.
+    std::uint64_t bytes = 0;                  ///< Memory it takes.
 };
 
 /// @brief A sampler's Vulkan object. Plain data.
@@ -115,10 +121,26 @@ public:
         m_commandBuffer = commandBuffer;
     }
 
+    /// @brief The command buffer.
+    /// @return The handle.
+    [[nodiscard]] VkCommandBuffer commandBuffer() const
+    {
+        return m_commandBuffer;
+    }
+
+    /// @brief Whether a beginRendering() or a marker is still open.
+    /// @return True if the list isn't ready to submit.
+    [[nodiscard]] bool isOpen() const
+    {
+        return m_rendering || m_openMarkers != 0;
+    }
+
     void beginRendering(IRhiSwapchain& swapchain, std::optional<Math::Color> clear) override;
     void beginRendering(const RenderTargets& targets) override;
     void endRendering() override;
     void setPipeline(PipelineHandle pipeline) override;
+    void beginMarker(const char* name) override;
+    void endMarker() override;
     void setPushConstants(const Shader::PushConstants& constants) override;
     void draw(std::uint32_t vertexCount, std::uint32_t instanceCount) override;
     void dispatch(std::uint32_t x, std::uint32_t y, std::uint32_t z) override;
@@ -140,6 +162,8 @@ private:
     RhiDeviceVulkan& m_device;
     VkCommandBuffer m_commandBuffer = VK_NULL_HANDLE;
     bool m_rendering = false;
+    std::uint32_t m_openMarkers = 0;
+    GpuZoneStack m_gpuZones;
 };
 
 /// @brief An instance, a device, one queue for graphics and compute, the frame loop, and the resources.
@@ -151,8 +175,8 @@ private:
 /// There's one descriptor set for everything: binding 0 is the sampler heap, binding 1 the mutable resource heap, which
 /// DXC is told about with `-fvk-bind-sampler-heap` and `-fvk-bind-resource-heap`.
 /// @par Thread safety
-/// The frame functions are not thread-safe. Creating and destroying resources, and looking them up, are, through one
-/// mutex that's never held across a Vulkan creation call.
+/// The frame functions are not thread-safe, except commandList() with distinct indices. Creating and destroying
+/// resources, and looking them up, are, through one shared mutex that's never held across a Vulkan creation call.
 class RhiDeviceVulkan final : public IRhiDevice
 {
 public:
@@ -179,7 +203,12 @@ public:
     [[nodiscard]] Result<std::unique_ptr<IRhiSwapchain>> createSwapchain(const RhiSwapchainDesc& desc) override;
     [[nodiscard]] Result<IRhiCommandList*> beginFrame() override;
     [[nodiscard]] bool acquire(IRhiSwapchain& swapchain) override;
-    [[nodiscard]] Result<void> endFrame() override;
+    [[nodiscard]] Result<IRhiCommandList*> commandList(std::uint32_t threadIndex) override;
+    [[nodiscard]] std::uint32_t frameSlot() const override
+    {
+        return m_frameIndex;
+    }
+    [[nodiscard]] Result<void> endFrame(std::span<IRhiCommandList* const> lists) override;
     void waitIdle() override;
     [[nodiscard]] std::uint64_t validationErrorCount() const override
     {
@@ -205,6 +234,7 @@ public:
     [[nodiscard]] Result<PipelineHandle> createComputePipeline(const ComputePipelineDesc& desc) override;
     void destroy(PipelineHandle pipeline) override;
     [[nodiscard]] std::vector<std::byte> pipelineCacheData() override;
+    [[nodiscard]] GpuMemoryStats memoryStats() override;
 
     /// @brief The instance.
     /// @return The handle.
@@ -293,13 +323,38 @@ public:
     /// @return A copy of its objects; asserts on a stale handle.
     [[nodiscard]] PipelineVulkan pipeline(PipelineHandle handle);
 
+    /// @brief Where GPU zones go.
+    /// @return The profiler.
+    [[nodiscard]] GpuProfilerVulkan& gpuProfiler()
+    {
+        return m_gpuProfiler;
+    }
+
+    /// @brief Whether object names and markers are available.
+    /// @return True with VK_EXT_debug_utils.
+    [[nodiscard]] bool hasDebugUtils() const
+    {
+        return m_debugUtils;
+    }
+
 private:
+    /// @brief What one job thread records with in one frame slot.
+    struct ThreadCommands
+    {
+        VkCommandPool pool = VK_NULL_HANDLE;    ///< A pool may only be used by one thread at a time.
+        std::vector<VkCommandBuffer> buffers;   ///< Kept across frames.
+        std::deque<RhiCommandListVulkan> lists; ///< One per buffer. A deque, so pointers to lists stay valid.
+        std::size_t used = 0;                   ///< How many are in use this frame.
+    };
+
     /// @brief One slot of the frames in flight.
     struct Frame
     {
         VkCommandPool pool = VK_NULL_HANDLE;       ///< Reset as a whole when the slot is reused.
         VkCommandBuffer commands = VK_NULL_HANDLE; ///< The frame's command buffer.
+        VkCommandBuffer last = VK_NULL_HANDLE;     ///< Runs after every other list: present barriers.
         std::uint64_t submittedValue = 0;          ///< Timeline value that means the GPU is done with this slot.
+        std::vector<ThreadCommands> threads;       ///< One per job thread.
     };
 
     /// @brief Something to destroy once the GPU has reached a timeline value.
@@ -330,9 +385,15 @@ private:
     [[nodiscard]] Result<void> createBindless(const RhiDeviceDesc& desc);
 
     /// @brief Records an image layout change for a swapchain image.
+    /// @param commands  Where to record it.
     /// @param swapchain The swapchain.
     /// @param toPresent True for attachment → present, false for undefined → attachment.
-    void recordSwapchainBarrier(const RhiSwapchainVulkan& swapchain, bool toPresent);
+    void recordSwapchainBarrier(VkCommandBuffer commands, const RhiSwapchainVulkan& swapchain, bool toPresent);
+
+    /// @brief Starts a command buffer and binds the heap, the one binding every list needs.
+    /// @param commands The buffer.
+    /// @return An error if Vulkan refuses.
+    [[nodiscard]] Result<void> beginCommands(VkCommandBuffer commands);
 
     /// @brief Queues objects for destruction after the frames that could use them.
     /// @param destroyLater Destroys them.
@@ -385,7 +446,11 @@ private:
     VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
     VkSampler m_defaultSampler = VK_NULL_HANDLE;
 
-    std::mutex m_resourceMutex; ///< Guards everything below.
+    std::array<std::atomic<std::uint64_t>, Memory::c_memTagCount> m_bytesByTag{};
+    std::uint32_t m_recordingThreads = 1;
+    GpuProfilerVulkan m_gpuProfiler;
+
+    std::shared_mutex m_resourceMutex; ///< Guards everything below. Shared for lookups: recording jobs only read.
     HandlePool<BufferVulkan, BufferTag> m_buffers;
     HandlePool<TextureVulkan, TextureTag> m_textures;
     HandlePool<SamplerVulkan, SamplerTag> m_samplers;

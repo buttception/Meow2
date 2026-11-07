@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace Meow2
 {
@@ -25,6 +26,11 @@ public:
     /// @param path Full path of the library file.
     /// @return The library, or ErrorCode::NotFound with the OS's message.
     [[nodiscard]] static Result<SharedLibrary> open(const std::filesystem::path& path);
+
+    /// @brief Finds a library that's already in this process, without loading anything.
+    /// @param name The file name, e.g. `renderdoc.dll`.
+    /// @return The library, kept loaded until this object goes; ErrorCode::NotFound if it isn't in the process.
+    [[nodiscard]] static Result<SharedLibrary> findLoaded(std::string_view name);
 
     /// @brief Takes over the loaded library.
     /// @param other Left empty.

@@ -166,11 +166,12 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 | 2 | Graphics and compute pipelines from `.m2shader`, pipeline cache on disk, up-front creation | §11 | ✅ | #157 / PR #158 |
 | 2 | Pipelines rebuilt on `ShaderReloaded` | §12, §22 | ✅ | #157 / PR #158 |
 | 2 | Triangle through bindless: the first time an M4 shader really runs | §12 | ✅ | #157 / PR #158 |
-| 3 Frame infrastructure | `FrameArena` (reset by fence), upload ring, CPU readback | §6 | ⬜ | |
-| 3 | Frame packet / extract step in the game loop | §23 | ⬜ | |
-| 3 | Headless rendering: draw to a texture with no window and read it back (M7 golden images, CI) | §13 | ⬜ | |
-| 3 | Debug tools: pass markers, RenderDoc in-app capture; Tracy GPU zones; GPU memory stats per tag | §3, §11 | ⬜ | |
-| 4 GPU-driven path | Render graph, small at first: passes and automatic barriers; transient memory aliasing later | §3, §11 | ⬜ | |
+| 3 Frame infrastructure | `FrameArena` (reset by fence), upload ring, CPU readback | §6 | ✅ | #159 / PR #160 |
+| 3 | Frame packet / extract step in the game loop | §23 | ✅ | #159 / PR #160 |
+| 3 | Headless rendering: draw to a texture with no window and read it back (M7 golden images, CI) | §13 | ✅ | #159 / PR #160 |
+| 3 | Debug tools: pass markers, RenderDoc in-app capture; Tracy GPU zones; GPU memory stats per tag | §3, §11 | ✅ | #159 / PR #160 |
+| 3 | Command lists per job thread, submitted in a given order; lookups that don't block each other | §11, §19 | ✅ | #159 / PR #160 |
+| 4 GPU-driven path | Render graph, small at first: passes and automatic barriers, compiled on the main thread and recorded in parallel, one job per pass or group of small passes (owner decision 2026-11-07); transient memory aliasing later | §3, §11, §19 | ⬜ | |
 | 4 | Vertex pulling with the `Packing.h` formats | §10 | ⬜ | |
 | 4 | Indirect draws with a count buffer, compute frustum culling | §11 | ⬜ | |
 | 4 | Many-instance test scene, reversed-Z depth check | §10 | ⬜ | |
@@ -260,3 +261,4 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 - 2026-11-06 — M4 is now "Shaders and assets", a feature table: DXC pinned, `ShaderCompiler`, asset core, shader assets and permutations, cooker, build step, bindless contract, hot reload. M5 gains bindless, GPU-driven drawing, readback and pipeline caching; M7's GPU scene is the main path; M9 gains GPU picking.
 - 2026-11-06 — M4 done (0.5.0): every row implemented as a stack of PRs (#134–#152).
 - 2026-11-07 — M5 is now a feature table in six PRs, adding deferred destruction, a small render graph, headless rendering, a capability check, multiple swapchains, pipeline rebuilds on shader reload and debug tools. M7 gains meshoptimizer and meshlets as an optional path.
+- 2026-11-07 — M5 PR 3 gains command lists per job thread, and PR 4's render graph records passes in parallel (owner decision).
