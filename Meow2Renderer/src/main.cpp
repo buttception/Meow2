@@ -138,8 +138,12 @@ int main(int argc, char** argv)
 
     // The GPU (techstack.md §11). SDL's offscreen driver has no window to draw to, so smoke runs and CI need no GPU.
     Meow2::Log::Logger rhiLog = logSystem.createLogger("RHI");
-    // F11 captures a frame when the app was launched from RenderDoc. rhi.captureFrame does it with no keyboard.
-    Meow2::Rhi::RenderDocCapture renderDoc{rhiLog};
+    // F11 captures a frame, and the RenderDoc window opens on it. rhi.renderDoc loads RenderDoc with no need to start
+    // it first. rhi.captureFrame captures with no keyboard. Before the device: it has to hook the graphics API.
+    Meow2::Rhi::RenderDocCapture renderDoc{rhiLog,
+                                           {.load = config.getBool("rhi.renderDoc", false),
+                                            .library = config.getString("rhi.renderDocPath", ""),
+                                            .openWindow = config.getBool("rhi.renderDocOpenWindow", true)}};
     const std::int64_t captureFrame = config.getInt("rhi.captureFrame", 0);
     const Meow2::Events::Subscription onCaptureKey = events.subscribe<Meow2::Input::KeyPressed>(
         [&renderDoc](const Meow2::Input::KeyPressed& e)
@@ -252,6 +256,7 @@ int main(int argc, char** argv)
         {
             renderDoc.capture();
         }
+        renderDoc.update();
         Meow2::Result<Meow2::Rhi::IRhiCommandList*> list = device->beginFrame();
         if (!list)
         {

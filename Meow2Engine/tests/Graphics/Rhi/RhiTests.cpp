@@ -136,6 +136,16 @@ TEST(RenderDocCapture, WithoutRenderDocDoesNothing)
     EXPECT_EQ(capture.captureCount(), 0U);
 }
 
+TEST(RenderDocCapture, MissingLibraryIsHarmless)
+{
+    Log::LogSystem logSystem{{.appName = "Test", .directory = {}, .console = false}};
+    Log::Logger log = logSystem.createLogger("RHI");
+    RenderDocCapture capture{log, {.load = true, .library = "meow2-not-renderdoc"}};
+    EXPECT_FALSE(capture.available());
+    capture.update();
+    EXPECT_EQ(capture.captureCount(), 0U);
+}
+
 TEST(SharedLibrary, FindLoadedDoesNotLoad)
 {
     EXPECT_FALSE(SharedLibrary::findLoaded("meow2-not-a-library"));

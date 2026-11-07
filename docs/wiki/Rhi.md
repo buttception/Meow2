@@ -107,7 +107,22 @@ Each thread has its own command pool per frame slot, because a Vulkan pool can o
 
 ### Debugging
 
-`beginMarker(name)`, `endMarker()` and `ScopedMarker` name a region. RenderDoc, PIX and Nsight show them, and in Debug and RelWithDebInfo they're also GPU zones in Tracy. To capture a frame, launch the app from RenderDoc, then press **F11** in Meow2Renderer. `Rhi::RenderDocCapture` looks for the library RenderDoc injected and never loads it, so an ordinary run is unchanged. `--set rhi.captureFrame=60` captures that frame with no keyboard, for scripts.
+`beginMarker(name)`, `endMarker()` and `ScopedMarker` name a region. RenderDoc, PIX and Nsight show them, and in Debug and RelWithDebInfo they're also GPU zones in Tracy. To capture a frame, run Meow2Renderer with RenderDoc turned on, then press **F11**. The RenderDoc window opens on the capture:
+
+```bash
+Meow2Renderer.exe --set rhi.renderDoc=true
+```
+
+`Rhi::RenderDocCapture` loads RenderDoc's library into the app, the way Unreal's plugin does, so there's no need to start RenderDoc first. It needs RenderDoc installed; `rhi.renderDocPath` sets where. Launching the app from RenderDoc still works, and then F11 brings its window forward.
+
+The setting is off by default, because RenderDoc hooks the graphics API. Without it, and without launching from RenderDoc, nothing is loaded and F11 does nothing.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `rhi.renderDoc` | off | Load RenderDoc at startup |
+| `rhi.renderDocPath` | the default install | Where its library is |
+| `rhi.renderDocOpenWindow` | on | Open the RenderDoc window on each capture |
+| `rhi.captureFrame` | 0, never | Capture this frame with no keyboard, for scripts |
 
 `memoryStats()` gives the driver's totals and the bytes of live buffers and textures per `MemTag`, set with `BufferDesc::tag` and `TextureDesc::tag`.
 
