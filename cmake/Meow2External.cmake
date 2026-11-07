@@ -157,3 +157,36 @@ add_subdirectory("${meow2TracyDir}" "${PROJECT_BINARY_DIR}/external/tracy" EXCLU
 set(meow2ProfilingEnabled "$<AND:$<BOOL:${MEOW2_PROFILING}>,$<NOT:$<CONFIG:Release,MinSizeRel>>>")
 target_compile_definitions(TracyClient PUBLIC "$<${meow2ProfilingEnabled}:TRACY_ENABLE>")
 set_target_properties(TracyClient PROPERTIES FOLDER "External/Tracy")
+
+# ---- Vulkan (headers, volk, VMA; techstack.md §4, §11) --------------------------------------------
+# The app never links the Vulkan loader: volk finds it at runtime, so a machine without Vulkan gets a clear error
+# (and D3D12 can still run). Only src/Graphics/Rhi/Vulkan/ includes these headers.
+if(MEOW2_RHI_VULKAN)
+    enable_language(C) # volk.c
+    set(meow2VulkanHeadersDir "${PROJECT_SOURCE_DIR}/external/Vulkan-Headers")
+    set(meow2VolkDir "${PROJECT_SOURCE_DIR}/external/volk")
+    set(meow2VmaDir "${PROJECT_SOURCE_DIR}/external/VulkanMemoryAllocator")
+    meow2_require_submodule(Vulkan-Headers "${meow2VulkanHeadersDir}")
+    meow2_require_submodule(volk "${meow2VolkDir}")
+    meow2_require_submodule(VulkanMemoryAllocator "${meow2VmaDir}")
+
+    add_library(meow2_volk STATIC "${meow2VolkDir}/volk.c")
+    target_include_directories(meow2_volk SYSTEM PUBLIC "${meow2VulkanHeadersDir}/include" "${meow2VolkDir}")
+    target_compile_definitions(meow2_volk PUBLIC VK_NO_PROTOTYPES)
+    if(WIN32)
+        target_compile_definitions(meow2_volk PUBLIC VK_USE_PLATFORM_WIN32_KHR)
+    else()
+        target_compile_definitions(meow2_volk PUBLIC VK_USE_PLATFORM_XLIB_KHR VK_USE_PLATFORM_WAYLAND_KHR)
+    endif()
+    target_link_libraries(meow2_volk PUBLIC ${CMAKE_DL_LIBS})
+    set_target_properties(meow2_volk PROPERTIES FOLDER "External")
+
+    # VMA's implementation, in its own library so the engine's warnings don't apply to it.
+    add_library(meow2_vma STATIC "${PROJECT_SOURCE_DIR}/Meow2Engine/src/Graphics/Rhi/Vulkan/VulkanMemoryAllocator.cpp")
+    target_include_directories(meow2_vma SYSTEM PUBLIC "${meow2VmaDir}/include")
+    target_link_libraries(meow2_vma PUBLIC meow2_volk)
+    if(WIN32)
+        target_compile_definitions(meow2_vma PUBLIC NOMINMAX) # VMA includes <windows.h>
+    endif()
+    set_target_properties(meow2_vma PROPERTIES FOLDER "External")
+endif()

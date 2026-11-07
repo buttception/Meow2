@@ -36,6 +36,7 @@ target_sources(Meow2Engine
         src/Core/Time/GameLoop.cpp
         src/Core/Time/GameLoopConfig.cpp
         src/Core/Version.cpp
+        src/Graphics/Rhi/RhiDevice.cpp
         src/Math/SplinePath.cpp
         src/Platform/FileSystem/FileSystem.cpp
         src/Platform/Input/InputSystem.cpp
@@ -90,6 +91,11 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/FrameClock.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
+            include/Meow2/Graphics/Rhi/IRhiCommandList.h
+            include/Meow2/Graphics/Rhi/IRhiDevice.h
+            include/Meow2/Graphics/Rhi/IRhiSwapchain.h
+            include/Meow2/Graphics/Rhi/RhiHandle.h
+            include/Meow2/Graphics/Rhi/RhiTypes.h
             include/Meow2/Graphics/Shader/BindlessLayout.h
             include/Meow2/Graphics/Shader/ShaderCompiler.h
             include/Meow2/Math/Batch.h
@@ -136,6 +142,29 @@ else()
         src/Core/Linux/ProcessLinux.cpp
         src/Core/Linux/SharedLibraryLinux.cpp)
     target_link_libraries(Meow2Engine PRIVATE ${CMAKE_DL_LIBS}) # dlopen
+endif()
+
+# The Vulkan backend of the RHI (techstack.md §11). D3D12 will sit next to it; the choice is made at runtime.
+if(MEOW2_RHI_VULKAN)
+    target_sources(Meow2Engine PRIVATE
+        src/Graphics/Rhi/Vulkan/RhiDeviceVulkan.cpp
+        src/Graphics/Rhi/Vulkan/RhiDeviceVulkan.h
+        src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.cpp
+        src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.h
+        src/Graphics/Rhi/Vulkan/VulkanRequirements.cpp
+        src/Graphics/Rhi/Vulkan/VulkanRequirements.h)
+    target_link_libraries(Meow2Engine PRIVATE meow2_vma)
+    # Vulkan structs have no default member initializers, and setting only some fields is how they're meant to be
+    # filled in: the rest are zero. GCC and Clang warn about that for designated initializers.
+    if(NOT MSVC)
+        set_source_files_properties(
+            src/Graphics/Rhi/Vulkan/RhiDeviceVulkan.cpp
+            src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.cpp
+            PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers")
+    endif()
+    target_compile_definitions(Meow2Engine PUBLIC MEOW2_RHI_VULKAN=1)
+else()
+    target_compile_definitions(Meow2Engine PUBLIC MEOW2_RHI_VULKAN=0)
 endif()
 
 # The shader compiler: DXC's headers only, the library is loaded at runtime (techstack.md §12).

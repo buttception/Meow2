@@ -98,6 +98,24 @@ meow2_add_test_suite(
         Platform/WindowTests.cpp
     LIBRARIES SDL3::SDL3-static)
 
+# RHI: handles and the requirements check need no GPU, and read the backend's private header.
+if(MEOW2_RHI_VULKAN)
+    meow2_add_test_suite(
+        TARGET    Meow2EngineRhiTests
+        MODULE    Rhi
+        SOURCES   Graphics/Rhi/RhiTests.cpp)
+    target_include_directories(Meow2EngineRhiTests PRIVATE "${PROJECT_SOURCE_DIR}/Meow2Engine/src")
+endif()
+
+# RHI on a real GPU: off by default, because hosted CI has neither a GPU nor a desktop.
+if(MEOW2_RHI_VULKAN AND MEOW2_GPU_TESTS)
+    meow2_add_test_suite(
+        TARGET    Meow2EngineRhiGpuTests
+        MODULE    RhiGpu
+        LABELS    gpu
+        SOURCES   Graphics/Rhi/RhiGpuTests.cpp)
+endif()
+
 # Shader compiler (needs DXC, which lands next to the test executable).
 if(MEOW2_SHADER_TOOLS)
     meow2_add_test_suite(

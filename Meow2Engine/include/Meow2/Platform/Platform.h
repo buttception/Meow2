@@ -109,4 +109,10 @@ private:
     explicit Platform(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> m_impl;
 };
+
+/// @brief Shows a modal message box, for errors the user must see even with no console (Release has none).
+/// @param title   Title bar text (UTF-8).
+/// @param message The message (UTF-8).
+/// @note Blocks until it's closed, so don't use it in unattended runs.
+void showErrorDialog(const std::string& title, const std::string& message);
 } // namespace Meow2::Platform

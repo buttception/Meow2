@@ -8,6 +8,9 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+- RHI: `IRhiDevice`, `IRhiSwapchain` and `IRhiCommandList`, typed handles, and a Vulkan 1.3 backend that picks a GPU, reports what an unsuitable one is missing, and drives several swapchains. Meow2Renderer now clears its window through it (#156).
+
 ### Changed
 - Docs: `techstack.md` keeps decisions and rules, with implementation detail in the wiki; M5 is planned as a feature table; agents group related features into larger PRs (#154).
 

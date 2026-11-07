@@ -177,8 +177,8 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | spdlog v1.17.0 | logging (bundled fmt; static library, no default logger, wchar file names on Windows) | MIT | submodule |
 | JoltPhysics | physics | MIT | submodule |
 | Dear ImGui (docking branch) | Meow2Renderer UI | MIT | submodule |
-| Vulkan-Headers, volk | Vulkan headers + loader-less function loading | Apache-2.0 / MIT | submodule |
-| VulkanMemoryAllocator | VK memory | MIT | submodule |
+| Vulkan-Headers, volk vulkan-sdk-1.4.363.0 | Vulkan headers + loader-less function loading | Apache-2.0 / MIT | submodule; volk static, own target, X11 and Wayland types declared by volk (no X headers needed) |
+| VulkanMemoryAllocator v3.5.0 | VK memory | MIT | submodule; implementation in its own library, outside the engine's warnings |
 | D3D12MemoryAllocator | D3D12 memory | MIT | submodule |
 | DirectX-Headers / Agility SDK | D3D12 headers, newer features | MIT / MS | submodule / NuGet package (**⚠ OPEN**) |
 | glTF loader (**⚠ OPEN**) | asset import | MIT | submodule |
@@ -725,3 +725,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-06 — §12: bindless shader contract implemented.
 - 2026-11-06 — §12: shader hot reload implemented.
 - 2026-11-07 — Implementation notes moved to `docs/wiki/`; this file keeps decisions and rules. §11: debug tools (RenderDoc baseline, PIX and Nsight).
+- 2026-11-07 — §4: Vulkan-Headers, volk and VMA added (owner-approved).
