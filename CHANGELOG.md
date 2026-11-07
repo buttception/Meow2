@@ -8,7 +8,10 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-07
+
 ### Added
+- Switch between Vulkan and Direct3D 12 while the app runs, on the same window: F10 in Meow2Renderer. Everything on the GPU is made again from what the engine kept on the CPU, and a switch that fails goes back to the backend that was running (#168).
 - Direct3D 12 backend: everything Vulkan does, from the bindless heap to GPU-driven drawing, passing the same tests. It ships Microsoft's DirectX 12 Agility SDK runtime in a `D3D12` folder, so it works on Windows 10 as well as 11. Meow2Renderer picks the backend with `--set rhi.backend=d3d12` (#166).
 - A lost GPU device (a crash or driver reset) is logged with what the driver knows: DRED on D3D12, `VK_EXT_device_fault` on Vulkan where the driver has it (#166).
 - Render graph: automatic barriers and passes recorded in parallel on jobs. GPU-driven drawing: compute frustum culling, indirect draws with a count buffer and vertex pulling. Meow2Renderer draws about 100,000 cubes this way (#164).
@@ -18,6 +21,8 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - RHI: `IRhiDevice`, `IRhiSwapchain` and `IRhiCommandList`, typed handles, and a Vulkan 1.3 backend that picks a GPU, reports what an unsuitable one is missing, and drives several swapchains. Meow2Renderer now clears its window through it (#156).
 
 ### Changed
+- Roadmap: M5 (the RHI) is done (version 0.6.0) (#168).
+- `PipelineLibrary` and `GpuScene` take a `RenderDevice` instead of an `IRhiDevice` (#168).
 - Docs: `techstack.md` keeps decisions and rules, with implementation detail in the wiki; M5 is planned as a feature table; agents group related features into larger PRs (#154).
 
 ## [0.5.0] — 2026-11-06

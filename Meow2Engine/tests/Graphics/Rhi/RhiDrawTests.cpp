@@ -14,6 +14,7 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Platform.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
+#include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 #include <Meow2/Graphics/Shader/BindlessLayout.h>
 #include <Meow2/Math/Color.h>
@@ -510,12 +511,22 @@ protected:
         fs::copy_file(fs::path{MEOW2_COOKED_DIR} / file, m_folder / file);
         ASSERT_TRUE(m_files.unmount("cooked"));
         ASSERT_TRUE(m_files.mountDirectory("cooked", m_folder).has_value());
+        // The library builds through a RenderDevice, which takes over the fixture's device.
+        m_render = std::make_unique<Renderer::RenderDevice>(
+            RhiDeviceDesc{
+                .backend = c_testBackend, .appName = "Meow2 tests", .validation = true, .presentation = false},
+            m_log, std::move(m_device));
     }
 
     void TearDown() override
     {
         m_library.reset();
-        m_device->waitIdle();
+        m_render->device().waitIdle();
+    }
+
+    [[nodiscard]] IRhiDevice& device()
+    {
+        return m_render->device();
     }
 
     /// @brief Replaces the cooked shader with one that has no bytecode, and reloads it.
@@ -537,10 +548,11 @@ protected:
 
     void makeLibrary()
     {
-        m_library.emplace(Renderer::PipelineLibraryDeps{m_device.operator*(), m_assets, m_events, m_log});
+        m_library.emplace(Renderer::PipelineLibraryDeps{*m_render, m_assets, m_events, m_log});
     }
 
     fs::path m_folder;
+    std::unique_ptr<Renderer::RenderDevice> m_render;
     std::optional<Renderer::PipelineLibrary> m_library;
 };
 
@@ -551,7 +563,7 @@ TEST_F(PipelineLibraryTest, BuildsFromAShaderAsset)
         .shader = assetId(c_triangleShader), .colorFormat = RhiFormat::Rgba8Unorm, .name = "Triangle"});
     ASSERT_TRUE(id) << id.error().message;
     EXPECT_TRUE(m_library->get(*id).isSet());
-    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+    EXPECT_EQ(device().validationErrorCount(), 0U);
 }
 
 TEST_F(PipelineLibraryTest, ReloadRebuilds)
@@ -566,7 +578,7 @@ TEST_F(PipelineLibraryTest, ReloadRebuilds)
     m_events.publish(Assets::ShaderReloaded{shader});
 
     EXPECT_NE(m_library->get(*id), before);
-    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+    EXPECT_EQ(device().validationErrorCount(), 0U);
 }
 
 TEST_F(PipelineLibraryTest, FailedRebuildKeepsTheOldPipeline)
@@ -582,7 +594,7 @@ TEST_F(PipelineLibraryTest, FailedRebuildKeepsTheOldPipeline)
     m_library->rebuild(shader);
 
     EXPECT_EQ(m_library->get(*id), before);
-    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+    EXPECT_EQ(device().validationErrorCount(), 0U);
 }
 
 TEST_F(PipelineLibraryTest, UnknownShaderIsAnError)

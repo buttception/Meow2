@@ -23,6 +23,7 @@
 #include <Meow2/Core/Version.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
+#include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 #include <Meow2/Graphics/Rhi/RenderDocCapture.h>
@@ -160,8 +161,10 @@ int main(int argc, char** argv)
                 renderDoc.capture();
             }
         });
-    std::unique_ptr<Meow2::Rhi::IRhiDevice> device;
+    // Owns the device, and switches it between Vulkan and D3D12 (F10) while the app runs (techstack.md §11).
+    std::unique_ptr<Meow2::Renderer::RenderDevice> renderDevice;
     std::unique_ptr<Meow2::Rhi::IRhiSwapchain> swapchain; // destroyed first: declared after the device
+    Meow2::Rhi::TextureHandle depthTexture;
     // Cooked shaders are next to the exe. Pipelines compiled by the driver are saved there too, in cache/, so a second
     // run skips that work. Absent files only mean a slower start.
     Meow2::FileSystem::FileSystem files{engineLog};
@@ -180,8 +183,8 @@ int main(int argc, char** argv)
     {
         MEOW2_LOG_WARN(appLog, "The pipeline cache won't be saved: {}", cacheMount.error());
     }
-    // rhi.backend picks the graphics API: "vulkan" (everywhere) or "d3d12" (Windows). Each keeps its own pipeline
-    // cache.
+    // rhi.backend picks the graphics API to start with: "vulkan" (everywhere) or "d3d12" (Windows). Each keeps its own
+    // pipeline cache.
     const std::string backendName = config.getString("rhi.backend", "vulkan");
     const Meow2::Rhi::RhiBackend backend =
         backendName == "d3d12" ? Meow2::Rhi::RhiBackend::D3D12 : Meow2::Rhi::RhiBackend::Vulkan;
@@ -189,57 +192,105 @@ int main(int argc, char** argv)
     {
         MEOW2_LOG_WARN(appLog, "Unknown rhi.backend '{}': using vulkan", backendName);
     }
-    const std::string pipelineCachePath =
-        backend == Meow2::Rhi::RhiBackend::D3D12 ? "cache/d3d12-pipelines.bin" : "cache/vulkan-pipelines.bin";
-    const std::vector<std::byte> savedPipelines = files.readFile(pipelineCachePath).value_or(std::vector<std::byte>{});
+    constexpr std::array<Meow2::Rhi::RhiBackend, 2> c_backends{Meow2::Rhi::RhiBackend::Vulkan,
+                                                               Meow2::Rhi::RhiBackend::D3D12};
+    const auto pipelineCachePath = [](Meow2::Rhi::RhiBackend cacheBackend)
+    {
+        return std::string{cacheBackend == Meow2::Rhi::RhiBackend::D3D12 ? "cache/d3d12-pipelines.bin"
+                                                                         : "cache/vulkan-pipelines.bin"};
+    };
+    const std::vector<std::byte> savedPipelines =
+        files.readFile(pipelineCachePath(backend)).value_or(std::vector<std::byte>{});
     std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
     std::unique_ptr<Meow2::Renderer::GpuScene> scene;
-    Meow2::Rhi::TextureHandle depthTexture;
-    if (const Meow2::Platform::NativeWindowHandle nativeWindow = window->nativeHandle();
-        nativeWindow.type != Meow2::Platform::NativeWindowType::None)
+    const Meow2::Platform::NativeWindowHandle nativeWindow = window->nativeHandle();
+    const bool vsync = config.getBool("rhi.vsync", true);
+    const auto makeSwapchain = [&swapchain, &window, nativeWindow, vsync](Meow2::Rhi::IRhiDevice& device)
+    {
+        Meow2::Result<std::unique_ptr<Meow2::Rhi::IRhiSwapchain>> created =
+            device.createSwapchain({.window = nativeWindow,
+                                    .width = static_cast<std::uint32_t>(window->pixelWidth()),
+                                    .height = static_cast<std::uint32_t>(window->pixelHeight()),
+                                    .vsync = vsync,
+                                    .name = "Main window"});
+        if (!created)
+        {
+            return Meow2::Result<void>{Meow2::Unexpected<Meow2::Error>{created.error()}};
+        }
+        swapchain = std::move(*created);
+        return Meow2::Result<void>{};
+    };
+    // The swapchain and depth buffer let go of the device and come back on the new one, like the pipelines and scene.
+    Meow2::Renderer::DeviceUser windowUser;
+    if (nativeWindow.type != Meow2::Platform::NativeWindowType::None)
     {
         const bool validationByDefault = MEOW2_CONFIG_RELEASE == 0;
-        Meow2::Result<std::unique_ptr<Meow2::Rhi::IRhiDevice>> createdDevice =
-            Meow2::Rhi::createRhiDevice({.backend = backend,
-                                         .appName = "Meow2Renderer",
-                                         .validation = config.getBool("rhi.validation", validationByDefault),
-                                         .recordingThreads = jobs.threadCount(),
-                                         .pipelineCache = savedPipelines},
-                                        rhiLog);
+        Meow2::Result<std::unique_ptr<Meow2::Renderer::RenderDevice>> createdDevice =
+            Meow2::Renderer::RenderDevice::create({.backend = backend,
+                                                   .appName = "Meow2Renderer",
+                                                   .validation = config.getBool("rhi.validation", validationByDefault),
+                                                   .recordingThreads = jobs.threadCount(),
+                                                   .pipelineCache = savedPipelines},
+                                                  rhiLog);
         if (!createdDevice)
         {
             MEOW2_LOG_ERROR(appLog, "Can't start the GPU: {}", createdDevice.error());
             Meow2::Platform::showErrorDialog("Meow2Renderer", createdDevice.error().message);
             return 1;
         }
-        device = std::move(*createdDevice);
-        Meow2::Result<std::unique_ptr<Meow2::Rhi::IRhiSwapchain>> createdSwapchain =
-            device->createSwapchain({.window = nativeWindow,
-                                     .width = static_cast<std::uint32_t>(window->pixelWidth()),
-                                     .height = static_cast<std::uint32_t>(window->pixelHeight()),
-                                     .vsync = config.getBool("rhi.vsync", true),
-                                     .name = "Main window"});
-        if (!createdSwapchain)
+        renderDevice = std::move(*createdDevice);
+        for (const Meow2::Rhi::RhiBackend other : c_backends)
         {
-            MEOW2_LOG_ERROR(appLog, "Can't draw to the window: {}", createdSwapchain.error());
-            Meow2::Platform::showErrorDialog("Meow2Renderer", createdSwapchain.error().message);
+            if (other != backend)
+            {
+                renderDevice->setPipelineCache(
+                    other, files.readFile(pipelineCachePath(other)).value_or(std::vector<std::byte>{}));
+            }
+        }
+        if (const Meow2::Result<void> made = makeSwapchain(renderDevice->device()); !made)
+        {
+            MEOW2_LOG_ERROR(appLog, "Can't draw to the window: {}", made.error());
+            Meow2::Platform::showErrorDialog("Meow2Renderer", made.error().message);
             return 1;
         }
-        swapchain = std::move(*createdSwapchain);
+        // Pipelines are built for this format, so a backend whose swapchain has another can't take over.
+        const Meow2::Rhi::RhiFormat colorFormat = swapchain->format();
+        windowUser = renderDevice->addUser(
+            "Window",
+            [&swapchain, &depthTexture](Meow2::Rhi::IRhiDevice& device)
+            {
+                device.destroy(depthTexture);
+                depthTexture = {}; // made again by the first frame on the new device
+                swapchain.reset();
+            },
+            [&makeSwapchain, &swapchain, colorFormat](Meow2::Rhi::IRhiDevice& device) -> Meow2::Result<void>
+            {
+                if (Meow2::Result<void> made = makeSwapchain(device); !made)
+                {
+                    return made;
+                }
+                if (swapchain->format() != colorFormat)
+                {
+                    swapchain.reset();
+                    return Meow2::fail(Meow2::ErrorCode::Unsupported,
+                                       "The window's swapchain has another format on this backend");
+                }
+                return {};
+            });
 
         // A grid of cubes through the GPU-driven path (shaders/GpuDriven.hlsl). Without cooked shaders the window is
         // simply cleared: a machine with no DXC can still run.
-        pipelines.emplace(Meow2::Renderer::PipelineLibraryDeps{*device, assets, events, rhiLog});
+        pipelines.emplace(Meow2::Renderer::PipelineLibraryDeps{*renderDevice, assets, events, rhiLog});
         const auto instanceCount = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000));
         const Meow2::Result<Meow2::Uuid> shaderUuid = Meow2::Uuid::parse("01a1b5e2-3c12-8000-80a4-7b19d2e6c053");
         const Meow2::Result<Meow2::AssetId> shaderId =
             shaderUuid.and_then([](const Meow2::Uuid& uuid) { return Meow2::AssetId::fromUuid(uuid); });
         Meow2::Result<std::unique_ptr<Meow2::Renderer::GpuScene>> createdScene =
-            Meow2::Renderer::GpuScene::create(*device, *pipelines,
+            Meow2::Renderer::GpuScene::create(*renderDevice, *pipelines,
                                               {.shader = shaderId.value_or(Meow2::AssetId{}),
                                                .instanceCapacity = instanceCount,
-                                               .colorFormat = swapchain->format()});
+                                               .colorFormat = colorFormat});
         if (createdScene)
         {
             scene = std::move(*createdScene);
@@ -270,20 +321,35 @@ int main(int argc, char** argv)
 
     Meow2::Time::FrameClock clock;
 
+    // F10 switches between Vulkan and D3D12 at the next frame boundary. rhi.swapAtFrame switches once with no keyboard.
+    std::optional<Meow2::Rhi::RhiBackend> pendingSwap;
+    const Meow2::Events::Subscription onSwapKey = events.subscribe<Meow2::Input::KeyPressed>(
+        [&pendingSwap, &renderDevice](const Meow2::Input::KeyPressed& e)
+        {
+            if (e.key == Meow2::Input::Key::F10 && !e.repeat && renderDevice)
+            {
+                pendingSwap = renderDevice->backend() == Meow2::Rhi::RhiBackend::Vulkan
+                                  ? Meow2::Rhi::RhiBackend::D3D12
+                                  : Meow2::Rhi::RhiBackend::Vulkan;
+            }
+        });
+    const std::int64_t swapAtFrame = config.getInt("rhi.swapAtFrame", 0);
+
     // One frame of drawing. Returns false if the GPU stopped working.
-    const auto makeDepth = [&device, &depthTexture, &appLog](std::uint32_t width, std::uint32_t height)
+    const auto makeDepth = [&renderDevice, &depthTexture, &appLog](std::uint32_t width, std::uint32_t height)
     {
+        Meow2::Rhi::IRhiDevice& device = renderDevice->device();
         if (depthTexture.isSet())
         {
-            device->destroy(depthTexture);
+            device.destroy(depthTexture);
             depthTexture = {};
         }
         Meow2::Result<Meow2::Rhi::TextureHandle> depth =
-            device->createTexture({.width = width,
-                                   .height = height,
-                                   .format = Meow2::Rhi::RhiFormat::D32Float,
-                                   .renderTarget = true,
-                                   .name = "Depth"});
+            device.createTexture({.width = width,
+                                  .height = height,
+                                  .format = Meow2::Rhi::RhiFormat::D32Float,
+                                  .renderTarget = true,
+                                  .name = "Depth"});
         if (!depth)
         {
             MEOW2_LOG_ERROR(appLog, "Can't create the depth buffer: {}", depth.error());
@@ -292,9 +358,27 @@ int main(int argc, char** argv)
         depthTexture = *depth;
         return true;
     };
-    const auto renderFrame = [&device, &swapchain, &window, &appLog, &scene, &jobs, &depthTexture, &makeDepth,
-                              &renderDoc, &clock, captureFrame]
+    const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &scene, &jobs, &depthTexture, &makeDepth,
+                              &renderDoc, &clock, &pendingSwap, captureFrame, swapAtFrame]
     {
+        if (swapAtFrame > 0 && static_cast<std::int64_t>(clock.frameCount()) == swapAtFrame)
+        {
+            pendingSwap = renderDevice->backend() == Meow2::Rhi::RhiBackend::Vulkan ? Meow2::Rhi::RhiBackend::D3D12
+                                                                                    : Meow2::Rhi::RhiBackend::Vulkan;
+        }
+        // Between frames: everything is released, the device replaced, and everything made again on the new one.
+        if (const std::optional<Meow2::Rhi::RhiBackend> target = std::exchange(pendingSwap, std::nullopt))
+        {
+            if (const Meow2::Result<void> swapped = renderDevice->swapTo(*target); !swapped)
+            {
+                MEOW2_LOG_WARN(appLog, "{}", swapped.error());
+                if (!renderDevice->hasDevice())
+                {
+                    return false;
+                }
+            }
+        }
+        Meow2::Rhi::IRhiDevice& device = renderDevice->device(); // fetched each frame: a switch replaces it
         const auto width = static_cast<std::uint32_t>(window->pixelWidth());
         const auto height = static_cast<std::uint32_t>(window->pixelHeight());
         if (swapchain->needsResize() || width != swapchain->width() || height != swapchain->height())
@@ -319,7 +403,7 @@ int main(int argc, char** argv)
             renderDoc.capture();
         }
         renderDoc.update();
-        Meow2::Result<Meow2::Rhi::IRhiCommandList*> list = device->beginFrame();
+        Meow2::Result<Meow2::Rhi::IRhiCommandList*> list = device.beginFrame();
         if (!list)
         {
             MEOW2_LOG_ERROR(appLog, "Can't start a frame: {}", list.error());
@@ -327,7 +411,7 @@ int main(int argc, char** argv)
         }
         constexpr Meow2::Math::Color c_clear{.r = 0.02F, .g = 0.03F, .b = 0.06F};
         std::vector<Meow2::Rhi::IRhiCommandList*> lists;
-        if (device->acquire(*swapchain))
+        if (device.acquire(*swapchain))
         {
             if (scene)
             {
@@ -345,12 +429,12 @@ int main(int argc, char** argv)
                 frame.view = matrices.view;
                 frame.projection = matrices.projection;
                 frame.viewProjection = matrices.viewProjection;
-                scene->setView(device->frameSlot(), frame, Meow2::Math::frustumFromCamera(matrices));
+                scene->setView(device.frameSlot(), frame, Meow2::Math::frustumFromCamera(matrices));
 
                 Meow2::Renderer::RenderGraph graph;
-                scene->addPasses(graph, device->frameSlot(), swapchain.get(), {}, depthTexture, c_clear);
+                scene->addPasses(graph, device.frameSlot(), swapchain.get(), {}, depthTexture, c_clear);
                 graph.compile();
-                Meow2::Result<std::vector<Meow2::Rhi::IRhiCommandList*>> recorded = graph.execute(*device, jobs);
+                Meow2::Result<std::vector<Meow2::Rhi::IRhiCommandList*>> recorded = graph.execute(device, jobs);
                 scene->endFrame(graph);
                 if (!recorded)
                 {
@@ -365,7 +449,7 @@ int main(int argc, char** argv)
                 (*list)->endRendering();
             }
         }
-        if (const Meow2::Result<void> ended = device->endFrame(lists); !ended)
+        if (const Meow2::Result<void> ended = device.endFrame(lists); !ended)
         {
             MEOW2_LOG_ERROR(appLog, "Can't finish a frame: {}", ended.error());
             return false;
@@ -383,9 +467,9 @@ int main(int argc, char** argv)
         {// Sleeps up to 16 ms while nothing is being drawn, instead of spinning a core. With a window, vsync paces
          // frames. Input is applied right after the pump, so its events are in the loop's first dispatch.
          .pumpEvents =
-             [&platform, &input, &window, &device]
+             [&platform, &input, &window, &renderDevice]
          {
-             const bool drawing = device != nullptr && !window->minimized();
+             const bool drawing = renderDevice != nullptr && !window->minimized();
              platform->pumpEvents(std::chrono::milliseconds{drawing ? 0 : 16});
              input.beginFrame();
          },
@@ -393,9 +477,9 @@ int main(int argc, char** argv)
          .fixedUpdate = [&input](double) { input.endFixedStep(); },
          .update = [](double) { MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker()); }, // memory plots in Tracy
          .render =
-             [&device, &window, &renderFrame, &running](double)
+             [&renderDevice, &window, &renderFrame, &running](double)
          {
-             if (device != nullptr && !window->minimized() && !renderFrame())
+             if (renderDevice != nullptr && !window->minimized() && !renderFrame())
              {
                  running = false;
              }
@@ -409,22 +493,35 @@ int main(int argc, char** argv)
     MEOW2_LOG_INFO(appLog, "Ran {} frames ({} fixed steps) in {:.2f} s", clock.frameCount(), loop.fixedStepCount(),
                    clock.totalSeconds());
 
-    if (device)
+    if (renderDevice && renderDevice->hasDevice())
     {
-        device->waitIdle();
+        renderDevice->device().waitIdle();
         scene.reset();
-        if (depthTexture.isSet())
+        pipelines.reset();
+        windowUser.reset();
+        renderDevice->device().destroy(depthTexture);
+        swapchain.reset();
+        // Every backend this run used, and the files of the others as they were. Empty when there's nothing (e.g. under
+        // RenderDoc on D3D12): the file from the last normal run is kept.
+        for (const Meow2::Rhi::RhiBackend cacheBackend : c_backends)
         {
-            device->destroy(depthTexture);
-        }
-        // Empty when the device has no cache (e.g. under RenderDoc on D3D12): keep the file from the last normal run.
-        if (const std::vector<std::byte> pipelineCache = device->pipelineCacheData(); !pipelineCache.empty())
-        {
-            if (const Meow2::Result<void> saved = files.writeFile(pipelineCachePath, pipelineCache); !saved)
+            if (const std::vector<std::byte> pipelineCache = renderDevice->pipelineCache(cacheBackend);
+                !pipelineCache.empty())
             {
-                MEOW2_LOG_WARN(appLog, "Pipeline cache not saved: {}", saved.error());
+                if (const Meow2::Result<void> saved = files.writeFile(pipelineCachePath(cacheBackend), pipelineCache);
+                    !saved)
+                {
+                    MEOW2_LOG_WARN(appLog, "Pipeline cache not saved: {}", saved.error());
+                }
             }
         }
+    }
+    else
+    {
+        scene.reset();
+        pipelines.reset();
+        windowUser.reset();
+        swapchain.reset();
     }
     Meow2::Platform::storeWindowState(config, *window); // reopen where the user left it
     if (const Meow2::Result<void> saved = config.save(); !saved)

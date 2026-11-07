@@ -68,58 +68,21 @@ MeshData makeCube()
     return mesh;
 }
 
-GpuScene::GpuScene(Rhi::IRhiDevice& device, PipelineLibrary& pipelines, const GpuSceneDesc& desc)
+GpuScene::GpuScene(RenderDevice& device, PipelineLibrary& pipelines, const GpuSceneDesc& desc)
     : m_device(device)
     , m_pipelines(pipelines)
     , m_desc(desc)
 {
 }
 
-Result<std::unique_ptr<GpuScene>> GpuScene::create(Rhi::IRhiDevice& device, PipelineLibrary& pipelines,
+Result<std::unique_ptr<GpuScene>> GpuScene::create(RenderDevice& device, PipelineLibrary& pipelines,
                                                    const GpuSceneDesc& desc)
 {
     MEOW2_ASSERT(desc.instanceCapacity > 0, "A scene needs room for instances");
     auto scene = std::make_unique<GpuScene>(device, pipelines, desc);
-    const auto makeBuffer = [&device](Rhi::BufferHandle& out, std::uint64_t size, Rhi::RhiMemory memory,
-                                      const char* name) -> Result<void>
+    if (Result<void> made = scene->createBuffers(device.device()); !made)
     {
-        Result<Rhi::BufferHandle> buffer =
-            device.createBuffer({.size = size, .memory = memory, .tag = Memory::MemTag::Renderer, .name = name});
-        if (!buffer)
-        {
-            return Unexpected<Error>{buffer.error()};
-        }
-        out = *buffer;
-        return {};
-    };
-    const std::uint64_t capacity = desc.instanceCapacity;
-    for (Result<void> made :
-         {makeBuffer(scene->m_instanceBuffer, capacity * sizeof(Shader::InstanceData), Rhi::RhiMemory::Upload,
-                     "Instances"),
-          makeBuffer(scene->m_meshBuffer, std::uint64_t{c_maxMeshes} * sizeof(Shader::MeshDraw), Rhi::RhiMemory::Upload,
-                     "Meshes"),
-          makeBuffer(scene->m_drawBuffer, capacity * sizeof(Shader::IndirectDraw), Rhi::RhiMemory::GpuOnly, "Draws"),
-          makeBuffer(scene->m_countBuffer, sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly, "Draw count")})
-    {
-        if (!made)
-        {
-            return Unexpected<Error>{made.error()};
-        }
-    }
-    for (std::uint32_t slot = 0; slot < Rhi::c_maxFramesInFlight; ++slot)
-    {
-        if (Result<void> made = makeBuffer(scene->m_frameBuffers[slot], sizeof(Shader::FrameConstants),
-                                           Rhi::RhiMemory::Upload, "Frame constants");
-            !made)
-        {
-            return Unexpected<Error>{made.error()};
-        }
-        if (Result<void> made = makeBuffer(scene->m_cullBuffers[slot], sizeof(Shader::CullConstants),
-                                           Rhi::RhiMemory::Upload, "Cull constants");
-            !made)
-        {
-            return Unexpected<Error>{made.error()};
-        }
+        return Unexpected<Error>{made.error()};
     }
 
     Result<PipelineId> cull =
@@ -139,79 +102,185 @@ Result<std::unique_ptr<GpuScene>> GpuScene::create(Rhi::IRhiDevice& device, Pipe
         return Unexpected<Error>{draw.error()};
     }
     scene->m_drawPipeline = *draw;
+
+    // Registered after the pipeline library, so its pipelines are back before the scene restores.
+    GpuScene* const self = scene.get();
+    scene->m_deviceUser = device.addUser(
+        "GpuScene", [self](Rhi::IRhiDevice& old) { self->destroyBuffers(old); },
+        [self](Rhi::IRhiDevice& fresh) -> Result<void>
+        {
+            if (Result<void> made = self->restoreBuffers(fresh); !made)
+            {
+                self->destroyBuffers(fresh); // a failed restore isn't released
+                return made;
+            }
+            return {};
+        });
     return scene;
 }
 
 GpuScene::~GpuScene()
 {
-    for (const Rhi::BufferHandle buffer : {m_instanceBuffer, m_meshBuffer, m_drawBuffer, m_countBuffer})
+    if (m_device.hasDevice())
     {
-        m_device.destroy(buffer);
-    }
-    for (std::uint32_t slot = 0; slot < Rhi::c_maxFramesInFlight; ++slot)
-    {
-        m_device.destroy(m_frameBuffers[slot]);
-        m_device.destroy(m_cullBuffers[slot]);
-    }
-    for (const Rhi::BufferHandle buffer : m_meshResources)
-    {
-        m_device.destroy(buffer);
+        destroyBuffers(m_device.device());
     }
 }
 
-Result<std::uint32_t> GpuScene::addMesh(const MeshData& mesh)
+Result<void> GpuScene::createBuffers(Rhi::IRhiDevice& device)
 {
-    if (m_meshCount == c_maxMeshes)
+    const auto makeBuffer = [&device](Rhi::BufferHandle& out, std::uint64_t size, Rhi::RhiMemory memory,
+                                      const char* name) -> Result<void>
     {
-        return fail(ErrorCode::OutOfMemory, "Too many meshes");
+        Result<Rhi::BufferHandle> buffer =
+            device.createBuffer({.size = size, .memory = memory, .tag = Memory::MemTag::Renderer, .name = name});
+        if (!buffer)
+        {
+            return Unexpected<Error>{buffer.error()};
+        }
+        out = *buffer;
+        return {};
+    };
+    const std::uint64_t capacity = m_desc.instanceCapacity;
+    for (Result<void> made :
+         {makeBuffer(m_instanceBuffer, capacity * sizeof(Shader::InstanceData), Rhi::RhiMemory::Upload, "Instances"),
+          makeBuffer(m_meshBuffer, std::uint64_t{c_maxMeshes} * sizeof(Shader::MeshDraw), Rhi::RhiMemory::Upload,
+                     "Meshes"),
+          makeBuffer(m_drawBuffer, capacity * sizeof(Shader::IndirectDraw), Rhi::RhiMemory::GpuOnly, "Draws"),
+          makeBuffer(m_countBuffer, sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly, "Draw count")})
+    {
+        if (!made)
+        {
+            return made;
+        }
     }
+    for (std::uint32_t slot = 0; slot < Rhi::c_maxFramesInFlight; ++slot)
+    {
+        if (Result<void> made = makeBuffer(m_frameBuffers[slot], sizeof(Shader::FrameConstants), Rhi::RhiMemory::Upload,
+                                           "Frame constants");
+            !made)
+        {
+            return made;
+        }
+        if (Result<void> made = makeBuffer(m_cullBuffers[slot], sizeof(Shader::CullConstants), Rhi::RhiMemory::Upload,
+                                           "Cull constants");
+            !made)
+        {
+            return made;
+        }
+    }
+    return {};
+}
+
+void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
+{
+    // Unset handles are ignored, so this also cleans up after a creation that stopped halfway.
+    for (Rhi::BufferHandle* buffer : {&m_instanceBuffer, &m_meshBuffer, &m_drawBuffer, &m_countBuffer})
+    {
+        device.destroy(*buffer);
+        *buffer = {};
+    }
+    for (std::uint32_t slot = 0; slot < Rhi::c_maxFramesInFlight; ++slot)
+    {
+        device.destroy(m_frameBuffers[slot]);
+        device.destroy(m_cullBuffers[slot]);
+        m_frameBuffers[slot] = {};
+        m_cullBuffers[slot] = {};
+    }
+    for (const Rhi::BufferHandle buffer : m_meshResources)
+    {
+        device.destroy(buffer);
+    }
+    m_meshResources.clear();
+}
+
+Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
+{
+    if (Result<void> made = createBuffers(device); !made)
+    {
+        return made;
+    }
+    // Mesh records hold heap indices, which are different on the new device: upload every mesh again.
+    for (std::uint32_t mesh = 0; mesh < m_meshes.size(); ++mesh)
+    {
+        if (Result<void> uploaded = uploadMesh(device, m_meshes[mesh], mesh); !uploaded)
+        {
+            return uploaded;
+        }
+    }
+    std::memcpy(device.mappedMemory(m_instanceBuffer).data(), m_instances.data(),
+                m_instances.size() * sizeof(Shader::InstanceData));
+    // The new buffers and the next depth target start with no contents.
+    m_drawState = Rhi::ResourceState::Undefined;
+    m_countState = Rhi::ResourceState::Undefined;
+    m_depthState = Rhi::ResourceState::Undefined;
+    m_lastDepth = {};
+    return {};
+}
+
+Result<void> GpuScene::uploadMesh(Rhi::IRhiDevice& device, const MeshData& mesh, std::uint32_t index)
+{
     const std::span<const std::byte> vertices = std::as_bytes(std::span{mesh.vertices});
     const std::span<const std::byte> indices = std::as_bytes(std::span{mesh.indices});
-    Result<Rhi::BufferHandle> vertexBuffer = m_device.createBuffer({.size = vertices.size(),
-                                                                    .memory = Rhi::RhiMemory::Upload,
-                                                                    .tag = Memory::MemTag::Renderer,
-                                                                    .name = "Mesh vertices"});
+    Result<Rhi::BufferHandle> vertexBuffer = device.createBuffer({.size = vertices.size(),
+                                                                  .memory = Rhi::RhiMemory::Upload,
+                                                                  .tag = Memory::MemTag::Renderer,
+                                                                  .name = "Mesh vertices"});
     if (!vertexBuffer)
     {
         return Unexpected<Error>{vertexBuffer.error()};
     }
     m_meshResources.push_back(*vertexBuffer);
-    Result<Rhi::BufferHandle> indexBuffer = m_device.createBuffer({.size = indices.size(),
-                                                                   .memory = Rhi::RhiMemory::Upload,
-                                                                   .tag = Memory::MemTag::Renderer,
-                                                                   .name = "Mesh indices"});
+    Result<Rhi::BufferHandle> indexBuffer = device.createBuffer({.size = indices.size(),
+                                                                 .memory = Rhi::RhiMemory::Upload,
+                                                                 .tag = Memory::MemTag::Renderer,
+                                                                 .name = "Mesh indices"});
     if (!indexBuffer)
     {
         return Unexpected<Error>{indexBuffer.error()};
     }
     m_meshResources.push_back(*indexBuffer);
-    std::memcpy(m_device.mappedMemory(*vertexBuffer).data(), vertices.data(), vertices.size());
-    std::memcpy(m_device.mappedMemory(*indexBuffer).data(), indices.data(), indices.size());
+    std::memcpy(device.mappedMemory(*vertexBuffer).data(), vertices.data(), vertices.size());
+    std::memcpy(device.mappedMemory(*indexBuffer).data(), indices.data(), indices.size());
 
     const Math::Vec3& extents = mesh.bounds.extents;
     Shader::MeshDraw draw{};
-    draw.vertexBuffer = m_device.bindlessIndex(*vertexBuffer);
-    draw.indexBuffer = m_device.bindlessIndex(*indexBuffer);
+    draw.vertexBuffer = device.bindlessIndex(*vertexBuffer);
+    draw.indexBuffer = device.bindlessIndex(*indexBuffer);
     draw.firstIndex = 0;
     draw.indexCount = static_cast<std::uint32_t>(mesh.indices.size());
     draw.boundsCenter = {mesh.bounds.center.x, mesh.bounds.center.y, mesh.bounds.center.z,
                          std::sqrt(extents.x * extents.x + extents.y * extents.y + extents.z * extents.z)};
     draw.boundsExtents = {extents.x, extents.y, extents.z, 0.0F};
-    std::memcpy(m_device.mappedMemory(m_meshBuffer).data() + std::size_t{m_meshCount} * sizeof(draw), &draw,
-                sizeof(draw));
-    return m_meshCount++;
+    std::memcpy(device.mappedMemory(m_meshBuffer).data() + std::size_t{index} * sizeof(draw), &draw, sizeof(draw));
+    return {};
+}
+
+Result<std::uint32_t> GpuScene::addMesh(const MeshData& mesh)
+{
+    if (m_meshes.size() == c_maxMeshes)
+    {
+        return fail(ErrorCode::OutOfMemory, "Too many meshes");
+    }
+    const auto index = static_cast<std::uint32_t>(m_meshes.size());
+    if (Result<void> uploaded = uploadMesh(m_device.device(), mesh, index); !uploaded)
+    {
+        return Unexpected<Error>{uploaded.error()};
+    }
+    m_meshes.push_back(mesh); // kept for the next device, after a backend switch
+    return index;
 }
 
 void GpuScene::setInstances(std::span<const Shader::InstanceData> instances)
 {
     MEOW2_ASSERT(instances.size() <= m_desc.instanceCapacity, "More instances than GpuSceneDesc::instanceCapacity");
-    m_instanceCount = static_cast<std::uint32_t>(instances.size());
-    std::memcpy(m_device.mappedMemory(m_instanceBuffer).data(), instances.data(), instances.size_bytes());
+    m_instances.assign(instances.begin(), instances.end()); // kept for the next device, after a backend switch
+    std::memcpy(m_device.device().mappedMemory(m_instanceBuffer).data(), instances.data(), instances.size_bytes());
 }
 
 void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& frame, const Math::Frustum& frustum)
 {
-    std::memcpy(m_device.mappedMemory(m_frameBuffers[frameSlot]).data(), &frame, sizeof(frame));
+    std::memcpy(m_device.device().mappedMemory(m_frameBuffers[frameSlot]).data(), &frame, sizeof(frame));
     Shader::CullConstants cull{};
     cull.plane0 = frustum.planes[0];
     cull.plane1 = frustum.planes[1];
@@ -219,12 +288,12 @@ void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& fr
     cull.plane3 = frustum.planes[3];
     cull.plane4 = frustum.planes[4];
     cull.plane5 = frustum.planes[5];
-    cull.instanceBuffer = m_device.bindlessIndex(m_instanceBuffer);
-    cull.meshBuffer = m_device.bindlessIndex(m_meshBuffer);
-    cull.drawBuffer = m_device.bindlessStorageIndex(m_drawBuffer);
-    cull.countBuffer = m_device.bindlessStorageIndex(m_countBuffer);
-    cull.instanceCount = m_instanceCount;
-    std::memcpy(m_device.mappedMemory(m_cullBuffers[frameSlot]).data(), &cull, sizeof(cull));
+    cull.instanceBuffer = m_device.device().bindlessIndex(m_instanceBuffer);
+    cull.meshBuffer = m_device.device().bindlessIndex(m_meshBuffer);
+    cull.drawBuffer = m_device.device().bindlessStorageIndex(m_drawBuffer);
+    cull.countBuffer = m_device.device().bindlessStorageIndex(m_countBuffer);
+    cull.instanceCount = instanceCount();
+    std::memcpy(m_device.device().mappedMemory(m_cullBuffers[frameSlot]).data(), &cull, sizeof(cull));
 }
 
 void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain* swapchain,
@@ -240,7 +309,7 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
     m_countResource = graph.import(m_countBuffer, m_countState);
     m_depthResource = graph.import(depth, m_depthState);
 
-    const std::uint32_t cullIndex = m_device.bindlessIndex(m_cullBuffers[frameSlot]);
+    const std::uint32_t cullIndex = m_device.device().bindlessIndex(m_cullBuffers[frameSlot]);
     graph.addPass({.name = "Clear draw count",
                    .accesses = {{m_countResource, ResourceState::CopyTarget}},
                    .record = [this](Rhi::IRhiCommandList& list) { list.fillBuffer(m_countBuffer, 0); },
@@ -255,7 +324,7 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
              push.userData = cullIndex;
              list.setPipeline(m_pipelines.get(*m_cullPipeline));
              list.setPushConstants(push);
-             list.dispatch((m_instanceCount + c_cullGroupSize - 1) / c_cullGroupSize);
+             list.dispatch((instanceCount() + c_cullGroupSize - 1) / c_cullGroupSize);
          },
          .small = true});
 
@@ -268,10 +337,14 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
         colorResource = graph.import(color, ResourceState::Undefined);
         drawAccesses.push_back({colorResource, ResourceState::ColorTarget});
     }
-    const std::uint32_t frameIndex = m_device.bindlessIndex(m_frameBuffers[frameSlot]);
+    Rhi::IRhiDevice& device = m_device.device();
+    Shader::PushConstants push{};
+    push.frameBuffer = device.bindlessIndex(m_frameBuffers[frameSlot]);
+    push.instanceBuffer = device.bindlessIndex(m_instanceBuffer);
+    push.userData = device.bindlessIndex(m_meshBuffer);
     graph.addPass({.name = "Draw instances",
                    .accesses = std::move(drawAccesses),
-                   .record = [this, swapchain, color, depth, clear, frameIndex](Rhi::IRhiCommandList& list)
+                   .record = [this, swapchain, color, depth, clear, push](Rhi::IRhiCommandList& list)
                    {
                        if (swapchain != nullptr)
                        {
@@ -282,10 +355,6 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
                            list.beginRendering(Rhi::RenderTargets{
                                .color = color, .clearColor = clear, .depth = depth, .clearDepth = 0.0F});
                        }
-                       Shader::PushConstants push{};
-                       push.frameBuffer = frameIndex;
-                       push.instanceBuffer = m_device.bindlessIndex(m_instanceBuffer);
-                       push.userData = m_device.bindlessIndex(m_meshBuffer);
                        list.setPipeline(m_pipelines.get(*m_drawPipeline));
                        list.setPushConstants(push);
                        list.drawIndirectCount(m_drawBuffer, m_countBuffer, m_desc.instanceCapacity);

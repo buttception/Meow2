@@ -50,7 +50,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Scene (entities and components on EnTT, command buffers) | [Scene](Scene.md) | ✅ M2 |
 | Shaders (HLSL through DXC) | [Shaders](Shaders.md) | ✅ M4 |
 | Assets (stable IDs, `.meta` sidecars, loading) | [Assets](Assets.md) | ✅ M4 |
-| RHI (Vulkan device, swapchains, GPU requirements) | [Rhi](Rhi.md) | 🟨 M5 |
+| RHI (Vulkan and D3D12, bindless, render graph, GPU-driven drawing, switching backends while running) | [Rhi](Rhi.md) | ✅ M5 |
 | Jobs (`JobSystem`, enkiTS) | [Jobs](Jobs.md) | ✅ M1 |
 | Profiling (Tracy) | [Profiling](Profiling.md) | ✅ M1 |
 | Releases (zip, GitHub Releases) | [Releases](Releases.md) | ✅ M1 |
@@ -64,7 +64,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 
 ## Roadmap
 
-M0 (foundation), **M1 (core runtime, `v0.2.x`)**, **M2 (platform & scene foundation, `v0.3.0`)**, **M3 (math, `v0.4.0`)** and **M4 (shaders and assets, `v0.5.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers, release zips, the game loop, window and input events, IDs, the scene with command buffers, and the virtual file system, and the math: transforms and their hierarchy, camera and reversed-Z projections, bounding volumes and culling, rays and picking, random numbers, colours, easing and splines, and vertex packing ([Math](Math.md)), and [shaders](Shaders.md) and [assets](Assets.md). The Qt editor window (M9) is in too. Next up is **M5, the RHI**: Vulkan and D3D12, bindless and GPU-driven. The full roadmap is in [milestones.md](../../milestones.md).
+M0 (foundation), **M1 (core runtime, `v0.2.x`)**, **M2 (platform & scene foundation, `v0.3.0`)**, **M3 (math, `v0.4.0`)**, **M4 (shaders and assets, `v0.5.0`)** and **M5 (the RHI, `v0.6.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers, release zips, the game loop, window and input events, IDs, the scene with command buffers, and the virtual file system, and the math: transforms and their hierarchy, camera and reversed-Z projections, bounding volumes and culling, rays and picking, random numbers, colours, easing and splines, and vertex packing ([Math](Math.md)), [shaders](Shaders.md) and [assets](Assets.md), and the [RHI](Rhi.md): Vulkan and D3D12, bindless and GPU-driven, switchable while running. The Qt editor window (M9) is in too. Next up is **M6**: Meow2Renderer as a showcase, with glTF scenes. The full roadmap is in [milestones.md](../../milestones.md).
 
 ## API reference
 

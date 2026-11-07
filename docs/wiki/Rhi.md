@@ -2,7 +2,7 @@
 
 The render hardware interface: one set of C++ interfaces over Vulkan and Direct3D 12. Nothing above it sees an API type, so the backend can be chosen when the app starts and swapped while it runs ([techstack §11](../../techstack.md#11-rhi)).
 
-**Status:** Vulkan and D3D12, with the same features and the same tests: swapchains, resources, the bindless heap, pipelines and their cache, a render graph and GPU-driven drawing. Switching backends while running comes with M5's last PR.
+**Status:** done in M5 (0.6.0). Vulkan and D3D12, with the same features and the same tests: swapchains, resources, the bindless heap, pipelines and their cache, a render graph and GPU-driven drawing, and switching between the two while the app runs.
 
 ## Using it
 
@@ -187,6 +187,37 @@ Things that work differently:
 - **Pipeline cache.** `pipelineCacheData()` is an `ID3D12PipelineLibrary`, keyed by a hash of each pipeline's description and bytecode. Renderer keeps one cache file per backend. RenderDoc doesn't support pipeline libraries, so while it's in the process D3D12 has no cache and the file on disk is kept.
 - **Markers** use `BeginEvent` with PIX's plain-string format, which PIX, RenderDoc and Nsight read with no PIX library.
 
+### Switching backends while running
+
+`Renderer::RenderDevice` owns the device and switches it with `swapTo(backend)`, between frames. Meow2Renderer does it on **F10**, or once at frame N with `--set rhi.swapAtFrame=N`; it takes about 0.3 to 0.6 s.
+
+```cpp
+std::unique_ptr<RenderDevice> render = *RenderDevice::create({.backend = RhiBackend::Vulkan}, rhiLog);
+PipelineLibrary pipelines{{*render, assets, events, rhiLog}};                  // a device user
+std::unique_ptr<GpuScene> scene = *GpuScene::create(*render, pipelines, desc); // another, registered after it
+DeviceUser window = render->addUser(
+    "Window", [&](IRhiDevice& old) { swapchain.reset(); },                    // let go
+    [&](IRhiDevice& fresh) { return makeSwapchain(fresh); });                // make again from what you kept
+// ... frames, each fetching render->device() ...
+Result<void> swapped = render->swapTo(RhiBackend::D3D12);
+```
+
+A switch:
+
+1. waits for the GPU to finish;
+2. has every **device user** release its GPU objects, last registered first;
+3. keeps the old device's pipeline cache (each backend has its own) and destroys the device;
+4. creates the new device with that backend's cache, on the same window;
+5. has every user restore its objects, first registered first.
+
+**The users are the resource registry.** Each one keeps the CPU-side description of what it made, and makes it again: `PipelineLibrary` from its pipeline requests (with the new backend's bytecode, since every shader is cooked to DXIL and SPIR-V), `GpuScene` from its description plus a CPU copy of its meshes and instances (about 8 MB for 100,000 instances), the app from its window. Nothing else changes: `PipelineId`s and the scene object survive, but every handle, heap index and `IRhiDevice&` behind them is new, so nothing above the RHI keeps one across frames. Fetch them each frame.
+
+**Why owners restore themselves** rather than a central list of every buffer: data derived from handles can't be replayed. A mesh record holds its vertex buffer's heap index, which is different on the new device, so the owner has to write the record again. Only the owner knows that.
+
+**A switch that fails goes back.** If the new device can't start (no GPU for that API, a missing runtime) or a user can't restore, the users that did restore are released again, the old backend starts again and everything is restored there; `swapTo` returns the error and the app keeps running. A restore that fails cleans up what it made itself, because it isn't released afterwards. Only if the way back fails too is there no device (`hasDevice()` is false), and Meow2Renderer stops.
+
+Pipelines are built for one colour format, so Meow2Renderer refuses a backend whose swapchain has another one (both give `Bgra8Srgb` today).
+
 ### When the GPU is lost
 
 A GPU crash, a hang or a driver reset loses the device: every later call fails. The next `beginFrame()` (or a failed submit or present) logs what the driver knows, once, and returns an error.
@@ -223,11 +254,12 @@ On D3D12:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `rhi.backend` | `vulkan` | `vulkan` or `d3d12` (Windows) |
+| `rhi.backend` | `vulkan` | `vulkan` or `d3d12` (Windows), at startup; F10 switches while running |
+| `rhi.swapAtFrame` | 0 | Switch backend once at this frame, for checks with no keyboard; 0 never |
 | `rhi.validation` | on, off in Release | The Vulkan validation layer (Vulkan SDK) or the D3D12 debug layer (Agility SDK) |
 | `rhi.vsync` | on | Wait for the display |
 
-Renderer saves the pipeline cache to `cache/vulkan-pipelines.bin` or `cache/d3d12-pipelines.bin` next to the exe, and reads cooked shaders from `cooked/` next to it. Without them it just clears the window.
+Renderer saves the pipeline cache of each backend it used to `cache/vulkan-pipelines.bin` and `cache/d3d12-pipelines.bin` next to the exe, and reads cooked shaders from `cooked/` next to it. Without them it just clears the window.
 
 With SDL's `offscreen` driver there's no window to draw to, so Renderer creates no device. That's how smoke tests run on machines with no GPU.
 
@@ -238,5 +270,7 @@ With SDL's `offscreen` driver there's no window to draw to, so Renderer creates 
 ```bash
 cmake --preset windows-msvc-debug -DMEOW2_GPU_TESTS=ON
 ```
+
+`RenderDeviceTest.*` draws a scene, switches, and requires the same image after; in the D3D12 suite it also goes to Vulkan and back, allowing 1 % of pixels to differ by 2 levels between the two APIs.
 
 Each GPU test requires validation to report no errors, and `RhiGpu.RhiGpuTest.ValidationIsActive` fails if the layer isn't running, so a clean result can't come from a missing layer.

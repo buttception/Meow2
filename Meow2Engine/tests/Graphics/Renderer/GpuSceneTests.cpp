@@ -52,15 +52,15 @@ protected:
     void SetUp() override
     {
         ASSERT_TRUE(m_files.mountDirectory("cooked", MEOW2_COOKED_DIR).has_value());
-        Result<std::unique_ptr<Rhi::IRhiDevice>> device = Rhi::createRhiDevice({.backend = Rhi::c_testBackend,
-                                                                                .appName = "Meow2 tests",
-                                                                                .validation = true,
-                                                                                .presentation = false,
-                                                                                .recordingThreads = c_recordingThreads},
-                                                                               m_log);
+        Result<std::unique_ptr<RenderDevice>> device = RenderDevice::create({.backend = Rhi::c_testBackend,
+                                                                             .appName = "Meow2 tests",
+                                                                             .validation = true,
+                                                                             .presentation = false,
+                                                                             .recordingThreads = c_recordingThreads},
+                                                                            m_log);
         ASSERT_TRUE(device) << device.error().message;
-        m_device = std::move(*device);
-        m_library = std::make_unique<PipelineLibrary>(PipelineLibraryDeps{*m_device, m_assets, m_events, m_log});
+        m_render = std::move(*device);
+        m_library = std::make_unique<PipelineLibrary>(PipelineLibraryDeps{*m_render, m_assets, m_events, m_log});
     }
 
     void TearDown() override
@@ -69,11 +69,11 @@ protected:
         m_library.reset();
         if (m_depth.isSet())
         {
-            m_device->destroy(m_depth);
+            m_render->device().destroy(m_depth);
         }
         m_target.reset();
-        m_device->waitIdle();
-        EXPECT_EQ(m_device->validationErrorCount(), 0U);
+        m_render->device().waitIdle();
+        EXPECT_EQ(m_render->device().validationErrorCount(), 0U);
     }
 
     void makeScene(std::uint32_t capacity)
@@ -83,20 +83,20 @@ protected:
         const Result<AssetId> shader = AssetId::fromUuid(*uuid);
         ASSERT_TRUE(shader);
         Result<std::unique_ptr<GpuScene>> scene = GpuScene::create(
-            *m_device, *m_library,
+            *m_render, *m_library,
             {.shader = *shader, .instanceCapacity = capacity, .colorFormat = OffscreenTarget::format()});
         ASSERT_TRUE(scene) << scene.error().message;
         m_scene = std::move(*scene);
         ASSERT_TRUE(m_scene->addMesh(makeCube()));
 
-        Result<std::unique_ptr<OffscreenTarget>> target = OffscreenTarget::create(*m_device, c_size, c_size);
+        Result<std::unique_ptr<OffscreenTarget>> target = OffscreenTarget::create(m_render->device(), c_size, c_size);
         ASSERT_TRUE(target) << target.error().message;
         m_target = std::move(*target);
-        Result<Rhi::TextureHandle> depth = m_device->createTexture({.width = c_size,
-                                                                    .height = c_size,
-                                                                    .format = Rhi::RhiFormat::D32Float,
-                                                                    .renderTarget = true,
-                                                                    .name = "Depth"});
+        Result<Rhi::TextureHandle> depth = m_render->device().createTexture({.width = c_size,
+                                                                             .height = c_size,
+                                                                             .format = Rhi::RhiFormat::D32Float,
+                                                                             .renderTarget = true,
+                                                                             .name = "Depth"});
         ASSERT_TRUE(depth) << depth.error().message;
         m_depth = *depth;
     }
@@ -127,21 +127,21 @@ protected:
     std::uint32_t runFrame(Math::Frustum& frustum)
     {
         Result<Rhi::BufferHandle> readback =
-            m_device->createBuffer({.size = sizeof(std::uint32_t), .memory = Rhi::RhiMemory::Readback});
+            m_render->device().createBuffer({.size = sizeof(std::uint32_t), .memory = Rhi::RhiMemory::Readback});
         EXPECT_TRUE(readback);
-        Result<Rhi::IRhiCommandList*> first = m_device->beginFrame();
+        Result<Rhi::IRhiCommandList*> first = m_render->device().beginFrame();
         EXPECT_TRUE(first);
-        setCamera(m_device->frameSlot(), frustum);
+        setCamera(m_render->device().frameSlot(), frustum);
 
         RenderGraph sceneGraph;
         const Math::Color clear{.a = 1.0F};
-        m_scene->addPasses(sceneGraph, m_device->frameSlot(), nullptr, m_target->texture(), m_depth, clear);
+        m_scene->addPasses(sceneGraph, m_render->device().frameSlot(), nullptr, m_target->texture(), m_depth, clear);
         sceneGraph.compile();
-        Result<std::vector<Rhi::IRhiCommandList*>> lists = sceneGraph.execute(*m_device, m_jobs);
+        Result<std::vector<Rhi::IRhiCommandList*>> lists = sceneGraph.execute(m_render->device(), m_jobs);
         EXPECT_TRUE(lists) << lists.error().message;
         m_scene->endFrame(sceneGraph);
 
-        Result<Rhi::IRhiCommandList*> last = m_device->commandList(0);
+        Result<Rhi::IRhiCommandList*> last = m_render->device().commandList(0);
         EXPECT_TRUE(last);
         lists->push_back(*last);
         Rhi::IRhiCommandList& tail = **last;
@@ -151,12 +151,12 @@ protected:
         tail.barrier(*readback, Rhi::ResourceState::CopyTarget, Rhi::ResourceState::HostRead);
         tail.barrier(m_target->texture(), Rhi::ResourceState::ColorTarget, Rhi::ResourceState::CopySource);
         m_target->copyToCpu(tail);
-        EXPECT_TRUE(m_device->endFrame(*lists));
-        m_device->waitIdle();
+        EXPECT_TRUE(m_render->device().endFrame(*lists));
+        m_render->device().waitIdle();
 
         std::uint32_t result = 0;
-        std::memcpy(&result, m_device->mappedMemory(*readback).data(), sizeof(result));
-        m_device->destroy(*readback);
+        std::memcpy(&result, m_render->device().mappedMemory(*readback).data(), sizeof(result));
+        m_render->device().destroy(*readback);
         return result;
     }
 
@@ -174,7 +174,7 @@ protected:
     UuidGenerator m_ids;
     Assets::AssetManager m_assets;
     Jobs::JobSystem m_jobs;
-    std::unique_ptr<Rhi::IRhiDevice> m_device;
+    std::unique_ptr<RenderDevice> m_render;
     std::unique_ptr<PipelineLibrary> m_library;
     std::unique_ptr<GpuScene> m_scene;
     std::unique_ptr<OffscreenTarget> m_target;
