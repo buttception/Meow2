@@ -105,6 +105,7 @@ VulkanGpuFacts readGpuFacts(VkPhysicalDevice gpu, const VkPhysicalDeviceProperti
     vkGetPhysicalDeviceFeatures2(gpu, &features.core);
     facts.dynamicRendering = features.v13.dynamicRendering != VK_FALSE;
     facts.synchronization2 = features.v13.synchronization2 != VK_FALSE;
+    facts.demoteToHelperInvocation = features.v13.shaderDemoteToHelperInvocation != VK_FALSE;
     facts.timelineSemaphore = features.v12.timelineSemaphore != VK_FALSE;
     facts.bufferDeviceAddress = features.v12.bufferDeviceAddress != VK_FALSE;
     facts.mutableDescriptorType = features.mutableDescriptor.mutableDescriptorType != VK_FALSE;
@@ -389,6 +390,7 @@ Result<void> RhiDeviceVulkan::createDevice(const RhiDeviceDesc& desc)
     forEachBindlessFeature(features.v12, [](VkBool32& feature) { feature = VK_TRUE; });
     features.v13.dynamicRendering = VK_TRUE;
     features.v13.synchronization2 = VK_TRUE;
+    features.v13.shaderDemoteToHelperInvocation = VK_TRUE; // HLSL discard (alpha-masked materials)
     features.mutableDescriptor.mutableDescriptorType = VK_TRUE;
 
     std::vector<const char*> extensions;

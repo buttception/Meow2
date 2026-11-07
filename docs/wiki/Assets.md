@@ -2,7 +2,7 @@
 
 `#include <Meow2/Assets/AssetManager.h>`: finds assets by a stable ID and keeps one loaded copy of each.
 
-- Status: ✅ M4 (0.5.0). Asset core (#139) done. Shaders are the first asset type; meshes and textures come with M7.
+- Status: ✅ M4 (0.5.0). Asset core (#139) done. Shaders are the first asset type. glTF models are imported into memory for now ([Gltf](Gltf.md)); meshes and textures become assets with `.meta` files in M6.
 
 ## Source, `.meta`, cooked file
 

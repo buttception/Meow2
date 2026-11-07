@@ -16,23 +16,37 @@ namespace Meow2::Renderer
 namespace
 {
 constexpr std::uint32_t c_maxMeshes = 4096;
+constexpr std::uint32_t c_maxMaterials = 4096;
 constexpr std::uint32_t c_cullGroupSize = 64; // [numthreads] in GpuDriven.hlsl
+} // namespace
 
-/// @brief Encodes one vertex.
-/// @param position Its position.
-/// @param normal   Its normal.
-/// @param bounds   The box positions are quantised in.
-/// @return The packed vertex.
-Shader::PackedVertex packVertex(const Math::Vec3& position, const Math::Vec3& normal, const Math::Aabb& bounds)
+Shader::PackedVertex packVertex(const Math::Vec3& position, const Math::Vec3& normal, const Math::Vec2& uv,
+                                const Math::Aabb& bounds)
 {
     const Math::QuantizedPosition quantized = Math::quantizePosition(position, bounds);
     Shader::PackedVertex vertex{};
     vertex.xy = std::uint32_t{quantized.components[0]} | (std::uint32_t{quantized.components[1]} << 16U);
     vertex.z = quantized.components[2];
     vertex.normal = Math::packOctahedral(normal);
+    vertex.uv = std::uint32_t{Math::toHalf(uv.x)} | (std::uint32_t{Math::toHalf(uv.y)} << 16U);
     return vertex;
 }
-} // namespace
+
+MeshData makeMesh(std::span<const Math::Vec3> positions, std::span<const Math::Vec3> normals,
+                  std::span<const Math::Vec2> uvs, std::span<const std::uint32_t> indices, const Math::Aabb& bounds)
+{
+    MEOW2_ASSERT(normals.size() == positions.size() && uvs.size() == positions.size(),
+                 "Every vertex needs a position, a normal and UVs");
+    MeshData mesh;
+    mesh.bounds = bounds;
+    mesh.vertices.reserve(positions.size());
+    for (std::size_t i = 0; i < positions.size(); ++i)
+    {
+        mesh.vertices.push_back(packVertex(positions[i], normals[i], uvs[i], bounds));
+    }
+    mesh.indices.assign(indices.begin(), indices.end());
+    return mesh;
+}
 
 MeshData makeCube()
 {
@@ -58,7 +72,8 @@ MeshData makeCube()
             const Math::Vec3 position{(face.normal.x + face.u.x * a + face.v.x * b) * c_half,
                                       (face.normal.y + face.u.y * a + face.v.y * b) * c_half,
                                       (face.normal.z + face.u.z * a + face.v.z * b) * c_half};
-            mesh.vertices.push_back(packVertex(position, face.normal, mesh.bounds));
+            const Math::Vec2 uv{(a + 1.0F) * 0.5F, (1.0F - b) * 0.5F};
+            mesh.vertices.push_back(packVertex(position, face.normal, uv, mesh.bounds));
         }
         for (const std::uint32_t index : {0U, 1U, 2U, 0U, 2U, 3U})
         {
@@ -147,7 +162,9 @@ Result<void> GpuScene::createBuffers(Rhi::IRhiDevice& device)
           makeBuffer(m_meshBuffer, std::uint64_t{c_maxMeshes} * sizeof(Shader::MeshDraw), Rhi::RhiMemory::Upload,
                      "Meshes"),
           makeBuffer(m_drawBuffer, capacity * sizeof(Shader::IndirectDraw), Rhi::RhiMemory::GpuOnly, "Draws"),
-          makeBuffer(m_countBuffer, sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly, "Draw count")})
+          makeBuffer(m_countBuffer, sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly, "Draw count"),
+          makeBuffer(m_materialBuffer, std::uint64_t{c_maxMaterials} * sizeof(Shader::MaterialData),
+                     Rhi::RhiMemory::Upload, "Materials")})
     {
         if (!made)
         {
@@ -175,7 +192,8 @@ Result<void> GpuScene::createBuffers(Rhi::IRhiDevice& device)
 void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
 {
     // Unset handles are ignored, so this also cleans up after a creation that stopped halfway.
-    for (Rhi::BufferHandle* buffer : {&m_instanceBuffer, &m_meshBuffer, &m_drawBuffer, &m_countBuffer})
+    for (Rhi::BufferHandle* buffer :
+         {&m_instanceBuffer, &m_meshBuffer, &m_drawBuffer, &m_countBuffer, &m_materialBuffer})
     {
         device.destroy(*buffer);
         *buffer = {};
@@ -192,6 +210,19 @@ void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
         device.destroy(buffer);
     }
     m_meshResources.clear();
+    for (TextureRecord& record : m_textures)
+    {
+        device.destroy(record.texture);
+        device.destroy(record.staging);
+        record.texture = {};
+        record.staging = {};
+    }
+    m_pendingTextures.clear();
+    for (const Rhi::BufferHandle buffer : m_spentStaging)
+    {
+        device.destroy(buffer);
+    }
+    m_spentStaging.clear();
 }
 
 Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
@@ -210,6 +241,18 @@ Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
     }
     std::memcpy(device.mappedMemory(m_instanceBuffer).data(), m_instances.data(),
                 m_instances.size() * sizeof(Shader::InstanceData));
+    // Textures are copied again by the next frame; material records name their new heap indices.
+    for (std::uint32_t texture = 0; texture < m_textures.size(); ++texture)
+    {
+        if (Result<void> made = createTexture(device, texture); !made)
+        {
+            return made;
+        }
+    }
+    for (std::uint32_t material = 0; material < m_materials.size(); ++material)
+    {
+        writeMaterial(device, material);
+    }
     // The new buffers and the next depth target start with no contents.
     m_drawState = Rhi::ResourceState::Undefined;
     m_countState = Rhi::ResourceState::Undefined;
@@ -256,6 +299,80 @@ Result<void> GpuScene::uploadMesh(Rhi::IRhiDevice& device, const MeshData& mesh,
     return {};
 }
 
+Result<void> GpuScene::createTexture(Rhi::IRhiDevice& device, std::uint32_t index)
+{
+    TextureRecord& record = m_textures[index];
+    Result<Rhi::TextureHandle> texture =
+        device.createTexture({.width = record.image.width,
+                              .height = record.image.height,
+                              .format = record.srgb ? Rhi::RhiFormat::Rgba8Srgb : Rhi::RhiFormat::Rgba8Unorm,
+                              .tag = Memory::MemTag::Renderer,
+                              .name = record.name});
+    if (!texture)
+    {
+        return Unexpected<Error>{texture.error()};
+    }
+    record.texture = *texture;
+    Result<Rhi::BufferHandle> staging = device.createBuffer({.size = record.image.pixels.size(),
+                                                             .memory = Rhi::RhiMemory::Upload,
+                                                             .tag = Memory::MemTag::Renderer,
+                                                             .name = "Texture upload"});
+    if (!staging)
+    {
+        return Unexpected<Error>{staging.error()};
+    }
+    record.staging = *staging;
+    std::memcpy(device.mappedMemory(*staging).data(), record.image.pixels.data(), record.image.pixels.size());
+    m_pendingTextures.push_back(index);
+    return {};
+}
+
+Result<std::uint32_t> GpuScene::addTexture(const Assets::Image& image, bool srgb, std::string name)
+{
+    if (image.width == 0 || image.height == 0 || image.pixels.size() != std::size_t{image.width} * image.height * 4)
+    {
+        return fail(ErrorCode::InvalidArgument, std::format("Texture '{}' has no pixels", name));
+    }
+    const auto index = static_cast<std::uint32_t>(m_textures.size());
+    m_textures.push_back({.image = image, .srgb = srgb, .name = std::move(name)});
+    if (Result<void> made = createTexture(m_device.device(), index); !made)
+    {
+        m_device.device().destroy(m_textures.back().texture);
+        m_textures.pop_back();
+        return Unexpected<Error>{made.error()};
+    }
+    return index;
+}
+
+void GpuScene::writeMaterial(Rhi::IRhiDevice& device, std::uint32_t index)
+{
+    const MaterialDesc& material = m_materials[index];
+    Shader::MaterialData data{};
+    data.baseColorFactor = {material.baseColorFactor.r, material.baseColorFactor.g, material.baseColorFactor.b,
+                            material.baseColorFactor.a};
+    data.parameters = {material.alphaCutoff, material.metallic, material.roughness, 1.0F};
+    const bool textured =
+        material.baseColorTexture >= 0 && static_cast<std::size_t>(material.baseColorTexture) < m_textures.size();
+    data.baseColorTexture =
+        textured ? device.bindlessIndex(m_textures[static_cast<std::size_t>(material.baseColorTexture)].texture)
+                 : Rhi::c_invalidBindlessIndex;
+    data.sampler = Rhi::c_defaultSamplerIndex;
+    data.flags = material.alphaMask ? MEOW2_MATERIAL_ALPHA_MASK : 0U;
+    std::memcpy(device.mappedMemory(m_materialBuffer).data() + std::size_t{index} * sizeof(data), &data, sizeof(data));
+}
+
+Result<std::uint32_t> GpuScene::addMaterial(const MaterialDesc& material)
+{
+    if (m_materials.size() == c_maxMaterials)
+    {
+        return fail(ErrorCode::OutOfMemory, "Too many materials");
+    }
+    const auto index = static_cast<std::uint32_t>(m_materials.size());
+    m_materials.push_back(material);
+    writeMaterial(m_device.device(), index);
+    return index;
+}
+
 Result<std::uint32_t> GpuScene::addMesh(const MeshData& mesh)
 {
     if (m_meshes.size() == c_maxMeshes)
@@ -280,7 +397,10 @@ void GpuScene::setInstances(std::span<const Shader::InstanceData> instances)
 
 void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& frame, const Math::Frustum& frustum)
 {
-    std::memcpy(m_device.device().mappedMemory(m_frameBuffers[frameSlot]).data(), &frame, sizeof(frame));
+    Shader::FrameConstants constants = frame;
+    constants.materialBuffer = m_device.device().bindlessIndex(m_materialBuffer);
+    constants.materialCount = static_cast<std::uint32_t>(m_materials.size());
+    std::memcpy(m_device.device().mappedMemory(m_frameBuffers[frameSlot]).data(), &constants, sizeof(constants));
     Shader::CullConstants cull{};
     cull.plane0 = frustum.planes[0];
     cull.plane1 = frustum.planes[1];
@@ -308,6 +428,32 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
     m_drawResource = graph.import(m_drawBuffer, m_drawState);
     m_countResource = graph.import(m_countBuffer, m_countState);
     m_depthResource = graph.import(depth, m_depthState);
+
+    // New textures are copied first. The copies run before every later pass, which see them as shader inputs.
+    if (!m_pendingTextures.empty())
+    {
+        std::vector<std::pair<Rhi::BufferHandle, Rhi::TextureHandle>> uploads;
+        for (const std::uint32_t texture : m_pendingTextures)
+        {
+            TextureRecord& record = m_textures[texture];
+            uploads.emplace_back(record.staging, record.texture);
+            m_spentStaging.push_back(std::exchange(record.staging, {}));
+        }
+        m_pendingTextures.clear();
+        graph.addPass({.name = "Upload textures",
+                       .accesses = {},
+                       .record =
+                           [uploads = std::move(uploads)](Rhi::IRhiCommandList& list)
+                       {
+                           for (const auto& [staging, texture] : uploads)
+                           {
+                               list.barrier(texture, ResourceState::Undefined, ResourceState::CopyTarget);
+                               list.copyBufferToTexture(staging, texture);
+                               list.barrier(texture, ResourceState::CopyTarget, ResourceState::ShaderRead);
+                           }
+                       },
+                       .small = true});
+    }
 
     const std::uint32_t cullIndex = m_device.device().bindlessIndex(m_cullBuffers[frameSlot]);
     graph.addPass({.name = "Clear draw count",
@@ -364,6 +510,12 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
 
 void GpuScene::endFrame(const RenderGraph& graph)
 {
+    // Their copies are recorded; the device keeps them until the GPU has run them (deferred destruction).
+    for (const Rhi::BufferHandle buffer : m_spentStaging)
+    {
+        m_device.device().destroy(buffer);
+    }
+    m_spentStaging.clear();
     m_drawState = graph.finalState(m_drawResource);
     m_countState = graph.finalState(m_countResource);
     m_depthState = graph.finalState(m_depthResource);

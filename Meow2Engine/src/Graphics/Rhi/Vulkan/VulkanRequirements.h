@@ -20,19 +20,20 @@ inline constexpr std::array<std::string_view, 1> c_requiredVulkanExtensions{"VK_
 /// @brief What one GPU offers, in the terms the requirements care about. Plain data.
 struct VulkanGpuFacts
 {
-    std::uint32_t apiMajor = 0;           ///< Vulkan major version.
-    std::uint32_t apiMinor = 0;           ///< Vulkan minor version.
-    std::vector<std::string> extensions;  ///< Device extensions.
-    bool graphicsAndComputeQueue = false; ///< One queue family does both.
-    bool dynamicRendering = false;        ///< Rendering without render pass objects.
-    bool synchronization2 = false;        ///< The newer barrier and submit calls.
-    bool timelineSemaphore = false;       ///< Semaphores with a counter, used to pace frames.
-    bool bufferDeviceAddress = false;     ///< Buffers read through GPU pointers.
-    bool bindlessDescriptors = false;     ///< Every descriptor-indexing feature the bindless heap needs.
-    bool mutableDescriptorType = false;   ///< One heap holding every descriptor type (techstack.md §11).
-    bool multiDrawIndirect = false;       ///< Several indirect draws in one call.
-    bool drawIndirectCount = false;       ///< The GPU decides how many indirect draws run.
-    bool shaderInt64 = false;             ///< 64-bit integers in shaders.
+    std::uint32_t apiMajor = 0;            ///< Vulkan major version.
+    std::uint32_t apiMinor = 0;            ///< Vulkan minor version.
+    std::vector<std::string> extensions;   ///< Device extensions.
+    bool graphicsAndComputeQueue = false;  ///< One queue family does both.
+    bool dynamicRendering = false;         ///< Rendering without render pass objects.
+    bool synchronization2 = false;         ///< The newer barrier and submit calls.
+    bool demoteToHelperInvocation = false; ///< HLSL discard keeps derivatives working (core in 1.3, but optional).
+    bool timelineSemaphore = false;        ///< Semaphores with a counter, used to pace frames.
+    bool bufferDeviceAddress = false;      ///< Buffers read through GPU pointers.
+    bool bindlessDescriptors = false;      ///< Every descriptor-indexing feature the bindless heap needs.
+    bool mutableDescriptorType = false;    ///< One heap holding every descriptor type (techstack.md §11).
+    bool multiDrawIndirect = false;        ///< Several indirect draws in one call.
+    bool drawIndirectCount = false;        ///< The GPU decides how many indirect draws run.
+    bool shaderInt64 = false;              ///< 64-bit integers in shaders.
 };
 
 /// @brief Compares a GPU with the engine's requirements.

@@ -52,7 +52,8 @@ struct VertexOutput
 {
     float4 position : SV_Position;
     float3 normal : NORMAL0;
-    float3 color : COLOR0;
+    float2 uv : TEXCOORD0;
+    nointerpolation uint material : MATERIAL0;
 };
 
 /// The inverse of Math::packOctahedral.
@@ -89,13 +90,37 @@ VertexOutput vsMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID
     const float4 world = mul(float4(unpackPosition(stored, mesh), 1.0), worldMatrix);
     output.position = mul(world, MEOW2_ROWS(frame, viewProjection));
     output.normal = mul(float4(unpackOctahedral(stored.normal), 0.0), worldMatrix).xyz;
-    const uint hash = instance.material * 2654435761u;
-    output.color = float3(hash & 255, (hash >> 8) & 255, (hash >> 16) & 255) / 255.0;
+    output.uv = float2(f16tof32(stored.uv & 0xFFFF), f16tof32(stored.uv >> 16));
+    output.material = instance.material;
     return output;
 }
 
 float4 psMain(VertexOutput input) : SV_Target
 {
+    const FrameConstants frame = frameConstants();
+    float4 color;
+    if (input.material < frame.materialCount)
+    {
+        const MaterialData material = loadElement<MaterialData>(frame.materialBuffer, input.material);
+        color = material.baseColorFactor;
+        if (material.baseColorTexture != 0)
+        {
+            // The index differs between draws, so it's marked non-uniform for drivers that need to know.
+            Texture2D<float4> baseColor = ResourceDescriptorHeap[NonUniformResourceIndex(material.baseColorTexture)];
+            color *= baseColor.Sample(heapSampler(NonUniformResourceIndex(material.sampler)), input.uv);
+        }
+        if ((material.flags & MEOW2_MATERIAL_ALPHA_MASK) != 0 && color.a < material.parameters.x)
+        {
+            discard;
+        }
+    }
+    else
+    {
+        // No material (test scenes of many cubes): a colour from the index, so neighbours differ.
+        const uint hash = input.material * 2654435761u;
+        color = float4(float3(hash & 255, (hash >> 8) & 255, (hash >> 16) & 255) / 255.0, 1.0);
+    }
+    // Lambert from one fixed light plus ambient, until the PBR pass. Linear: the target's sRGB view encodes it.
     const float light = 0.3 + 0.7 * saturate(dot(normalize(input.normal), normalize(float3(0.4, 0.8, -0.5))));
-    return float4(input.color * light, 1.0);
+    return float4(color.rgb * light, 1.0);
 }

@@ -1,6 +1,10 @@
 # Meow2Renderer — Rendering and shader test bed / showcase (techstack.md §2).
 add_executable(Meow2Renderer src/main.cpp)
 target_link_libraries(Meow2Renderer PRIVATE Meow2::Engine)
+# Where cmake/FetchGltfSample.cmake puts the Khronos samples, so renderer.scene can name one. A development default:
+# renderer.sampleAssets overrides it.
+target_compile_definitions(Meow2Renderer PRIVATE
+    MEOW2_SAMPLE_ASSETS_DIR="${PROJECT_SOURCE_DIR}/assets/gltf-sample-assets")
 meow2_set_warnings(Meow2Renderer)
 if(TARGET Meow2Shaders)
     add_dependencies(Meow2Renderer Meow2Shaders) # building or running Renderer alone still cooks its shaders

@@ -77,7 +77,7 @@ Engine code is grouped by **subsystem**, then **module**, then (in `src/` only) 
 | `Scene` | files directly in `Scene/` (planned, §25) | — |
 | `Math` | files directly in `Math/` | — |
 | `Graphics` | `Rhi`, `Shader`, `Renderer` | `Vulkan`, `D3D12` (Rhi), `Dxc` (Shader) |
-| `Assets` | files directly in `Assets/` (asset core), `Shader`, `Gltf` | — |
+| `Assets` | files directly in `Assets/` (asset core), `Shader`, `Texture`, `Gltf` | — |
 | `Physics` | files directly in `Physics/` | `Jolt` (later `PhysX`, `Box3D`) |
 | `GameUi` | files directly in `GameUi/` | — |
 | `Packaging` | files directly in `Packaging/` | — |
@@ -146,7 +146,7 @@ ctest --preset windows-msvc-debug -L unit
 | RHI | `IRhiDevice`, `IRhiCommandList`, `IRhiSwapchain`, resources by handle | Vulkan, D3D12 | §11 |
 | Shader | `ShaderCompiler` | DXC (HLSL → DXIL / SPIR-V) | Interface leaves room for a custom shader language (§12) |
 | Renderer | `Renderer`, render graph | on RHI only | |
-| Assets | `AssetManager`, `AssetImporter` | asset core and shader assets (M4, §13a); glTF **2.0** importer, `.gltf` and `.glb` (library **⚠ OPEN**: fastgltf / cgltf / tinygltf) | §13, §13a |
+| Assets | `AssetManager`, `importGltf`, `decodeImage` | asset core and shader assets (M4, §13a); glTF **2.0** importer, `.gltf` and `.glb`, through **cgltf**; PNG/JPEG through **stb_image** | §13, §13a |
 | Physics | `PhysicsWorld`, `RigidBody`, `Shape`, `PhysicsDebugDraw` | **Jolt** | PhysX / Box3D selectable at build time later (§14) |
 | GameUI | `UiContext`, widgets | in-house, drawn via Renderer | Used by `Meow2Player` |
 | Packaging | `GamePackager` | in-house | Editor export |
@@ -181,7 +181,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | VulkanMemoryAllocator v3.5.0 | VK memory | MIT | submodule; implementation in its own library, outside the engine's warnings |
 | D3D12MemoryAllocator v3.2.1 | D3D12 memory | MIT | submodule; implementation in its own library, outside the engine's warnings |
 | DirectX-Headers v1.620.1 | D3D12 headers, the same version as the Agility SDK | MIT | submodule; header-only target, ahead of the Windows SDK's own `d3d12.h`; only included under `src/Graphics/Rhi/D3D12/` |
-| glTF loader (**⚠ OPEN**) | asset import | MIT | submodule |
+| cgltf v1.15 | glTF 2.0 import (`.gltf`, `.glb`) | MIT | submodule; one header, its implementation in its own library (`meow2_cgltf`) outside the engine's warnings; files read through the VFS and memory under `MemTag::Assets` through its callbacks. Chosen over fastgltf (owner decision 2026-11-07): neither decodes Draco, and cgltf is one header with no dependencies. Only included under `src/Assets/Gltf/` |
 | GoogleTest v1.17.0 | unit tests (gmock off) | BSD-3 | submodule |
 | tl::expected v1.3.1 | `Result<T>` until C++23 `std::expected` (only the `std::expected`-compatible API is used) | CC0 | submodule; header-only, own INTERFACE target (its CMakeLists pulls in CTest/Catch2). **Public-header exception:** included by `Meow2/Core/Result.h` |
 | EnTT v3.16.0 | ECS for `Scene` (§25) | MIT | submodule; header-only, own INTERFACE target (`EnTT::EnTT`, linked PUBLIC). **Public-header exception:** `Meow2/Scene/Scene.h` exposes the registry and views. The registry allocates through `Memory::ResourceAllocator` (EnTT doesn't build with `std::pmr::polymorphic_allocator`) |
@@ -189,6 +189,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | enkiTS v1.12 | job system | zlib | submodule; static, C interface/examples off; only included by `src/Core/Jobs/Enkits/` |
 | Tracy v0.14.1 (client only) | CPU/GPU/memory profiler | BSD-3 | submodule; static, on demand, localhost only, no broadcast, its crash handler off; `TRACY_ENABLE` per configuration (Debug/RWDI). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
 | **Not submodules** | | | |
+| stb_image v2.30 | PNG and JPEG decoding | MIT or public domain | one header, `external/stb/stb_image.h`, copied unchanged (owner-approved) like RenderDoc's; its implementation in its own library (`meow2_stb_image`), memory through the engine's hooks. Only included under `src/Assets/Texture/`. BC7 and other GPU formats come from the texture cooker later, not from it |
 | RenderDoc in-app API v1.47 | frame capture from inside the app (§11) | MIT | one header, `external/renderdoc/renderdoc_app.h`, copied unchanged (owner-approved): RenderDoc's whole repository would be a large submodule for one file. Only included by `src/Graphics/Rhi/RenderDocCapture.cpp` |
 | Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, aqtinstall 3.3.0 in a plain step in Linux CI (only GitHub-owned actions are allowed); found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
 | DirectX 12 Agility SDK 1.620.1 | the D3D12 runtime (`D3D12Core.dll`) shipped next to each app: SM 6.6 and enhanced barriers on Windows 10 too, the same runtime on every PC (owner decision 2026-11-07) | Microsoft (redistributable: `D3D12Core.dll`, `d3d12SDKLayers.dll`) | not a submodule: `cmake/Meow2Agility.cmake` downloads the pinned NuGet package at configure time and checks its SHA-256, like DXC. `meow2_use_agility(<exe>)` adds the exports Windows looks for and copies the runtime into `D3D12/` next to the exe. The release zip ships `D3D12Core.dll` and its licence |
@@ -352,7 +353,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 
 - Format: **glTF 2.0 only**, both `.gltf` (+ external `.bin`/images) and `.glb` (binary). glTF 1.0 is not supported.
 - Test scenes: Khronos **glTF-Sample-Assets**, pinned to a commit.
-- **Fetched on demand, not cloned up front.** `cmake -P cmake/FetchGltfSample.cmake <ModelName>` (also called by visual tests and by Meow2Renderer when a scene is missing):
+- **Fetched on demand, not cloned up front.** `cmake -P cmake/FetchGltfSample.cmake <ModelName> [...]` (implemented in M6; visual tests and Meow2Renderer's scene browser will call it too):
   - on first use, does a blobless, sparse clone of the pinned commit into `assets/gltf-sample-assets/` (git-ignored);
   - then adds only `Models/<ModelName>/` to the sparse checkout, so only that model is downloaded.
 - Meow2Renderer has a scene browser listing the sample models, marking which are downloaded, and can open any local `.gltf` / `.glb`.
@@ -362,7 +363,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 
 - **Source → cooked object:** a source file, a `.meta` sidecar next to it holding its `AssetId` (§24) and import settings, and a cooked file named by the ID. Renaming a source keeps its ID.
 - **`AssetManager`** (concrete, injected, thread-safe): typed handles, loads through the VFS (§3), memory under `MemTag::Assets`. No virtuals: asset types are templates or a `std::variant`.
-- Shader assets come first (M4); meshes, textures and materials use the same core (M7).
+- Shader assets come first (M4); meshes, textures and materials use the same core (M6).
 
 ## 14. Physics
 
@@ -736,3 +737,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-07 — §4: RenderDoc's in-app API header added (owner-approved).
 - 2026-11-07 — §4/§11: D3D12 backend: DirectX-Headers and D3D12MA added, the Agility SDK shipped next to each app (owner decision); enhanced barriers and tightly packed copies required.
 - 2026-11-07 — §11: hot swap implemented: `RenderDevice` device users are the resource registry; a failed switch goes back.
+- 2026-11-07 — §3/§4/§13: cgltf v1.15 and stb_image v2.30 added (owner-approved); the glTF loader is no longer open; the sample fetch script implemented; `Assets/Texture` module.

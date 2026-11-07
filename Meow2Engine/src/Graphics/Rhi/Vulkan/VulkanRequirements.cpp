@@ -40,6 +40,7 @@ std::vector<std::string> missingVulkanRequirements(const VulkanGpuFacts& facts, 
     require(facts.graphicsAndComputeQueue, "a queue for both graphics and compute");
     require(facts.dynamicRendering, "dynamic rendering");
     require(facts.synchronization2, "synchronization2");
+    require(facts.demoteToHelperInvocation, "shader demote to helper invocation (discard)");
     require(facts.timelineSemaphore, "timeline semaphores");
     require(facts.bufferDeviceAddress, "buffer device address");
     require(facts.bindlessDescriptors, "bindless descriptor indexing");

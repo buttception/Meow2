@@ -75,3 +75,6 @@ CMakeUserPresets.json
 
 # Settings of runs from the VS solution (<repo>/config/Meow2<App>.toml). Anchored: Config/ source folders aren't ignored.
 /config/
+
+# Khronos glTF sample models, fetched on demand by cmake/FetchGltfSample.cmake (techstack.md §13)
+/assets/gltf-sample-assets/

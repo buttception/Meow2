@@ -1,0 +1,171 @@
+/// @file
+/// @brief Imported models in the Scene and on the GPU.
+
+#include "Meow2/Graphics/Renderer/SceneModel.h"
+
+#include "Meow2/Core/Assert.h"
+
+#include <DirectXMath.h>
+
+#include <algorithm>
+#include <format>
+#include <utility>
+
+namespace Meow2::Renderer
+{
+void RenderMeshes::add(AssetId mesh, std::vector<GpuSubmesh> parts)
+{
+    m_meshes[mesh] = std::move(parts);
+}
+
+std::span<const GpuSubmesh> RenderMeshes::find(AssetId mesh) const
+{
+    const auto found = m_meshes.find(mesh);
+    return found == m_meshes.end() ? std::span<const GpuSubmesh>{} : std::span<const GpuSubmesh>{found->second};
+}
+
+Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::ImportedModel& model, UuidGenerator& ids,
+                                         RenderMeshes& meshes, Log::Logger& log)
+{
+    // Base colour textures are sRGB. Only images a material uses are uploaded, each once.
+    std::vector<std::int32_t> textureOf(model.images.size(), -1);
+    const auto texture = [&](std::int32_t image) -> std::int32_t
+    {
+        if (image < 0 || static_cast<std::size_t>(image) >= model.images.size())
+        {
+            return -1;
+        }
+        std::int32_t& slot = textureOf[static_cast<std::size_t>(image)];
+        if (slot < 0 && !model.images[static_cast<std::size_t>(image)].pixels.empty())
+        {
+            Result<std::uint32_t> added =
+                scene.addTexture(model.images[static_cast<std::size_t>(image)], true, std::format("Image {}", image));
+            if (added)
+            {
+                slot = static_cast<std::int32_t>(*added);
+            }
+            else
+            {
+                MEOW2_LOG_WARN(log, "Image {} not uploaded: {}", image, added.error());
+            }
+        }
+        return slot;
+    };
+
+    // The model's materials, then one default (white, opaque) for primitives that name none.
+    std::vector<std::uint32_t> materialOf;
+    for (const Assets::ImportedMaterial& material : model.materials)
+    {
+        Result<std::uint32_t> added = scene.addMaterial({.baseColorFactor = material.baseColorFactor,
+                                                         .baseColorTexture = texture(material.baseColorImage),
+                                                         .alphaMask = material.alphaMode == Assets::AlphaMode::Mask,
+                                                         .alphaCutoff = material.alphaCutoff,
+                                                         .metallic = material.metallicFactor,
+                                                         .roughness = material.roughnessFactor});
+        if (!added)
+        {
+            return Unexpected<Error>{added.error()};
+        }
+        materialOf.push_back(*added);
+    }
+    Result<std::uint32_t> fallback = scene.addMaterial({});
+    if (!fallback)
+    {
+        return Unexpected<Error>{fallback.error()};
+    }
+
+    std::vector<AssetId> meshIds;
+    meshIds.reserve(model.meshes.size());
+    for (const Assets::ImportedMesh& mesh : model.meshes)
+    {
+        std::vector<GpuSubmesh> parts;
+        for (const Assets::ImportedPrimitive& primitive : mesh.primitives)
+        {
+            Result<std::uint32_t> uploaded = scene.addMesh(
+                makeMesh(primitive.positions, primitive.normals, primitive.uvs, primitive.indices, primitive.bounds));
+            if (!uploaded)
+            {
+                return Unexpected<Error>{uploaded.error()};
+            }
+            const bool named =
+                primitive.material >= 0 && static_cast<std::size_t>(primitive.material) < materialOf.size();
+            parts.push_back({.mesh = *uploaded,
+                             .material = named ? materialOf[static_cast<std::size_t>(primitive.material)] : *fallback,
+                             .bounds = primitive.bounds});
+        }
+        const AssetId id = ids.next<AssetId::c_kind>();
+        meshes.add(id, std::move(parts));
+        meshIds.push_back(id);
+    }
+    return meshIds;
+}
+
+std::vector<entt::entity> instantiateModel(Scene::Scene& scene, Scene::TransformHierarchy& hierarchy,
+                                           const Assets::ImportedModel& model, std::span<const AssetId> meshIds,
+                                           entt::entity parent)
+{
+    MEOW2_ASSERT(meshIds.size() == model.meshes.size(), "One AssetId per mesh, from uploadModel()");
+    scene.registerComponent<MeshRenderer>();
+    std::vector<entt::entity> entities;
+    entities.reserve(model.nodes.size());
+    for (const Assets::ImportedNode& node : model.nodes)
+    {
+        const entt::entity entity = scene.create(node.name);
+        // Parents come before their children, so the parent's entity already exists.
+        const entt::entity nodeParent = node.parent >= 0 ? entities[static_cast<std::size_t>(node.parent)] : parent;
+        hierarchy.add(entity, node.local, nodeParent);
+        if (node.mesh >= 0)
+        {
+            scene.registry().emplace<MeshRenderer>(entity, MeshRenderer{meshIds[static_cast<std::size_t>(node.mesh)]});
+        }
+        entities.push_back(entity);
+    }
+    return entities;
+}
+
+std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshes& meshes,
+                                          std::vector<Shader::InstanceData>& out)
+{
+    using namespace DirectX;
+    out.clear();
+    bool any = false;
+    XMVECTOR low = XMVectorReplicate(0.0F);
+    XMVECTOR high = XMVectorReplicate(0.0F);
+    // One storage walked, the other looked up: a two-type EnTT view needs a default-constructible allocator for its
+    // placeholder storage, which the scene's ResourceAllocator isn't.
+    Scene::Scene::Registry& registry = scene.registry();
+    for (const auto [entity, renderer] : registry.view<MeshRenderer>().each())
+    {
+        const Scene::WorldTransform* world = registry.try_get<Scene::WorldTransform>(entity);
+        if (world == nullptr)
+        {
+            continue;
+        }
+        const XMMATRIX matrix = XMLoadFloat4x4(&world->matrix);
+        for (const GpuSubmesh& part : meshes.find(renderer.mesh))
+        {
+            Shader::InstanceData instance{};
+            instance.world = world->matrix;
+            instance.material = part.material;
+            instance.mesh = part.mesh;
+            out.push_back(instance);
+
+            const Math::MinMax box = Math::toMinMax(Math::transformAabb(part.bounds, matrix));
+            const XMVECTOR boxLow = XMLoadFloat3(&box.min);
+            const XMVECTOR boxHigh = XMLoadFloat3(&box.max);
+            low = any ? XMVectorMin(low, boxLow) : boxLow;
+            high = any ? XMVectorMax(high, boxHigh) : boxHigh;
+            any = true;
+        }
+    }
+    if (!any)
+    {
+        return std::nullopt;
+    }
+    Math::Vec3 lowCorner;
+    Math::Vec3 highCorner;
+    XMStoreFloat3(&lowCorner, low);
+    XMStoreFloat3(&highCorner, high);
+    return Math::aabbFromMinMax(lowCorner, highCorner);
+}
+} // namespace Meow2::Renderer
