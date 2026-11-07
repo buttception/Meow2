@@ -51,7 +51,7 @@ Every file is read through the [virtual file system](FileSystem.md): the `.gltf`
 glTF is right-handed: +Y up, +Z forward (the front of a model faces +Z), +X to the model's left. The engine is left-handed with +X right ([techstack §10](../../techstack.md#10-math--coordinates)). Mirroring X converts one into the other:
 
 - **Positions and normals:** `x = -x`.
-- **Triangles:** mirroring turns glTF's counter-clockwise front faces clockwise on screen, which is what the engine expects. So every triangle's last two indices are swapped.
+- **Triangles:** mirroring the model and the camera together puts the same picture on screen, so a front face still looks counter-clockwise there, which is glTF's rule. The engine's rule is clockwise (D3D style), so every triangle's last two indices are swapped.
 - **Node transforms:** with `S` mirroring X, the left-handed matrix is `S × M × S`, decomposed back into scale, rotation and translation. A rotation about X stays the same, rotations about Y and Z turn the other way, and translations lose the sign of X.
 
 A model seen from a camera at `(-x, y, z)` in the engine looks exactly like the glTF viewer's picture from `(x, y, z)`. The Duck, OrientationTest and DamagedHelmet were checked against their reference screenshots this way.

@@ -244,7 +244,8 @@ ImportedPrimitive importPrimitive(const cgltf_primitive& primitive, const cgltf_
     }
     out.indices.resize(out.indices.size() / 3 * 3);
 
-    // Right-handed → left-handed: mirror X, which turns counter-clockwise front faces clockwise on screen.
+    // Right-handed → left-handed: mirror X. The picture on screen stays the same, so front faces still look counter-
+    // clockwise there (glTF's rule); the engine's rule is clockwise, so each triangle's winding is swapped.
     for (Math::Vec3& position : out.positions)
     {
         position.x = -position.x;
