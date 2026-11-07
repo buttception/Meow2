@@ -2,7 +2,7 @@
 
 The render hardware interface: one set of C++ interfaces over Vulkan and Direct3D 12. Nothing above it sees an API type, so the backend can be chosen when the app starts and swapped while it runs ([techstack §11](../../techstack.md#11-rhi)).
 
-**Status:** Vulkan device, swapchains, resources, the bindless heap and pipelines. Meow2Renderer draws a triangle through the heap. Indirect drawing and D3D12 come later in M5.
+**Status:** Vulkan and D3D12, with the same features and the same tests: swapchains, resources, the bindless heap, pipelines and their cache, a render graph and GPU-driven drawing. Switching backends while running comes with M5's last PR.
 
 ## Using it
 
@@ -159,6 +159,50 @@ There's no vertex input. The vertex shader takes `SV_VertexID`, reads the index 
 
 **Matrices in shared structs:** DXC reads a `float4x4` from a raw buffer by column, whatever `-Zpr` and `row_major` say. So `Meow2Shared.hlsli` stores matrices as four `float4` rows with `MEOW2_MATRIX`, and shaders rebuild them with `MEOW2_ROWS`.
 
+### D3D12
+
+`createRhiDevice({.backend = RhiBackend::D3D12})` gives the same `IRhiDevice` on Direct3D 12, Windows only. Code above the RHI doesn't change; `PipelineLibrary` picks the DXIL from the cooked shaders instead of the SPIR-V.
+
+**The Agility SDK.** D3D12 itself comes with Windows, and so does the version of it a PC has. The bindless heap needs Shader Model 6.6, which the copy in Windows 10 doesn't have. So each app ships Microsoft's newer runtime, `D3D12Core.dll`, in a `D3D12/` folder next to the exe, and two exported values in the exe (`D3D12SDKVersion`, `D3D12SDKPath`) tell Windows to load it. `meow2_use_agility(<target>)` adds both to an exe and copies the runtime after each build. The release zip has it too. Configure downloads the pinned package and checks its hash, like DXC.
+
+How the API maps across:
+
+| Vulkan | D3D12 |
+|---|---|
+| Timeline semaphore | Fence, the same counter idea |
+| One command pool per thread and frame | One command allocator per list: D3D12 allows one open list per allocator, and a job may hold several |
+| Descriptor set: sampler heap, mutable resource heap | Shader-visible sampler heap and CBV/SRV/UAV heap, indexed directly (`ResourceDescriptorHeap`) |
+| Push constants | Four root constants at `b0`, in the one root signature |
+| synchronization2 barriers | Enhanced barriers: the same stages, accesses and layouts, so `ResourceState` maps one to one |
+| `vkCmdDrawIndirectCount` | `ExecuteIndirect` with a command signature |
+| VMA | D3D12MA |
+| Negative viewport height | Nothing: D3D12's viewport Y already points down |
+
+Things that work differently:
+
+- **Writable buffers have their own heap slot.** Vulkan's storage buffer descriptor reads and writes. D3D12 has a read view and a write view, so a shader that writes a buffer uses `bindlessStorageIndex(buffer)`, as textures already did. Only `RhiMemory::GpuOnly` buffers can be written.
+- **The instance of an indirect draw.** Vulkan's `SV_InstanceID` includes the draw's first instance; D3D12's starts at 0 for every draw. So `IndirectDraw` starts with an `instance` field, the command signature writes it into `PushConstants::instance` before each draw, and shaders call `indirectInstance(SV_InstanceID)`, which picks the right one per backend. After an indirect draw that root constant is undefined, so set push constants again before the next draw.
+- **Filling a buffer** uses `WriteBufferImmediate`, one 32-bit word at a time. It's meant for small buffers such as draw counts.
+- **Swapchains** use the flip model with three images, so the image a frame gets was last used three frames ago, which `beginFrame()` already waited for. Flip-model images can't be sRGB, so they're plain BGRA and drawn through sRGB views. DXGI stretches images to the window rather than reporting them out of date, so `needsResize()` is always false.
+- **Pipeline cache.** `pipelineCacheData()` is an `ID3D12PipelineLibrary`, keyed by a hash of each pipeline's description and bytecode. Renderer keeps one cache file per backend. RenderDoc doesn't support pipeline libraries, so while it's in the process D3D12 has no cache and the file on disk is kept.
+- **Markers** use `BeginEvent` with PIX's plain-string format, which PIX, RenderDoc and Nsight read with no PIX library.
+
+### When the GPU is lost
+
+A GPU crash, a hang or a driver reset loses the device: every later call fails. The next `beginFrame()` (or a failed submit or present) logs what the driver knows, once, and returns an error.
+
+- **D3D12:** DRED (Device Removed Extended Data) is always on. It reports how far each command list got, its last marker, and on a page fault the address and the resources near it.
+- **Vulkan:** `VK_EXT_device_fault`, where the driver has it, gives a description, the GPU addresses involved and the vendor's fault codes.
+
+Test it on D3D12 with `ID3D12Device5::RemoveDevice()`, which behaves exactly like a real loss (`RhiGpuD3D12.DeviceLossTest.*`).
+
+### PIX and Nsight from the app
+
+Looked into for M6's capture button; nothing added yet, because each needs an SDK approved first.
+
+- **PIX** (D3D12): `pix3.h` from the WinPixEventRuntime package can load PIX's capture library into the app and capture the next frames to a `.wpix` file, then open it in PIX, much like RenderDoc's API. It needs PIX installed. Markers already work without it.
+- **Nsight Graphics** (NVIDIA, both backends): its injection API, in the Nsight Graphics SDK headers, can inject Nsight into a running app and trigger a capture. NVIDIA's GPU crash dumps (Nsight Aftermath) are a separate SDK, which would add shader-level detail to the reports above.
+
 ## Minimum GPU
 
 - Vulkan 1.3
@@ -169,20 +213,27 @@ There's no vertex input. The vertex shader takes `SV_VertexID`, reads the index 
 - Storage writes in vertex and pixel shaders
 - Multi-draw indirect, indirect draw count, 64-bit integers in shaders
 
+On D3D12:
+
+- Feature level 12_0, Shader Model 6.6, resource binding tier 3
+- Enhanced barriers, and buffer ↔ texture copies with unrestricted row pitch (both need a driver from the last few years)
+- The Agility SDK runtime in `D3D12/` next to the exe; without it the requirements check says so
+
 ## Settings
 
 | Key | Default | Meaning |
 |---|---|---|
-| `rhi.validation` | on, off in Release | The Vulkan validation layer, which comes with the Vulkan SDK |
+| `rhi.backend` | `vulkan` | `vulkan` or `d3d12` (Windows) |
+| `rhi.validation` | on, off in Release | The Vulkan validation layer (Vulkan SDK) or the D3D12 debug layer (Agility SDK) |
 | `rhi.vsync` | on | Wait for the display |
 
-Renderer saves the pipeline cache to `cache/vulkan-pipelines.bin` next to the exe, and reads cooked shaders from `cooked/` next to it. Without them it just clears the window.
+Renderer saves the pipeline cache to `cache/vulkan-pipelines.bin` or `cache/d3d12-pipelines.bin` next to the exe, and reads cooked shaders from `cooked/` next to it. Without them it just clears the window.
 
 With SDL's `offscreen` driver there's no window to draw to, so Renderer creates no device. That's how smoke tests run on machines with no GPU.
 
 ## Tests
 
-`Rhi.*` need no GPU. `RhiGpu.*` need a GPU and a desktop, so they're built only with `-DMEOW2_GPU_TESTS=ON`. CI doesn't run them yet.
+`Rhi.*` need no GPU. `RhiGpu.*` (Vulkan) and `RhiGpuD3D12.*` need a GPU and a desktop, so they're built only with `-DMEOW2_GPU_TESTS=ON`. CI doesn't run them yet. Both are built from the same sources (`tests/Graphics/Rhi/RhiTestBackend.h` picks the backend), so every behaviour is checked on both APIs.
 
 ```bash
 cmake --preset windows-msvc-debug -DMEOW2_GPU_TESTS=ON

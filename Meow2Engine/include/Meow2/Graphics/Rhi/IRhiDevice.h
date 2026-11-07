@@ -30,7 +30,8 @@ namespace Meow2::Rhi
 /// }
 /// device->endFrame();                                   // submits, then shows every acquired swapchain
 /// @endcode
-/// Only one Vulkan device can exist at a time, because volk keeps its function pointers in globals.
+/// Only one Vulkan device can exist at a time, because volk keeps its function pointers in globals. A device that's
+/// lost (a GPU crash, a driver reset) logs what the API can say about it, then fails every later frame.
 /// @par Thread safety
 /// Not thread-safe. Use on the thread that renders.
 /// @see techstack.md §11, docs/wiki/Rhi.md
@@ -75,7 +76,7 @@ public:
     /// Each job records into its own list, and endFrame() submits them in the order it's given, so the order jobs
     /// finish in doesn't matter. The heap is bound in every list; pipelines and push constants aren't shared.
     /// @param threadIndex JobSystem::threadIndex() of the calling thread; < RhiDeviceDesc::recordingThreads.
-    /// @return The list, valid until endFrame(), or an error if Vulkan refuses.
+    /// @return The list, valid until endFrame(), or an error if the API refuses.
     /// @pre A frame is being recorded (asserted).
     /// @note Safe from several threads at once, as long as each passes its own index.
     [[nodiscard]] virtual Result<IRhiCommandList*> commandList(std::uint32_t threadIndex) = 0;
@@ -126,6 +127,14 @@ public:
     /// @return The index; c_invalidBindlessIndex for a stale handle.
     /// @note Thread-safe.
     [[nodiscard]] virtual std::uint32_t bindlessIndex(BufferHandle buffer) = 0;
+
+    /// @brief A buffer's writable heap slot, for `ResourceDescriptorHeap[index]` as a RWByteAddressBuffer.
+    ///
+    /// D3D12 keeps read and write views in separate slots; on Vulkan this is the same slot as bindlessIndex().
+    /// @param buffer The buffer, in RhiMemory::GpuOnly memory: the other kinds can't be written by shaders on D3D12.
+    /// @return The index; c_invalidBindlessIndex for a stale handle or a buffer shaders can't write.
+    /// @note Thread-safe.
+    [[nodiscard]] virtual std::uint32_t bindlessStorageIndex(BufferHandle buffer) = 0;
 
     /// @brief Creates a texture and gives it a slot in the heap. It starts in ResourceState::Undefined.
     /// @param desc Size and format.

@@ -4,6 +4,7 @@
 #include "Graphics/Rhi/Vulkan/RhiDeviceVulkan.h"
 
 #include "Graphics/Rhi/Vulkan/RhiSwapchainVulkan.h"
+#include "Graphics/Rhi/Vulkan/VulkanDeviceFault.h"
 #include "Graphics/Rhi/Vulkan/VulkanRequirements.h"
 #include "Meow2/Core/Assert.h"
 #include "Meow2/Core/Memory/MemTag.h"
@@ -399,6 +400,31 @@ Result<void> RhiDeviceVulkan::createDevice(const RhiDeviceDesc& desc)
     {
         extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     }
+    // Device fault reports, where the driver has them: what the GPU was doing when it was lost (techstack.md §8).
+    VkPhysicalDeviceFaultFeaturesEXT fault{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT};
+    {
+        std::uint32_t count = 0;
+        vkEnumerateDeviceExtensionProperties(m_physicalDevice, nullptr, &count, nullptr);
+        std::vector<VkExtensionProperties> available(count);
+        vkEnumerateDeviceExtensionProperties(m_physicalDevice, nullptr, &count, available.data());
+        const bool hasFault = std::ranges::any_of(
+            available, [](const VkExtensionProperties& extension)
+            { return std::string_view{extension.extensionName} == VK_EXT_DEVICE_FAULT_EXTENSION_NAME; });
+        if (hasFault)
+        {
+            VkPhysicalDeviceFeatures2 query{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &fault};
+            vkGetPhysicalDeviceFeatures2(m_physicalDevice, &query);
+        }
+        m_deviceFault = hasFault && fault.deviceFault != VK_FALSE;
+    }
+    if (m_deviceFault)
+    {
+        extensions.push_back(VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
+        fault = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT,
+                 .pNext = features.core.pNext,
+                 .deviceFault = VK_TRUE};
+        features.core.pNext = &fault;
+    }
 
     const float priority = 1.0F;
     const VkDeviceQueueCreateInfo queue{.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -545,8 +571,16 @@ Result<IRhiCommandList*> RhiDeviceVulkan::beginFrame()
                                    .semaphoreCount = 1,
                                    .pSemaphores = &m_timeline,
                                    .pValues = &frame.submittedValue};
+    if (m_lost)
+    {
+        return Unexpected<Error>{reportDeviceLoss()};
+    }
     if (const VkResult result = vkWaitSemaphores(m_device, &wait, c_frameWaitNanoseconds); result != VK_SUCCESS)
     {
+        if (result == VK_ERROR_DEVICE_LOST)
+        {
+            return Unexpected<Error>{reportDeviceLoss()};
+        }
         return fail(result == VK_TIMEOUT ? ErrorCode::Timeout : ErrorCode::Unknown,
                     std::format("Waiting for the GPU: {}", vulkanResultName(result)));
     }
@@ -732,6 +766,10 @@ Result<void> RhiDeviceVulkan::endFrame(std::span<IRhiCommandList* const> lists)
             swapchain->released();
         }
         m_acquired.clear();
+        if (submitted == VK_ERROR_DEVICE_LOST)
+        {
+            return Unexpected<Error>{reportDeviceLoss()};
+        }
         return fail(ErrorCode::Unknown, std::format("vkQueueSubmit2: {}", vulkanResultName(submitted)));
     }
 
@@ -756,7 +794,7 @@ Result<void> RhiDeviceVulkan::endFrame(std::span<IRhiCommandList* const> lists)
         }
         if (presented == VK_ERROR_DEVICE_LOST)
         {
-            outcome = fail(ErrorCode::Unknown, "The GPU device was lost");
+            outcome = Unexpected<Error>{reportDeviceLoss()};
         }
     }
     for (RhiSwapchainVulkan* swapchain : m_acquired)
@@ -784,6 +822,26 @@ void RhiDeviceVulkan::setObjectName(VkObjectType type, std::uint64_t handle, con
                                              .objectHandle = handle,
                                              .pObjectName = name};
     vkSetDebugUtilsObjectNameEXT(m_device, &info);
+}
+
+Error RhiDeviceVulkan::reportDeviceLoss()
+{
+    Error error{.code = ErrorCode::Unknown, .message = "The GPU device was lost (VK_ERROR_DEVICE_LOST)"};
+    if (m_lost.exchange(true))
+    {
+        return error; // reported once; every later frame just fails
+    }
+    MEOW2_LOG_ERROR(m_log, "{}", error.message);
+    if (!m_deviceFault)
+    {
+        MEOW2_LOG_ERROR(m_log, "No details: this driver doesn't have VK_EXT_device_fault");
+        return error;
+    }
+    for (const std::string& line : readDeviceFault(m_device))
+    {
+        MEOW2_LOG_ERROR(m_log, "{}", line);
+    }
+    return error;
 }
 
 void RhiDeviceVulkan::onValidationMessage(bool isError, const char* message)

@@ -37,10 +37,14 @@ void csCull(uint3 id : SV_DispatchThreadID)
 
     RWByteAddressBuffer draws = ResourceDescriptorHeap[cull.drawBuffer];
     IndirectDraw draw;
+    draw.instance = id.x;
     draw.vertexCount = mesh.indexCount;
     draw.instanceCount = 1;
     draw.firstVertex = mesh.firstIndex;
     draw.firstInstance = id.x;
+    draw.padding0 = 0;
+    draw.padding1 = 0;
+    draw.padding2 = 0;
     draws.Store<IndirectDraw>(slot * sizeof(IndirectDraw), draw);
 }
 
@@ -75,7 +79,7 @@ float3 unpackPosition(PackedVertex stored, MeshDraw mesh)
 VertexOutput vsMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
 {
     const FrameConstants frame = frameConstants();
-    const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, instanceId);
+    const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, indirectInstance(instanceId));
     const MeshDraw mesh = loadElement<MeshDraw>(g_push.userData, instance.mesh);
     const uint index = loadElement<uint>(mesh.indexBuffer, vertexId);
     const PackedVertex stored = loadElement<PackedVertex>(mesh.vertexBuffer, index);

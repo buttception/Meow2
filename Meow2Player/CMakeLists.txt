@@ -4,6 +4,9 @@ target_link_libraries(Meow2Player PRIVATE Meow2::Engine)
 meow2_set_warnings(Meow2Player)
 set_target_properties(Meow2Player PROPERTIES FOLDER "Apps")
 meow2_track_global_new(Meow2Player) # every new/delete through the memory tracker (Debug/RWDI)
+if(MEOW2_RHI_D3D12)
+    meow2_use_agility(Meow2Player) # the D3D12 runtime in D3D12/ next to the exe
+endif()
 meow2_gui_subsystem_in_release(Meow2Player) # no console window in Release
 meow2_install_app(Meow2Player)               # into the release zip (cmake/Meow2Packaging.cmake)
 meow2_source_groups(Meow2Player)

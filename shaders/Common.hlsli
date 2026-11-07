@@ -37,6 +37,18 @@ InstanceData instanceData()
     return heapBuffer(g_push.instanceBuffer).Load<InstanceData>(g_push.instance * sizeof(InstanceData));
 }
 
+/// The index of the instance an indirect draw (IndirectDraw) is for, from the vertex shader's SV_InstanceID. Vulkan's
+/// SV_InstanceID includes the draw's first instance; D3D12's starts at 0 for every draw, so there the command signature
+/// writes the index into g_push.instance instead.
+uint indirectInstance(uint instanceId)
+{
+#ifdef __spirv__
+    return instanceId;
+#else
+    return g_push.instance + instanceId;
+#endif
+}
+
 /// Element `element` of an array of T in a buffer from the heap.
 template <typename T>
 T loadElement(uint bufferIndex, uint element)
@@ -49,7 +61,7 @@ T loadElement(uint bufferIndex, uint element)
 typedef uint Meow2CheckPushConstants[sizeof(PushConstants) == 16 ? 1 : -1];
 typedef uint Meow2CheckFrameConstants[sizeof(FrameConstants) == 224 ? 1 : -1];
 typedef uint Meow2CheckInstanceData[sizeof(InstanceData) == 80 ? 1 : -1];
-typedef uint Meow2CheckIndirectDraw[sizeof(IndirectDraw) == 16 ? 1 : -1];
+typedef uint Meow2CheckIndirectDraw[sizeof(IndirectDraw) == 32 ? 1 : -1];
 typedef uint Meow2CheckPackedVertex[sizeof(PackedVertex) == 12 ? 1 : -1];
 typedef uint Meow2CheckMeshDraw[sizeof(MeshDraw) == 48 ? 1 : -1];
 typedef uint Meow2CheckCullConstants[sizeof(CullConstants) == 128 ? 1 : -1];

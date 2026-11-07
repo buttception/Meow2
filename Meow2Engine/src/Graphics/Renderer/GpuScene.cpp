@@ -221,8 +221,8 @@ void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& fr
     cull.plane5 = frustum.planes[5];
     cull.instanceBuffer = m_device.bindlessIndex(m_instanceBuffer);
     cull.meshBuffer = m_device.bindlessIndex(m_meshBuffer);
-    cull.drawBuffer = m_device.bindlessIndex(m_drawBuffer);
-    cull.countBuffer = m_device.bindlessIndex(m_countBuffer);
+    cull.drawBuffer = m_device.bindlessStorageIndex(m_drawBuffer);
+    cull.countBuffer = m_device.bindlessStorageIndex(m_countBuffer);
     cull.instanceCount = m_instanceCount;
     std::memcpy(m_device.mappedMemory(m_cullBuffers[frameSlot]).data(), &cull, sizeof(cull));
 }

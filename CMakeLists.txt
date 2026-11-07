@@ -51,6 +51,9 @@ option(MEOW2_BUILD_PLAYER   "Build Meow2Player"   ON)
 option(MEOW2_BUILD_RENDERER "Build Meow2Renderer" ON)
 option(MEOW2_BUILD_TESTS    "Build unit tests (needs the googletest submodule)" ON)
 option(MEOW2_RHI_VULKAN    "Vulkan backend of the RHI" ON)
+# D3D12 is Windows-only (techstack.md §1), so the option only exists there.
+include(CMakeDependentOption)
+cmake_dependent_option(MEOW2_RHI_D3D12 "D3D12 backend of the RHI (Windows only)" ON "WIN32" OFF)
 option(MEOW2_GPU_TESTS     "Tests that need a GPU and a desktop (labels gpu, visual)" OFF)
 
 # ---- Output layout ----------------------------------------------------------
@@ -71,6 +74,7 @@ include(Meow2Dxc)
 include(Meow2SmokeTest)
 include(Meow2Subsystem)
 include(Meow2Packaging) # meow2_install_app(); meow2_package() is called at the end
+include(Meow2Agility)   # after the packaging module: it adds the runtime to the release zip
 if(MEOW2_BUILD_TESTS)
     include(Meow2Tests)
 endif()

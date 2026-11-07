@@ -1,6 +1,7 @@
 /// @file
 /// @brief RHI tests that need no GPU: handles, the requirements check, backend selection.
 
+#include "Graphics/Rhi/Vulkan/VulkanDeviceFault.h"
 #include "Graphics/Rhi/Vulkan/VulkanRequirements.h"
 
 #include <Meow2/Core/Log/LogSystem.h>
@@ -126,6 +127,29 @@ TEST(Requirements, SwapchainOnlyNeededForPresentation)
     EXPECT_TRUE(mentions(missingVulkanRequirements(facts, true), "VK_KHR_swapchain"));
 }
 
+TEST(DeviceFault, DescribesVulkanFaults)
+{
+    const std::vector<VkDeviceFaultAddressInfoEXT> addresses{
+        {.addressType = VK_DEVICE_FAULT_ADDRESS_TYPE_WRITE_INVALID_EXT,
+         .reportedAddress = 0x1234'5000,
+         .addressPrecision = 0x1000}};
+    const std::vector<VkDeviceFaultVendorInfoEXT> vendor(1);
+    const std::vector<std::string> lines = describeDeviceFault("page fault", addresses, vendor);
+    ASSERT_EQ(lines.size(), 3U);
+    EXPECT_NE(lines[0].find("page fault"), std::string::npos) << lines[0];
+    EXPECT_NE(lines[1].find("invalid write"), std::string::npos) << lines[1];
+    EXPECT_NE(lines[1].find("0x0000000012345000"), std::string::npos) << lines[1];
+    EXPECT_NE(lines[1].find("0x1000"), std::string::npos) << lines[1];
+    EXPECT_NE(lines[2].find("vendor"), std::string::npos) << lines[2];
+}
+
+TEST(DeviceFault, EmptyDescriptionStillSaysSomething)
+{
+    const std::vector<std::string> lines = describeDeviceFault("", {}, {});
+    ASSERT_EQ(lines.size(), 1U);
+    EXPECT_NE(lines[0].find("no description"), std::string::npos);
+}
+
 TEST(RenderDocCapture, WithoutRenderDocDoesNothing)
 {
     Log::LogSystem logSystem{{.appName = "Test", .directory = {}, .console = false}};
@@ -151,6 +175,7 @@ TEST(SharedLibrary, FindLoadedDoesNotLoad)
     EXPECT_FALSE(SharedLibrary::findLoaded("meow2-not-a-library"));
 }
 
+#if !MEOW2_RHI_D3D12
 TEST(Device, D3D12NotBuiltIsAnError)
 {
     Log::LogSystem logSystem{{.appName = "Test", .directory = {}, .console = false}};
@@ -159,4 +184,5 @@ TEST(Device, D3D12NotBuiltIsAnError)
     ASSERT_FALSE(device);
     EXPECT_EQ(device.error().code, ErrorCode::Unsupported);
 }
+#endif
 } // namespace Meow2::Rhi

@@ -158,7 +158,7 @@ else()
     target_link_libraries(Meow2Engine PRIVATE ${CMAKE_DL_LIBS}) # dlopen
 endif()
 
-# The Vulkan backend of the RHI (techstack.md §11). D3D12 will sit next to it; the choice is made at runtime.
+# The backends of the RHI (techstack.md §11): both can be built in, and the choice is made at runtime.
 if(MEOW2_RHI_VULKAN)
     target_sources(Meow2Engine PRIVATE
         src/Graphics/Rhi/Vulkan/RhiCommandListVulkan.cpp
@@ -169,6 +169,8 @@ if(MEOW2_RHI_VULKAN)
         src/Graphics/Rhi/Vulkan/RhiResourcesVulkan.cpp
         src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.cpp
         src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.h
+        src/Graphics/Rhi/Vulkan/VulkanDeviceFault.cpp
+        src/Graphics/Rhi/Vulkan/VulkanDeviceFault.h
         src/Graphics/Rhi/Vulkan/VulkanRequirements.cpp
         src/Graphics/Rhi/Vulkan/VulkanRequirements.h)
     target_link_libraries(Meow2Engine PRIVATE meow2_vma)
@@ -181,11 +183,29 @@ if(MEOW2_RHI_VULKAN)
             src/Graphics/Rhi/Vulkan/RhiGpuProfilerVulkan.cpp
             src/Graphics/Rhi/Vulkan/RhiResourcesVulkan.cpp
             src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.cpp
+            src/Graphics/Rhi/Vulkan/VulkanDeviceFault.cpp
             PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers")
     endif()
     target_compile_definitions(Meow2Engine PUBLIC MEOW2_RHI_VULKAN=1)
 else()
     target_compile_definitions(Meow2Engine PUBLIC MEOW2_RHI_VULKAN=0)
+endif()
+if(MEOW2_RHI_D3D12)
+    target_sources(Meow2Engine PRIVATE
+        src/Graphics/Rhi/D3D12/D3D12Requirements.cpp
+        src/Graphics/Rhi/D3D12/D3D12Requirements.h
+        src/Graphics/Rhi/D3D12/RhiCommandListD3D12.cpp
+        src/Graphics/Rhi/D3D12/RhiDeviceD3D12.cpp
+        src/Graphics/Rhi/D3D12/RhiDeviceD3D12.h
+        src/Graphics/Rhi/D3D12/RhiGpuProfilerD3D12.cpp
+        src/Graphics/Rhi/D3D12/RhiGpuProfilerD3D12.h
+        src/Graphics/Rhi/D3D12/RhiResourcesD3D12.cpp
+        src/Graphics/Rhi/D3D12/RhiSwapchainD3D12.cpp
+        src/Graphics/Rhi/D3D12/RhiSwapchainD3D12.h)
+    target_link_libraries(Meow2Engine PRIVATE meow2_d3d12ma)
+    target_compile_definitions(Meow2Engine PUBLIC MEOW2_RHI_D3D12=1)
+else()
+    target_compile_definitions(Meow2Engine PUBLIC MEOW2_RHI_D3D12=0)
 endif()
 
 # The shader compiler: DXC's headers only, the library is loaded at runtime (techstack.md §12).

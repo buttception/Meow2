@@ -1,6 +1,8 @@
 /// @file
 /// @brief Tests for UploadRing, ReadbackQueue and OffscreenTarget on a real GPU (`MEOW2_GPU_TESTS=ON`).
 
+#include "Graphics/Rhi/RhiTestBackend.h"
+
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Graphics/Renderer/FrameResources.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
@@ -33,8 +35,9 @@ protected:
 
     void SetUp() override
     {
-        Result<std::unique_ptr<Rhi::IRhiDevice>> device =
-            Rhi::createRhiDevice({.appName = "Meow2 tests", .validation = true, .presentation = false}, m_log);
+        Result<std::unique_ptr<Rhi::IRhiDevice>> device = Rhi::createRhiDevice(
+            {.backend = Rhi::c_testBackend, .appName = "Meow2 tests", .validation = true, .presentation = false},
+            m_log);
         ASSERT_TRUE(device) << device.error().message;
         m_device = std::move(*device);
     }
