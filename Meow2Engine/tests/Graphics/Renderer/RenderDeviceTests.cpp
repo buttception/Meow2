@@ -331,7 +331,7 @@ TEST_F(RenderDeviceTest, KeepsEachBackendsPipelineCache)
     EXPECT_EQ(m_render->pipelineCache(c_other), saved);
 }
 
-#if MEOW2_TEST_D3D12
+#if MEOW2_TEST_D3D12 && MEOW2_RHI_VULKAN // a D3D12-only build has nothing to switch to
 TEST_F(RenderDeviceTest, SwapsToVulkanAndBack)
 {
     makeScene();
