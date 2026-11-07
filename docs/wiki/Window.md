@@ -130,3 +130,7 @@ So the Linux CI job runs the same tests without X11 or Wayland. It still install
 - **Input** (keyboard, mouse, gamepads) is the [Input](Input.md) page: the SDL input sources receive it through the same `pumpEvents()`.
 
 See also: techstack.md §9, [Config](Config.md), [Memory](Memory.md), API reference `Meow2::Platform`.
+
+## Implementation summary
+
+- `Meow2::Platform::Platform` (owns SDL's init, one per process, `pumpEvents(wait)`, SDL memory hook → `MemTag::Platform`) and `Window` (pimpl, `WindowDesc`, polled state: bounds, restored bounds, pixel size, maximized/minimized/focused, fullscreen, close request; `nativeHandle()` for the RHI). `windowDescFromConfig` / `storeWindowState` keep the `window.*` keys in the app's config. `platform.videoDriver = "offscreen"` runs without a desktop (tests, CI). See [docs/wiki/Window.md](docs/wiki/Window.md). **Window events on the `EventBus` (M2):** `pumpEvents()` enqueues `WindowResized`, `WindowMoved`, `WindowStateChanged`, `WindowFocusChanged`, `WindowDisplayScaleChanged`, `WindowCloseRequested` and `QuitRequested` (`Meow2/Platform/Window/WindowEvents.h`), coalesced to one per kind per pump; `Platform` gets the bus injected.

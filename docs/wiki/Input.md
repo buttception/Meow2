@@ -119,3 +119,7 @@ Meow2::Time::GameLoop loop{clock, events, loopDesc,
 - Switching text input on (`SDL_StartTextInput`), mouse capture (relative mode), rumble, an action layer ("Jump" = Space or A) with bindings in the config.
 
 See also: techstack.md §9, [GameLoop](GameLoop.md), [Events](Events.md), [Window](Window.md).
+
+## Implementation summary
+
+- `SdlInputSource` (keyboard, mouse, text) and `SdlGamepadSource` (`create()` → `Result`, opens pads on `GAMEPAD_ADDED`, `GamepadId` = SDL joystick id) in `src/Platform/Input/Sdl/`; `Platform::pumpEvents()` passes non-window SDL events to registered handlers. Player and Renderer only (the editor gets `QtInputSource` in M9). Tested with pushed SDL events and an SDL virtual gamepad.

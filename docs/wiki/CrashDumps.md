@@ -103,3 +103,7 @@ The tests are `Core.CrashHandler.*`, labels `integration;windows`:
 - `AccessViolationWritesDump`, `StackOverflowWritesDump`;
 - `AbortWritesDump`, `TerminateWritesDump`, `CppExceptionWritesDump`, `InvalidParameterWritesDump`;
 - `FatalLogWritesDump`, `FailedAssertWritesDump` (in Release, asserts are off, so this one checks there's no crash).
+
+## Implementation summary
+
+- Dumps use `MiniDumpWithIndirectlyReferencedMemory | ThreadInfo | HandleData | UnloadedModules`.

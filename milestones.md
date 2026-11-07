@@ -1,6 +1,6 @@
 # Meow2 — Milestones
 
-A map of where the engine is heading, not a schedule. Work happens **as the owner asks for it**, one small feature (= 1 issue, 1 branch, 1 PR) at a time.
+A map of where the engine is heading, not a schedule. Work happens **as the owner asks for it**, in groups of related features (1 group = 1 issue, 1 branch, 1 PR, AGENTS.md §2) at a time.
 If a requested feature needs something from an earlier milestone that doesn't exist yet, the agent says so before starting.
 
 Status: ⬜ not started · 🟨 in progress · ✅ done
@@ -147,22 +147,42 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 **Not in M4:** GPU pipelines or running a shader (M5); glTF and textures as assets (M7, on the same asset core); the material system; a custom shader language; SPIRV-Reflect (bindless has one fixed binding layout, so reflection isn't needed; add it if a user appears).
 
 ## M5 — RHI ⬜
-**Goal:** draw with Vulkan and D3D12 through one interface, and switch between them while running, with a bindless, GPU-driven core.
+**Goal:** draw through one interface on Vulkan and D3D12, bindless and GPU-driven from the start, and switch between them while running.
 **Depends on:** M2, M3, M4
 
-- RHI interface design (device, queues, command lists, resources by handle, barriers)
-- Typed handles (index + generation)
-- **Bindless:** one global descriptor heap (`VK_EXT_mutable_descriptor_type` on Vulkan, SM 6.6 heaps on D3D12), one fixed binding layout, resources addressed by index through push constants
-- **GPU-driven drawing:** indirect draws with a count buffer, vertex pulling (shaders decode the `Meow2/Math/Packing.h` formats from buffers), compute culling
-- **UAVs / storage buffers and CPU readback** (editor GPU picking, M9)
-- **Pipeline cache and up-front pipeline creation** (`VkPipelineCache`, `ID3D12PipelineLibrary`): no shader stutter; the driver's compile happens once per GPU and driver version
-- **Frame arena:** one `BlockArena` per frame in flight × worker thread, reset when that frame's GPU fence signals (§6)
-- **Upload ring buffer** per frame in flight (CPU-writable GPU memory, same fence-based reset) for GPU scene updates
-- **Frame packet / extract step:** `update` copies what the renderer needs into a frame-arena packet; the renderer only reads the packet (§23)
-- Vulkan backend: device → swapchain → clear screen → triangle → buffers/textures/pipelines
-- D3D12 backend: parity with Vulkan
-- Runtime hot swap Vulkan ↔ D3D12
-- GPU profiling zones (Tracy, Vulkan + D3D12)
+Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules and tools need the owner's approval first.
+
+| PR | Feature | Notes (techstack.md) | Status | Issue / PR |
+|---|---|---|---|---|
+| 1 Vulkan bring-up | Submodules: Vulkan-Headers, volk, VulkanMemoryAllocator | §4 | ⬜ | |
+| 1 | `IRhiDevice`, `IRhiCommandList`, `IRhiSwapchain`, `createRhiDevice(backend, desc)`, typed handles (index + generation) | §11 | ⬜ | |
+| 1 | Device and queues, validation messages to the `RHI` logger, object names | §11 | ⬜ | |
+| 1 | Capability check at startup: required features, a clear message on an unsupported GPU, a written minimum spec | §11 | ⬜ | |
+| 1 | Swapchains: more than one per device (ImGui viewports, the Qt viewport), resize, minimise; clear screen in Renderer | §9, §11 | ⬜ | |
+| 2 Resources and first triangle | Buffers, textures, samplers through VMA under `MemTag::Rhi` | §6 | ⬜ | |
+| 2 | Deferred destruction: resources and bindless indices are freed only after the GPU has finished with them | §11 | ⬜ | |
+| 2 | Barriers (synchronization2), dynamic rendering | §11 | ⬜ | |
+| 2 | Bindless heap: one layout, index allocator, push constants, on the M4 `Common.hlsli` contract | §11, §12 | ⬜ | |
+| 2 | Graphics and compute pipelines from `.m2shader`, pipeline cache on disk, up-front creation | §11 | ⬜ | |
+| 2 | Pipelines rebuilt on `ShaderReloaded` | §12, §22 | ⬜ | |
+| 2 | Triangle through bindless: the first time an M4 shader really runs | §12 | ⬜ | |
+| 3 Frame infrastructure | `FrameArena` (reset by fence), upload ring, CPU readback | §6 | ⬜ | |
+| 3 | Frame packet / extract step in the game loop | §23 | ⬜ | |
+| 3 | Headless rendering: draw to a texture with no window and read it back (M7 golden images, CI) | §13 | ⬜ | |
+| 3 | Debug tools: pass markers, RenderDoc in-app capture; Tracy GPU zones; GPU memory stats per tag | §3, §11 | ⬜ | |
+| 4 GPU-driven path | Render graph, small at first: passes and automatic barriers; transient memory aliasing later | §3, §11 | ⬜ | |
+| 4 | Vertex pulling with the `Packing.h` formats | §10 | ⬜ | |
+| 4 | Indirect draws with a count buffer, compute frustum culling | §11 | ⬜ | |
+| 4 | Many-instance test scene, reversed-Z depth check | §10 | ⬜ | |
+| 5 D3D12 parity | Submodules: D3D12MemoryAllocator, DirectX-Headers; Agility SDK | §4 | ⬜ | |
+| 5 | Everything above on D3D12, the same shared tests on both backends; PIX markers | §11 | ⬜ | |
+| 5 | Device loss reports: DRED on D3D12, `VK_EXT_device_fault` on Vulkan | §8 | ⬜ | |
+| 6 Hot swap and close | Resource registry, recreate from CPU descriptions, swap on the same window | §11 | ⬜ | |
+| 6 | Closing PR bumps the version to **0.6.0** | §21 | ⬜ | |
+
+**Done when:** the same scene renders on both backends with validation clean; 100k instances are culled in compute and drawn indirectly; a second run creates pipelines from the cache; a Vulkan ↔ D3D12 swap works while running; readback returns the right pixels; a RenderDoc capture of a bindless frame opens and shows named passes.
+
+**Not in M5:** mesh shaders and meshlets (M7), ray tracing, HZB occlusion culling, HDR output, async compute.
 
 ## M6 — Meow2Renderer app ⬜
 **Goal:** a showcase / test bed for rendering.
@@ -182,6 +202,8 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 - On-demand sample-asset fetch, scene browser
 - Visual regression tests (golden images per backend)
 - Sample scenes, one by one as requested
+- **meshoptimizer** (zeux, submodule, needs approval): vertex cache and overdraw optimisation on every mesh at import, simplification for LODs
+- **Meshlets**, as an optional path for dense static opaque meshes, not the only one: clusters from meshoptimizer, culled per cluster, drawn with mesh shaders where the GPU has them. The indirect path from M5 stays as the baseline for skinned, transparent and small meshes and for GPUs without mesh shaders (Android, older desktop)
 
 ## M8 — Physics ⬜
 **Goal:** rigid bodies via Jolt, swappable at build time later.
@@ -237,3 +259,4 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 - 2026-11-05 — M3 done (0.4.0): every row implemented as a stack of PRs (#108–#132).
 - 2026-11-06 — M4 is now "Shaders and assets", a feature table: DXC pinned, `ShaderCompiler`, asset core, shader assets and permutations, cooker, build step, bindless contract, hot reload. M5 gains bindless, GPU-driven drawing, readback and pipeline caching; M7's GPU scene is the main path; M9 gains GPU picking.
 - 2026-11-06 — M4 done (0.5.0): every row implemented as a stack of PRs (#134–#152).
+- 2026-11-07 — M5 is now a feature table in six PRs, adding deferred destruction, a small render graph, headless rendering, a capability check, multiple swapchains, pipeline rebuilds on shader reload and debug tools. M7 gains meshoptimizer and meshlets as an optional path.

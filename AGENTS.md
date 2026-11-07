@@ -15,10 +15,12 @@ When this file changes, the agent that changed it must tell the owner what chang
 5. Never push to `main`, merge PRs, delete branches on the remote, or rewrite `main`'s history. **The owner reviews and merges.**
 6. Never commit secrets, build output, or files listed in `.gitignore`.
 
-## 2. Work unit: 1 small feature = 1 issue = 1 branch = 1 PR
+## 2. Work unit: 1 group of related features = 1 issue = 1 branch = 1 PR
+
+CI runs in full on every PR, on the owner's PC too, so **fewer, larger PRs** are the default. Group related features, e.g. several rows of one milestone that build on each other. A PR should still be reviewable in one sitting and have one theme; a milestone is usually a few PRs, not one per row.
 
 ### 2.1 Issue (before writing code)
-Every feature starts as a GitHub issue using this template:
+Every PR starts as a GitHub issue using this template; one issue can list several features, with test cases for each:
 
 ```
 Title: [M<milestone>] <short imperative feature name>
@@ -49,13 +51,14 @@ Labels: `milestone:M<n>`, `module:<Module>`, `feature` / `bug` / `chore`.
 ### 2.2 Branch
 - Name: `feat/<issue#>-<kebab-name>` (also `fix/`, `chore/`, `docs/`).
 - Always branch from the **latest `origin/main`**: `git fetch origin && git switch -c feat/12-file-sink origin/main`.
-- Keep it **small**: one feature, ideally < ~400 changed lines excluding tests.
+- Keep it to **one theme**: related features that are easier to review and test together.
 - **Do not merge `main` into a feature branch.** Use rebase.
 
 ### 2.3 Avoiding merge conflicts
 - Before opening a PR and after every merge to `main`: `git fetch origin && git rebase origin/main`, then rebuild and re-run the tests.
 - Push rebased branches with `git push --force-with-lease` (feature branches only — never `main`).
 - By default, have **one PR open at a time**. Open a second one only if it touches entirely different files. If a feature depends on an unmerged PR, wait, or stack it explicitly and say so in the PR.
+- **Avoid long stacks:** each fix low in a stack re-runs CI on every PR above it. Prefer one larger PR to a stack, and stack only when the owner asks.
 - Shared "hot" files (top-level `CMakeLists.txt`, `.gitmodules`, `CMakePresets.json`): change only the lines you need, and keep lists sorted alphabetically so parallel additions don't collide.
 - Line endings are controlled by `.gitattributes`. Never commit line-ending-only changes.
 
@@ -167,7 +170,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - **Wiki** — every feature PR adds or updates a page in `docs/wiki/` (Markdown, one page per module, e.g. `docs/wiki/Logging.md`, plus `docs/wiki/Home.md` as the index).
   The pages are written as user/developer docs: what the feature does, how to use it, and how it works.
   `docs/wiki/` is the source of truth. It is published to the GitHub wiki (`Meow2.wiki.git`) when the agent has repo access; otherwise the owner publishes it.
-- **techstack.md** — update it when a stack decision changes, and add a Changelog line.
+- **techstack.md** — decisions and rules only. Update it when a stack decision changes, and add a Changelog line. What was built and how it works goes in the wiki page, not here: this file loads into every session, so it stays short. When picking up a module, start from the index in `docs/wiki/Home.md`.
 - **milestones.md** — the roadmap. Update a feature's status and issue/PR link in every PR.
 - **CHANGELOG.md** — user-facing changes per version ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format). Every PR adds to `[Unreleased]`; each release's notes come from it (§2.7).
 
@@ -214,3 +217,5 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-10-27 — §3: engine folders are Subsystem/Module/Backend (max three levels); every target calls `meow2_source_groups` and sets a solution `FOLDER`; OS-code rule reworded to match.
 - 2026-10-29 — §3: tl::expected (via `Meow2/Core/Result.h`) is a public-header exception; expected failures return `Result<T>` using only the `std::expected`-compatible API.
 - 2026-11-03 — §3: EnTT in `Meow2/Scene` is a public-header exception (its registry and views are the Scene API), approved by the owner.
+- 2026-11-06 — §2: fewer, larger PRs: one PR holds a group of related features instead of one small feature, because CI runs in full per PR; avoid long stacks (owner decision).
+- 2026-11-07 — §4: techstack.md keeps decisions and rules; implementation detail lives in the wiki, read on demand.

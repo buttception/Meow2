@@ -74,3 +74,7 @@ Two CI jobs run **every test** with compiler instrumentation that checks the pro
 - `GTest::gtest_main` provides `main()`, so test files contain only `TEST()`s.
 - `gtest_discover_tests` asks the test executable for its list of tests (when `ctest` runs) and registers each one as its own CTest test, so they can be filtered, labelled and re-run individually.
 - `-DMEOW2_BUILD_TESTS=OFF` skips GoogleTest and all unit tests (smoke tests stay).
+
+## Implementation summary
+
+- `MEOW2_SANITIZER=address|thread` (`cmake/Meow2Sanitizers.cmake`, flags for every target incl. third-party, memory tracking off), presets `linux-clang-asan` and `linux-clang-tsan` (no editor, no profiling), CI jobs `Linux (Clang ASan+UBSan)` and `Linux (Clang TSan)`.

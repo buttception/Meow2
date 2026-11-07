@@ -83,3 +83,7 @@ Frames don't all take the same time: 7 ms, then 23 ms, then 16 ms. If physics st
 `Core.FixedTimestep.*` (whole steps, carried remainder, the cap, zero delta, alpha range and no lost time over 1000 uneven frames) and `Core.GameLoopTest.*` (phase order, step count and deltas, both dispatch points, a 10 s stall, empty callbacks). `Core.GameLoopConfigTest.*` covers the settings.
 
 See also: [FrameClock](FrameClock.md), [Events](Events.md), techstack.md §23, Glenn Fiedler, [Fix Your Timestep!](https://gafferongames.com/post/fix_your_timestep/).
+
+## Implementation summary
+
+- `Meow2::Time::GameLoop` (`Meow2/Core/Time/GameLoop.h`): callbacks `pumpEvents`, `fixedUpdate(dt)`, `update(dt)`, `render(alpha)` (`std::function`s, any may be empty), dispatch after the pump and after update, Tracy zones + frame mark; `FixedTimestep` (the accumulator; over `maxFixedStepsPerFrame` the excess is dropped, keeping the fraction of a step); `loop.fixedStepHz` and `loop.maxFixedSteps` in the config (`GameLoopConfig.h`).
