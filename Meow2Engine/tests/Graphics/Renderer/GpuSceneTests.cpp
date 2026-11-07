@@ -2,6 +2,8 @@
 /// @brief The GPU-driven path on a real GPU (`MEOW2_GPU_TESTS=ON`): compute culling, indirect drawing, vertex pulling,
 ///        reversed-Z depth, and the render graph recording on jobs.
 
+#include "Graphics/Rhi/RhiTestBackend.h"
+
 #include <Meow2/Assets/AssetManager.h>
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Id/UuidGenerator.h>
@@ -50,7 +52,8 @@ protected:
     void SetUp() override
     {
         ASSERT_TRUE(m_files.mountDirectory("cooked", MEOW2_COOKED_DIR).has_value());
-        Result<std::unique_ptr<Rhi::IRhiDevice>> device = Rhi::createRhiDevice({.appName = "Meow2 tests",
+        Result<std::unique_ptr<Rhi::IRhiDevice>> device = Rhi::createRhiDevice({.backend = Rhi::c_testBackend,
+                                                                                .appName = "Meow2 tests",
                                                                                 .validation = true,
                                                                                 .presentation = false,
                                                                                 .recordingThreads = c_recordingThreads},

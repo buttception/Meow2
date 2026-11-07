@@ -176,10 +176,10 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 | 4 | Vertex pulling with the `Packing.h` formats | §10 | ✅ | #163 / PR #164 |
 | 4 | Indirect draws with a count buffer, compute frustum culling | §11 | ✅ | #163 / PR #164 |
 | 4 | Many-instance test scene, reversed-Z depth check | §10 | ✅ | #163 / PR #164 |
-| 5 D3D12 parity | Submodules: D3D12MemoryAllocator, DirectX-Headers; Agility SDK | §4 | ⬜ | |
-| 5 | Everything above on D3D12, the same shared tests on both backends; PIX markers | §11 | ⬜ | |
-| 5 | Device loss reports: DRED on D3D12, `VK_EXT_device_fault` on Vulkan | §8 | ⬜ | |
-| 5 | Look into capturing from the app with PIX (D3D12) and Nsight Graphics (NVIDIA), as with RenderDoc; each needs its own SDK or library approved first | §11 | ⬜ | |
+| 5 D3D12 parity | Submodules: D3D12MemoryAllocator, DirectX-Headers; Agility SDK | §4 | ✅ | #165 / PR #166 |
+| 5 | Everything above on D3D12, the same shared tests on both backends; PIX markers | §11 | ✅ | #165 / PR #166 |
+| 5 | Device loss reports: DRED on D3D12, `VK_EXT_device_fault` on Vulkan | §8 | ✅ | #165 / PR #166 |
+| 5 | Look into capturing from the app with PIX (D3D12) and Nsight Graphics (NVIDIA), as with RenderDoc; each needs its own SDK or library approved first | §11 | ✅ | #165 / PR #166 |
 | 6 Hot swap and close | Resource registry, recreate from CPU descriptions, swap on the same window | §11 | ⬜ | |
 | 6 | Closing PR bumps the version to **0.6.0** | §21 | ⬜ | |
 
@@ -268,3 +268,4 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 - 2026-11-07 — M5 is now a feature table in six PRs, adding deferred destruction, a small render graph, headless rendering, a capability check, multiple swapchains, pipeline rebuilds on shader reload and debug tools. M7 gains meshoptimizer and meshlets as an optional path.
 - 2026-11-07 — M5 PR 3 gains command lists per job thread, and PR 4's render graph records passes in parallel (owner decision).
 - 2026-11-07 — Owner request: capture buttons and a debug-tool settings window in Renderer (M6) and Editor (M9), saved to the TOML config; PIX and Nsight in-app capture to look into with D3D12 (M5 PR 5).
+- 2026-11-07 — M5 PR 5 done: D3D12 with the Agility SDK (owner decision), DRED and `VK_EXT_device_fault`.

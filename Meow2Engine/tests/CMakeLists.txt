@@ -105,24 +105,57 @@ meow2_add_test_suite(
     MODULE    Renderer
     SOURCES   Graphics/Renderer/FramePacketTests.cpp Graphics/Renderer/RenderGraphTests.cpp)
 
-# RHI: handles and the requirements check need no GPU, and read the backend's private header.
+# RHI: handles and the requirements checks need no GPU, and read the backends' private headers.
+set(meow2RhiTestSources "")
 if(MEOW2_RHI_VULKAN)
+    list(APPEND meow2RhiTestSources Graphics/Rhi/RhiTests.cpp)
+endif()
+if(MEOW2_RHI_D3D12)
+    list(APPEND meow2RhiTestSources Graphics/Rhi/RhiD3D12Tests.cpp)
+endif()
+if(meow2RhiTestSources)
     meow2_add_test_suite(
         TARGET    Meow2EngineRhiTests
         MODULE    Rhi
-        SOURCES   Graphics/Rhi/RhiTests.cpp)
+        SOURCES   ${meow2RhiTestSources})
     target_include_directories(Meow2EngineRhiTests PRIVATE "${PROJECT_SOURCE_DIR}/Meow2Engine/src")
+    if(MEOW2_RHI_VULKAN)
+        target_link_libraries(Meow2EngineRhiTests PRIVATE meow2_volk)
+    endif()
+    if(MEOW2_RHI_D3D12)
+        target_link_libraries(Meow2EngineRhiTests PRIVATE meow2_directx_headers)
+    endif()
 endif()
 
-# RHI on a real GPU: off by default, because hosted CI has neither a GPU nor a desktop.
+# RHI on a real GPU: off by default, because hosted CI has neither a GPU nor a desktop. The same sources are built once
+# per backend (Graphics/Rhi/RhiTestBackend.h), so every behaviour is checked on both: RhiGpu.* on Vulkan,
+# RhiGpuD3D12.* on D3D12.
+set(meow2RhiGpuTestSources
+    Graphics/Renderer/FrameResourcesTests.cpp Graphics/Renderer/GpuSceneTests.cpp Graphics/Rhi/RhiDrawTests.cpp
+    Graphics/Rhi/RhiGpuTests.cpp)
 if(MEOW2_RHI_VULKAN AND MEOW2_GPU_TESTS AND MEOW2_SHADER_TOOLS)
     meow2_add_test_suite(
         TARGET    Meow2EngineRhiGpuTests
         MODULE    RhiGpu
         LABELS    gpu
-        SOURCES   Graphics/Renderer/FrameResourcesTests.cpp Graphics/Renderer/GpuSceneTests.cpp Graphics/Rhi/RhiDrawTests.cpp Graphics/Rhi/RhiGpuTests.cpp)
+        SOURCES   ${meow2RhiGpuTestSources})
     add_dependencies(Meow2EngineRhiGpuTests Meow2Shaders)
-    target_compile_definitions(Meow2EngineRhiGpuTests PRIVATE MEOW2_COOKED_DIR="${MEOW2_COOKED_DIR}")
+    target_include_directories(Meow2EngineRhiGpuTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(Meow2EngineRhiGpuTests PRIVATE MEOW2_COOKED_DIR="${MEOW2_COOKED_DIR}" MEOW2_TEST_D3D12=0)
+endif()
+if(MEOW2_RHI_D3D12 AND MEOW2_GPU_TESTS AND MEOW2_SHADER_TOOLS)
+    meow2_add_test_suite(
+        TARGET    Meow2EngineRhiGpuD3D12Tests
+        MODULE    RhiGpuD3D12
+        LABELS    gpu windows
+        SOURCES   ${meow2RhiGpuTestSources} Graphics/Rhi/RhiD3D12GpuTests.cpp)
+    add_dependencies(Meow2EngineRhiGpuD3D12Tests Meow2Shaders)
+    target_include_directories(Meow2EngineRhiGpuD3D12Tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/Meow2Engine/src")
+    target_link_libraries(Meow2EngineRhiGpuD3D12Tests PRIVATE meow2_d3d12ma)
+    target_compile_definitions(Meow2EngineRhiGpuD3D12Tests PRIVATE
+        MEOW2_COOKED_DIR="${MEOW2_COOKED_DIR}" MEOW2_TEST_D3D12=1)
+    meow2_use_agility(Meow2EngineRhiGpuD3D12Tests)
 endif()
 
 # Shader compiler (needs DXC, which lands next to the test executable).

@@ -227,6 +227,10 @@ public:
     void destroy(BufferHandle buffer) override;
     [[nodiscard]] std::span<std::byte> mappedMemory(BufferHandle buffer) override;
     [[nodiscard]] std::uint32_t bindlessIndex(BufferHandle buffer) override;
+    [[nodiscard]] std::uint32_t bindlessStorageIndex(BufferHandle buffer) override
+    {
+        return bindlessIndex(buffer); // one storage-buffer descriptor serves reads and writes
+    }
     [[nodiscard]] Result<TextureHandle> createTexture(const TextureDesc& desc) override;
     void destroy(TextureHandle texture) override;
     [[nodiscard]] std::uint32_t bindlessIndex(TextureHandle texture) override;
@@ -311,6 +315,11 @@ public:
     /// @param isError Whether it's an error rather than a warning.
     /// @param message The text.
     void onValidationMessage(bool isError, const char* message);
+
+    /// @brief Logs what the driver knows about a lost device (`VK_EXT_device_fault`), the first time it's noticed, and
+    ///        returns the error to report.
+    /// @return An error saying the device was lost.
+    [[nodiscard]] Error reportDeviceLoss();
 
     /// @brief Looks up a buffer for the command list.
     /// @param handle The handle.
@@ -436,6 +445,8 @@ private:
     std::atomic<std::uint64_t> m_timelineValue{0};
     std::atomic<bool> m_inFrame{false};
     bool m_debugUtils = false;
+    bool m_deviceFault = false; ///< VK_EXT_device_fault is enabled.
+    std::atomic<bool> m_lost{false};
     float m_maxAnisotropy = 1.0F;
     RhiCommandListVulkan m_commandList;
     std::vector<RhiSwapchainVulkan*> m_acquired;

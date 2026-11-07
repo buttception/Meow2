@@ -9,6 +9,8 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Direct3D 12 backend: everything Vulkan does, from the bindless heap to GPU-driven drawing, passing the same tests. It ships Microsoft's DirectX 12 Agility SDK runtime in a `D3D12` folder, so it works on Windows 10 as well as 11. Meow2Renderer picks the backend with `--set rhi.backend=d3d12` (#166).
+- A lost GPU device (a crash or driver reset) is logged with what the driver knows: DRED on D3D12, `VK_EXT_device_fault` on Vulkan where the driver has it (#166).
 - Render graph: automatic barriers and passes recorded in parallel on jobs. GPU-driven drawing: compute frustum culling, indirect draws with a count buffer and vertex pulling. Meow2Renderer draws about 100,000 cubes this way (#164).
 - `rhi.renderDoc`: Meow2Renderer loads RenderDoc itself, and F11 captures a frame and opens it in the RenderDoc window (#162).
 - Frame infrastructure: `FrameArena`, `UploadRing`, `ReadbackQueue`, `OffscreenTarget`, a `FramePacket` with an `extract` phase in the game loop, command lists recorded on several jobs at once, pass markers, Tracy GPU zones, GPU memory stats per tag, and frame capture from inside the app when launched from RenderDoc (F11 in Meow2Renderer) (#160).

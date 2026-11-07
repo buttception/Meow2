@@ -45,13 +45,19 @@ struct InstanceData
     uint padding1;    ///< Pads to 16 bytes.
 };
 
-/// One indirect draw, the layout VkDrawIndirectCommand requires, written by culling.
+/// One indirect draw, written by culling. The four fields from vertexCount on are the layout VkDrawIndirectCommand and
+/// D3D12_DRAW_ARGUMENTS require. `instance` comes first because D3D12's SV_InstanceID leaves out the draw's first
+/// instance: the command signature writes it into PushConstants::instance before each draw (see indirectInstance()).
 struct IndirectDraw
 {
+    uint instance;      ///< The instance's index in the InstanceData array, for D3D12.
     uint vertexCount;   ///< Vertices.
     uint instanceCount; ///< Instances; 1.
     uint firstVertex;   ///< SV_VertexID of the first vertex: the mesh's first index.
-    uint firstInstance; ///< SV_InstanceID: the instance's index in the InstanceData array.
+    uint firstInstance; ///< The instance's index again, for Vulkan, where SV_InstanceID includes it.
+    uint padding0;      ///< Pads to 32 bytes.
+    uint padding1;      ///< Pads to 32 bytes.
+    uint padding2;      ///< Pads to 32 bytes.
 };
 
 /// One vertex, pulled by the vertex shader. Encoded by Math::quantizePosition() and Math::packOctahedral().

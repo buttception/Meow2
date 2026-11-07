@@ -190,3 +190,27 @@ if(MEOW2_RHI_VULKAN)
     endif()
     set_target_properties(meow2_vma PROPERTIES FOLDER "External")
 endif()
+
+# ---- D3D12 (DirectX-Headers, D3D12MA; techstack.md §4, §11) -----------------------------------------
+# The headers match the Agility SDK (cmake/Meow2Agility.cmake) version for version, so the code sees the same API as
+# the runtime it loads. They come before the Windows SDK's own d3d12.h on the include path. Only
+# src/Graphics/Rhi/D3D12/ includes them.
+if(MEOW2_RHI_D3D12)
+    set(meow2DirectXHeadersDir "${PROJECT_SOURCE_DIR}/external/DirectX-Headers")
+    set(meow2D3d12maDir "${PROJECT_SOURCE_DIR}/external/D3D12MemoryAllocator")
+    meow2_require_submodule(DirectX-Headers "${meow2DirectXHeadersDir}")
+    meow2_require_submodule(D3D12MemoryAllocator "${meow2D3d12maDir}")
+
+    add_library(meow2_directx_headers INTERFACE)
+    target_include_directories(meow2_directx_headers SYSTEM BEFORE INTERFACE
+        "${meow2DirectXHeadersDir}/include/directx" "${meow2DirectXHeadersDir}/include")
+    target_compile_definitions(meow2_directx_headers INTERFACE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(meow2_directx_headers INTERFACE d3d12 dxgi dxguid)
+
+    # D3D12MA's implementation, in its own library so the engine's warnings don't apply to it.
+    add_library(meow2_d3d12ma STATIC "${meow2D3d12maDir}/src/D3D12MemAlloc.cpp")
+    target_include_directories(meow2_d3d12ma SYSTEM PUBLIC "${meow2D3d12maDir}/include")
+    target_compile_definitions(meow2_d3d12ma PUBLIC D3D12MA_USING_DIRECTX_HEADERS)
+    target_link_libraries(meow2_d3d12ma PUBLIC meow2_directx_headers)
+    set_target_properties(meow2_d3d12ma PROPERTIES FOLDER "External")
+endif()

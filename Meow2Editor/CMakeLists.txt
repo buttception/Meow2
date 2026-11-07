@@ -54,6 +54,9 @@ set_target_properties(Meow2Editor PROPERTIES FOLDER "Apps")
 # our exe allocated (a parent widget deletes its children), so a replaced operator new would mix allocators and
 # corrupt the heap. The editor uses the normal heap; library allocator hooks are still tracked (techstack.md §6).
 meow2_deploy_qt(Meow2Editor)
+if(MEOW2_RHI_D3D12)
+    meow2_use_agility(Meow2Editor) # the D3D12 runtime in D3D12/ next to the exe
+endif()
 meow2_gui_subsystem_in_release(Meow2Editor) # no console window in Release
 
 # Release zip (cmake/Meow2Packaging.cmake): the editor, then Qt's deploy script, which runs windeployqt on the

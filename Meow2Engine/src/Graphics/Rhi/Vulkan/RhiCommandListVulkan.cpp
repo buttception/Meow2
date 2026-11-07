@@ -5,6 +5,8 @@
 #include "Graphics/Rhi/Vulkan/RhiSwapchainVulkan.h"
 #include "Meow2/Core/Assert.h"
 
+#include <cstddef>
+
 namespace Meow2::Rhi
 {
 namespace
@@ -215,8 +217,9 @@ void RhiCommandListVulkan::draw(std::uint32_t vertexCount, std::uint32_t instanc
 void RhiCommandListVulkan::drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws)
 {
     MEOW2_ASSERT(m_rendering, "drawIndirectCount() outside beginRendering()");
-    vkCmdDrawIndirectCount(m_commandBuffer, m_device.buffer(draws).buffer, 0, m_device.buffer(count).buffer, 0,
-                           maxDraws, sizeof(Shader::IndirectDraw));
+    // The draw arguments start after IndirectDraw::instance, which only D3D12 reads.
+    vkCmdDrawIndirectCount(m_commandBuffer, m_device.buffer(draws).buffer, offsetof(Shader::IndirectDraw, vertexCount),
+                           m_device.buffer(count).buffer, 0, maxDraws, sizeof(Shader::IndirectDraw));
 }
 
 void RhiCommandListVulkan::fillBuffer(BufferHandle buffer, std::uint32_t value)

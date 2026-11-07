@@ -51,6 +51,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -179,8 +180,18 @@ int main(int argc, char** argv)
     {
         MEOW2_LOG_WARN(appLog, "The pipeline cache won't be saved: {}", cacheMount.error());
     }
-    const std::vector<std::byte> savedPipelines =
-        files.readFile("cache/vulkan-pipelines.bin").value_or(std::vector<std::byte>{});
+    // rhi.backend picks the graphics API: "vulkan" (everywhere) or "d3d12" (Windows). Each keeps its own pipeline
+    // cache.
+    const std::string backendName = config.getString("rhi.backend", "vulkan");
+    const Meow2::Rhi::RhiBackend backend =
+        backendName == "d3d12" ? Meow2::Rhi::RhiBackend::D3D12 : Meow2::Rhi::RhiBackend::Vulkan;
+    if (backendName != "d3d12" && backendName != "vulkan")
+    {
+        MEOW2_LOG_WARN(appLog, "Unknown rhi.backend '{}': using vulkan", backendName);
+    }
+    const std::string pipelineCachePath =
+        backend == Meow2::Rhi::RhiBackend::D3D12 ? "cache/d3d12-pipelines.bin" : "cache/vulkan-pipelines.bin";
+    const std::vector<std::byte> savedPipelines = files.readFile(pipelineCachePath).value_or(std::vector<std::byte>{});
     std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
     std::unique_ptr<Meow2::Renderer::GpuScene> scene;
     Meow2::Rhi::TextureHandle depthTexture;
@@ -189,7 +200,8 @@ int main(int argc, char** argv)
     {
         const bool validationByDefault = MEOW2_CONFIG_RELEASE == 0;
         Meow2::Result<std::unique_ptr<Meow2::Rhi::IRhiDevice>> createdDevice =
-            Meow2::Rhi::createRhiDevice({.appName = "Meow2Renderer",
+            Meow2::Rhi::createRhiDevice({.backend = backend,
+                                         .appName = "Meow2Renderer",
                                          .validation = config.getBool("rhi.validation", validationByDefault),
                                          .recordingThreads = jobs.threadCount(),
                                          .pipelineCache = savedPipelines},
@@ -405,11 +417,13 @@ int main(int argc, char** argv)
         {
             device->destroy(depthTexture);
         }
-        if (const Meow2::Result<void> saved =
-                files.writeFile("cache/vulkan-pipelines.bin", device->pipelineCacheData());
-            !saved)
+        // Empty when the device has no cache (e.g. under RenderDoc on D3D12): keep the file from the last normal run.
+        if (const std::vector<std::byte> pipelineCache = device->pipelineCacheData(); !pipelineCache.empty())
         {
-            MEOW2_LOG_WARN(appLog, "Pipeline cache not saved: {}", saved.error());
+            if (const Meow2::Result<void> saved = files.writeFile(pipelineCachePath, pipelineCache); !saved)
+            {
+                MEOW2_LOG_WARN(appLog, "Pipeline cache not saved: {}", saved.error());
+            }
         }
     }
     Meow2::Platform::storeWindowState(config, *window); // reopen where the user left it

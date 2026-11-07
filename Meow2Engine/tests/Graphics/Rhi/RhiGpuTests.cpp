@@ -2,6 +2,8 @@
 /// @brief RHI tests that need a real GPU and a desktop (`MEOW2_GPU_TESTS=ON`). Every test requires validation to stay
 ///        clean when the layer is installed.
 
+#include "Graphics/Rhi/RhiTestBackend.h"
+
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
@@ -35,7 +37,7 @@ protected:
     void SetUp() override
     {
         Result<std::unique_ptr<IRhiDevice>> device =
-            createRhiDevice({.appName = "Meow2 tests", .validation = true}, m_log);
+            createRhiDevice({.backend = c_testBackend, .appName = "Meow2 tests", .validation = true}, m_log);
         ASSERT_TRUE(device) << device.error().message;
         m_device = std::move(*device);
         Result<Platform::Platform> platform = Platform::Platform::create({}, m_log, m_events);
@@ -97,7 +99,7 @@ protected:
 
 TEST_F(RhiGpuTest, DeviceCreatesCleanly)
 {
-    EXPECT_EQ(m_device->backend(), RhiBackend::Vulkan);
+    EXPECT_EQ(m_device->backend(), c_testBackend);
     EXPECT_FALSE(m_device->adapter().name.empty());
     EXPECT_FALSE(m_device->adapter().apiVersion.empty());
     EXPECT_EQ(m_device->validationErrorCount(), 0U);
@@ -105,7 +107,8 @@ TEST_F(RhiGpuTest, DeviceCreatesCleanly)
 
 TEST_F(RhiGpuTest, ValidationIsActive)
 {
-    // Otherwise "validation stays clean" below proves nothing. The layer comes with the Vulkan SDK.
+    // Otherwise "validation stays clean" below proves nothing. The layer comes with the Vulkan SDK, and with the
+    // Agility SDK on D3D12.
     EXPECT_TRUE(m_device->validationActive());
 }
 

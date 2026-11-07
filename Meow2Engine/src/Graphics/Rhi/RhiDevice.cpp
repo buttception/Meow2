@@ -6,6 +6,9 @@
 #if MEOW2_RHI_VULKAN
 #include "Graphics/Rhi/Vulkan/RhiDeviceVulkan.h"
 #endif
+#if MEOW2_RHI_D3D12
+#include "Graphics/Rhi/D3D12/RhiDeviceD3D12.h"
+#endif
 
 namespace Meow2::Rhi
 {
@@ -20,8 +23,13 @@ Result<std::unique_ptr<IRhiDevice>> createRhiDevice(const RhiDeviceDesc& desc, [
             return fail(ErrorCode::Unsupported, "This build has no Vulkan backend (MEOW2_RHI_VULKAN=OFF)");
 #endif
         case RhiBackend::D3D12:
-            break;
+#if MEOW2_RHI_D3D12
+            return RhiDeviceD3D12::create(desc, log);
+#else
+            return fail(ErrorCode::Unsupported,
+                        "This build has no D3D12 backend (MEOW2_RHI_D3D12=OFF, or not Windows)");
+#endif
     }
-    return fail(ErrorCode::Unsupported, "This build has no D3D12 backend");
+    return fail(ErrorCode::Unsupported, "Unknown backend");
 }
 } // namespace Meow2::Rhi

@@ -2,6 +2,8 @@
 /// @brief RHI tests that run real shaders on a real GPU with no window: resources, the heap, pipelines and the pipeline
 ///        cache (`MEOW2_GPU_TESTS=ON`). Results are read back and checked pixel by pixel.
 
+#include "Graphics/Rhi/RhiTestBackend.h"
+
 #include <Meow2/Assets/AssetManager.h>
 #include <Meow2/Assets/Shader/ShaderAsset.h>
 #include <Meow2/Assets/Shader/ShaderHotReload.h>
@@ -85,8 +87,8 @@ protected:
     void SetUp() override
     {
         ASSERT_TRUE(m_files.mountDirectory("cooked", MEOW2_COOKED_DIR).has_value());
-        Result<std::unique_ptr<IRhiDevice>> device =
-            createRhiDevice({.appName = "Meow2 tests", .validation = true, .presentation = false}, m_log);
+        Result<std::unique_ptr<IRhiDevice>> device = createRhiDevice(
+            {.backend = c_testBackend, .appName = "Meow2 tests", .validation = true, .presentation = false}, m_log);
         ASSERT_TRUE(device) << device.error().message;
         m_device = std::move(*device);
         ASSERT_TRUE(m_device->validationActive());
@@ -100,7 +102,7 @@ protected:
         const std::shared_ptr<const Assets::ShaderAsset> asset = handle->get();
         const Result<Assets::ShaderVariantKey> key = Assets::variantKey(asset->meta(), {});
         EXPECT_TRUE(key);
-        const Result<std::span<const std::byte>> code = asset->bytecode(*key, entry, Shader::ShaderTarget::Spirv);
+        const Result<std::span<const std::byte>> code = asset->bytecode(*key, entry, c_testTarget);
         EXPECT_TRUE(code) << code.error().message;
         return {code->begin(), code->end()};
     }
@@ -263,8 +265,8 @@ TEST_F(RhiDrawTest, ComputeWritesThroughTheHeap)
         [&](IRhiCommandList& list)
         {
             list.setPipeline(*pipeline);
-            list.setPushConstants(
-                {.instanceBuffer = m_device->bindlessIndex(instances), .userData = m_device->bindlessIndex(output)});
+            list.setPushConstants({.instanceBuffer = m_device->bindlessIndex(instances),
+                                   .userData = m_device->bindlessStorageIndex(output)});
             list.dispatch(1);
             list.barrier(output, ResourceState::ShaderWrite, ResourceState::CopySource);
             list.copyBuffer(output, readback, sizeof(std::uint32_t) * c_count);
@@ -396,8 +398,12 @@ TEST_F(RhiDrawTest, ListsRecordedOnJobsSubmitInOrder)
 {
     constexpr std::uint32_t c_lists = 8;
     m_device.reset();
-    Result<std::unique_ptr<IRhiDevice>> device = createRhiDevice(
-        {.appName = "Meow2 tests", .validation = true, .presentation = false, .recordingThreads = c_lists}, m_log);
+    Result<std::unique_ptr<IRhiDevice>> device = createRhiDevice({.backend = c_testBackend,
+                                                                  .appName = "Meow2 tests",
+                                                                  .validation = true,
+                                                                  .presentation = false,
+                                                                  .recordingThreads = c_lists},
+                                                                 m_log);
     ASSERT_TRUE(device) << device.error().message;
     m_device = std::move(*device);
 
@@ -475,9 +481,13 @@ TEST_F(RhiDrawTest, PipelineCacheRoundTrips)
     for (const std::span<const std::byte> data :
          {std::span<const std::byte>{cache}, std::span<const std::byte>{foreign}})
     {
-        m_device.reset(); // one Vulkan device at a time
-        Result<std::unique_ptr<IRhiDevice>> device = createRhiDevice(
-            {.appName = "Meow2 tests", .validation = true, .presentation = false, .pipelineCache = data}, m_log);
+        m_device.reset(); // one Vulkan device at a time; the same on D3D12, for symmetry
+        Result<std::unique_ptr<IRhiDevice>> device = createRhiDevice({.backend = c_testBackend,
+                                                                      .appName = "Meow2 tests",
+                                                                      .validation = true,
+                                                                      .presentation = false,
+                                                                      .pipelineCache = data},
+                                                                     m_log);
         ASSERT_TRUE(device) << device.error().message;
         m_device = std::move(*device);
         m_device->destroy(graphicsPipeline(c_triangleShader));

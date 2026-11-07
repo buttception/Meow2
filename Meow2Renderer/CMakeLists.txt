@@ -7,6 +7,9 @@ if(TARGET Meow2Shaders)
 endif()
 set_target_properties(Meow2Renderer PROPERTIES FOLDER "Apps")
 meow2_track_global_new(Meow2Renderer) # every new/delete through the memory tracker (Debug/RWDI)
+if(MEOW2_RHI_D3D12)
+    meow2_use_agility(Meow2Renderer) # the D3D12 runtime in D3D12/ next to the exe
+endif()
 meow2_gui_subsystem_in_release(Meow2Renderer) # no console window in Release
 meow2_install_app(Meow2Renderer)                # into the release zip (cmake/Meow2Packaging.cmake)
 meow2_source_groups(Meow2Renderer)

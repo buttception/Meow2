@@ -179,8 +179,8 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | Dear ImGui (docking branch) | Meow2Renderer UI | MIT | submodule |
 | Vulkan-Headers, volk vulkan-sdk-1.4.363.0 | Vulkan headers + loader-less function loading | Apache-2.0 / MIT | submodule; volk static, own target, X11 and Wayland types declared by volk (no X headers needed) |
 | VulkanMemoryAllocator v3.5.0 | VK memory | MIT | submodule; implementation in its own library, outside the engine's warnings |
-| D3D12MemoryAllocator | D3D12 memory | MIT | submodule |
-| DirectX-Headers / Agility SDK | D3D12 headers, newer features | MIT / MS | submodule / NuGet package (**⚠ OPEN**) |
+| D3D12MemoryAllocator v3.2.1 | D3D12 memory | MIT | submodule; implementation in its own library, outside the engine's warnings |
+| DirectX-Headers v1.620.1 | D3D12 headers, the same version as the Agility SDK | MIT | submodule; header-only target, ahead of the Windows SDK's own `d3d12.h`; only included under `src/Graphics/Rhi/D3D12/` |
 | glTF loader (**⚠ OPEN**) | asset import | MIT | submodule |
 | GoogleTest v1.17.0 | unit tests (gmock off) | BSD-3 | submodule |
 | tl::expected v1.3.1 | `Result<T>` until C++23 `std::expected` (only the `std::expected`-compatible API is used) | CC0 | submodule; header-only, own INTERFACE target (its CMakeLists pulls in CTest/Catch2). **Public-header exception:** included by `Meow2/Core/Result.h` |
@@ -191,6 +191,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | **Not submodules** | | | |
 | RenderDoc in-app API v1.47 | frame capture from inside the app (§11) | MIT | one header, `external/renderdoc/renderdoc_app.h`, copied unchanged (owner-approved): RenderDoc's whole repository would be a large submodule for one file. Only included by `src/Graphics/Rhi/RenderDocCapture.cpp` |
 | Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, aqtinstall 3.3.0 in a plain step in Linux CI (only GitHub-owned actions are allowed); found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
+| DirectX 12 Agility SDK 1.620.1 | the D3D12 runtime (`D3D12Core.dll`) shipped next to each app: SM 6.6 and enhanced barriers on Windows 10 too, the same runtime on every PC (owner decision 2026-11-07) | Microsoft (redistributable: `D3D12Core.dll`, `d3d12SDKLayers.dll`) | not a submodule: `cmake/Meow2Agility.cmake` downloads the pinned NuGet package at configure time and checks its SHA-256, like DXC. `meow2_use_agility(<exe>)` adds the exports Windows looks for and copies the runtime into `D3D12/` next to the exe. The release zip ships `D3D12Core.dll` and its licence |
 | Vulkan SDK | validation layers, tools | — | LunarG installer (dev machines only) |
 | DXC v1.9.2609 | shader compiler (§12) | NCSA/MIT (`dxcompiler`); Microsoft licence (`dxil`) | not a submodule: `cmake/Meow2Dxc.cmake` downloads the pinned release at configure time into the build folder and checks its SHA-256. Development only for now: not in the release zip, because the release's licence refers to a distributables list it doesn't contain. `Meow2Player` never ships it |
 | Doxygen ≥ 1.9.8 | API documentation (`docs` target, §16.1) | GPL-2.0 (tool only, not linked) | `winget install DimitriVanHeesch.Doxygen` (Windows), `apt install doxygen` (Linux CI). Optional locally: the `docs` target and test are skipped if it's missing; required in CI |
@@ -333,6 +334,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Bindless and GPU-driven** (owner decision 2026-11-06): one global descriptor heap and one fixed binding layout (Vulkan: set 0, binding 0 the sampler heap, binding 1 the mutable resource heap, passed to DXC explicitly); shaders get indices through push constants and index `ResourceDescriptorHeap`. On Vulkan DXC emulates that with descriptor indexing and `VK_EXT_mutable_descriptor_type`; on D3D12 it needs SM 6.6. Drawing is indirect with a count buffer, vertices are pulled from buffers, culling runs in compute. Older GPUs and Android need a check before M12.
 - **Pipeline cache** and up-front pipeline creation: the driver compiles DXIL/SPIR-V to machine code for the exact GPU when a pipeline is created, so that result is cached on disk, once per GPU and driver version.
 - Resources are referenced by handles owned by the device (32-bit index + generation). **GPU resources don't get UUIDs** (§24): they exist only while the program runs, are recreated on every hot swap and are looked up every frame, so a 128-bit key would cost hashing for nothing. A resource may record the `AssetId` it was loaded from, for debugging and Tracy names.
+- **D3D12** (M5): one root signature (the push constants as root constants at b0, heaps indexed directly), **enhanced barriers** (the same stages, accesses and layouts as Vulkan's synchronization2, so `ResourceState` maps one to one), and buffer ↔ texture copies with tightly packed rows. A GPU without them is refused with a message, as on Vulkan. Shaders that write a buffer use a second heap slot (`bindlessStorageIndex`), because D3D12 keeps read and write views apart.
 - Debug: validation layers / D3D12 debug layer, object names, validation messages routed to the `RHI` logger.
 - **Debug tools** (owner decision 2026-11-07): RenderDoc is the baseline on both backends, with in-app capture and pass markers. PIX is for D3D12 (timing, and ray tracing later). NVIDIA Nsight Graphics is for deep GPU profiling and ray tracing. Markers go through one RHI call, so all three show the same pass names.
 
@@ -731,3 +733,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-07 — §11: heap bindings fixed and passed to DXC explicitly, because its default depends on what a shader declares.
 - 2026-11-07 — §19: command lists per job, parallel render graph recording (owner decision).
 - 2026-11-07 — §4: RenderDoc's in-app API header added (owner-approved).
+- 2026-11-07 — §4/§11: D3D12 backend: DirectX-Headers and D3D12MA added, the Agility SDK shipped next to each app (owner decision); enhanced barriers and tightly packed copies required.
