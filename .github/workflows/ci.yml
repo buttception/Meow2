@@ -63,7 +63,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-cache
-          key: apt-ubuntu-24.04-v4-ninja-clang18-clangformat19-doxygen-sdl3-qt
+          key: apt-ubuntu-24.04-v5-ninja-clang18-clangformat19-doxygen-spirvtools-sdl3-qt
 
       - name: Install tools
         run: |
@@ -71,12 +71,13 @@ jobs:
           sudo apt-get update -o Acquire::Retries=3
           # clang-format is pinned to major 19 (cmake/Meow2Format.cmake), the version VS 2022 ships.
           # doxygen: the Docs.PublicApi.IsDocumented test (cmake/Meow2Docs.cmake); configure fails in CI without it.
+          # spirv-tools: spirv-val, for Shader.BindlessTest.SpirvPassesTheValidator.
           # lib*-dev: what SDL3 (external/SDL) needs to build its X11 and Wayland video drivers and udev/dbus support
           # (gamepads). The tests themselves use the offscreen driver, so no display server runs.
           # libgl-dev, libfontconfig1: Qt's Gui module needs OpenGL headers to configure and fontconfig to run (editor).
           sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
             -o Dir::Cache::Archives="$HOME/apt-cache" \
-            ninja-build clang-18 clang-format-19 doxygen \
+            ninja-build clang-18 clang-format-19 doxygen spirv-tools \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
             libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libudev-dev libdbus-1-dev \
             libgl-dev libfontconfig1

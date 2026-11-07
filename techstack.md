@@ -373,6 +373,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - **Implemented (M4):** `Meow2/Assets/Shader/ShaderMeta.h`: `.meta` settings (entries, defines, options), `ShaderVariantKey` (mixed-radix index), `variantKey`, `variantDefines`; limit 4,096 variants. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#shader-settings-and-permutations).
 - **Implemented (M4):** `ShaderCooker` and `ShaderAsset` (`Meow2/Assets/Shader/`): `.m2shader` with every variant × entry point × target plus the `.meta` text; cache key over source, includes, `.meta`, options and DXC version; loads with no compiler. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#cooking).
 - **Implemented (M4):** `Meow2ShaderCompiler` and `meow2_add_shaders()`: cooks `shaders/` into `<build>/cooked/` on every build (the cache keys make that cheap); `--import` writes a new `.meta`. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#the-build-step).
+- **Implemented (M4):** `shaders/Common.hlsli` and `Meow2Shared.hlsli` (with `Meow2/Graphics/Shader/BindlessLayout.h`): 16 bytes of push constants, `ResourceDescriptorHeap`, structs compiled by C++ and HLSL with size checks on both sides; `spirv-val` in CI. See [docs/wiki/Shaders.md](docs/wiki/Shaders.md#the-bindless-contract).
 
 ## 13. Rendering verification (glTF sample scenes)
 
@@ -763,3 +764,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-06 — §12: shader settings and permutations implemented.
 - 2026-11-06 — §12: cooker and `.m2shader` implemented.
 - 2026-11-06 — §2/§12: shader build step implemented.
+- 2026-11-06 — §12: bindless shader contract implemented.

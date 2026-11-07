@@ -2,7 +2,7 @@
 
 Shaders are written in HLSL and compiled with [DXC](https://github.com/microsoft/DirectXShaderCompiler) to DXIL (D3D12) and SPIR-V (Vulkan).
 
-- Status: 🟨 M4. DXC dependency (#135), `ShaderCompiler` (#137), shader settings and permutations (#141), cooking (#143), the build step (#145) done.
+- Status: 🟨 M4. DXC dependency (#135), `ShaderCompiler` (#137), shader settings and permutations (#141), cooking (#143), the build step (#145), the bindless contract (#147) done.
 
 ## DXC
 
@@ -119,8 +119,36 @@ The build runs `Meow2ShaderCompiler --source shaders --output <build>/cooked` ev
 
 `meow2_add_shaders(<target> SOURCE_DIR <folder> OUTPUT_DIR <folder>)` (`cmake/Meow2Shaders.cmake`) adds the same step for another folder. Other tool options are `--debug` and `--force`.
 
+## The bindless contract
+
+The engine has one binding layout: 16 bytes of **push constants**, and one global **descriptor heap**. Nothing else is bound per draw. Shaders get indices through the push constants and fetch what they need from the heap. That's what lets a compute shader drive thousands of draws, because no CPU code binds anything per object.
+
+Every shader includes `Common.hlsli`:
+
+```hlsl
+#include "Common.hlsli"
+
+VertexOutput vsMain(uint vertexId : SV_VertexID)
+{
+    const FrameConstants frame = frameConstants();      // from the heap, by g_push.frameBuffer
+    const InstanceData instance = instanceData();       // by g_push.instanceBuffer and g_push.instance
+    ...
+}
+
+float4 psMain(VertexOutput input) : SV_Target
+{
+    Texture2D<float4> albedo = ResourceDescriptorHeap[g_push.userData];
+    ...
+}
+```
+
+- **`shaders/Meow2Shared.hlsli` is compiled by both languages.** C++ gets it through `<Meow2/Graphics/Shader/BindlessLayout.h>`, so a struct can't drift apart between HLSL and C++. Only `uint`, `float4` and `float4x4` are allowed in it, padded by hand to 16 bytes. Sizes are checked on both sides at compile time.
+- **Buffers are `ByteAddressBuffer`s:** one kind of heap slot serves every struct, through `heapBuffer()` and `loadElement<T>()`.
+- **D3D12** needs SM 6.6. **Vulkan** works through DXC's default emulation, with descriptor indexing and `VK_EXT_mutable_descriptor_type`, so the same HLSL compiles for both. The M5 RHI creates the matching heap and root signature.
+- `shaders/BindlessProbe.hlsl` exercises all of it for both targets, and CI runs `spirv-val` over the SPIR-V.
+
 ## Tests
 
-`Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler. `Shader.ShaderCompilerTest.*`: both targets, defines, includes, errors with file and line. `Assets.ShaderMeta.*`: parsing, bad files, keys and defaults. `Assets.ShaderFile.*`, `Assets.ShaderAsset.*`, `Shader.ShaderCookerTest.*`: the file format, loading without DXC, the cache. `Build.Shaders.CookStep`: the tool end to end.
+`Build.Dxc.PinnedCompilerRuns` runs the downloaded compiler. `Shader.ShaderCompilerTest.*`: both targets, defines, includes, errors with file and line. `Assets.ShaderMeta.*`: parsing, bad files, keys and defaults. `Assets.ShaderFile.*`, `Assets.ShaderAsset.*`, `Shader.ShaderCookerTest.*`: the file format, loading without DXC, the cache. `Build.Shaders.CookStep`: the tool end to end. `Shader.BindlessTest.*`: the repository's shaders on both targets, and `spirv-val`.
 
 See also: techstack.md §4, §12.

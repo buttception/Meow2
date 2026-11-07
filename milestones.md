@@ -136,7 +136,7 @@ Rough order: DXC → compiler → asset core → shader assets and permutations 
 | Shader assets and permutations: entry points, option axes and defines in the `.meta`, `ShaderVariantKey`, unknown options rejected, a warning on too many variants | §12 | ✅ | #141 / PR #142 |
 | Cooker and `.m2shader`: bytecode per variant, entry point and target, versioned file, cache key from source, includes, `.meta`, flags and compiler version; `ShaderAsset` loads it with no compiler | §12 | ✅ | #143 / PR #144 |
 | Build step: `Meow2ShaderCompiler` tool, `meow2_add_shaders()` in CMake, `shaders/` folder; only changed shaders recook | §12 | ✅ | #145 / PR #146 |
-| Bindless contract: `Common.hlsli`, heap access through `ResourceDescriptorHeap`, push-constant layout, structs shared between C++ and HLSL with size checks | §11, §12 | ⬜ | |
+| Bindless contract: `Common.hlsli`, heap access through `ResourceDescriptorHeap`, push-constant layout, structs shared between C++ and HLSL with size checks | §11, §12 | ✅ | #147 / PR #148 |
 | Hot reload: watch sources and `.meta` files, recompile on a job, `ShaderReloaded` on the `EventBus`; a failed compile keeps the old shader | §12, §22 | ⬜ | |
 | Closing PR bumps the version to **0.5.0** | §21 | ⬜ | |
 
