@@ -44,6 +44,9 @@ constexpr std::array c_shaders{
     ShaderCase{"shaders/BindlessTexture.hlsl", "psMain", ShaderStage::Pixel},
     ShaderCase{"shaders/BindlessTriangle.hlsl", "vsMain", ShaderStage::Vertex},
     ShaderCase{"shaders/BindlessTriangle.hlsl", "psMain", ShaderStage::Pixel},
+    ShaderCase{"shaders/GpuDriven.hlsl", "csCull", ShaderStage::Compute},
+    ShaderCase{"shaders/GpuDriven.hlsl", "vsMain", ShaderStage::Vertex},
+    ShaderCase{"shaders/GpuDriven.hlsl", "psMain", ShaderStage::Pixel},
     ShaderCase{"shaders/Triangle.hlsl", "vsMain", ShaderStage::Vertex},
     ShaderCase{"shaders/Triangle.hlsl", "psMain", ShaderStage::Pixel},
 };

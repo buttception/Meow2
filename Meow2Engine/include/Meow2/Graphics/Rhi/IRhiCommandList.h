@@ -47,6 +47,15 @@ public:
     /// @pre IRhiDevice::acquire() returned true for it this frame (asserted).
     virtual void beginRendering(IRhiSwapchain& swapchain, std::optional<Math::Color> clear) = 0;
 
+    /// @brief Starts drawing to a swapchain's current image, with a depth target.
+    /// @param swapchain  The swapchain.
+    /// @param clear      Linear colour to clear to; empty keeps what's there.
+    /// @param depth      The depth target, in ResourceState::DepthTarget.
+    /// @param clearDepth Depth to clear to (0 is far, reversed Z); empty keeps what's there.
+    /// @pre IRhiDevice::acquire() returned true for it this frame (asserted).
+    virtual void beginRendering(IRhiSwapchain& swapchain, std::optional<Math::Color> clear, TextureHandle depth,
+                                std::optional<float> clearDepth) = 0;
+
     /// @brief Starts drawing to textures. The viewport and scissor cover the colour target.
     /// @param targets The targets.
     virtual void beginRendering(const RenderTargets& targets) = 0;
@@ -74,6 +83,13 @@ public:
     /// @param instanceCount Instances.
     virtual void draw(std::uint32_t vertexCount, std::uint32_t instanceCount = 1) = 0;
 
+    /// @brief Draws what the GPU decided to draw: `count` holds how many Shader::IndirectDraw records in `draws` to
+    /// run.
+    /// @param draws   The draws; in ResourceState::IndirectArgs.
+    /// @param count   One `uint`; in ResourceState::IndirectArgs.
+    /// @param maxDraws The most it may run.
+    virtual void drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws) = 0;
+
     /// @brief Runs the current compute pipeline.
     /// @param x Thread groups along X.
     /// @param y Thread groups along Y.
@@ -91,6 +107,11 @@ public:
     /// @param from    What it was used for.
     /// @param to      What it's used for next.
     virtual void barrier(TextureHandle texture, ResourceState from, ResourceState to) = 0;
+
+    /// @brief Fills a whole buffer with one 32-bit value.
+    /// @param buffer The buffer; in ResourceState::CopyTarget.
+    /// @param value  The value.
+    virtual void fillBuffer(BufferHandle buffer, std::uint32_t value) = 0;
 
     /// @brief Copies bytes between buffers.
     /// @param source       Read from; in ResourceState::CopySource, or an Upload buffer.

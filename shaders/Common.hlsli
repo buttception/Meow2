@@ -49,5 +49,9 @@ T loadElement(uint bufferIndex, uint element)
 typedef uint Meow2CheckPushConstants[sizeof(PushConstants) == 16 ? 1 : -1];
 typedef uint Meow2CheckFrameConstants[sizeof(FrameConstants) == 224 ? 1 : -1];
 typedef uint Meow2CheckInstanceData[sizeof(InstanceData) == 80 ? 1 : -1];
+typedef uint Meow2CheckIndirectDraw[sizeof(IndirectDraw) == 16 ? 1 : -1];
+typedef uint Meow2CheckPackedVertex[sizeof(PackedVertex) == 12 ? 1 : -1];
+typedef uint Meow2CheckMeshDraw[sizeof(MeshDraw) == 48 ? 1 : -1];
+typedef uint Meow2CheckCullConstants[sizeof(CullConstants) == 128 ? 1 : -1];
 
 #endif

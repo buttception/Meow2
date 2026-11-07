@@ -22,13 +22,19 @@ using float4 = Math::Vec4;
 using float4x4 = Math::Mat4;
 
 /// @cond
+#define MEOW2_MATRIX(name) float4x4 name // a Mat4 is four rows already
 #include "Meow2Shared.hlsli"
+#undef MEOW2_MATRIX
 /// @endcond
 
 // C++'s half of the size checks; shaders/Common.hlsli has the HLSL half.
 static_assert(sizeof(PushConstants) == 16, "16 bytes: Vulkan guarantees 128, and D3D12 root constants are costly");
 static_assert(sizeof(FrameConstants) == 224);
 static_assert(sizeof(InstanceData) == 80);
+static_assert(sizeof(IndirectDraw) == 16);
+static_assert(sizeof(PackedVertex) == 12);
+static_assert(sizeof(MeshDraw) == 48);
+static_assert(sizeof(CullConstants) == 128);
 static_assert(offsetof(FrameConstants, cameraPosition) == 192);
 static_assert(offsetof(InstanceData, material) == 64);
 } // namespace Meow2::Shader

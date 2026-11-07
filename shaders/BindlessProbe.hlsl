@@ -14,7 +14,7 @@ VertexOutput vsMain(uint vertexId : SV_VertexID)
     const InstanceData instance = instanceData();
     const float4 local = float4(float(vertexId & 1), float(vertexId >> 1), 0.0, 1.0);
     VertexOutput output;
-    output.position = mul(mul(local, instance.world), frame.viewProjection);
+    output.position = mul(mul(local, MEOW2_ROWS(instance, world)), MEOW2_ROWS(frame, viewProjection));
     output.uv = local.xy;
     return output;
 }

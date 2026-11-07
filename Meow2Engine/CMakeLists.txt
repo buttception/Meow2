@@ -39,7 +39,9 @@ target_sources(Meow2Engine
         src/Core/Version.cpp
         src/Graphics/Renderer/FramePacket.cpp
         src/Graphics/Renderer/FrameResources.cpp
+        src/Graphics/Renderer/GpuScene.cpp
         src/Graphics/Renderer/PipelineLibrary.cpp
+        src/Graphics/Renderer/RenderGraph.cpp
         src/Graphics/Rhi/RenderDocCapture.cpp
         src/Graphics/Rhi/RhiDevice.cpp
         src/Math/SplinePath.cpp
@@ -99,7 +101,9 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/GameLoopConfig.h
             include/Meow2/Graphics/Renderer/FramePacket.h
             include/Meow2/Graphics/Renderer/FrameResources.h
+            include/Meow2/Graphics/Renderer/GpuScene.h
             include/Meow2/Graphics/Renderer/PipelineLibrary.h
+            include/Meow2/Graphics/Renderer/RenderGraph.h
             include/Meow2/Graphics/Rhi/IRhiCommandList.h
             include/Meow2/Graphics/Rhi/IRhiDevice.h
             include/Meow2/Graphics/Rhi/IRhiSwapchain.h

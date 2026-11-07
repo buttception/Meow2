@@ -1,7 +1,7 @@
 /// @file
 /// @brief Meow2Renderer entry point (composition root). Sets up logging, crash dumps and settings,
-///        prints its name and the engine version (checked by the smoke tests), opens its window and draws a triangle
-///        through the bindless heap.
+///        prints its name and the engine version (checked by the smoke tests), opens its window and draws a GPU-driven
+///        scene of cubes.
 
 #include <Meow2/Assets/AssetManager.h>
 #include <Meow2/Core/Config/Config.h>
@@ -21,10 +21,15 @@
 #include <Meow2/Core/Time/GameLoop.h>
 #include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
+#include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
+#include <Meow2/Graphics/Renderer/RenderGraph.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 #include <Meow2/Graphics/Rhi/RenderDocCapture.h>
+#include <Meow2/Math/Camera.h>
 #include <Meow2/Math/Color.h>
+#include <Meow2/Math/Quaternion.h>
+#include <Meow2/Math/Transform.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
 #include <Meow2/Platform/Input/InputEvents.h>
 #include <Meow2/Platform/Input/InputSystem.h>
@@ -38,6 +43,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -176,8 +182,8 @@ int main(int argc, char** argv)
     const std::vector<std::byte> savedPipelines =
         files.readFile("cache/vulkan-pipelines.bin").value_or(std::vector<std::byte>{});
     std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
-    std::optional<Meow2::Renderer::PipelineId> trianglePipeline;
-    Meow2::Rhi::BufferHandle triangleVertices;
+    std::unique_ptr<Meow2::Renderer::GpuScene> scene;
+    Meow2::Rhi::TextureHandle depthTexture;
     if (const Meow2::Platform::NativeWindowHandle nativeWindow = window->nativeHandle();
         nativeWindow.type != Meow2::Platform::NativeWindowType::None)
     {
@@ -185,6 +191,7 @@ int main(int argc, char** argv)
         Meow2::Result<std::unique_ptr<Meow2::Rhi::IRhiDevice>> createdDevice =
             Meow2::Rhi::createRhiDevice({.appName = "Meow2Renderer",
                                          .validation = config.getBool("rhi.validation", validationByDefault),
+                                         .recordingThreads = jobs.threadCount(),
                                          .pipelineCache = savedPipelines},
                                         rhiLog);
         if (!createdDevice)
@@ -208,38 +215,72 @@ int main(int argc, char** argv)
         }
         swapchain = std::move(*createdSwapchain);
 
-        // A triangle whose vertices live in a heap buffer (shaders/BindlessTriangle.hlsl). Without cooked shaders the
-        // window is simply cleared: a machine with no DXC can still run.
+        // A grid of cubes through the GPU-driven path (shaders/GpuDriven.hlsl). Without cooked shaders the window is
+        // simply cleared: a machine with no DXC can still run.
         pipelines.emplace(Meow2::Renderer::PipelineLibraryDeps{*device, assets, events, rhiLog});
-        const Meow2::Result<Meow2::Uuid> triangleUuid = Meow2::Uuid::parse("01a1b5e2-3c10-8000-80a4-7b19d2e6c051");
-        const Meow2::Result<Meow2::AssetId> triangleId =
-            triangleUuid.and_then([](const Meow2::Uuid& uuid) { return Meow2::AssetId::fromUuid(uuid); });
-        Meow2::Result<Meow2::Renderer::PipelineId> pipeline = pipelines->add(Meow2::Renderer::GraphicsPipelineRequest{
-            .shader = triangleId.value_or(Meow2::AssetId{}), .colorFormat = swapchain->format(), .name = "Triangle"});
-        Meow2::Result<Meow2::Rhi::BufferHandle> vertexBuffer =
-            device->createBuffer({.size = sizeof(Meow2::Math::Vec4) * 6,
-                                  .memory = Meow2::Rhi::RhiMemory::Upload,
-                                  .name = "Triangle vertices"});
-        if (pipeline && vertexBuffer)
+        const auto instanceCount = static_cast<std::uint32_t>(
+            std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000));
+        const Meow2::Result<Meow2::Uuid> shaderUuid = Meow2::Uuid::parse("01a1b5e2-3c12-8000-80a4-7b19d2e6c053");
+        const Meow2::Result<Meow2::AssetId> shaderId =
+            shaderUuid.and_then([](const Meow2::Uuid& uuid) { return Meow2::AssetId::fromUuid(uuid); });
+        Meow2::Result<std::unique_ptr<Meow2::Renderer::GpuScene>> createdScene =
+            Meow2::Renderer::GpuScene::create(*device, *pipelines,
+                                              {.shader = shaderId.value_or(Meow2::AssetId{}),
+                                               .instanceCapacity = instanceCount,
+                                               .colorFormat = swapchain->format()});
+        if (createdScene)
         {
-            trianglePipeline = *pipeline;
-            triangleVertices = *vertexBuffer;
-            const std::array<Meow2::Math::Vec4, 6> vertices{
-                Meow2::Math::Vec4{0.0F, 0.5F, 0.5F, 1.0F},   Meow2::Math::Vec4{1.0F, 0.0F, 0.0F, 1.0F},
-                Meow2::Math::Vec4{0.5F, -0.5F, 0.5F, 1.0F},  Meow2::Math::Vec4{0.0F, 1.0F, 0.0F, 1.0F},
-                Meow2::Math::Vec4{-0.5F, -0.5F, 0.5F, 1.0F}, Meow2::Math::Vec4{0.0F, 0.0F, 1.0F, 1.0F}};
-            std::memcpy(device->mappedMemory(triangleVertices).data(), vertices.data(), sizeof(vertices));
+            scene = std::move(*createdScene);
+            const Meow2::Result<std::uint32_t> cube = scene->addMesh(Meow2::Renderer::makeCube());
+            if (!cube)
+            {
+                MEOW2_LOG_WARN(appLog, "No cube: {}", cube.error());
+            }
+            constexpr std::uint32_t c_side = 47;
+            std::vector<Meow2::Shader::InstanceData> instances(instanceCount);
+            for (std::uint32_t i = 0; i < instanceCount; ++i)
+            {
+                Meow2::Math::Transform transform;
+                transform.position =
+                    Meow2::Math::WorldPosition{(static_cast<float>(i % c_side) - 23.0F) * 3.0F,
+                                               (static_cast<float>((i / c_side) % c_side) - 23.0F) * 3.0F,
+                                               (static_cast<float>(i / (c_side * c_side)) - 23.0F) * 3.0F};
+                instances[i].world = Meow2::Math::toMat4(transform);
+                instances[i].material = i + 1;
+            }
+            scene->setInstances(instances);
         }
         else
         {
-            MEOW2_LOG_WARN(appLog, "No triangle: {}", pipeline ? vertexBuffer.error() : pipeline.error());
+            MEOW2_LOG_WARN(appLog, "No scene: {}", createdScene.error());
         }
     }
 
     Meow2::Time::FrameClock clock;
 
     // One frame of drawing. Returns false if the GPU stopped working.
-    const auto renderFrame = [&device, &swapchain, &window, &appLog, &pipelines, &trianglePipeline, &triangleVertices,
+    const auto makeDepth = [&device, &depthTexture, &appLog](std::uint32_t width, std::uint32_t height)
+    {
+        if (depthTexture.isSet())
+        {
+            device->destroy(depthTexture);
+            depthTexture = {};
+        }
+        Meow2::Result<Meow2::Rhi::TextureHandle> depth =
+            device->createTexture({.width = width,
+                                   .height = height,
+                                   .format = Meow2::Rhi::RhiFormat::D32Float,
+                                   .renderTarget = true,
+                                   .name = "Depth"});
+        if (!depth)
+        {
+            MEOW2_LOG_ERROR(appLog, "Can't create the depth buffer: {}", depth.error());
+            return false;
+        }
+        depthTexture = *depth;
+        return true;
+    };
+    const auto renderFrame = [&device, &swapchain, &window, &appLog, &scene, &jobs, &depthTexture, &makeDepth,
                               &renderDoc, &clock, captureFrame]
     {
         const auto width = static_cast<std::uint32_t>(window->pixelWidth());
@@ -251,6 +292,15 @@ int main(int argc, char** argv)
                 MEOW2_LOG_ERROR(appLog, "Can't resize the swapchain: {}", resized.error());
                 return false;
             }
+            if (scene && swapchain->width() > 0 && !makeDepth(swapchain->width(), swapchain->height()))
+            {
+                return false;
+            }
+        }
+        if (scene && !depthTexture.isSet() && swapchain->width() > 0 &&
+            !makeDepth(swapchain->width(), swapchain->height()))
+        {
+            return false;
         }
         if (captureFrame > 0 && static_cast<std::int64_t>(clock.frameCount()) == captureFrame)
         {
@@ -263,21 +313,47 @@ int main(int argc, char** argv)
             MEOW2_LOG_ERROR(appLog, "Can't start a frame: {}", list.error());
             return false;
         }
+        constexpr Meow2::Math::Color c_clear{.r = 0.02F, .g = 0.03F, .b = 0.06F};
+        std::vector<Meow2::Rhi::IRhiCommandList*> lists;
         if (device->acquire(*swapchain))
         {
-            const Meow2::Rhi::ScopedMarker marker{**list, "Triangle pass"};
-            (*list)->beginRendering(*swapchain, Meow2::Math::Color{.r = 0.02F, .g = 0.03F, .b = 0.06F});
-            if (trianglePipeline)
+            if (scene)
             {
-                (*list)->setPipeline(pipelines->get(*trianglePipeline));
-                Meow2::Shader::PushConstants push{};
-                push.userData = device->bindlessIndex(triangleVertices);
-                (*list)->setPushConstants(push);
-                (*list)->draw(3);
+                // The camera circles the grid, looking at its centre.
+                const auto angle = static_cast<float>(clock.totalSeconds()) * 0.2F;
+                Meow2::Math::Transform camera;
+                camera.position =
+                    Meow2::Math::WorldPosition{std::sin(angle) * 120.0F, 30.0F, std::cos(angle) * -120.0F};
+                camera.rotation = Meow2::Math::lookRotation(
+                    Meow2::Math::Vec3{-camera.position.x, -camera.position.y, -camera.position.z});
+                const float aspect = static_cast<float>(swapchain->width()) / static_cast<float>(swapchain->height());
+                const Meow2::Math::CameraMatrices matrices =
+                    Meow2::Math::cameraMatrices(camera, Meow2::Math::CameraLens{}, aspect);
+                Meow2::Shader::FrameConstants frame{};
+                frame.view = matrices.view;
+                frame.projection = matrices.projection;
+                frame.viewProjection = matrices.viewProjection;
+                scene->setView(device->frameSlot(), frame, Meow2::Math::frustumFromCamera(matrices));
+
+                Meow2::Renderer::RenderGraph graph;
+                scene->addPasses(graph, device->frameSlot(), swapchain.get(), {}, depthTexture, c_clear);
+                graph.compile();
+                Meow2::Result<std::vector<Meow2::Rhi::IRhiCommandList*>> recorded = graph.execute(*device, jobs);
+                scene->endFrame(graph);
+                if (!recorded)
+                {
+                    MEOW2_LOG_ERROR(appLog, "Can't record the frame: {}", recorded.error());
+                    return false;
+                }
+                lists = std::move(*recorded);
             }
-            (*list)->endRendering();
+            else
+            {
+                (*list)->beginRendering(*swapchain, c_clear);
+                (*list)->endRendering();
+            }
         }
-        if (const Meow2::Result<void> ended = device->endFrame(); !ended)
+        if (const Meow2::Result<void> ended = device->endFrame(lists); !ended)
         {
             MEOW2_LOG_ERROR(appLog, "Can't finish a frame: {}", ended.error());
             return false;
@@ -324,7 +400,11 @@ int main(int argc, char** argv)
     if (device)
     {
         device->waitIdle();
-        device->destroy(triangleVertices);
+        scene.reset();
+        if (depthTexture.isSet())
+        {
+            device->destroy(depthTexture);
+        }
         if (const Meow2::Result<void> saved =
                 files.writeFile("cache/vulkan-pipelines.bin", device->pipelineCacheData());
             !saved)

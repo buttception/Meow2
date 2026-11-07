@@ -137,6 +137,28 @@ These live in `Meow2/Graphics/Renderer/FrameResources.h`. Call each one's `begin
 
 `FramePacket` is what the renderer gets from the simulation. `GameLoopCallbacks::extract` runs after `update` and before `render`, and `extractFrame()` copies entities with `WorldTransform` and `Renderable` into the frame arena, camera relative. After that, the scene can change freely.
 
+### Render graph
+
+`Renderer::RenderGraph` holds one frame's passes. Each pass says what it touches and in what state, and `compile()` works out every barrier on one thread. `execute()` then records on jobs, one command list per pass, and returns the lists in pass order for `endFrame()`:
+
+```cpp
+RenderGraph graph;
+const GraphResource buffer = graph.import(handle, ResourceState::Undefined);
+graph.addPass({.name = "Cull", .accesses = {{buffer, ResourceState::ShaderWrite}}, .record = recordCull});
+graph.compile();
+device->endFrame(*graph.execute(*device, jobs));
+```
+
+Passes marked `small` share a list with the small passes next to them, because a job costs more than they do. A pass is never split across lists. Passes run in the order you add them. The graph doesn't reorder or remove them yet.
+
+### GPU-driven drawing
+
+`Renderer::GpuScene` keeps meshes and instances in buffers. A compute pass tests every instance against the frustum and writes an `IndirectDraw` for each survivor, then one `drawIndirectCount()` call draws them. So the CPU's cost doesn't grow with the instance count.
+
+There's no vertex input. The vertex shader takes `SV_VertexID`, reads the index from a heap buffer, then reads the `PackedVertex`: positions are 16-bit in the mesh's bounds, and normals are octahedral.
+
+**Matrices in shared structs:** DXC reads a `float4x4` from a raw buffer by column, whatever `-Zpr` and `row_major` say. So `Meow2Shared.hlsli` stores matrices as four `float4` rows with `MEOW2_MATRIX`, and shaders rebuild them with `MEOW2_ROWS`.
+
 ## Minimum GPU
 
 - Vulkan 1.3

@@ -165,6 +165,17 @@ public:
     /// @param list The list.
     void end(Rhi::IRhiCommandList& list);
 
+    /// @brief The texture, for drawing to it some other way, such as through a render graph.
+    /// @return The handle.
+    [[nodiscard]] Rhi::TextureHandle texture() const
+    {
+        return m_texture;
+    }
+
+    /// @brief Copies the image to the CPU side, after drawing to texture() some other way.
+    /// @param list The list. The texture is in ResourceState::CopySource.
+    void copyToCpu(Rhi::IRhiCommandList& list);
+
     /// @brief The pixels, RGBA8, top row first, once the GPU has finished the frame.
     /// @return The bytes, tightly packed.
     [[nodiscard]] std::span<const std::byte> pixels() const;

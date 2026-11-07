@@ -103,7 +103,7 @@ meow2_add_test_suite(
 meow2_add_test_suite(
     TARGET    Meow2EngineRendererTests
     MODULE    Renderer
-    SOURCES   Graphics/Renderer/FramePacketTests.cpp)
+    SOURCES   Graphics/Renderer/FramePacketTests.cpp Graphics/Renderer/RenderGraphTests.cpp)
 
 # RHI: handles and the requirements check need no GPU, and read the backend's private header.
 if(MEOW2_RHI_VULKAN)
@@ -120,7 +120,7 @@ if(MEOW2_RHI_VULKAN AND MEOW2_GPU_TESTS AND MEOW2_SHADER_TOOLS)
         TARGET    Meow2EngineRhiGpuTests
         MODULE    RhiGpu
         LABELS    gpu
-        SOURCES   Graphics/Renderer/FrameResourcesTests.cpp Graphics/Rhi/RhiDrawTests.cpp Graphics/Rhi/RhiGpuTests.cpp)
+        SOURCES   Graphics/Renderer/FrameResourcesTests.cpp Graphics/Renderer/GpuSceneTests.cpp Graphics/Rhi/RhiDrawTests.cpp Graphics/Rhi/RhiGpuTests.cpp)
     add_dependencies(Meow2EngineRhiGpuTests Meow2Shaders)
     target_compile_definitions(Meow2EngineRhiGpuTests PRIVATE MEOW2_COOKED_DIR="${MEOW2_COOKED_DIR}")
 endif()
