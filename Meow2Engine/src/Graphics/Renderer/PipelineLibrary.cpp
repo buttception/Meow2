@@ -123,11 +123,20 @@ Result<Rhi::PipelineHandle> PipelineLibrary::build(const Entry& entry)
                                                           .depthFormat = request.depthFormat,
                                                           .depthWrite = request.depthWrite,
                                                           .cull = request.cull,
+                                                          .blend = request.blend,
                                                           .name = request.name});
 }
 
 Result<PipelineId> PipelineLibrary::add(GraphicsPipelineRequest request)
 {
+    // The same request again (a scene opened twice) shares the pipeline instead of building another.
+    for (std::uint32_t i = 0; i < m_entries.size(); ++i)
+    {
+        if (!m_entries[i].compute && m_entries[i].graphics == request)
+        {
+            return PipelineId{.index = i};
+        }
+    }
     Entry entry;
     entry.graphics = std::move(request);
     Result<Rhi::PipelineHandle> pipeline = build(entry);
@@ -142,6 +151,13 @@ Result<PipelineId> PipelineLibrary::add(GraphicsPipelineRequest request)
 
 Result<PipelineId> PipelineLibrary::add(ComputePipelineRequest request)
 {
+    for (std::uint32_t i = 0; i < m_entries.size(); ++i)
+    {
+        if (m_entries[i].compute && m_entries[i].computeRequest == request)
+        {
+            return PipelineId{.index = i};
+        }
+    }
     Entry entry;
     entry.compute = true;
     entry.computeRequest = std::move(request);

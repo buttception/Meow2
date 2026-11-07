@@ -157,6 +157,34 @@ public:
         return m_countBuffer;
     }
 
+    /// @brief How many instances are drawn, for statistics.
+    /// @return The count from the last setInstances().
+    [[nodiscard]] std::uint32_t instanceCount() const
+    {
+        return static_cast<std::uint32_t>(m_instances.size());
+    }
+
+    /// @brief How many meshes were added, for statistics.
+    /// @return The count.
+    [[nodiscard]] std::uint32_t meshCount() const
+    {
+        return static_cast<std::uint32_t>(m_meshes.size());
+    }
+
+    /// @brief How many materials were added, for statistics.
+    /// @return The count.
+    [[nodiscard]] std::uint32_t materialCount() const
+    {
+        return static_cast<std::uint32_t>(m_materials.size());
+    }
+
+    /// @brief How many textures were added, for statistics.
+    /// @return The count.
+    [[nodiscard]] std::uint32_t textureCount() const
+    {
+        return static_cast<std::uint32_t>(m_textures.size());
+    }
+
 private:
     /// @brief Creates the scene's own buffers (not the meshes').
     /// @param device The device to create them on.
@@ -189,13 +217,6 @@ private:
     /// @param index  Its place in the mesh buffer.
     /// @return An error from creating its buffers.
     [[nodiscard]] Result<void> uploadMesh(Rhi::IRhiDevice& device, const MeshData& mesh, std::uint32_t index);
-
-    /// @brief How many instances are drawn.
-    /// @return The count from the last setInstances().
-    [[nodiscard]] std::uint32_t instanceCount() const
-    {
-        return static_cast<std::uint32_t>(m_instances.size());
-    }
 
     RenderDevice& m_device;
     PipelineLibrary& m_pipelines;

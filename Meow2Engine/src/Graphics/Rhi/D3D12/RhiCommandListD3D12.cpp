@@ -187,6 +187,16 @@ void RhiCommandListD3D12::draw(std::uint32_t vertexCount, std::uint32_t instance
     m_list->DrawInstanced(vertexCount, instanceCount, 0, 0);
 }
 
+void RhiCommandListD3D12::setScissor(const ScissorRect& rect)
+{
+    MEOW2_ASSERT(m_rendering, "setScissor() outside beginRendering()");
+    const D3D12_RECT scissor{.left = rect.x,
+                             .top = rect.y,
+                             .right = rect.x + static_cast<LONG>(rect.width),
+                             .bottom = rect.y + static_cast<LONG>(rect.height)};
+    m_list->RSSetScissorRects(1, &scissor);
+}
+
 void RhiCommandListD3D12::drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws)
 {
     MEOW2_ASSERT(m_rendering, "drawIndirectCount() outside beginRendering()");
@@ -259,6 +269,24 @@ void RhiCommandListD3D12::barrier(TextureHandle texture, ResourceState from, Res
                                         .Subresources = {.IndexOrFirstMipLevel = 0xFFFFFFFF}, // every subresource
                                         .Flags = discard ? D3D12_TEXTURE_BARRIER_FLAG_DISCARD
                                                          : D3D12_TEXTURE_BARRIER_FLAG_NONE};
+    const D3D12_BARRIER_GROUP group{.Type = D3D12_BARRIER_TYPE_TEXTURE, .NumBarriers = 1, .pTextureBarriers = &barrier};
+    m_list->Barrier(1, &group);
+}
+
+void RhiCommandListD3D12::barrier(IRhiSwapchain& swapchain)
+{
+    MEOW2_ASSERT(!m_rendering, "Barriers go between passes");
+    auto& target = static_cast<RhiSwapchainD3D12&>(swapchain);
+    MEOW2_ASSERT(target.isAcquired(), "acquire() must return true before drawing to a swapchain");
+    const D3D12_TEXTURE_BARRIER barrier{.SyncBefore = D3D12_BARRIER_SYNC_RENDER_TARGET,
+                                        .SyncAfter = D3D12_BARRIER_SYNC_RENDER_TARGET,
+                                        .AccessBefore = D3D12_BARRIER_ACCESS_RENDER_TARGET,
+                                        .AccessAfter = D3D12_BARRIER_ACCESS_RENDER_TARGET,
+                                        .LayoutBefore = D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+                                        .LayoutAfter = D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+                                        .pResource = target.image(),
+                                        .Subresources = {.IndexOrFirstMipLevel = 0xFFFFFFFF},
+                                        .Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE};
     const D3D12_BARRIER_GROUP group{.Type = D3D12_BARRIER_TYPE_TEXTURE, .NumBarriers = 1, .pTextureBarriers = &barrier};
     m_list->Barrier(1, &group);
 }

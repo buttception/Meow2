@@ -29,7 +29,11 @@ struct GraphicsPipelineRequest
     Rhi::RhiFormat depthFormat = Rhi::RhiFormat::Unknown; ///< Format of the depth target; Unknown for none.
     bool depthWrite = true;                               ///< Whether drawing updates depth.
     Rhi::CullMode cull = Rhi::CullMode::None;             ///< Which triangles to skip.
+    Rhi::BlendMode blend = Rhi::BlendMode::None;          ///< How output combines with the target.
     std::string name = "Pipeline";                        ///< Shown in debugging tools.
+
+    /// @brief Requests are equal when every field is.
+    friend bool operator==(const GraphicsPipelineRequest&, const GraphicsPipelineRequest&) = default;
 };
 
 /// @brief A compute pipeline to build from a shader asset. Plain data.
@@ -39,6 +43,9 @@ struct ComputePipelineRequest
     std::vector<Assets::ShaderOptionChoice> options{}; ///< The variant; unset options use their default.
     std::string entry = "csMain";                      ///< Entry point.
     std::string name = "Pipeline";                     ///< Shown in debugging tools.
+
+    /// @brief Requests are equal when every field is.
+    friend bool operator==(const ComputePipelineRequest&, const ComputePipelineRequest&) = default;
 };
 
 /// @brief A pipeline in a PipelineLibrary. Stays valid across rebuilds, unlike the device's handle behind it.
@@ -80,12 +87,12 @@ public:
     PipelineLibrary(const PipelineLibrary&) = delete;            ///< Not copyable: owns pipelines.
     PipelineLibrary& operator=(const PipelineLibrary&) = delete; ///< Not copyable: owns pipelines.
 
-    /// @brief Builds a graphics pipeline.
+    /// @brief Builds a graphics pipeline, or finds the one an identical earlier request built.
     /// @param request What to build.
     /// @return Its ID, or the error from loading the shader or creating the pipeline.
     [[nodiscard]] Result<PipelineId> add(GraphicsPipelineRequest request);
 
-    /// @brief Builds a compute pipeline.
+    /// @brief Builds a compute pipeline, or finds the one an identical earlier request built.
     /// @param request What to build.
     /// @return Its ID, or the error from loading the shader or creating the pipeline.
     [[nodiscard]] Result<PipelineId> add(ComputePipelineRequest request);

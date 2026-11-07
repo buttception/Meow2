@@ -161,6 +161,22 @@ enum class CullMode : std::uint8_t
     Back  ///< Skip triangles facing away. Front faces are clockwise on screen, as in D3D.
 };
 
+/// @brief How a graphics pipeline combines its output with what's in the target.
+enum class BlendMode : std::uint8_t
+{
+    None, ///< Overwrite.
+    Alpha ///< Straight alpha: `src × srcAlpha + dst × (1 − srcAlpha)`; alpha accumulates the same way. For UI.
+};
+
+/// @brief A rectangle drawing is clipped to, in pixels from the target's top-left corner. Plain data.
+struct ScissorRect
+{
+    std::int32_t x = 0;       ///< Left edge.
+    std::int32_t y = 0;       ///< Top edge.
+    std::uint32_t width = 0;  ///< Width in pixels.
+    std::uint32_t height = 0; ///< Height in pixels.
+};
+
 /// @brief What to create a graphics pipeline with. Plain data. Depth uses GREATER_EQUAL, for reversed Z (techstack.md
 ///        §10). The bytecode is only read during the call.
 struct GraphicsPipelineDesc
@@ -173,6 +189,7 @@ struct GraphicsPipelineDesc
     RhiFormat depthFormat = RhiFormat::Unknown; ///< Format of the depth target; Unknown for none.
     bool depthWrite = true;                     ///< Whether drawing updates depth.
     CullMode cull = CullMode::None;             ///< Which triangles to skip.
+    BlendMode blend = BlendMode::None;          ///< How output combines with the target.
     std::string name = "Pipeline";              ///< Shown in debugging tools.
 };
 

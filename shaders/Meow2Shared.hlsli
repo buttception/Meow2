@@ -73,6 +73,16 @@ struct PackedVertex
     uint uv;     ///< Texture coordinates as two half floats, u in the low half.
 };
 
+/// One Dear ImGui draw command (Meow2Renderer's UI), read by shaders/ImGui.hlsl.
+struct UiDraw
+{
+    float4 scaleTranslate; ///< xy: scale, zw: offset, from ImGui's pixels to clip space.
+    uint vertexBuffer;     ///< Heap index of the ImDrawVert array (20 bytes each).
+    uint indexBuffer;      ///< Heap index of the 32-bit indices.
+    uint vertexOffset;     ///< Added to every index: the command's first vertex.
+    uint texture;          ///< Heap index of an sRGB Texture2D, or 0 for none.
+};
+
 /// Bits of MaterialData::flags.
 #define MEOW2_MATERIAL_ALPHA_MASK 1u ///< Discard pixels whose alpha is below the cutoff.
 

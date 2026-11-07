@@ -46,6 +46,7 @@ namespace fs = std::filesystem;
 constexpr std::string_view c_triangleShader = "01a1b5e2-3c10-8000-80a4-7b19d2e6c051";
 constexpr std::string_view c_textureShader = "01a1b5e2-3c11-8000-80a4-7b19d2e6c052";
 constexpr std::string_view c_probeShader = "01a1b158-0216-8000-808e-12fd3223a2ac";
+constexpr std::string_view c_statesShader = "01a1b5e2-3c13-8000-80a4-7b19d2e6c054"; // RhiStates.hlsl
 constexpr std::uint32_t c_targetSize = 64;
 
 /// @brief What BindlessTriangle.hlsl reads from the heap.
@@ -494,6 +495,95 @@ TEST_F(RhiDrawTest, PipelineCacheRoundTrips)
         m_device->destroy(graphicsPipeline(c_triangleShader));
         EXPECT_EQ(m_device->validationErrorCount(), 0U);
     }
+}
+
+namespace
+{
+/// @brief A colour for RhiStates.hlsl, packed into PushConstants::userData.
+std::uint32_t packColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a)
+{
+    return std::uint32_t{r} | (std::uint32_t{g} << 8U) | (std::uint32_t{b} << 16U) | (std::uint32_t{a} << 24U);
+}
+
+/// @brief A fixture with the states pipeline.
+class RhiStatesTest : public RhiDrawTest
+{
+protected:
+    PipelineHandle makePipeline(BlendMode blend)
+    {
+        const std::vector<std::byte> vertex = bytecode(c_statesShader, "vsMain");
+        const std::vector<std::byte> pixel = bytecode(c_statesShader, "psMain");
+        Result<PipelineHandle> pipeline = m_device->createGraphicsPipeline({.vertexCode = vertex,
+                                                                            .pixelCode = pixel,
+                                                                            .colorFormat = RhiFormat::Rgba8Unorm,
+                                                                            .blend = blend,
+                                                                            .name = "States"});
+        EXPECT_TRUE(pipeline) << pipeline.error().message;
+        return *pipeline;
+    }
+
+    /// @brief Draws the full-screen triangle into a cleared black target and reads it back.
+    BufferHandle drawStates(PipelineHandle pipeline, std::uint32_t color, std::optional<ScissorRect> scissor)
+    {
+        const TextureHandle target = makeTarget();
+        const BufferHandle readback = makeBuffer(sizeof(Pixel) * c_targetSize * c_targetSize, RhiMemory::Readback);
+        renderToReadback(target, readback,
+                         [&](IRhiCommandList& list)
+                         {
+                             if (scissor)
+                             {
+                                 list.setScissor(*scissor);
+                             }
+                             Shader::PushConstants push{};
+                             push.userData = color;
+                             list.setPipeline(pipeline);
+                             list.setPushConstants(push);
+                             list.draw(3);
+                         });
+        m_device->destroy(target);
+        return readback;
+    }
+};
+} // namespace
+
+TEST_F(RhiStatesTest, ScissorClipsDrawing)
+{
+    const PipelineHandle pipeline = makePipeline(BlendMode::None);
+    constexpr std::uint32_t c_half = c_targetSize / 2;
+    const BufferHandle readback =
+        drawStates(pipeline, packColor(255, 0, 0, 255), ScissorRect{.x = 0, .y = 0, .width = c_half, .height = c_half});
+
+    EXPECT_EQ(pixelAt(readback, 1, 1).r, 255) << "inside the scissor, top left";
+    EXPECT_EQ(pixelAt(readback, c_half - 1, c_half - 1).r, 255);
+    EXPECT_EQ(pixelAt(readback, c_half + 1, 1).r, 0) << "right of the scissor";
+    EXPECT_EQ(pixelAt(readback, 1, c_half + 1).r, 0) << "below the scissor: top-left origin on both backends";
+    m_device->destroy(readback);
+    m_device->destroy(pipeline);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
+
+TEST_F(RhiStatesTest, AlphaBlendMixesWithTheTarget)
+{
+    const PipelineHandle pipeline = makePipeline(BlendMode::Alpha);
+    // Half-transparent white over the black clear colour: half grey.
+    const BufferHandle readback = drawStates(pipeline, packColor(255, 255, 255, 128), std::nullopt);
+
+    const Pixel pixel = pixelAt(readback, c_targetSize / 2, c_targetSize / 2);
+    EXPECT_NEAR(pixel.r, 128, 2);
+    EXPECT_NEAR(pixel.g, 128, 2);
+    m_device->destroy(readback);
+    m_device->destroy(pipeline);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
+
+TEST_F(RhiStatesTest, WithoutBlendingAlphaOverwrites)
+{
+    const PipelineHandle pipeline = makePipeline(BlendMode::None);
+    const BufferHandle readback = drawStates(pipeline, packColor(255, 255, 255, 128), std::nullopt);
+
+    EXPECT_EQ(pixelAt(readback, c_targetSize / 2, c_targetSize / 2).r, 255);
+    m_device->destroy(readback);
+    m_device->destroy(pipeline);
 }
 
 /// @brief A PipelineLibrary over a private copy of the cooked triangle, so a test can damage it.

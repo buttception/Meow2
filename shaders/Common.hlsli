@@ -64,6 +64,7 @@ typedef uint Meow2CheckInstanceData[sizeof(InstanceData) == 80 ? 1 : -1];
 typedef uint Meow2CheckIndirectDraw[sizeof(IndirectDraw) == 32 ? 1 : -1];
 typedef uint Meow2CheckPackedVertex[sizeof(PackedVertex) == 16 ? 1 : -1];
 typedef uint Meow2CheckMaterialData[sizeof(MaterialData) == 48 ? 1 : -1];
+typedef uint Meow2CheckUiDraw[sizeof(UiDraw) == 32 ? 1 : -1];
 typedef uint Meow2CheckMeshDraw[sizeof(MeshDraw) == 48 ? 1 : -1];
 typedef uint Meow2CheckCullConstants[sizeof(CullConstants) == 128 ? 1 : -1];
 

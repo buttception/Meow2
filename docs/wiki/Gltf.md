@@ -15,7 +15,7 @@ cmake -P cmake/FetchGltfSample.cmake DamagedHelmet
 build\windows-msvc-debug\bin\Meow2Renderer.exe --set renderer.scene=DamagedHelmet
 ```
 
-`renderer.scene` takes a sample name, or a path to any `.gltf` or `.glb`. The camera circles the model, far enough to see all of it. Empty, Renderer draws its grid of cubes.
+Or pick it in Renderer's Scenes window, which fetches samples itself ([Renderer](Renderer.md)). `renderer.scene` takes a sample name, or a path to any `.gltf` or `.glb`. The camera circles the model, far enough to see all of it. Empty, Renderer draws its grid of cubes.
 
 The fetch script makes a blobless, sparse clone of [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) at a pinned commit into `assets/gltf-sample-assets/` (git-ignored), and downloads only the models you name. Running it again for a model that's there does nothing. Renderer looks for samples there by default; `renderer.sampleAssets` points it elsewhere.
 

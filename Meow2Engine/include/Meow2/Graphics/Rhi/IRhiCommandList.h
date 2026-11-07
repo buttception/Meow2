@@ -81,7 +81,14 @@ public:
     /// @brief Draws without a vertex buffer: shaders fetch their vertices with SV_VertexID.
     /// @param vertexCount   Vertices per instance.
     /// @param instanceCount Instances.
+    /// @note There's no first vertex: D3D12's SV_VertexID leaves it out while Vulkan's includes it. Pass an offset in
+    ///       the push constants instead.
     virtual void draw(std::uint32_t vertexCount, std::uint32_t instanceCount = 1) = 0;
+
+    /// @brief Clips the following draws to a rectangle. beginRendering() resets it to the whole target.
+    /// @param rect The rectangle, inside the target.
+    /// @pre Inside beginRendering() (asserted).
+    virtual void setScissor(const ScissorRect& rect) = 0;
 
     /// @brief Draws what the GPU decided to draw: `count` holds how many Shader::IndirectDraw records in `draws` to
     /// run.
@@ -107,6 +114,13 @@ public:
     /// @param from    What it was used for.
     /// @param to      What it's used for next.
     virtual void barrier(TextureHandle texture, ResourceState from, ResourceState to) = 0;
+
+    /// @brief Orders colour writes to a swapchain image: everything drawn to it before, by any earlier list, finishes
+    ///        before anything drawn after. Needed when two passes in different lists draw to the same swapchain (the
+    ///        scene, then the UI). Swapchain images stay ResourceState::ColorTarget for the whole frame.
+    /// @param swapchain The swapchain, acquired this frame.
+    /// @pre Outside beginRendering() (asserted).
+    virtual void barrier(IRhiSwapchain& swapchain) = 0;
 
     /// @brief Fills a whole buffer with one 32-bit value.
     /// @param buffer The buffer; in ResourceState::CopyTarget.

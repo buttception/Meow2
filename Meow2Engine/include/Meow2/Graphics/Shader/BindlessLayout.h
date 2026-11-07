@@ -36,6 +36,7 @@ static_assert(offsetof(IndirectDraw, instance) == 0, "D3D12's command signature 
 static_assert(offsetof(IndirectDraw, vertexCount) == 4, "Where the draw arguments start");
 static_assert(sizeof(PackedVertex) == 16);
 static_assert(sizeof(MaterialData) == 48);
+static_assert(sizeof(UiDraw) == 32);
 static_assert(sizeof(MeshDraw) == 48);
 static_assert(sizeof(CullConstants) == 128);
 static_assert(offsetof(FrameConstants, cameraPosition) == 192);

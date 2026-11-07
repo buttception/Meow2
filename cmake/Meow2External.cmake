@@ -179,6 +179,24 @@ add_library(meow2_stb_image STATIC "${PROJECT_SOURCE_DIR}/Meow2Engine/src/Assets
 target_include_directories(meow2_stb_image SYSTEM PUBLIC "${PROJECT_SOURCE_DIR}/external/stb")
 set_target_properties(meow2_stb_image PROPERTIES FOLDER "External")
 
+# ---- Dear ImGui (Meow2Renderer's UI; techstack.md §2, §4) ------------------------------------------
+# Built only with the Renderer, which is its one user; never part of the engine or the player. Its own backends aren't
+# compiled: Meow2Renderer draws it through the RHI and feeds it engine input events.
+if(MEOW2_BUILD_RENDERER)
+    set(meow2ImguiDir "${PROJECT_SOURCE_DIR}/external/imgui")
+    if(NOT EXISTS "${meow2ImguiDir}/imgui.h")
+        message(FATAL_ERROR "Dear ImGui is missing (${meow2ImguiDir} is empty).\n"
+                            "Fetch the submodules with:\n  git submodule update --init --recursive")
+    endif()
+    add_library(meow2_imgui STATIC
+        "${meow2ImguiDir}/imgui.cpp" "${meow2ImguiDir}/imgui_demo.cpp" "${meow2ImguiDir}/imgui_draw.cpp"
+        "${meow2ImguiDir}/imgui_tables.cpp" "${meow2ImguiDir}/imgui_widgets.cpp")
+    target_include_directories(meow2_imgui SYSTEM PUBLIC "${meow2ImguiDir}")
+    # Only today's API: renamed and removed functions don't compile, so upgrades show what changed.
+    target_compile_definitions(meow2_imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS)
+    set_target_properties(meow2_imgui PROPERTIES FOLDER "External")
+endif()
+
 # ---- Vulkan (headers, volk, VMA; techstack.md §4, §11) --------------------------------------------
 # The app never links the Vulkan loader: volk finds it at runtime, so a machine without Vulkan gets a clear error
 # (and D3D12 can still run). Only src/Graphics/Rhi/Vulkan/ includes these headers.
