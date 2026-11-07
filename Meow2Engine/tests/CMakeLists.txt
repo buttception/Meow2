@@ -108,12 +108,14 @@ if(MEOW2_RHI_VULKAN)
 endif()
 
 # RHI on a real GPU: off by default, because hosted CI has neither a GPU nor a desktop.
-if(MEOW2_RHI_VULKAN AND MEOW2_GPU_TESTS)
+if(MEOW2_RHI_VULKAN AND MEOW2_GPU_TESTS AND MEOW2_SHADER_TOOLS)
     meow2_add_test_suite(
         TARGET    Meow2EngineRhiGpuTests
         MODULE    RhiGpu
         LABELS    gpu
-        SOURCES   Graphics/Rhi/RhiGpuTests.cpp)
+        SOURCES   Graphics/Rhi/RhiDrawTests.cpp Graphics/Rhi/RhiGpuTests.cpp)
+    add_dependencies(Meow2EngineRhiGpuTests Meow2Shaders)
+    target_compile_definitions(Meow2EngineRhiGpuTests PRIVATE MEOW2_COOKED_DIR="${MEOW2_COOKED_DIR}")
 endif()
 
 # Shader compiler (needs DXC, which lands next to the test executable).

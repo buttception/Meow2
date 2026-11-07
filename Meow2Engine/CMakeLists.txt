@@ -36,6 +36,7 @@ target_sources(Meow2Engine
         src/Core/Time/GameLoop.cpp
         src/Core/Time/GameLoopConfig.cpp
         src/Core/Version.cpp
+        src/Graphics/Renderer/PipelineLibrary.cpp
         src/Graphics/Rhi/RhiDevice.cpp
         src/Math/SplinePath.cpp
         src/Platform/FileSystem/FileSystem.cpp
@@ -91,6 +92,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/FrameClock.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
+            include/Meow2/Graphics/Renderer/PipelineLibrary.h
             include/Meow2/Graphics/Rhi/IRhiCommandList.h
             include/Meow2/Graphics/Rhi/IRhiDevice.h
             include/Meow2/Graphics/Rhi/IRhiSwapchain.h
@@ -147,8 +149,10 @@ endif()
 # The Vulkan backend of the RHI (techstack.md §11). D3D12 will sit next to it; the choice is made at runtime.
 if(MEOW2_RHI_VULKAN)
     target_sources(Meow2Engine PRIVATE
+        src/Graphics/Rhi/Vulkan/RhiCommandListVulkan.cpp
         src/Graphics/Rhi/Vulkan/RhiDeviceVulkan.cpp
         src/Graphics/Rhi/Vulkan/RhiDeviceVulkan.h
+        src/Graphics/Rhi/Vulkan/RhiResourcesVulkan.cpp
         src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.cpp
         src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.h
         src/Graphics/Rhi/Vulkan/VulkanRequirements.cpp
@@ -158,7 +162,9 @@ if(MEOW2_RHI_VULKAN)
     # filled in: the rest are zero. GCC and Clang warn about that for designated initializers.
     if(NOT MSVC)
         set_source_files_properties(
+            src/Graphics/Rhi/Vulkan/RhiCommandListVulkan.cpp
             src/Graphics/Rhi/Vulkan/RhiDeviceVulkan.cpp
+            src/Graphics/Rhi/Vulkan/RhiResourcesVulkan.cpp
             src/Graphics/Rhi/Vulkan/RhiSwapchainVulkan.cpp
             PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers")
     endif()

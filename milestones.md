@@ -159,13 +159,13 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 | 1 | Device and queues, validation messages to the `RHI` logger, object names | §11 | ✅ | #155 / PR #156 |
 | 1 | Capability check at startup: required features, a clear message on an unsupported GPU, a written minimum spec | §11 | ✅ | #155 / PR #156 |
 | 1 | Swapchains: more than one per device (ImGui viewports, the Qt viewport), resize, minimise; clear screen in Renderer | §9, §11 | ✅ | #155 / PR #156 |
-| 2 Resources and first triangle | Buffers, textures, samplers through VMA under `MemTag::Rhi` | §6 | ⬜ | |
-| 2 | Deferred destruction: resources and bindless indices are freed only after the GPU has finished with them | §11 | ⬜ | |
-| 2 | Barriers (synchronization2), dynamic rendering | §11 | ⬜ | |
-| 2 | Bindless heap: one layout, index allocator, push constants, on the M4 `Common.hlsli` contract | §11, §12 | ⬜ | |
-| 2 | Graphics and compute pipelines from `.m2shader`, pipeline cache on disk, up-front creation | §11 | ⬜ | |
-| 2 | Pipelines rebuilt on `ShaderReloaded` | §12, §22 | ⬜ | |
-| 2 | Triangle through bindless: the first time an M4 shader really runs | §12 | ⬜ | |
+| 2 Resources and first triangle | Buffers, textures, samplers through VMA under `MemTag::Rhi` | §6 | ✅ | #157 / PR #158 |
+| 2 | Deferred destruction: resources and bindless indices are freed only after the GPU has finished with them | §11 | ✅ | #157 / PR #158 |
+| 2 | Barriers (synchronization2), dynamic rendering | §11 | ✅ | #157 / PR #158 |
+| 2 | Bindless heap: one layout, index allocator, push constants, on the M4 `Common.hlsli` contract | §11, §12 | ✅ | #157 / PR #158 |
+| 2 | Graphics and compute pipelines from `.m2shader`, pipeline cache on disk, up-front creation | §11 | ✅ | #157 / PR #158 |
+| 2 | Pipelines rebuilt on `ShaderReloaded` | §12, §22 | ✅ | #157 / PR #158 |
+| 2 | Triangle through bindless: the first time an M4 shader really runs | §12 | ✅ | #157 / PR #158 |
 | 3 Frame infrastructure | `FrameArena` (reset by fence), upload ring, CPU readback | §6 | ⬜ | |
 | 3 | Frame packet / extract step in the game loop | §23 | ⬜ | |
 | 3 | Headless rendering: draw to a texture with no window and read it back (M7 golden images, CI) | §13 | ⬜ | |

@@ -1,24 +1,30 @@
 /// @file
 /// @brief Meow2Renderer entry point (composition root). Sets up logging, crash dumps and settings,
-///        prints its name and the engine version (checked by the smoke tests), opens its window and clears it.
+///        prints its name and the engine version (checked by the smoke tests), opens its window and draws a triangle
+///        through the bindless heap.
 
+#include <Meow2/Assets/AssetManager.h>
 #include <Meow2/Core/Config/Config.h>
 #include <Meow2/Core/CpuFeatures.h>
 #include <Meow2/Core/Crash/CrashHandler.h>
 #include <Meow2/Core/Events/EventBus.h>
+#include <Meow2/Core/Id/UuidGenerator.h>
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/AssertLogging.h>
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Memory/LeakCheck.h>
 #include <Meow2/Core/Platform.h>
+#include <Meow2/Core/Process.h>
 #include <Meow2/Core/Profiling/Profile.h>
 #include <Meow2/Core/Time/FrameClock.h>
 #include <Meow2/Core/Time/GameLoop.h>
 #include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
+#include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 #include <Meow2/Math/Color.h>
+#include <Meow2/Platform/FileSystem/FileSystem.h>
 #include <Meow2/Platform/Input/InputSystem.h>
 #include <Meow2/Platform/Input/SdlGamepadSource.h>
 #include <Meow2/Platform/Input/SdlInputSource.h>
@@ -28,11 +34,18 @@
 #include <Meow2/Platform/Window/WindowEvents.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <filesystem>
 #include <memory>
+#include <optional>
+#include <system_error>
 #include <utility>
+#include <vector>
 
 int main(int argc, char** argv)
 {
@@ -125,12 +138,38 @@ int main(int argc, char** argv)
     Meow2::Log::Logger rhiLog = logSystem.createLogger("RHI");
     std::unique_ptr<Meow2::Rhi::IRhiDevice> device;
     std::unique_ptr<Meow2::Rhi::IRhiSwapchain> swapchain; // destroyed first: declared after the device
+    // Cooked shaders are next to the exe. Pipelines compiled by the driver are saved there too, in cache/, so a second
+    // run skips that work. Absent files only mean a slower start.
+    Meow2::FileSystem::FileSystem files{engineLog};
+    Meow2::UuidGenerator ids;
+    Meow2::Assets::AssetManager assets{files, ids, engineLog};
+    const std::filesystem::path appFolder = Meow2::executablePath().parent_path();
+    std::error_code folderError;
+    std::filesystem::create_directories(appFolder / "cache", folderError);
+    if (const Meow2::Result<void> cookedMount = files.mountDirectory("cooked", appFolder / "cooked"); !cookedMount)
+    {
+        MEOW2_LOG_WARN(appLog, "No cooked shaders: {}", cookedMount.error());
+    }
+    if (const Meow2::Result<void> cacheMount =
+            files.mountDirectory("cache", appFolder / "cache", Meow2::FileSystem::MountAccess::ReadWrite);
+        !cacheMount)
+    {
+        MEOW2_LOG_WARN(appLog, "The pipeline cache won't be saved: {}", cacheMount.error());
+    }
+    const std::vector<std::byte> savedPipelines =
+        files.readFile("cache/vulkan-pipelines.bin").value_or(std::vector<std::byte>{});
+    std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
+    std::optional<Meow2::Renderer::PipelineId> trianglePipeline;
+    Meow2::Rhi::BufferHandle triangleVertices;
     if (const Meow2::Platform::NativeWindowHandle nativeWindow = window->nativeHandle();
         nativeWindow.type != Meow2::Platform::NativeWindowType::None)
     {
         const bool validationByDefault = MEOW2_CONFIG_RELEASE == 0;
-        Meow2::Result<std::unique_ptr<Meow2::Rhi::IRhiDevice>> createdDevice = Meow2::Rhi::createRhiDevice(
-            {.appName = "Meow2Renderer", .validation = config.getBool("rhi.validation", validationByDefault)}, rhiLog);
+        Meow2::Result<std::unique_ptr<Meow2::Rhi::IRhiDevice>> createdDevice =
+            Meow2::Rhi::createRhiDevice({.appName = "Meow2Renderer",
+                                         .validation = config.getBool("rhi.validation", validationByDefault),
+                                         .pipelineCache = savedPipelines},
+                                        rhiLog);
         if (!createdDevice)
         {
             MEOW2_LOG_ERROR(appLog, "Can't start the GPU: {}", createdDevice.error());
@@ -151,10 +190,37 @@ int main(int argc, char** argv)
             return 1;
         }
         swapchain = std::move(*createdSwapchain);
+
+        // A triangle whose vertices live in a heap buffer (shaders/BindlessTriangle.hlsl). Without cooked shaders the
+        // window is simply cleared: a machine with no DXC can still run.
+        pipelines.emplace(Meow2::Renderer::PipelineLibraryDeps{*device, assets, events, rhiLog});
+        const Meow2::Result<Meow2::Uuid> triangleUuid = Meow2::Uuid::parse("01a1b5e2-3c10-8000-80a4-7b19d2e6c051");
+        const Meow2::Result<Meow2::AssetId> triangleId =
+            triangleUuid.and_then([](const Meow2::Uuid& uuid) { return Meow2::AssetId::fromUuid(uuid); });
+        Meow2::Result<Meow2::Renderer::PipelineId> pipeline = pipelines->add(Meow2::Renderer::GraphicsPipelineRequest{
+            .shader = triangleId.value_or(Meow2::AssetId{}), .colorFormat = swapchain->format(), .name = "Triangle"});
+        Meow2::Result<Meow2::Rhi::BufferHandle> vertexBuffer =
+            device->createBuffer({.size = sizeof(Meow2::Math::Vec4) * 6,
+                                  .memory = Meow2::Rhi::RhiMemory::Upload,
+                                  .name = "Triangle vertices"});
+        if (pipeline && vertexBuffer)
+        {
+            trianglePipeline = *pipeline;
+            triangleVertices = *vertexBuffer;
+            const std::array<Meow2::Math::Vec4, 6> vertices{
+                Meow2::Math::Vec4{0.0F, 0.5F, 0.5F, 1.0F},   Meow2::Math::Vec4{1.0F, 0.0F, 0.0F, 1.0F},
+                Meow2::Math::Vec4{0.5F, -0.5F, 0.5F, 1.0F},  Meow2::Math::Vec4{0.0F, 1.0F, 0.0F, 1.0F},
+                Meow2::Math::Vec4{-0.5F, -0.5F, 0.5F, 1.0F}, Meow2::Math::Vec4{0.0F, 0.0F, 1.0F, 1.0F}};
+            std::memcpy(device->mappedMemory(triangleVertices).data(), vertices.data(), sizeof(vertices));
+        }
+        else
+        {
+            MEOW2_LOG_WARN(appLog, "No triangle: {}", pipeline ? vertexBuffer.error() : pipeline.error());
+        }
     }
 
-    // One frame of drawing: for now, a cleared window. Returns false if the GPU stopped working.
-    const auto renderFrame = [&device, &swapchain, &window, &appLog]
+    // One frame of drawing. Returns false if the GPU stopped working.
+    const auto renderFrame = [&device, &swapchain, &window, &appLog, &pipelines, &trianglePipeline, &triangleVertices]
     {
         const auto width = static_cast<std::uint32_t>(window->pixelWidth());
         const auto height = static_cast<std::uint32_t>(window->pixelHeight());
@@ -174,7 +240,16 @@ int main(int argc, char** argv)
         }
         if (device->acquire(*swapchain))
         {
-            (*list)->clearSwapchain(*swapchain, Meow2::Math::Color{.r = 0.02F, .g = 0.03F, .b = 0.06F});
+            (*list)->beginRendering(*swapchain, Meow2::Math::Color{.r = 0.02F, .g = 0.03F, .b = 0.06F});
+            if (trianglePipeline)
+            {
+                (*list)->setPipeline(pipelines->get(*trianglePipeline));
+                Meow2::Shader::PushConstants push{};
+                push.userData = device->bindlessIndex(triangleVertices);
+                (*list)->setPushConstants(push);
+                (*list)->draw(3);
+            }
+            (*list)->endRendering();
         }
         if (const Meow2::Result<void> ended = device->endFrame(); !ended)
         {
@@ -221,6 +296,17 @@ int main(int argc, char** argv)
     MEOW2_LOG_INFO(appLog, "Ran {} frames ({} fixed steps) in {:.2f} s", clock.frameCount(), loop.fixedStepCount(),
                    clock.totalSeconds());
 
+    if (device)
+    {
+        device->waitIdle();
+        device->destroy(triangleVertices);
+        if (const Meow2::Result<void> saved =
+                files.writeFile("cache/vulkan-pipelines.bin", device->pipelineCacheData());
+            !saved)
+        {
+            MEOW2_LOG_WARN(appLog, "Pipeline cache not saved: {}", saved.error());
+        }
+    }
     Meow2::Platform::storeWindowState(config, *window); // reopen where the user left it
     if (const Meow2::Result<void> saved = config.save(); !saved)
     {

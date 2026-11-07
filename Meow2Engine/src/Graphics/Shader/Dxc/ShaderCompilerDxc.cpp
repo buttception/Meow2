@@ -269,6 +269,12 @@ Result<ShaderCompileOutput> ShaderCompiler::compile(const ShaderCompileDesc& des
         arguments.push_back(L"-spirv");
         arguments.push_back(L"-fspv-target-env=vulkan1.3");
         arguments.push_back(L"-fvk-use-dx-layout"); // one struct, one layout on both backends
+        // Explicit, because the default depends on what a shader declares: with no sampler, the resource heap lands on
+        // binding 0 instead of 1, and the shader no longer matches the one layout every pipeline shares.
+        for (const LPCWSTR argument : {L"-fvk-bind-resource-heap", L"1", L"0", L"-fvk-bind-sampler-heap", L"0", L"0"})
+        {
+            arguments.push_back(argument);
+        }
     }
     if (desc.optimization == ShaderOptimization::Debug)
     {

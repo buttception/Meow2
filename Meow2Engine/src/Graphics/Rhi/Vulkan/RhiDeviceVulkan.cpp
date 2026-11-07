@@ -109,7 +109,11 @@ VulkanGpuFacts readGpuFacts(VkPhysicalDevice gpu, const VkPhysicalDeviceProperti
     facts.multiDrawIndirect = features.core.features.multiDrawIndirect != VK_FALSE;
     facts.drawIndirectCount = features.v12.drawIndirectCount != VK_FALSE;
     facts.shaderInt64 = features.core.features.shaderInt64 != VK_FALSE;
-    facts.bindlessDescriptors = true;
+    facts.bindlessDescriptors = features.core.features.shaderSampledImageArrayDynamicIndexing != VK_FALSE &&
+                                features.core.features.shaderStorageBufferArrayDynamicIndexing != VK_FALSE &&
+                                features.core.features.shaderStorageImageArrayDynamicIndexing != VK_FALSE &&
+                                features.core.features.fragmentStoresAndAtomics != VK_FALSE &&
+                                features.core.features.vertexPipelineStoresAndAtomics != VK_FALSE;
     forEachBindlessFeature(features.v12, [&facts](const VkBool32& supported)
                            { facts.bindlessDescriptors = facts.bindlessDescriptors && supported != VK_FALSE; });
     return facts;
@@ -195,27 +199,9 @@ std::string_view vulkanResultName(VkResult result)
     }
 }
 
-void RhiCommandListVulkan::clearSwapchain(IRhiSwapchain& swapchain, const Math::Color& color)
-{
-    auto& target = static_cast<RhiSwapchainVulkan&>(swapchain);
-    MEOW2_ASSERT(target.isAcquired(), "acquire() must return true before drawing to a swapchain");
-    VkRenderingAttachmentInfo attachment{.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                                         .imageView = target.imageView(),
-                                         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                         .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
-    attachment.clearValue.color = {{color.r, color.g, color.b, color.a}};
-    const VkRenderingInfo rendering{.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                                    .renderArea = {.offset = {0, 0}, .extent = target.extent()},
-                                    .layerCount = 1,
-                                    .colorAttachmentCount = 1,
-                                    .pColorAttachments = &attachment};
-    vkCmdBeginRendering(m_commandBuffer, &rendering);
-    vkCmdEndRendering(m_commandBuffer);
-}
-
 RhiDeviceVulkan::RhiDeviceVulkan(Log::Logger& log)
     : m_log(log)
+    , m_commandList(*this)
 {
 }
 
@@ -231,6 +217,10 @@ Result<std::unique_ptr<IRhiDevice>> RhiDeviceVulkan::create(const RhiDeviceDesc&
         return Unexpected<Error>{result.error()};
     }
     if (Result<void> result = device->createDevice(desc); !result)
+    {
+        return Unexpected<Error>{result.error()};
+    }
+    if (Result<void> result = device->createBindless(desc); !result)
     {
         return Unexpected<Error>{result.error()};
     }
@@ -381,6 +371,12 @@ Result<void> RhiDeviceVulkan::createDevice(const RhiDeviceDesc& desc)
     DeviceFeatures features;
     features.core.features.multiDrawIndirect = VK_TRUE;
     features.core.features.shaderInt64 = VK_TRUE;
+    features.core.features.samplerAnisotropy = VK_TRUE;
+    features.core.features.fragmentStoresAndAtomics = VK_TRUE;
+    features.core.features.vertexPipelineStoresAndAtomics = VK_TRUE;
+    features.core.features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
+    features.core.features.shaderStorageBufferArrayDynamicIndexing = VK_TRUE;
+    features.core.features.shaderStorageImageArrayDynamicIndexing = VK_TRUE;
     features.v12.timelineSemaphore = VK_TRUE;
     features.v12.bufferDeviceAddress = VK_TRUE;
     features.v12.drawIndirectCount = VK_TRUE;
@@ -472,6 +468,15 @@ RhiDeviceVulkan::~RhiDeviceVulkan()
     if (m_device != VK_NULL_HANDLE)
     {
         vkDeviceWaitIdle(m_device);
+        collectGarbage();
+        if (m_defaultSampler != VK_NULL_HANDLE)
+        {
+            vkDestroySampler(m_device, m_defaultSampler, nullptr);
+        }
+        vkDestroyPipelineCache(m_device, m_pipelineCache, nullptr);
+        vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
+        vkDestroyDescriptorPool(m_device, m_heapPool, nullptr);
+        vkDestroyDescriptorSetLayout(m_device, m_heapLayout, nullptr);
         for (const Frame& frame : m_frames)
         {
             if (frame.pool != VK_NULL_HANDLE)
@@ -517,6 +522,7 @@ Result<IRhiCommandList*> RhiDeviceVulkan::beginFrame()
         return fail(result == VK_TIMEOUT ? ErrorCode::Timeout : ErrorCode::Unknown,
                     std::format("Waiting for the GPU: {}", vulkanResultName(result)));
     }
+    collectGarbage();
     vkResetCommandPool(m_device, frame.pool, 0);
     const VkCommandBufferBeginInfo begin{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                                          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
@@ -524,6 +530,13 @@ Result<IRhiCommandList*> RhiDeviceVulkan::beginFrame()
     {
         return fail(ErrorCode::Unknown, std::format("vkBeginCommandBuffer: {}", vulkanResultName(result)));
     }
+    // Bound once per frame and never again: nothing else in the engine is ever bound (techstack.md §11).
+    const auto bindHeap = [this, &frame](VkPipelineBindPoint point)
+    {
+        vkCmdBindDescriptorSets(frame.commands, point, m_pipelineLayout, 0, 1, &m_heapSet, 0, nullptr);
+    };
+    bindHeap(VK_PIPELINE_BIND_POINT_GRAPHICS);
+    bindHeap(VK_PIPELINE_BIND_POINT_COMPUTE);
     m_commandList.setCommandBuffer(frame.commands);
     m_inFrame = true;
     return &m_commandList;
@@ -662,6 +675,7 @@ Result<void> RhiDeviceVulkan::endFrame()
 void RhiDeviceVulkan::waitIdle()
 {
     vkDeviceWaitIdle(m_device);
+    collectGarbage();
 }
 
 void RhiDeviceVulkan::setObjectName(VkObjectType type, std::uint64_t handle, const char* name) const

@@ -12,7 +12,9 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -38,6 +40,10 @@ constexpr std::array c_shaders{
     ShaderCase{"shaders/BindlessProbe.hlsl", "vsMain", ShaderStage::Vertex},
     ShaderCase{"shaders/BindlessProbe.hlsl", "psMain", ShaderStage::Pixel},
     ShaderCase{"shaders/BindlessProbe.hlsl", "csMain", ShaderStage::Compute},
+    ShaderCase{"shaders/BindlessTexture.hlsl", "vsMain", ShaderStage::Vertex},
+    ShaderCase{"shaders/BindlessTexture.hlsl", "psMain", ShaderStage::Pixel},
+    ShaderCase{"shaders/BindlessTriangle.hlsl", "vsMain", ShaderStage::Vertex},
+    ShaderCase{"shaders/BindlessTriangle.hlsl", "psMain", ShaderStage::Pixel},
     ShaderCase{"shaders/Triangle.hlsl", "vsMain", ShaderStage::Vertex},
     ShaderCase{"shaders/Triangle.hlsl", "psMain", ShaderStage::Pixel},
 };
@@ -115,6 +121,33 @@ TEST_F(BindlessTest, CompilesForDxil)
         ASSERT_TRUE(output.has_value()) << shader.path << ": " << output.error().message;
     }
 #endif
+}
+
+TEST_F(BindlessTest, ResourceHeapIsAlwaysBindingOne)
+{
+    Result<ShaderCompiler> compiler = ShaderCompiler::create(m_files);
+    ASSERT_TRUE(compiler.has_value()) << compiler.error().message;
+    // No sampler in this shader: left to itself, DXC would put the heap on binding 0.
+    const ShaderCase shader{"shaders/BindlessTriangle.hlsl", "vsMain", ShaderStage::Vertex};
+    const Result<ShaderCompileOutput> output = compile(*compiler, shader, ShaderTarget::Spirv);
+    ASSERT_TRUE(output.has_value()) << output.error().message;
+
+    // SPIR-V is a stream of words: the first five are the header, and each instruction starts with its length and
+    // opcode. OpDecorate (71) with Binding (33) is: target, 33, value.
+    constexpr std::uint32_t c_opDecorate = 71;
+    constexpr std::uint32_t c_decorationBinding = 33;
+    std::vector<std::uint32_t> words(output->bytecode.size() / sizeof(std::uint32_t));
+    std::memcpy(words.data(), output->bytecode.data(), words.size() * sizeof(std::uint32_t));
+    int found = 0;
+    for (std::size_t i = 5; i < words.size(); i += words[i] >> 16U)
+    {
+        if ((words[i] & 0xFFFFU) == c_opDecorate && words[i + 2] == c_decorationBinding)
+        {
+            EXPECT_EQ(words[i + 3], 1U);
+            ++found;
+        }
+    }
+    EXPECT_GT(found, 0);
 }
 
 TEST_F(BindlessTest, SpirvPassesTheValidator)
