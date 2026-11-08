@@ -159,7 +159,8 @@ double contrastRatio(const QColor& a, const QColor& b)
         {
             return channel <= 0.04045 ? channel / 12.92 : std::pow((channel + 0.055) / 1.055, 2.4);
         };
-        return 0.2126 * linear(color.redF()) + 0.7152 * linear(color.greenF()) + 0.0722 * linear(color.blueF());
+        return 0.2126 * linear(static_cast<double>(color.redF())) + 0.7152 * linear(static_cast<double>(color.greenF())) +
+               0.0722 * linear(static_cast<double>(color.blueF()));
     };
     const double first = luminance(a);
     const double second = luminance(b);
