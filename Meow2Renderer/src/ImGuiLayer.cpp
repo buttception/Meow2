@@ -337,8 +337,19 @@ void ImGuiLayer::releaseGpu(Rhi::IRhiDevice& device)
     }
 }
 
-void ImGuiLayer::newFrame(float deltaSeconds, float width, float height, float framebufferScale)
+void ImGuiLayer::newFrame(float deltaSeconds, float width, float height, float framebufferScale, float contentScale)
 {
+    // Sizes and fonts follow the display's scale, so the UI is as big on a 125 % screen as Windows' own windows. The
+    // style is rebuilt from the defaults rather than scaled again, which would compound.
+    if (contentScale > 0.0F && contentScale != m_contentScale)
+    {
+        ImGuiStyle& style = ImGui::GetStyle();
+        style = ImGuiStyle{};
+        ImGui::StyleColorsDark();
+        style.ScaleAllSizes(contentScale);
+        style.FontScaleDpi = contentScale;
+        m_contentScale = contentScale;
+    }
     ImGuiIO& io = ImGui::GetIO();
     io.DeltaTime = deltaSeconds > 0.0F ? deltaSeconds : 1.0F / 60.0F;
     io.DisplaySize = ImVec2{width, height};

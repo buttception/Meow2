@@ -178,7 +178,7 @@ TEST_F(WindowTest, PlatformCanBeRecreated)
     ASSERT_TRUE(again.has_value()) << std::format("{}", again.error());
     m_platform.emplace(std::move(*again));
     const Window window = createWindow({.hidden = true});
-    EXPECT_EQ(window.bounds().width, 1280);
+    EXPECT_EQ(window.bounds().width, 1920) << "the default size, 1080p";
 }
 
 TEST_F(WindowTest, SdlMemoryIsTracked)

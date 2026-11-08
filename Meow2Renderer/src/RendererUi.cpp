@@ -165,8 +165,10 @@ std::array<float, 240> FrameTimes::ordered() const
 StatsActions drawStatsWindow(const StatsInfo& info)
 {
     StatsActions actions;
-    ImGui::SetNextWindowPos(ImVec2{10.0F, 10.0F}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2{340.0F, 0.0F}, ImGuiCond_FirstUseEver);
+    // Sizes in unscaled units times the display scale (style.FontScaleDpi), like everything else in the UI.
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    ImGui::SetNextWindowPos(ImVec2{10.0F * scale, 10.0F * scale}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2{340.0F * scale, 0.0F}, ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Stats"))
     {
         ImGui::End();
@@ -180,7 +182,7 @@ StatsActions drawStatsWindow(const StatsInfo& info)
         const std::array<float, 240> times = info.frames->ordered();
         const float top = std::max(info.frames->worst(), 1.0F);
         ImGui::PlotLines("##frames", times.data(), static_cast<int>(times.size()), 0, nullptr, 0.0F, top * 1.1F,
-                         ImVec2{-1.0F, 50.0F});
+                         ImVec2{-1.0F, 50.0F * scale});
         ImGui::Text("Worst %.2f ms over the last %zu frames", static_cast<double>(info.frames->worst()), times.size());
     }
 
@@ -302,9 +304,11 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
     }
 
     // Top right, so it never covers the stats window on the left.
-    ImGui::SetNextWindowPos(ImVec2{std::max(ImGui::GetIO().DisplaySize.x - 350.0F, 360.0F), 10.0F},
-                            ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2{340.0F, 420.0F}, ImGuiCond_FirstUseEver);
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    ImGui::SetNextWindowPos(
+        ImVec2{std::max(ImGui::GetIO().DisplaySize.x - 350.0F * scale, 360.0F * scale), 10.0F * scale},
+        ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2{340.0F * scale, 420.0F * scale}, ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Scenes"))
     {
         ImGui::End();
@@ -388,7 +392,7 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
     }
 
     ImGui::SeparatorText("Any file");
-    ImGui::SetNextItemWidth(-60.0F);
+    ImGui::SetNextItemWidth(-60.0F * scale);
     const bool entered = ImGui::InputTextWithHint("##path", ".gltf or .glb path", m_path.data(), m_path.size(),
                                                   ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();

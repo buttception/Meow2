@@ -28,6 +28,7 @@ mode = "windowed"     # or "fullscreen" (borderless, desktop resolution)
 videoDriver = ""      # empty = the OS default; "offscreen" = no visible window (tests, CI)
 ```
 
+- **Default size:** 1920 x 1080 (1080p) in every app, centred. A saved `width`/`height` wins, so delete them (or the file) to get the default again.
 - **At exit** the app writes the window's state back, but only the keys that changed.
 - **Maximized or fullscreen:** the saved size is still the *normal* size, so restoring the window goes back to it.
 - **Monitor unplugged:** a saved position that's no longer on any display falls back to centred.
