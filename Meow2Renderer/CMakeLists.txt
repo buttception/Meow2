@@ -7,7 +7,9 @@ add_library(Meow2RendererCore STATIC
     src/RendererUi.cpp
     src/RendererUi.h
     src/SceneView.cpp
-    src/SceneView.h)
+    src/SceneView.h
+    src/UiTheme.cpp
+    src/UiTheme.h)
 target_include_directories(Meow2RendererCore PUBLIC src)
 target_link_libraries(Meow2RendererCore PUBLIC Meow2::Engine meow2_imgui)
 # The Scenes window fetches samples by running cmake with the fetch script; development paths, like the samples
@@ -33,6 +35,8 @@ if(MEOW2_RHI_D3D12)
 endif()
 meow2_gui_subsystem_in_release(Meow2Renderer) # no console window in Release
 meow2_install_app(Meow2Renderer)                # into the release zip (cmake/Meow2Packaging.cmake)
+meow2_app_icon(Meow2Renderer Meow2Renderer)    # the cat with an R badge
+meow2_app_fonts(Meow2Renderer)                  # fonts/ next to the exe: the UI's Barlow
 meow2_source_groups(Meow2Renderer)
 # Started from the Visual Studio solution, log into the repository's (git-ignored) logs/ folder and keep the
 # settings in its (git-ignored) config/ folder.

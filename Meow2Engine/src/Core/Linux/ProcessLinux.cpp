@@ -1,5 +1,5 @@
 /// @file
-/// @brief Linux/Android implementation of Meow2::executablePath().
+/// @brief Linux/Android implementation of Meow2::executablePath() and Meow2::systemFontDirectory().
 
 #include "Meow2/Core/Process.h"
 
@@ -17,5 +17,11 @@ std::filesystem::path executablePath()
         return {};
     }
     return path;
+}
+
+std::filesystem::path systemFontDirectory()
+{
+    // Fontconfig's standard root; Android has no such folder, and its apps bundle their fonts.
+    return "/usr/share/fonts";
 }
 } // namespace Meow2

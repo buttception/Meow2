@@ -212,7 +212,8 @@ Planned as five PRs; PR 4's shell came first, at the owner's request. glTF is an
 | 4 Renderer app | Dear ImGui docking shell (submodule, owner request), frame and memory stats per tag; scaled for the display, 1080p default window | §2, §7 | ✅ | #172 / PR #173, #175 / PR #176 |
 | 4 | Backend switch button, capture button (the same as F11) | §11 | ✅ | #172 / PR #173 |
 | 4 | Scene browser: the sample list, which are downloaded, fetch on click, open any `.gltf`/`.glb` (`.m2scene` with PR 2) | §13 | ✅ | #172 / PR #173 |
-| 4 | Log console (ring-buffer sink), settings window for debug tools saved to the TOML config, saved window layout | §7, §11 | ⬜ | |
+| 4 | Theme (owner request): pure black with a red accent in Renderer and Editor, Barlow Semi Condensed and Consolas, app icons (cat; E and R badges), asset icons | §2 | ✅ | #178 / PR #179 |
+| 4 | Log console (ring-buffer sink, in Consolas), settings window for debug tools saved to the TOML config, saved window layout | §7, §11 | ⬜ | |
 | 5 Verification and close | Golden-image tests per backend (label `visual`); new goldens only with the owner's sign-off | §13 | ⬜ | |
 | 5 | The 25 suggested scenes: test scenes first, then the showcase ones (DamagedHelmet the first goal) | §13 | ⬜ | |
 | 5 | **meshoptimizer** (submodule, needs approval): vertex cache and overdraw optimisation at import | §4 | ⬜ | |

@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- A new look for Meow2Renderer and Meow2Editor: pure black with one red accent, square panels with red corner brackets, uppercase headings, Barlow Semi Condensed for the UI and Consolas for numbers and logs. Each app has a red cat icon; the editor's carries an E badge, the renderer's an R. Icons for asset types are ready for the editor's asset browser (#179).
 - glTF materials drawn with metallic-roughness PBR on Vulkan and D3D12: normal maps (tangents from the file or generated), metallic, roughness, occlusion, emissive and vertex colours, lit by a sun and a sky/ground ambient with a neutral tone curve. Textures get mipmaps and the file's sampler settings; double-sided materials, mirrored nodes and alpha-blended materials (sorted back to front) draw correctly (#177).
 - Meow2Renderer has a Dear ImGui shell: a Scenes window to open any Khronos sample (fetching it on the spot) or any `.gltf`/`.glb`, and a Stats window with frame times, the GPU, memory per tag and the open scene's size, plus buttons to switch backend and capture a frame. F1 hides it (#173).
 - RHI: scissor rectangles, alpha blending, and a barrier between passes that draw to the same swapchain (#173).

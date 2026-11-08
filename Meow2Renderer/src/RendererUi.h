@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "UiTheme.h"
+
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/Logger.h>
 #include <Meow2/Graphics/Rhi/RhiTypes.h>
@@ -99,9 +101,10 @@ struct StatsActions
 };
 
 /// @brief Draws the stats window.
-/// @param info What to show.
+/// @param info  What to show.
+/// @param fonts The theme's fonts: numbers are drawn in the monospace one.
 /// @return The buttons pressed this frame.
-StatsActions drawStatsWindow(const StatsInfo& info);
+StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts = {});
 
 /// @brief The scene picker: Khronos samples (fetching ones that aren't downloaded) and any file by path.
 /// @par Thread safety
@@ -125,7 +128,8 @@ public:
     /// @param current The open scene's name, to highlight it.
     /// @param error   Why the last open failed, or empty.
     /// @return A scene to open, when the user asked for one.
-    [[nodiscard]] std::optional<SceneRequest> draw(std::string_view current, std::string_view error);
+    [[nodiscard]] std::optional<SceneRequest> draw(std::string_view current, std::string_view error,
+                                                   const UiFonts& fonts = {});
 
 private:
     /// @brief Starts fetching a sample on a job.

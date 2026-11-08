@@ -4,6 +4,7 @@
 #include "ImGuiLayer.h"
 #include "RendererUi.h"
 #include "SceneView.h"
+#include "UiTheme.h"
 
 #include <Meow2/Core/Platform.h>
 
@@ -149,5 +150,55 @@ TEST(FrameTimes, AveragesAndKeepsOrder)
     const auto ordered = times.ordered();
     EXPECT_FLOAT_EQ(ordered[ordered.size() - 1], 20.0F) << "newest last";
     EXPECT_FLOAT_EQ(ordered[ordered.size() - 2], 10.0F);
+}
+namespace
+{
+/// @brief Two colours are the same, channel by channel.
+void expectColor(const ImVec4& actual, const ImVec4& expected)
+{
+    EXPECT_FLOAT_EQ(actual.x, expected.x);
+    EXPECT_FLOAT_EQ(actual.y, expected.y);
+    EXPECT_FLOAT_EQ(actual.z, expected.z);
+    EXPECT_FLOAT_EQ(actual.w, expected.w);
+}
+} // namespace
+
+TEST(UiTheme, AccentsAreRedOnDark)
+{
+    ImGuiStyle style;
+    applyUiTheme(style, 1.0F);
+
+    // Near-black panels, light text.
+    EXPECT_LT(style.Colors[ImGuiCol_WindowBg].x, 0.06F);
+    EXPECT_GT(style.Colors[ImGuiCol_Text].x, 0.85F);
+    // Everything active is the red accent.
+    for (const ImGuiCol active : {ImGuiCol_CheckMark, ImGuiCol_SliderGrab, ImGuiCol_PlotLines, ImGuiCol_NavCursor,
+                                  ImGuiCol_TabSelectedOverline, ImGuiCol_SeparatorActive})
+    {
+        expectColor(style.Colors[active], UiColors::c_accent);
+    }
+    // Hover and press are washes of the same red, stronger when pressed.
+    EXPECT_FLOAT_EQ(style.Colors[ImGuiCol_ButtonHovered].x, UiColors::c_accent.x);
+    EXPECT_GT(style.Colors[ImGuiCol_ButtonActive].w, style.Colors[ImGuiCol_ButtonHovered].w);
+    // Square and flat.
+    EXPECT_EQ(style.WindowRounding, 0.0F);
+    EXPECT_EQ(style.FrameRounding, 0.0F);
+    EXPECT_EQ(style.TabRounding, 0.0F);
+    EXPECT_EQ(style.FrameBorderSize, 1.0F);
+}
+
+TEST(UiTheme, ScalesSizes)
+{
+    ImGuiStyle normal;
+    applyUiTheme(normal, 1.0F);
+    ImGuiStyle large;
+    applyUiTheme(large, 1.5F);
+    EXPECT_FLOAT_EQ(large.WindowPadding.x, normal.WindowPadding.x * 1.5F);
+    EXPECT_FLOAT_EQ(large.FramePadding.y, normal.FramePadding.y * 1.5F);
+    EXPECT_FLOAT_EQ(large.FontScaleDpi, 1.5F);
+
+    // Applying again for another scale starts over instead of compounding.
+    applyUiTheme(large, 1.0F);
+    EXPECT_FLOAT_EQ(large.WindowPadding.x, normal.WindowPadding.x);
 }
 } // namespace Meow2::RendererApp

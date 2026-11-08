@@ -36,6 +36,8 @@ endfunction()
 add_library(Meow2EditorCore STATIC
     src/EditorMainWindow.cpp
     src/EditorMainWindow.h
+    src/EditorTheme.cpp
+    src/EditorTheme.h
     src/ViewportWidget.cpp
     src/ViewportWidget.h
     src/WindowPlacement.cpp
@@ -64,6 +66,8 @@ meow2_gui_subsystem_in_release(Meow2Editor) # no console window in Release
 # can be smoke-tested without a desktop (cmake/TestPackage.cmake). This lives here, not in the packaging module,
 # because Qt's CMake functions only exist where find_package(Qt6) ran.
 meow2_install_app(Meow2Editor)
+meow2_app_icon(Meow2Editor Meow2Editor)        # the cat with an E badge
+meow2_app_fonts(Meow2Editor)
 qt_generate_deploy_app_script(
     TARGET Meow2Editor
     OUTPUT_SCRIPT meow2EditorDeployScript

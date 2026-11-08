@@ -41,6 +41,10 @@ videoDriver = ""      # empty = the OS default; "offscreen" = no visible window 
   - `setWindowState()` (maximized/fullscreen) is called **before** `show()`, so Qt keeps the normal geometry to restore to.
 - **Qt's DLLs next to the exe.** After every build, `windeployqt` copies the Qt DLLs and plugins (including `qoffscreen`) into `bin/`. See [Building → Qt](Building.md#qt).
 
+## Look
+
+The same theme as Meow2Renderer, as Fusion style, palette and style sheet, with Barlow Semi Condensed as the application font and the E-badge cat as the icon: see [Theme](Theme.md). `EditorTheme.*` holds it; `main.cpp` applies it right after creating the `QApplication`.
+
 ## No memory tracking in the editor
 
 Player and Renderer send every `new`/`delete` through the memory tracker ([Memory](Memory.md)). **The editor doesn't.**
