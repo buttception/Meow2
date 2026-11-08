@@ -28,6 +28,16 @@ Build output goes to `<build dir>/bin` (executables) and `<build dir>/lib` (libr
 
 The engine library is always built.
 
+### Downloads at configure time
+
+Configure downloads two pinned Microsoft releases, DXC (the shader compiler) and the DirectX 12 Agility SDK, each checked by its SHA-256 (`cmake/Meow2Download.cmake`).
+
+- **Retries:** a failed download is tried again after 2, 5 and 10 seconds, four attempts in all, so a brief hiccup on GitHub's or NuGet's side doesn't fail the configure. A file whose hash doesn't match counts as a failed attempt too.
+- **Download cache:** set `MEOW2_DOWNLOAD_CACHE` (with `-D`, or as an environment variable) to a folder, and every verified download is kept there, named by its hash, and used next time instead of downloading. That's handy with several worktrees or build folders: each would otherwise download the same 70 MB or so. A cached copy is used only if its hash still matches, so a damaged file is replaced, not used.
+- **Without internet:** point `MEOW2_DXC_DIR` and `MEOW2_AGILITY_DIR` at unpacked releases, or turn the features off (`MEOW2_SHADER_TOOLS=OFF`, `MEOW2_RHI_D3D12=OFF`).
+
+The CI runner on the owner's PC sets the cache to its tool cache folder ([CI](CI.md#download-cache)).
+
 ## Presets
 
 `CMakePresets.json` defines one preset per platform × configuration. Each preset builds into its own folder, `build/<preset>/`.

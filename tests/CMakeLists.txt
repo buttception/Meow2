@@ -71,3 +71,17 @@ foreach(meow2Case IN ITEMS ExtractsSection MissingVersion)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/BuildChecks/TestReleaseNotes.cmake")
     set_tests_properties(Build.ReleaseNotes.${meow2Case} PROPERTIES LABELS "integration")
 endforeach()
+
+# Configure-time downloads (cmake/Meow2Download.cmake): retries and the download cache, with file:// URLs.
+foreach(meow2Case IN ITEMS FetchesAndCaches UsesTheCache IgnoresABadCachedCopy FailsAfterRetries)
+    add_test(NAME Build.Download.${meow2Case}
+        COMMAND ${CMAKE_COMMAND}
+            "-DMEOW2_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DMEOW2_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/download/${meow2Case}"
+            -DMEOW2_CASE=${meow2Case}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/BuildChecks/TestDownload.cmake")
+    set_tests_properties(Build.Download.${meow2Case} PROPERTIES LABELS "integration")
+endforeach()
+# Configure stops with an error there, so the output decides: every attempt made, and the hint shown.
+set_tests_properties(Build.Download.FailsAfterRetries PROPERTIES
+    PASS_REGULAR_EXPRESSION "failed after 4 attempts.*Pass -DTEST_OFFLINE=ON")

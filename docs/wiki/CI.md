@@ -113,6 +113,12 @@ Workflow: [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml). On e
 
 **One-time setup (owner):** Settings → Pages → Build and deployment → Source: **GitHub Actions**. The first run after that creates the `github-pages` environment. Until it's set, the deploy job fails with `Failed to create deployment (status: 404) … Ensure GitHub Pages has been enabled`. Re-run it from the Actions tab after enabling.
 
+## Download cache
+
+Configure downloads DXC and the Agility SDK ([Building → Downloads](Building.md#downloads-at-configure-time)). On the self-hosted runner, the Windows jobs of `ci.yml` and `release.yml` set `MEOW2_DOWNLOAD_CACHE` to `${{ runner.tool_cache }}\meow2-downloads` (inside `C:\actions-runner\_work\_tool`). That folder survives between jobs, while the checkout is cleaned, so after the first job the files come from the PC and a server hiccup can't fail a build. Each cached file is checked against its pinned SHA-256 before use. Deleting the folder is always safe: the next job downloads again.
+
+GitHub-hosted Linux jobs start from a fresh machine, so they rely on the retries alone.
+
 ## How the Windows job finds Visual Studio
 
 The step runs as a **batch (`cmd`) script**: `vswhere.exe` (always installed with Visual Studio) finds the newest VS 2022 with the x64 C++ tools, and `vcvars64.bat` loads its developer environment (`cl`, `cmake`, `ninja` on PATH), exactly like a *Developer Command Prompt for VS 2022*. Then it runs `cmake --workflow --preset windows-msvc-<config>`.

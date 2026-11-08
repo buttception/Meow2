@@ -24,6 +24,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - Every app opens at 1920 x 1080 (1080p) by default instead of 1280 x 720; a size saved in the app's config still wins (#176).
 
 ### Fixed
+- Builds no longer fail when a server hiccups while configure downloads DXC or the Agility SDK: downloads are retried, and can be kept in a cache folder (`MEOW2_DOWNLOAD_CACHE`), which the Windows CI runner uses (#183).
 - Specular highlights and the order of transparent objects in Meow2Renderer used the scene origin instead of the camera's position (#181).
 - Meow2Renderer: the mouse lines up with the ImGui buttons on a scaled display (125 %, 150 %), and the UI is drawn at the display's scale (#176).
 
