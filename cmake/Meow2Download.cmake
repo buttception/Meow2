@@ -43,6 +43,7 @@ function(meow2_download)
         endif()
     endif()
 
+    message(STATUS "${arg_NAME}: downloading ${fileName}")
     # A failed attempt waits a little longer each time: a server's brief hiccup is usually over within seconds.
     if(DEFINED MEOW2_DOWNLOAD_PAUSES)
         set(pauses ${MEOW2_DOWNLOAD_PAUSES})

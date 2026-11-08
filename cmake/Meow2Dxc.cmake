@@ -33,7 +33,6 @@ if(MEOW2_DXC_DIR)
 else()
     set(meow2DxcDir "${PROJECT_SOURCE_DIR}/build/_dxc/${meow2DxcVersion}")
     if(NOT EXISTS "${meow2DxcDir}/.complete")
-        message(STATUS "DXC: downloading ${meow2DxcArchive}")
         set(meow2DxcFile "${PROJECT_SOURCE_DIR}/build/_dxc/${meow2DxcArchive}")
         meow2_download(NAME "DXC" URL "${meow2DxcBaseUrl}/${meow2DxcArchive}" FILE "${meow2DxcFile}"
                        SHA256 ${meow2DxcHash}

@@ -27,7 +27,6 @@ if(MEOW2_AGILITY_DIR)
 else()
     set(meow2AgilityDir "${PROJECT_SOURCE_DIR}/build/_agility/${meow2AgilityVersion}")
     if(NOT EXISTS "${meow2AgilityDir}/.complete")
-        message(STATUS "Agility SDK: downloading ${meow2AgilityVersion}")
         set(meow2AgilityFile "${PROJECT_SOURCE_DIR}/build/_agility/agility-${meow2AgilityVersion}.zip")
         meow2_download(NAME "Agility SDK" URL "${meow2AgilityUrl}" FILE "${meow2AgilityFile}" SHA256 ${meow2AgilityHash}
                        HINT "Without internet, pass -DMEOW2_AGILITY_DIR=<unpacked package> or -DMEOW2_RHI_D3D12=OFF.")
