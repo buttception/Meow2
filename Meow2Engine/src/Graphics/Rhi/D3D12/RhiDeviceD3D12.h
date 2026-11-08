@@ -175,11 +175,13 @@ public:
     void endMarker() override;
     void setPushConstants(const Shader::PushConstants& constants) override;
     void draw(std::uint32_t vertexCount, std::uint32_t instanceCount) override;
+    void setScissor(const ScissorRect& rect) override;
     void drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws) override;
     void dispatch(std::uint32_t x, std::uint32_t y, std::uint32_t z) override;
     void fillBuffer(BufferHandle buffer, std::uint32_t value) override;
     void barrier(BufferHandle buffer, ResourceState from, ResourceState to) override;
     void barrier(TextureHandle texture, ResourceState from, ResourceState to) override;
+    void barrier(IRhiSwapchain& swapchain) override;
     void copyBuffer(BufferHandle source, BufferHandle target, std::uint64_t size, std::uint64_t sourceOffset,
                     std::uint64_t targetOffset) override;
     void copyBufferToTexture(BufferHandle source, TextureHandle target) override;

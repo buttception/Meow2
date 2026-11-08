@@ -214,6 +214,14 @@ void RhiCommandListVulkan::draw(std::uint32_t vertexCount, std::uint32_t instanc
     vkCmdDraw(m_commandBuffer, vertexCount, instanceCount, 0, 0);
 }
 
+void RhiCommandListVulkan::setScissor(const ScissorRect& rect)
+{
+    MEOW2_ASSERT(m_rendering, "setScissor() outside beginRendering()");
+    // Scissors are in framebuffer pixels from the top left; the flipped viewport doesn't affect them.
+    const VkRect2D scissor{.offset = {rect.x, rect.y}, .extent = {rect.width, rect.height}};
+    vkCmdSetScissor(m_commandBuffer, 0, 1, &scissor);
+}
+
 void RhiCommandListVulkan::drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws)
 {
     MEOW2_ASSERT(m_rendering, "drawIndirectCount() outside beginRendering()");
@@ -277,6 +285,29 @@ void RhiCommandListVulkan::barrier(TextureHandle texture, ResourceState from, Re
                              .levelCount = image.mipLevels,
                              .baseArrayLayer = 0,
                              .layerCount = 1}};
+    const VkDependencyInfo dependency{
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
+    vkCmdPipelineBarrier2(m_commandBuffer, &dependency);
+}
+
+void RhiCommandListVulkan::barrier(IRhiSwapchain& swapchain)
+{
+    MEOW2_ASSERT(!m_rendering, "Barriers go between passes");
+    auto& target = static_cast<RhiSwapchainVulkan&>(swapchain);
+    MEOW2_ASSERT(target.isAcquired(), "acquire() must return true before drawing to a swapchain");
+    // Render passes in different lists aren't ordered against each other's attachment writes without this.
+    const VkImageMemoryBarrier2 barrier{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = target.image(),
+        .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1}};
     const VkDependencyInfo dependency{
         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
     vkCmdPipelineBarrier2(m_commandBuffer, &dependency);

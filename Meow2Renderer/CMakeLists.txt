@@ -1,10 +1,27 @@
 # Meow2Renderer — Rendering and shader test bed / showcase (techstack.md §2).
+
+# Everything but main(), so the tests can use the same code: the ImGui shell, its windows and the open scene.
+add_library(Meow2RendererCore STATIC
+    src/ImGuiLayer.cpp
+    src/ImGuiLayer.h
+    src/RendererUi.cpp
+    src/RendererUi.h
+    src/SceneView.cpp
+    src/SceneView.h)
+target_include_directories(Meow2RendererCore PUBLIC src)
+target_link_libraries(Meow2RendererCore PUBLIC Meow2::Engine meow2_imgui)
+# The Scenes window fetches samples by running cmake with the fetch script; development paths, like the samples
+# folder (renderer.sampleAssets overrides that one).
+target_compile_definitions(Meow2RendererCore PUBLIC
+    MEOW2_SAMPLE_ASSETS_DIR="${PROJECT_SOURCE_DIR}/assets/gltf-sample-assets"
+    MEOW2_CMAKE_COMMAND="${CMAKE_COMMAND}"
+    MEOW2_FETCH_SCRIPT="${PROJECT_SOURCE_DIR}/cmake/FetchGltfSample.cmake")
+meow2_set_warnings(Meow2RendererCore)
+set_target_properties(Meow2RendererCore PROPERTIES FOLDER "Apps")
+meow2_source_groups(Meow2RendererCore)
+
 add_executable(Meow2Renderer src/main.cpp)
-target_link_libraries(Meow2Renderer PRIVATE Meow2::Engine)
-# Where cmake/FetchGltfSample.cmake puts the Khronos samples, so renderer.scene can name one. A development default:
-# renderer.sampleAssets overrides it.
-target_compile_definitions(Meow2Renderer PRIVATE
-    MEOW2_SAMPLE_ASSETS_DIR="${PROJECT_SOURCE_DIR}/assets/gltf-sample-assets")
+target_link_libraries(Meow2Renderer PRIVATE Meow2RendererCore)
 meow2_set_warnings(Meow2Renderer)
 if(TARGET Meow2Shaders)
     add_dependencies(Meow2Renderer Meow2Shaders) # building or running Renderer alone still cooks its shaders
@@ -33,3 +50,7 @@ meow2_add_smoke_test(Smoke.Renderer.OpensWindow Meow2Renderer "Ran 3 frames" ARG
 # have no tracking (in sanitizer builds LeakSanitizer checks leaks instead), so there it only checks that the app runs.
 meow2_add_smoke_test(Smoke.Renderer.NoLeaks Meow2Renderer "$<IF:$<OR:$<CONFIG:Release,MinSizeRel>,$<BOOL:${MEOW2_SANITIZER}>>,Meow2Renderer,No memory leaks>"
     ARGS ${meow2SmokeArgs})
+
+if(MEOW2_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

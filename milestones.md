@@ -193,7 +193,7 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 **Goal:** open the Khronos glTF 2.0 sample scenes in Meow2Renderer through the same `Scene` the editor and player use, draw them with metallic-roughness PBR on both backends, catch regressions with golden images, and give Renderer its ImGui shell. M6 and the old M7 are merged (owner decision 2026-11-07); it stops at PBR, and the rest goes to M13 (Advanced rendering).
 **Depends on:** M5
 
-Planned as five PRs. glTF is an import source, never the scene format: the engine's own `.m2scene` holds scenes (PR 2).
+Planned as five PRs; PR 4's shell came first, at the owner's request. glTF is an import source, never the scene format: the engine's own `.m2scene` holds scenes (PR 2).
 
 | PR | Feature | Notes (techstack.md) | Status | Issue / PR |
 |---|---|---|---|---|
@@ -209,9 +209,10 @@ Planned as five PRs. glTF is an import source, never the scene format: the engin
 | 3 | `.m2texture`: cooked textures with a format field and mips from the start (BC7 later); glTF samplers; texture transforms | §13a | ⬜ | |
 | 3 | Double-sided materials and mirrored (negative-scale) nodes; alpha blending, sorted | §11 | ⬜ | |
 | 3 | Image-based lighting from an environment map | §11 | ⬜ | |
-| 4 Renderer app | Dear ImGui docking shell (submodule, needs approval), log console (ring-buffer sink), frame and memory stats per tag | §2, §7 | ⬜ | |
-| 4 | Backend switch button, capture button (the same as F11), settings window for debug tools saved to the TOML config | §11 | ⬜ | |
-| 4 | Scene browser: the sample list, which are downloaded, fetch on click, open any `.gltf`/`.glb`/`.m2scene` | §13 | ⬜ | |
+| 4 Renderer app | Dear ImGui docking shell (submodule, owner request), frame and memory stats per tag | §2, §7 | ✅ | #172 / PR #173 |
+| 4 | Backend switch button, capture button (the same as F11) | §11 | ✅ | #172 / PR #173 |
+| 4 | Scene browser: the sample list, which are downloaded, fetch on click, open any `.gltf`/`.glb` (`.m2scene` with PR 2) | §13 | ✅ | #172 / PR #173 |
+| 4 | Log console (ring-buffer sink), settings window for debug tools saved to the TOML config, saved window layout | §7, §11 | ⬜ | |
 | 5 Verification and close | Golden-image tests per backend (label `visual`); new goldens only with the owner's sign-off | §13 | ⬜ | |
 | 5 | The 25 suggested scenes: test scenes first, then the showcase ones (DamagedHelmet the first goal) | §13 | ⬜ | |
 | 5 | **meshoptimizer** (submodule, needs approval): vertex cache and overdraw optimisation at import | §4 | ⬜ | |
@@ -296,4 +297,5 @@ glTF and rendering verification are part of M6 now (owner decision 2026-11-07). 
 - 2026-11-07 — Owner request: capture buttons and a debug-tool settings window in Renderer (M6) and Editor (M9), saved to the TOML config; PIX and Nsight in-app capture to look into with D3D12 (M5 PR 5).
 - 2026-11-07 — M5 PR 5 done: D3D12 with the Agility SDK (owner decision), DRED and `VK_EXT_device_fault`.
 - 2026-11-07 — M5 done (0.6.0): hot swap between Vulkan and D3D12.
+- 2026-11-07 — Owner request: Meow2Renderer's ImGui shell, scene picker and stats (M6 PR 4) ahead of scene files.
 - 2026-11-07 — M6 rewritten as a feature table: M7 merged in, stopping at PBR (owner decision); scene files, PBR, the ImGui shell and golden images planned as PRs 2–5; new M13 Advanced rendering takes animation, compression, material extensions and meshlets.

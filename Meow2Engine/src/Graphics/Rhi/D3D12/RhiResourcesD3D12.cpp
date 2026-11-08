@@ -651,7 +651,16 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     pipelineDesc.pRootSignature = m_rootSignature.Get();
     pipelineDesc.VS = {.pShaderBytecode = desc.vertexCode.data(), .BytecodeLength = desc.vertexCode.size()};
     pipelineDesc.PS = {.pShaderBytecode = desc.pixelCode.data(), .BytecodeLength = desc.pixelCode.size()};
-    pipelineDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    pipelineDesc.BlendState.RenderTarget[0] = {.BlendEnable = desc.blend == BlendMode::Alpha ? TRUE : FALSE,
+                                               .LogicOpEnable = FALSE,
+                                               .SrcBlend = D3D12_BLEND_SRC_ALPHA,
+                                               .DestBlend = D3D12_BLEND_INV_SRC_ALPHA,
+                                               .BlendOp = D3D12_BLEND_OP_ADD,
+                                               .SrcBlendAlpha = D3D12_BLEND_ONE,
+                                               .DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA,
+                                               .BlendOpAlpha = D3D12_BLEND_OP_ADD,
+                                               .LogicOp = D3D12_LOGIC_OP_NOOP,
+                                               .RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL};
     pipelineDesc.SampleMask = UINT_MAX;
     // Clockwise front faces, as on Vulkan (CullMode).
     pipelineDesc.RasterizerState = {.FillMode = D3D12_FILL_MODE_SOLID,
@@ -676,6 +685,7 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     key.addValue(pipelineDesc.DSVFormat);
     key.addValue(pipelineDesc.RasterizerState.CullMode);
     key.addValue(pipelineDesc.DepthStencilState.DepthWriteMask);
+    key.addValue(pipelineDesc.BlendState.RenderTarget[0].BlendEnable);
     const std::wstring name = key.name(L"g");
     Result<ID3D12PipelineState*> state = libraryPipeline(
         name, [&](ID3D12PipelineState** out)

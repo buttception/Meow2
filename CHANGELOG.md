@@ -9,6 +9,8 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Meow2Renderer has a Dear ImGui shell: a Scenes window to open any Khronos sample (fetching it on the spot) or any `.gltf`/`.glb`, and a Stats window with frame times, the GPU, memory per tag and the open scene's size, plus buttons to switch backend and capture a frame. F1 hides it (#173).
+- RHI: scissor rectangles, alpha blending, and a barrier between passes that draw to the same swapchain (#173).
 - glTF 2.0 import: `.gltf` and `.glb` files open in Meow2Renderer (`--set renderer.scene=Duck`, or a path) with their node tree, meshes and base colour textures, converted to the engine's left-handed space, on Vulkan and D3D12. `cmake -P cmake/FetchGltfSample.cmake <Model>` downloads Khronos sample models on demand (#170).
 
 ### Changed

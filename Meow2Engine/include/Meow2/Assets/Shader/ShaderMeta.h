@@ -81,6 +81,9 @@ struct ShaderOptionChoice
 {
     std::string name;  ///< The option.
     std::string value; ///< One of its declared values.
+
+    /// @brief Choices are equal when name and value are.
+    friend bool operator==(const ShaderOptionChoice&, const ShaderOptionChoice&) = default;
 };
 
 /// @brief Names one variant of a shader: its position among all combinations of the options. Plain data.

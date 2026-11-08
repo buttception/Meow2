@@ -93,6 +93,13 @@ Creating a pipeline is where the driver compiles shaders for the exact GPU, whic
 
 `Renderer::PipelineLibrary` builds pipelines from shader assets and remembers how. On `Assets::ShaderReloaded` it rebuilds what uses that shader. If a rebuild fails, it logs the error and keeps the old pipeline. Keep the `PipelineId` and ask `get()` for the handle each frame, because rebuilds change it.
 
+### Scissors, blending and the swapchain barrier
+
+- `setScissor(ScissorRect)` clips the following draws to a rectangle in pixels from the target's top-left corner, the same on both backends (Vulkan's flipped viewport doesn't move scissors). `beginRendering()` resets it to the whole target.
+- `GraphicsPipelineDesc::blend`: `BlendMode::None` overwrites, `BlendMode::Alpha` blends straight alpha (`src × a + dst × (1 − a)`), for UI.
+- `barrier(IRhiSwapchain&)` orders colour writes to a swapchain image between command lists: two render passes in different lists that draw to the same swapchain (the scene, then the UI) aren't ordered against each other without it. Swapchain images stay `ColorTarget` for the whole frame.
+- `draw()` has no first vertex: D3D12's `SV_VertexID` leaves it out and Vulkan's includes it, so a shader that needs an offset takes it from the push constants.
+
 ### Recording on several jobs
 
 Set `RhiDeviceDesc::recordingThreads` to `JobSystem::threadCount()`. Each job then asks for its own list:

@@ -1,0 +1,9 @@
+id = "01a1b5e2-3c13-8000-80a4-7b19d2e6c054"
+
+[[entry]]
+name = "vsMain"
+stage = "vertex"
+
+[[entry]]
+name = "psMain"
+stage = "pixel"

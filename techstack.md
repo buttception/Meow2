@@ -176,7 +176,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | DirectXMath may2026 | math | MIT | submodule; header-only, own INTERFACE target (`DirectXMath::DirectXMath`, linked PUBLIC: the `Meow2/Math` public-header exception); a `sal.h` shim (`Meow2Engine/shims/`) on its include path off Windows |
 | spdlog v1.17.0 | logging (bundled fmt; static library, no default logger, wchar file names on Windows) | MIT | submodule |
 | JoltPhysics | physics | MIT | submodule |
-| Dear ImGui (docking branch) | Meow2Renderer UI | MIT | submodule |
+| Dear ImGui v1.93.0-docking | Meow2Renderer UI | MIT | submodule (owner request, 2026-11-07); built as `meow2_imgui` only with the Renderer, never in the engine or Player; memory under `MemTag::ImGui`; its own backends aren't used: input comes from engine events and it draws through the RHI (`shaders/ImGui.hlsl`). `IMGUI_DISABLE_OBSOLETE_FUNCTIONS` |
 | Vulkan-Headers, volk vulkan-sdk-1.4.363.0 | Vulkan headers + loader-less function loading | Apache-2.0 / MIT | submodule; volk static, own target, X11 and Wayland types declared by volk (no X headers needed) |
 | VulkanMemoryAllocator v3.5.0 | VK memory | MIT | submodule; implementation in its own library, outside the engine's warnings |
 | D3D12MemoryAllocator v3.2.1 | D3D12 memory | MIT | submodule; implementation in its own library, outside the engine's warnings |
@@ -738,3 +738,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-07 — §4/§11: D3D12 backend: DirectX-Headers and D3D12MA added, the Agility SDK shipped next to each app (owner decision); enhanced barriers and tightly packed copies required.
 - 2026-11-07 — §11: hot swap implemented: `RenderDevice` device users are the resource registry; a failed switch goes back.
 - 2026-11-07 — §3/§4/§13: cgltf v1.15 and stb_image v2.30 added (owner-approved); the glTF loader is no longer open; the sample fetch script implemented; `Assets/Texture` module.
+- 2026-11-07 — §4: Dear ImGui v1.93.0-docking added (owner request) for Meow2Renderer; drawn through the RHI, fed by engine input.
