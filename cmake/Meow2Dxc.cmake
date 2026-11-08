@@ -1,7 +1,7 @@
 # DXC, the HLSL compiler (techstack.md §4, §12): a pinned Microsoft release, not a submodule (building it takes hours).
 #
 # Configure downloads the release into build/_dxc/<version>/ (shared by all presets of a checkout), checks its SHA-256
-# and unpacks it. Every developer and CI job gets the same compiler, so cooked shaders don't depend on which SDK a
+# and unpacks it. The download is retried and can be cached (cmake/Meow2Download.cmake, MEOW2_DOWNLOAD_CACHE). Every developer and CI job gets the same compiler, so cooked shaders don't depend on which SDK a
 # machine happens to have.
 #
 #   MEOW2_SHADER_TOOLS=OFF   no DXC, no download: no way to compile shaders (cooked ones still load).
@@ -15,6 +15,7 @@ if(NOT MEOW2_SHADER_TOOLS)
     message(STATUS "DXC: off (MEOW2_SHADER_TOOLS=OFF)")
     return()
 endif()
+include(Meow2Download)
 
 set(meow2DxcVersion "v1.9.2609")
 set(meow2DxcBaseUrl
@@ -32,17 +33,10 @@ if(MEOW2_DXC_DIR)
 else()
     set(meow2DxcDir "${PROJECT_SOURCE_DIR}/build/_dxc/${meow2DxcVersion}")
     if(NOT EXISTS "${meow2DxcDir}/.complete")
-        message(STATUS "DXC: downloading ${meow2DxcArchive}")
         set(meow2DxcFile "${PROJECT_SOURCE_DIR}/build/_dxc/${meow2DxcArchive}")
-        file(DOWNLOAD "${meow2DxcBaseUrl}/${meow2DxcArchive}" "${meow2DxcFile}"
-             EXPECTED_HASH SHA256=${meow2DxcHash} TLS_VERIFY ON STATUS meow2DxcStatus)
-        list(GET meow2DxcStatus 0 meow2DxcResult)
-        if(NOT meow2DxcResult EQUAL 0)
-            list(GET meow2DxcStatus 1 meow2DxcError)
-            message(FATAL_ERROR "DXC: download failed: ${meow2DxcError}\n"
-                                "Without internet, pass -DMEOW2_DXC_DIR=<unpacked release> or "
-                                "-DMEOW2_SHADER_TOOLS=OFF.")
-        endif()
+        meow2_download(NAME "DXC" URL "${meow2DxcBaseUrl}/${meow2DxcArchive}" FILE "${meow2DxcFile}"
+                       SHA256 ${meow2DxcHash}
+                       HINT "Without internet, pass -DMEOW2_DXC_DIR=<unpacked release> or -DMEOW2_SHADER_TOOLS=OFF.")
         file(REMOVE_RECURSE "${meow2DxcDir}")
         file(ARCHIVE_EXTRACT INPUT "${meow2DxcFile}" DESTINATION "${meow2DxcDir}")
         file(REMOVE "${meow2DxcFile}")

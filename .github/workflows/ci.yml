@@ -155,6 +155,9 @@ jobs:
         env:
           # Qt for Meow2Editor, installed on this PC with the Qt Maintenance Tool (MSVC 2022 64-bit kit).
           CMAKE_PREFIX_PATH: C:\Qt\6.12.0\msvc2022_64
+          # Keeps DXC and the Agility SDK between jobs on this PC (cmake/Meow2Download.cmake), so a download hiccup on
+          # GitHub's or NuGet's side doesn't fail a build. The runner's tool cache folder survives between jobs.
+          MEOW2_DOWNLOAD_CACHE: ${{ runner.tool_cache }}\meow2-downloads
         # cmd, not PowerShell: PowerShell's execution policy (e.g. AllSigned) blocks the
         # unsigned temporary .ps1 that Actions generates for each step. Batch files are not
         # subject to that policy, so this works without weakening the PC's settings.

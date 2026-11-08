@@ -3,7 +3,7 @@
 # barriers to Windows 10, and makes every PC run the same runtime.
 #
 # Configure downloads the pinned NuGet package into build/_agility/<version>/, checks its SHA-256 and unpacks it, the
-# same way as DXC (cmake/Meow2Dxc.cmake). It isn't a submodule: Microsoft only publishes it as a package.
+# same way as DXC (cmake/Meow2Dxc.cmake), retried and optionally cached (cmake/Meow2Download.cmake). It isn't a submodule: Microsoft only publishes it as a package.
 #
 #   MEOW2_AGILITY_DIR=<folder>   use an already unpacked package, e.g. on a machine without internet.
 #
@@ -13,6 +13,7 @@
 if(NOT MEOW2_RHI_D3D12)
     return()
 endif()
+include(Meow2Download)
 
 set(MEOW2_AGILITY_DIR "" CACHE PATH "An unpacked Microsoft.Direct3D.D3D12 package to use instead of downloading it")
 set(meow2AgilityVersion "1.620.1")
@@ -26,16 +27,9 @@ if(MEOW2_AGILITY_DIR)
 else()
     set(meow2AgilityDir "${PROJECT_SOURCE_DIR}/build/_agility/${meow2AgilityVersion}")
     if(NOT EXISTS "${meow2AgilityDir}/.complete")
-        message(STATUS "Agility SDK: downloading ${meow2AgilityVersion}")
         set(meow2AgilityFile "${PROJECT_SOURCE_DIR}/build/_agility/agility-${meow2AgilityVersion}.zip")
-        file(DOWNLOAD "${meow2AgilityUrl}" "${meow2AgilityFile}"
-             EXPECTED_HASH SHA256=${meow2AgilityHash} TLS_VERIFY ON STATUS meow2AgilityStatus)
-        list(GET meow2AgilityStatus 0 meow2AgilityResult)
-        if(NOT meow2AgilityResult EQUAL 0)
-            list(GET meow2AgilityStatus 1 meow2AgilityError)
-            message(FATAL_ERROR "Agility SDK: download failed: ${meow2AgilityError}\n"
-                                "Without internet, pass -DMEOW2_AGILITY_DIR=<unpacked package> or -DMEOW2_RHI_D3D12=OFF.")
-        endif()
+        meow2_download(NAME "Agility SDK" URL "${meow2AgilityUrl}" FILE "${meow2AgilityFile}" SHA256 ${meow2AgilityHash}
+                       HINT "Without internet, pass -DMEOW2_AGILITY_DIR=<unpacked package> or -DMEOW2_RHI_D3D12=OFF.")
         file(REMOVE_RECURSE "${meow2AgilityDir}")
         file(ARCHIVE_EXTRACT INPUT "${meow2AgilityFile}" DESTINATION "${meow2AgilityDir}")
         file(REMOVE "${meow2AgilityFile}")
