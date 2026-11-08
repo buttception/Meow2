@@ -142,23 +142,26 @@ enum class SamplerFilter : std::uint8_t
 enum class SamplerAddress : std::uint8_t
 {
     Repeat, ///< Wraps around.
-    Clamp   ///< Keeps the edge texel.
+    Clamp,  ///< Keeps the edge texel.
+    Mirror  ///< Wraps around, flipping every other repeat (glTF's MIRRORED_REPEAT).
 };
 
 /// @brief What to create a sampler with. Plain data.
 struct SamplerDesc
 {
-    SamplerFilter filter = SamplerFilter::Linear;    ///< Filtering.
-    SamplerAddress address = SamplerAddress::Repeat; ///< Addressing on every axis.
-    float maxAnisotropy = 1.0F;                      ///< 1 turns anisotropic filtering off.
-    std::string name = "Sampler";                    ///< Shown in debugging tools.
+    SamplerFilter filter = SamplerFilter::Linear;     ///< Filtering.
+    SamplerAddress addressU = SamplerAddress::Repeat; ///< Addressing across (U, and W for 3D textures).
+    SamplerAddress addressV = SamplerAddress::Repeat; ///< Addressing down (V).
+    float maxAnisotropy = 1.0F;                       ///< 1 turns anisotropic filtering off.
+    std::string name = "Sampler";                     ///< Shown in debugging tools.
 };
 
 /// @brief Which triangles a graphics pipeline skips.
 enum class CullMode : std::uint8_t
 {
     None, ///< Draw both sides.
-    Back  ///< Skip triangles facing away. Front faces are clockwise on screen, as in D3D.
+    Back, ///< Skip triangles facing away. Front faces are clockwise on screen, as in D3D.
+    Front ///< Skip triangles facing the viewer: for meshes mirrored by a negative scale, whose winding is reversed.
 };
 
 /// @brief How a graphics pipeline combines its output with what's in the target.

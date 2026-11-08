@@ -153,30 +153,48 @@ Result<std::vector<std::byte>> imageBytes(const cgltf_image& image, const cgltf_
     return files.readFile(folder + decoded);
 }
 
-/// @brief Reads `count` elements of `components` floats each from an accessor.
-template <class T>
-std::vector<T> unpackFloats(const cgltf_accessor& accessor, std::size_t components)
+/// @brief Reads every element of an accessor as `components` floats each (normalised integers become 0..1 or -1..1).
+std::vector<float> unpackFloats(const cgltf_accessor& accessor, std::size_t components)
 {
     std::vector<float> floats(accessor.count * components);
     cgltf_accessor_unpack_floats(&accessor, floats.data(), floats.size());
-    std::vector<T> values(accessor.count);
-    for (std::size_t i = 0; i < accessor.count; ++i)
+    return floats;
+}
+
+std::vector<Math::Vec2> toVec2(const std::vector<float>& floats)
+{
+    std::vector<Math::Vec2> values(floats.size() / 2);
+    for (std::size_t i = 0; i < values.size(); ++i)
     {
-        const float* f = &floats[i * components];
-        if constexpr (std::is_same_v<T, Math::Vec3>)
-        {
-            values[i] = Math::Vec3{f[0], f[1], f[2]};
-        }
-        else
-        {
-            static_assert(std::is_same_v<T, Math::Vec2>, "Vec2 or Vec3");
-            values[i] = Math::Vec2{f[0], f[1]};
-        }
+        values[i] = Math::Vec2{floats[i * 2], floats[i * 2 + 1]};
+    }
+    return values;
+}
+
+std::vector<Math::Vec3> toVec3(const std::vector<float>& floats)
+{
+    std::vector<Math::Vec3> values(floats.size() / 3);
+    for (std::size_t i = 0; i < values.size(); ++i)
+    {
+        values[i] = Math::Vec3{floats[i * 3], floats[i * 3 + 1], floats[i * 3 + 2]};
+    }
+    return values;
+}
+
+std::vector<Math::Vec4> toVec4(const std::vector<float>& floats)
+{
+    std::vector<Math::Vec4> values(floats.size() / 4);
+    for (std::size_t i = 0; i < values.size(); ++i)
+    {
+        values[i] = Math::Vec4{floats[i * 4], floats[i * 4 + 1], floats[i * 4 + 2], floats[i * 4 + 3]};
     }
     return values;
 }
 
 /// @brief Normals from the triangles, weighted by area, for primitives the file gives none.
+///
+/// Runs in glTF's right-handed space, before the mirror: counter-clockwise triangles, so (b - a) × (c - a) points out
+/// of the front face.
 std::vector<Math::Vec3> computeNormals(const std::vector<Math::Vec3>& positions,
                                        const std::vector<std::uint32_t>& indices)
 {
@@ -187,7 +205,6 @@ std::vector<Math::Vec3> computeNormals(const std::vector<Math::Vec3>& positions,
         const XMVECTOR a = XMLoadFloat3(&positions[indices[i]]);
         const XMVECTOR b = XMLoadFloat3(&positions[indices[i + 1]]);
         const XMVECTOR c = XMLoadFloat3(&positions[indices[i + 2]]);
-        // Clockwise triangles in a left-handed space: (b - a) × (c - a) points out of the front face.
         const XMVECTOR face = XMVector3Cross(XMVectorSubtract(b, a), XMVectorSubtract(c, a));
         for (std::size_t corner = 0; corner < 3; ++corner)
         {
@@ -205,40 +222,125 @@ std::vector<Math::Vec3> computeNormals(const std::vector<Math::Vec3>& positions,
     return normals;
 }
 
+/// @brief Tangents from the UVs (Lengyel's method), for primitives the file gives none.
+///
+/// Runs in glTF's right-handed space. The tangent follows +U; the sign makes cross(normal, tangent) × w point the way
+/// glTF's normal maps expect +Y: towards decreasing V (V runs down the image). Not bit-identical to MikkTSpace, which
+/// glTF recommends, but the same directions.
+std::vector<Math::Vec4> computeTangents(const std::vector<Math::Vec3>& positions,
+                                        const std::vector<Math::Vec3>& normals, const std::vector<Math::Vec2>& uvs,
+                                        const std::vector<std::uint32_t>& indices)
+{
+    using namespace DirectX;
+    std::vector<XMFLOAT3> alongU(positions.size(), XMFLOAT3{0.0F, 0.0F, 0.0F});
+    std::vector<XMFLOAT3> alongV(positions.size(), XMFLOAT3{0.0F, 0.0F, 0.0F});
+    for (std::size_t i = 0; i + 2 < indices.size(); i += 3)
+    {
+        const std::uint32_t ia = indices[i];
+        const std::uint32_t ib = indices[i + 1];
+        const std::uint32_t ic = indices[i + 2];
+        const XMVECTOR edge1 = XMVectorSubtract(XMLoadFloat3(&positions[ib]), XMLoadFloat3(&positions[ia]));
+        const XMVECTOR edge2 = XMVectorSubtract(XMLoadFloat3(&positions[ic]), XMLoadFloat3(&positions[ia]));
+        const float du1 = uvs[ib].x - uvs[ia].x;
+        const float dv1 = uvs[ib].y - uvs[ia].y;
+        const float du2 = uvs[ic].x - uvs[ia].x;
+        const float dv2 = uvs[ic].y - uvs[ia].y;
+        const float determinant = du1 * dv2 - du2 * dv1;
+        if (std::abs(determinant) < 1e-12F)
+        {
+            continue; // no UV area: the triangle says nothing about directions
+        }
+        const float r = 1.0F / determinant;
+        const XMVECTOR u = XMVectorScale(XMVectorSubtract(XMVectorScale(edge1, dv2), XMVectorScale(edge2, dv1)), r);
+        const XMVECTOR v = XMVectorScale(XMVectorSubtract(XMVectorScale(edge2, du1), XMVectorScale(edge1, du2)), r);
+        for (const std::uint32_t corner : {ia, ib, ic})
+        {
+            XMStoreFloat3(&alongU[corner], XMVectorAdd(XMLoadFloat3(&alongU[corner]), u));
+            XMStoreFloat3(&alongV[corner], XMVectorAdd(XMLoadFloat3(&alongV[corner]), v));
+        }
+    }
+    std::vector<Math::Vec4> tangents(positions.size());
+    for (std::size_t i = 0; i < positions.size(); ++i)
+    {
+        const XMVECTOR n = XMLoadFloat3(&normals[i]);
+        // Gram-Schmidt: the part of +U perpendicular to the normal.
+        XMVECTOR t = XMVectorSubtract(XMLoadFloat3(&alongU[i]),
+                                      XMVectorScale(n, XMVectorGetX(XMVector3Dot(n, XMLoadFloat3(&alongU[i])))));
+        if (XMVectorGetX(XMVector3LengthSq(t)) < 1e-20F)
+        {
+            // No usable UVs: any direction perpendicular to the normal.
+            const XMVECTOR axis = std::abs(normals[i].x) < 0.9F ? XMVectorSet(1.0F, 0.0F, 0.0F, 0.0F)
+                                                                : XMVectorSet(0.0F, 1.0F, 0.0F, 0.0F);
+            t = XMVector3Cross(n, axis);
+        }
+        t = XMVector3Normalize(t);
+        // +Y of the normal map points towards decreasing V.
+        const float handedness =
+            XMVectorGetX(XMVector3Dot(XMVector3Cross(n, t), XMVectorNegate(XMLoadFloat3(&alongV[i])))) < 0.0F ? -1.0F
+                                                                                                              : 1.0F;
+        XMFLOAT3 stored{};
+        XMStoreFloat3(&stored, t);
+        tangents[i] = Math::Vec4{stored.x, stored.y, stored.z, handedness};
+    }
+    return tangents;
+}
+
 /// @brief Imports one triangle primitive, converted to left-handed space.
 ImportedPrimitive importPrimitive(const cgltf_primitive& primitive, const cgltf_data& data)
 {
     ImportedPrimitive out;
     const cgltf_accessor* positions = nullptr;
     const cgltf_accessor* normals = nullptr;
+    const cgltf_accessor* tangents = nullptr;
     const cgltf_accessor* uvs = nullptr;
+    const cgltf_accessor* colors = nullptr;
     for (std::size_t i = 0; i < primitive.attributes_count; ++i)
     {
         const cgltf_attribute& attribute = primitive.attributes[i];
-        if (attribute.type == cgltf_attribute_type_position)
+        switch (attribute.type)
         {
-            positions = attribute.data;
-        }
-        else if (attribute.type == cgltf_attribute_type_normal)
-        {
-            normals = attribute.data;
-        }
-        else if (attribute.type == cgltf_attribute_type_texcoord && attribute.index == 0)
-        {
-            uvs = attribute.data;
+            case cgltf_attribute_type_position:
+                positions = attribute.data;
+                break;
+            case cgltf_attribute_type_normal:
+                normals = attribute.data;
+                break;
+            case cgltf_attribute_type_tangent:
+                tangents = attribute.data;
+                break;
+            case cgltf_attribute_type_texcoord:
+                uvs = attribute.index == 0 ? attribute.data : uvs;
+                break;
+            case cgltf_attribute_type_color:
+                colors = attribute.index == 0 ? attribute.data : colors;
+                break;
+            default:
+                break;
         }
     }
     if (positions == nullptr || positions->count == 0)
     {
         return out;
     }
-    out.positions = unpackFloats<Math::Vec3>(*positions, 3);
-    if (normals != nullptr && normals->count == positions->count)
+    const std::size_t count = positions->count;
+    out.positions = toVec3(unpackFloats(*positions, 3));
+    if (normals != nullptr && normals->count == count)
     {
-        out.normals = unpackFloats<Math::Vec3>(*normals, 3);
+        out.normals = toVec3(unpackFloats(*normals, 3));
     }
-    out.uvs = uvs != nullptr && uvs->count == positions->count ? unpackFloats<Math::Vec2>(*uvs, 2)
-                                                               : std::vector<Math::Vec2>(positions->count);
+    out.uvs = uvs != nullptr && uvs->count == count ? toVec2(unpackFloats(*uvs, 2)) : std::vector<Math::Vec2>(count);
+    if (colors != nullptr && colors->count == count)
+    {
+        // RGB or RGBA; RGB colours are opaque.
+        const std::size_t components = cgltf_num_components(colors->type);
+        const std::vector<float> floats = unpackFloats(*colors, components);
+        out.colors.resize(count);
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            const float* c = &floats[i * components];
+            out.colors[i] = Math::Color{c[0], c[1], c[2], components == 4 ? c[3] : 1.0F};
+        }
+    }
     if (primitive.indices != nullptr)
     {
         out.indices.resize(primitive.indices->count);
@@ -246,7 +348,7 @@ ImportedPrimitive importPrimitive(const cgltf_primitive& primitive, const cgltf_
     }
     else
     {
-        out.indices.resize(positions->count);
+        out.indices.resize(count);
         for (std::uint32_t i = 0; i < out.indices.size(); ++i)
         {
             out.indices[i] = i;
@@ -254,8 +356,19 @@ ImportedPrimitive importPrimitive(const cgltf_primitive& primitive, const cgltf_
     }
     out.indices.resize(out.indices.size() / 3 * 3);
 
+    // Missing normals and tangents are made in glTF's space, before the conversion below, so they're converted exactly
+    // like ones read from the file.
+    if (out.normals.empty())
+    {
+        out.normals = computeNormals(out.positions, out.indices);
+    }
+    out.tangents = tangents != nullptr && tangents->count == count
+                       ? toVec4(unpackFloats(*tangents, 4))
+                       : computeTangents(out.positions, out.normals, out.uvs, out.indices);
+
     // Right-handed → left-handed: mirror X. The picture on screen stays the same, so front faces still look counter-
-    // clockwise there (glTF's rule); the engine's rule is clockwise, so each triangle's winding is swapped.
+    // clockwise there (glTF's rule); the engine's rule is clockwise, so each triangle's winding is swapped. A mirror
+    // flips cross products, so the bitangent sign flips too, keeping bitangent = cross(normal, tangent) × w.
     for (Math::Vec3& position : out.positions)
     {
         position.x = -position.x;
@@ -264,13 +377,14 @@ ImportedPrimitive importPrimitive(const cgltf_primitive& primitive, const cgltf_
     {
         normal.x = -normal.x;
     }
+    for (Math::Vec4& tangent : out.tangents)
+    {
+        tangent.x = -tangent.x;
+        tangent.w = tangent.w < 0.0F ? 1.0F : -1.0F;
+    }
     for (std::size_t i = 0; i + 2 < out.indices.size(); i += 3)
     {
         std::swap(out.indices[i + 1], out.indices[i + 2]);
-    }
-    if (out.normals.empty())
-    {
-        out.normals = computeNormals(out.positions, out.indices);
     }
 
     Math::Vec3 low{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
@@ -313,11 +427,11 @@ ImportedMaterial importMaterial(const cgltf_material& material, const cgltf_data
 {
     ImportedMaterial out;
     out.name = material.name != nullptr ? material.name : "";
-    const auto imageOf = [&data, &warnings, &out](const cgltf_texture_view& view, std::string_view slot)
+    const auto textureOf = [&data, &warnings, &out](const cgltf_texture_view& view, std::string_view slot)
     {
         if (view.texture == nullptr || view.texture->image == nullptr)
         {
-            return -1;
+            return ImportedTexture{};
         }
         if (view.texcoord != 0)
         {
@@ -329,23 +443,24 @@ ImportedMaterial importMaterial(const cgltf_material& material, const cgltf_data
             warnings.push_back(
                 std::format("material '{}': {} has a texture transform, not imported yet", out.name, slot));
         }
-        return indexIn(view.texture->image, data.images);
+        return ImportedTexture{.image = indexIn(view.texture->image, data.images),
+                               .sampler = indexIn(view.texture->sampler, data.samplers)};
     };
     if (material.has_pbr_metallic_roughness)
     {
         const cgltf_pbr_metallic_roughness& pbr = material.pbr_metallic_roughness;
         out.baseColorFactor = {pbr.base_color_factor[0], pbr.base_color_factor[1], pbr.base_color_factor[2],
                                pbr.base_color_factor[3]};
-        out.baseColorImage = imageOf(pbr.base_color_texture, "base colour");
+        out.baseColor = textureOf(pbr.base_color_texture, "base colour");
         out.metallicFactor = pbr.metallic_factor;
         out.roughnessFactor = pbr.roughness_factor;
-        out.metallicRoughnessImage = imageOf(pbr.metallic_roughness_texture, "metallic-roughness");
+        out.metallicRoughness = textureOf(pbr.metallic_roughness_texture, "metallic-roughness");
     }
-    out.normalImage = imageOf(material.normal_texture, "normal");
+    out.normal = textureOf(material.normal_texture, "normal");
     out.normalScale = material.normal_texture.scale;
-    out.occlusionImage = imageOf(material.occlusion_texture, "occlusion");
+    out.occlusion = textureOf(material.occlusion_texture, "occlusion");
     out.occlusionStrength = material.occlusion_texture.scale;
-    out.emissiveImage = imageOf(material.emissive_texture, "emissive");
+    out.emissive = textureOf(material.emissive_texture, "emissive");
     out.emissiveFactor = {material.emissive_factor[0], material.emissive_factor[1], material.emissive_factor[2], 1.0F};
     out.alphaMode = material.alpha_mode == cgltf_alpha_mode_mask    ? AlphaMode::Mask
                     : material.alpha_mode == cgltf_alpha_mode_blend ? AlphaMode::Blend
@@ -424,6 +539,24 @@ Result<ImportedModel> importGltf(const FileSystem::FileSystem& files, std::strin
             continue;
         }
         model.images.push_back(std::move(*decoded));
+    }
+
+    for (std::size_t i = 0; i < data->samplers_count; ++i)
+    {
+        const cgltf_sampler& sampler = data->samplers[i];
+        const auto wrap = [](cgltf_wrap_mode mode)
+        {
+            return mode == cgltf_wrap_mode_clamp_to_edge     ? ImportedWrap::Clamp
+                   : mode == cgltf_wrap_mode_mirrored_repeat ? ImportedWrap::Mirror
+                                                             : ImportedWrap::Repeat;
+        };
+        // Nearest only when the file asks for it on magnification; mipmaps unless minification says plain
+        // nearest or linear. Undefined (0) means the default: linear with mipmaps.
+        model.samplers.push_back({.linear = sampler.mag_filter != cgltf_filter_type_nearest,
+                                  .mipmaps = sampler.min_filter != cgltf_filter_type_nearest &&
+                                             sampler.min_filter != cgltf_filter_type_linear,
+                                  .wrapU = wrap(sampler.wrap_s),
+                                  .wrapV = wrap(sampler.wrap_t)});
     }
 
     for (std::size_t i = 0; i < data->materials_count; ++i)

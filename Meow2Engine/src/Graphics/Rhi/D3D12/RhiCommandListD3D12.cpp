@@ -197,13 +197,14 @@ void RhiCommandListD3D12::setScissor(const ScissorRect& rect)
     m_list->RSSetScissorRects(1, &scissor);
 }
 
-void RhiCommandListD3D12::drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws)
+void RhiCommandListD3D12::drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws,
+                                            std::uint64_t drawOffset, std::uint64_t countOffset)
 {
     MEOW2_ASSERT(m_rendering, "drawIndirectCount() outside beginRendering()");
     // Each draw also writes PushConstants::instance (see the command signature), which leaves that root constant
     // undefined afterwards: set push constants again before the next draw.
-    m_list->ExecuteIndirect(m_device.drawSignature(), maxDraws, m_device.buffer(draws).resource, 0,
-                            m_device.buffer(count).resource, 0);
+    m_list->ExecuteIndirect(m_device.drawSignature(), maxDraws, m_device.buffer(draws).resource, drawOffset,
+                            m_device.buffer(count).resource, countOffset);
 }
 
 void RhiCommandListD3D12::fillBuffer(BufferHandle buffer, std::uint32_t value)
@@ -298,27 +299,32 @@ void RhiCommandListD3D12::copyBuffer(BufferHandle source, BufferHandle target, s
                              sourceOffset, size);
 }
 
-D3D12_TEXTURE_COPY_LOCATION RhiCommandListD3D12::bufferFootprint(const TextureD3D12& texture, ID3D12Resource* buffer)
+D3D12_TEXTURE_COPY_LOCATION RhiCommandListD3D12::bufferFootprint(const TextureD3D12& texture, ID3D12Resource* buffer,
+                                                                 std::uint32_t mipLevel, std::uint64_t offset)
 {
     // Rows tightly packed, as on Vulkan. Needs the unrestricted copy pitch, which the requirements check asks for;
-    // otherwise rows would have to be 256-byte aligned.
+    // otherwise rows would have to be 256-byte aligned (and level offsets 512-byte aligned).
+    const std::uint32_t width = std::max(texture.width >> mipLevel, 1U);
+    const std::uint32_t height = std::max(texture.height >> mipLevel, 1U);
     return {
         .pResource = buffer,
         .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-        .PlacedFootprint = {.Offset = 0,
+        .PlacedFootprint = {.Offset = offset,
                             .Footprint = {.Format = texture.depth ? DXGI_FORMAT_R32_FLOAT : d3d12Format(texture.format),
-                                          .Width = texture.width,
-                                          .Height = texture.height,
+                                          .Width = width,
+                                          .Height = height,
                                           .Depth = 1,
-                                          .RowPitch = texture.width * pixelSize(texture.format)}}};
+                                          .RowPitch = width * pixelSize(texture.format)}}};
 }
 
-void RhiCommandListD3D12::copyBufferToTexture(BufferHandle source, TextureHandle target)
+void RhiCommandListD3D12::copyBufferToTexture(BufferHandle source, TextureHandle target, std::uint32_t mipLevel,
+                                              std::uint64_t sourceOffset)
 {
     const TextureD3D12 texture = m_device.texture(target);
-    const D3D12_TEXTURE_COPY_LOCATION from = bufferFootprint(texture, m_device.buffer(source).resource);
+    const D3D12_TEXTURE_COPY_LOCATION from =
+        bufferFootprint(texture, m_device.buffer(source).resource, mipLevel, sourceOffset);
     const D3D12_TEXTURE_COPY_LOCATION to{
-        .pResource = texture.resource, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = 0};
+        .pResource = texture.resource, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = mipLevel};
     m_list->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
 }
 
@@ -327,7 +333,7 @@ void RhiCommandListD3D12::copyTextureToBuffer(TextureHandle source, BufferHandle
     const TextureD3D12 texture = m_device.texture(source);
     const D3D12_TEXTURE_COPY_LOCATION from{
         .pResource = texture.resource, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = 0};
-    const D3D12_TEXTURE_COPY_LOCATION to = bufferFootprint(texture, m_device.buffer(target).resource);
+    const D3D12_TEXTURE_COPY_LOCATION to = bufferFootprint(texture, m_device.buffer(target).resource, 0, 0);
     m_list->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
 }
 } // namespace Meow2::Rhi

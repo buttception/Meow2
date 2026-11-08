@@ -66,4 +66,33 @@ TEST(Image, EmptyIsAParseError)
     ASSERT_FALSE(image);
     EXPECT_EQ(image.error().code, ErrorCode::ParseError);
 }
+TEST(Image, MipChainHalvesToOnePixel)
+{
+    const Image image{.width = 4, .height = 4, .pixels = std::vector<std::byte>(4 * 4 * 4, std::byte{200})};
+    const std::vector<Image> chain = makeMipChain(image, false);
+    ASSERT_EQ(chain.size(), 3U);
+    EXPECT_EQ(chain[1].width, 2U);
+    EXPECT_EQ(chain[1].height, 2U);
+    EXPECT_EQ(chain[2].width, 1U);
+    EXPECT_EQ(chain[2].pixels.size(), 4U);
+    EXPECT_EQ(channel(chain[2], 0, 0, 0), 200) << "a flat image stays flat";
+    EXPECT_EQ(mipLevelCount(4, 4), 3U);
+    EXPECT_EQ(mipLevelCount(5, 3), 3U) << "odd sizes round down";
+    EXPECT_EQ(mipLevelCount(1, 1), 1U);
+}
+
+TEST(Image, SrgbMipsAverageInLinearLight)
+{
+    // Black and white side by side: half the light is 0.5 linear, which sRGB encodes as 188, not 128.
+    const Image image{.width = 2,
+                      .height = 1,
+                      .pixels = {std::byte{0}, std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255},
+                                 std::byte{255}, std::byte{255}, std::byte{255}}};
+    const std::vector<Image> colour = makeMipChain(image, true);
+    ASSERT_EQ(colour.size(), 2U);
+    EXPECT_NEAR(channel(colour[1], 0, 0, 0), 188, 1);
+    EXPECT_EQ(channel(colour[1], 0, 0, 3), 255) << "alpha is averaged as it is";
+    const std::vector<Image> data = makeMipChain(image, false);
+    EXPECT_NEAR(channel(data[1], 0, 0, 0), 128, 1) << "data images are averaged as they are";
+}
 } // namespace Meow2::Assets

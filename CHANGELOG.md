@@ -9,11 +9,13 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- glTF materials drawn with metallic-roughness PBR on Vulkan and D3D12: normal maps (tangents from the file or generated), metallic, roughness, occlusion, emissive and vertex colours, lit by a sun and a sky/ground ambient with a neutral tone curve. Textures get mipmaps and the file's sampler settings; double-sided materials, mirrored nodes and alpha-blended materials (sorted back to front) draw correctly (#177).
 - Meow2Renderer has a Dear ImGui shell: a Scenes window to open any Khronos sample (fetching it on the spot) or any `.gltf`/`.glb`, and a Stats window with frame times, the GPU, memory per tag and the open scene's size, plus buttons to switch backend and capture a frame. F1 hides it (#173).
 - RHI: scissor rectangles, alpha blending, and a barrier between passes that draw to the same swapchain (#173).
 - glTF 2.0 import: `.gltf` and `.glb` files open in Meow2Renderer (`--set renderer.scene=Duck`, or a path) with their node tree, meshes and base colour textures, converted to the engine's left-handed space, on Vulkan and D3D12. `cmake -P cmake/FetchGltfSample.cmake <Model>` downloads Khronos sample models on demand (#170).
 
 ### Changed
+- Meow2Renderer's camera starts in front of a glTF model (on +Z, which glTF models face) instead of behind it, and the default sun lights the front (#177).
 - Roadmap: M6 is now "glTF scenes and Meow2Renderer", with the old M7 merged in and stopping at PBR; a new M13 holds advanced rendering (#170).
 - Vulkan GPUs need `shaderDemoteToHelperInvocation`, for `discard` in shaders (#170).
 - Every app opens at 1920 x 1080 (1080p) by default instead of 1280 x 720; a size saved in the app's config still wins (#176).

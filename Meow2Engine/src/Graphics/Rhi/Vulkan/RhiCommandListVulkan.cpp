@@ -67,15 +67,18 @@ VkAttachmentLoadOp loadOp(bool clear)
 /// @brief Builds the region of a buffer ↔ texture copy: the whole first mip level, tightly packed.
 /// @param texture The texture.
 /// @return The region.
-VkBufferImageCopy2 wholeTextureCopy(const TextureVulkan& texture)
+VkBufferImageCopy2 wholeTextureCopy(const TextureVulkan& texture, std::uint32_t mipLevel = 0,
+                                    std::uint64_t bufferOffset = 0)
 {
     return {.sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
+            .bufferOffset = bufferOffset,
             .imageSubresource = {.aspectMask = static_cast<VkImageAspectFlags>(
                                      texture.depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT),
-                                 .mipLevel = 0,
+                                 .mipLevel = mipLevel,
                                  .baseArrayLayer = 0,
                                  .layerCount = 1},
-            .imageExtent = {texture.extent.width, texture.extent.height, 1}};
+            .imageExtent = {std::max(texture.extent.width >> mipLevel, 1U),
+                            std::max(texture.extent.height >> mipLevel, 1U), 1}};
 }
 } // namespace
 
@@ -222,12 +225,14 @@ void RhiCommandListVulkan::setScissor(const ScissorRect& rect)
     vkCmdSetScissor(m_commandBuffer, 0, 1, &scissor);
 }
 
-void RhiCommandListVulkan::drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws)
+void RhiCommandListVulkan::drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws,
+                                             std::uint64_t drawOffset, std::uint64_t countOffset)
 {
     MEOW2_ASSERT(m_rendering, "drawIndirectCount() outside beginRendering()");
     // The draw arguments start after IndirectDraw::instance, which only D3D12 reads.
-    vkCmdDrawIndirectCount(m_commandBuffer, m_device.buffer(draws).buffer, offsetof(Shader::IndirectDraw, vertexCount),
-                           m_device.buffer(count).buffer, 0, maxDraws, sizeof(Shader::IndirectDraw));
+    vkCmdDrawIndirectCount(m_commandBuffer, m_device.buffer(draws).buffer,
+                           drawOffset + offsetof(Shader::IndirectDraw, vertexCount), m_device.buffer(count).buffer,
+                           countOffset, maxDraws, sizeof(Shader::IndirectDraw));
 }
 
 void RhiCommandListVulkan::fillBuffer(BufferHandle buffer, std::uint32_t value)
@@ -320,10 +325,12 @@ void RhiCommandListVulkan::copyBuffer(BufferHandle source, BufferHandle target, 
     vkCmdCopyBuffer(m_commandBuffer, m_device.buffer(source).buffer, m_device.buffer(target).buffer, 1, &region);
 }
 
-void RhiCommandListVulkan::copyBufferToTexture(BufferHandle source, TextureHandle target)
+void RhiCommandListVulkan::copyBufferToTexture(BufferHandle source, TextureHandle target, std::uint32_t mipLevel,
+                                               std::uint64_t sourceOffset)
 {
     const TextureVulkan texture = m_device.texture(target);
-    const VkBufferImageCopy2 region = wholeTextureCopy(texture);
+    MEOW2_ASSERT(mipLevel < texture.mipLevels, "The texture has no such mip level");
+    const VkBufferImageCopy2 region = wholeTextureCopy(texture, mipLevel, sourceOffset);
     const VkCopyBufferToImageInfo2 copy{.sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
                                         .srcBuffer = m_device.buffer(source).buffer,
                                         .dstImage = texture.image,

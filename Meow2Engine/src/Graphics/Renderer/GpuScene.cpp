@@ -6,6 +6,9 @@
 #include "Meow2/Core/Assert.h"
 #include "Meow2/Math/Packing.h"
 
+#include <DirectXMath.h>
+
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <format>
@@ -20,31 +23,50 @@ constexpr std::uint32_t c_maxMaterials = 4096;
 constexpr std::uint32_t c_cullGroupSize = 64; // [numthreads] in GpuDriven.hlsl
 } // namespace
 
-Shader::PackedVertex packVertex(const Math::Vec3& position, const Math::Vec3& normal, const Math::Vec2& uv,
-                                const Math::Aabb& bounds)
+Shader::PackedVertex packVertex(const VertexAttributes& vertex, const Math::Aabb& bounds)
 {
-    const Math::QuantizedPosition quantized = Math::quantizePosition(position, bounds);
-    Shader::PackedVertex vertex{};
-    vertex.xy = std::uint32_t{quantized.components[0]} | (std::uint32_t{quantized.components[1]} << 16U);
-    vertex.z = quantized.components[2];
-    vertex.normal = Math::packOctahedral(normal);
-    vertex.uv = std::uint32_t{Math::toHalf(uv.x)} | (std::uint32_t{Math::toHalf(uv.y)} << 16U);
-    return vertex;
+    const Math::QuantizedPosition quantized = Math::quantizePosition(vertex.position, bounds);
+    Shader::PackedVertex packed{};
+    packed.xy = std::uint32_t{quantized.components[0]} | (std::uint32_t{quantized.components[1]} << 16U);
+    // The bitangent's sign fits in z's unused high half.
+    packed.z = quantized.components[2] | (vertex.tangent.w < 0.0F ? 0x80000000U : 0U);
+    packed.normal = Math::packOctahedral(vertex.normal);
+    packed.tangent = Math::packOctahedral(Math::Vec3{vertex.tangent.x, vertex.tangent.y, vertex.tangent.z});
+    packed.uv = std::uint32_t{Math::toHalf(vertex.uv.x)} | (std::uint32_t{Math::toHalf(vertex.uv.y)} << 16U);
+    packed.color = std::uint32_t{Math::packUnorm8(vertex.color.r)} |
+                   (std::uint32_t{Math::packUnorm8(vertex.color.g)} << 8U) |
+                   (std::uint32_t{Math::packUnorm8(vertex.color.b)} << 16U) |
+                   (std::uint32_t{Math::packUnorm8(vertex.color.a)} << 24U);
+    return packed;
 }
 
-MeshData makeMesh(std::span<const Math::Vec3> positions, std::span<const Math::Vec3> normals,
-                  std::span<const Math::Vec2> uvs, std::span<const std::uint32_t> indices, const Math::Aabb& bounds)
+MeshData makeMesh(const MeshArrays& arrays, const Math::Aabb& bounds)
 {
-    MEOW2_ASSERT(normals.size() == positions.size() && uvs.size() == positions.size(),
-                 "Every vertex needs a position, a normal and UVs");
+    const std::size_t count = arrays.positions.size();
+    MEOW2_ASSERT(arrays.normals.size() == count && arrays.uvs.size() == count &&
+                     (arrays.tangents.empty() || arrays.tangents.size() == count) &&
+                     (arrays.colors.empty() || arrays.colors.size() == count),
+                 "Every vertex array needs one element per position");
     MeshData mesh;
     mesh.bounds = bounds;
-    mesh.vertices.reserve(positions.size());
-    for (std::size_t i = 0; i < positions.size(); ++i)
+    mesh.vertices.reserve(count);
+    for (std::size_t i = 0; i < count; ++i)
     {
-        mesh.vertices.push_back(packVertex(positions[i], normals[i], uvs[i], bounds));
+        VertexAttributes vertex;
+        vertex.position = arrays.positions[i];
+        vertex.normal = arrays.normals[i];
+        vertex.uv = arrays.uvs[i];
+        if (!arrays.tangents.empty())
+        {
+            vertex.tangent = arrays.tangents[i];
+        }
+        if (!arrays.colors.empty())
+        {
+            vertex.color = arrays.colors[i];
+        }
+        mesh.vertices.push_back(packVertex(vertex, bounds));
     }
-    mesh.indices.assign(indices.begin(), indices.end());
+    mesh.indices.assign(arrays.indices.begin(), arrays.indices.end());
     return mesh;
 }
 
@@ -72,8 +94,16 @@ MeshData makeCube()
             const Math::Vec3 position{(face.normal.x + face.u.x * a + face.v.x * b) * c_half,
                                       (face.normal.y + face.u.y * a + face.v.y * b) * c_half,
                                       (face.normal.z + face.u.z * a + face.v.z * b) * c_half};
-            const Math::Vec2 uv{(a + 1.0F) * 0.5F, (1.0F - b) * 0.5F};
-            mesh.vertices.push_back(packVertex(position, face.normal, uv, mesh.bounds));
+            // U runs along face.u and V against face.v, so the bitangent (towards decreasing V) is face.v.
+            VertexAttributes vertex;
+            vertex.position = position;
+            vertex.normal = face.normal;
+            vertex.uv = Math::Vec2{(a + 1.0F) * 0.5F, (1.0F - b) * 0.5F};
+            const DirectX::XMVECTOR crossed = DirectX::XMVector3Cross(Math::load(face.normal), Math::load(face.u));
+            const float sign =
+                DirectX::XMVectorGetX(DirectX::XMVector3Dot(crossed, Math::load(face.v))) < 0.0F ? -1.0F : 1.0F;
+            vertex.tangent = Math::Vec4{face.u.x, face.u.y, face.u.z, sign};
+            mesh.vertices.push_back(packVertex(vertex, mesh.bounds));
         }
         for (const std::uint32_t index : {0U, 1U, 2U, 0U, 2U, 3U})
         {
@@ -107,16 +137,38 @@ Result<std::unique_ptr<GpuScene>> GpuScene::create(RenderDevice& device, Pipelin
         return Unexpected<Error>{cull.error()};
     }
     scene->m_cullPipeline = *cull;
-    Result<PipelineId> draw = pipelines.add(GraphicsPipelineRequest{.shader = desc.shader,
-                                                                    .colorFormat = desc.colorFormat,
-                                                                    .depthFormat = Rhi::RhiFormat::D32Float,
-                                                                    .cull = Rhi::CullMode::Back,
-                                                                    .name = "Draw instances"});
-    if (!draw)
+    // One pipeline per draw list: they differ only in which side is culled (see MEOW2_DRAW_LIST_*).
+    constexpr std::array<std::pair<Rhi::CullMode, const char*>, MEOW2_DRAW_LIST_COUNT> c_lists{
+        std::pair{Rhi::CullMode::Back, "Draw instances"}, std::pair{Rhi::CullMode::Front, "Draw mirrored instances"},
+        std::pair{Rhi::CullMode::None, "Draw double-sided instances"}};
+    for (std::uint32_t list = 0; list < MEOW2_DRAW_LIST_COUNT; ++list)
     {
-        return Unexpected<Error>{draw.error()};
+        Result<PipelineId> draw = pipelines.add(GraphicsPipelineRequest{.shader = desc.shader,
+                                                                        .colorFormat = desc.colorFormat,
+                                                                        .depthFormat = Rhi::RhiFormat::D32Float,
+                                                                        .cull = c_lists[list].first,
+                                                                        .name = c_lists[list].second});
+        if (!draw)
+        {
+            return Unexpected<Error>{draw.error()};
+        }
+        scene->m_drawPipelines[list] = *draw;
     }
-    scene->m_drawPipeline = *draw;
+    // Blended surfaces test depth but don't write it, so what's behind them stays visible through later ones. Both
+    // sides are drawn: a sorted transparent surface rarely gains from culling, and it keeps mirrored ones right.
+    Result<PipelineId> blend = pipelines.add(GraphicsPipelineRequest{.shader = desc.shader,
+                                                                     .vertexEntry = "vsBlend",
+                                                                     .colorFormat = desc.colorFormat,
+                                                                     .depthFormat = Rhi::RhiFormat::D32Float,
+                                                                     .depthWrite = false,
+                                                                     .cull = Rhi::CullMode::None,
+                                                                     .blend = Rhi::BlendMode::Alpha,
+                                                                     .name = "Draw blended instances"});
+    if (!blend)
+    {
+        return Unexpected<Error>{blend.error()};
+    }
+    scene->m_blendPipeline = *blend;
 
     // Registered after the pipeline library, so its pipelines are back before the scene restores.
     GpuScene* const self = scene.get();
@@ -161,8 +213,11 @@ Result<void> GpuScene::createBuffers(Rhi::IRhiDevice& device)
          {makeBuffer(m_instanceBuffer, capacity * sizeof(Shader::InstanceData), Rhi::RhiMemory::Upload, "Instances"),
           makeBuffer(m_meshBuffer, std::uint64_t{c_maxMeshes} * sizeof(Shader::MeshDraw), Rhi::RhiMemory::Upload,
                      "Meshes"),
-          makeBuffer(m_drawBuffer, capacity * sizeof(Shader::IndirectDraw), Rhi::RhiMemory::GpuOnly, "Draws"),
-          makeBuffer(m_countBuffer, sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly, "Draw count"),
+          // Every list has room for every instance: an instance lands in exactly one, but which isn't known up front.
+          makeBuffer(m_drawBuffer, capacity * MEOW2_DRAW_LIST_COUNT * sizeof(Shader::IndirectDraw),
+                     Rhi::RhiMemory::GpuOnly, "Draws"),
+          makeBuffer(m_countBuffer, MEOW2_DRAW_LIST_COUNT * sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly,
+                     "Draw counts"),
           makeBuffer(m_materialBuffer, std::uint64_t{c_maxMaterials} * sizeof(Shader::MaterialData),
                      Rhi::RhiMemory::Upload, "Materials")})
     {
@@ -223,6 +278,11 @@ void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
         device.destroy(buffer);
     }
     m_spentStaging.clear();
+    for (SamplerRecord& record : m_samplers)
+    {
+        device.destroy(record.sampler);
+        record.sampler = {};
+    }
 }
 
 Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
@@ -241,6 +301,15 @@ Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
     }
     std::memcpy(device.mappedMemory(m_instanceBuffer).data(), m_instances.data(),
                 m_instances.size() * sizeof(Shader::InstanceData));
+    for (SamplerRecord& record : m_samplers)
+    {
+        Result<Rhi::SamplerHandle> sampler = device.createSampler(record.desc);
+        if (!sampler)
+        {
+            return Unexpected<Error>{sampler.error()};
+        }
+        record.sampler = *sampler;
+    }
     // Textures are copied again by the next frame; material records name their new heap indices.
     for (std::uint32_t texture = 0; texture < m_textures.size(); ++texture)
     {
@@ -302,10 +371,12 @@ Result<void> GpuScene::uploadMesh(Rhi::IRhiDevice& device, const MeshData& mesh,
 Result<void> GpuScene::createTexture(Rhi::IRhiDevice& device, std::uint32_t index)
 {
     TextureRecord& record = m_textures[index];
+    const Assets::Image& top = record.mips.front();
     Result<Rhi::TextureHandle> texture =
-        device.createTexture({.width = record.image.width,
-                              .height = record.image.height,
+        device.createTexture({.width = top.width,
+                              .height = top.height,
                               .format = record.srgb ? Rhi::RhiFormat::Rgba8Srgb : Rhi::RhiFormat::Rgba8Unorm,
+                              .mipLevels = static_cast<std::uint32_t>(record.mips.size()),
                               .tag = Memory::MemTag::Renderer,
                               .name = record.name});
     if (!texture)
@@ -313,16 +384,26 @@ Result<void> GpuScene::createTexture(Rhi::IRhiDevice& device, std::uint32_t inde
         return Unexpected<Error>{texture.error()};
     }
     record.texture = *texture;
-    Result<Rhi::BufferHandle> staging = device.createBuffer({.size = record.image.pixels.size(),
-                                                             .memory = Rhi::RhiMemory::Upload,
-                                                             .tag = Memory::MemTag::Renderer,
-                                                             .name = "Texture upload"});
+    // Every level goes into one staging buffer, one after another; the upload pass copies each from its offset.
+    std::uint64_t bytes = 0;
+    for (const Assets::Image& level : record.mips)
+    {
+        bytes += level.pixels.size();
+    }
+    Result<Rhi::BufferHandle> staging = device.createBuffer(
+        {.size = bytes, .memory = Rhi::RhiMemory::Upload, .tag = Memory::MemTag::Renderer, .name = "Texture upload"});
     if (!staging)
     {
         return Unexpected<Error>{staging.error()};
     }
     record.staging = *staging;
-    std::memcpy(device.mappedMemory(*staging).data(), record.image.pixels.data(), record.image.pixels.size());
+    std::byte* const mapped = device.mappedMemory(*staging).data();
+    std::uint64_t offset = 0;
+    for (const Assets::Image& level : record.mips)
+    {
+        std::memcpy(mapped + offset, level.pixels.data(), level.pixels.size());
+        offset += level.pixels.size();
+    }
     m_pendingTextures.push_back(index);
     return {};
 }
@@ -334,7 +415,8 @@ Result<std::uint32_t> GpuScene::addTexture(const Assets::Image& image, bool srgb
         return fail(ErrorCode::InvalidArgument, std::format("Texture '{}' has no pixels", name));
     }
     const auto index = static_cast<std::uint32_t>(m_textures.size());
-    m_textures.push_back({.image = image, .srgb = srgb, .name = std::move(name)});
+    // The chain is made once and kept: a backend switch uploads it again without filtering again.
+    m_textures.push_back({.mips = Assets::makeMipChain(image, srgb), .srgb = srgb, .name = std::move(name)});
     if (Result<void> made = createTexture(m_device.device(), index); !made)
     {
         m_device.device().destroy(m_textures.back().texture);
@@ -347,18 +429,51 @@ Result<std::uint32_t> GpuScene::addTexture(const Assets::Image& image, bool srgb
 void GpuScene::writeMaterial(Rhi::IRhiDevice& device, std::uint32_t index)
 {
     const MaterialDesc& material = m_materials[index];
+    // Heap indices of a slot's texture and sampler; an index out of range means none (0 = white or a flat normal).
+    const auto slot = [&](const MaterialTexture& texture, std::uint32_t& textureIndex, std::uint32_t& samplerIndex)
+    {
+        const bool hasTexture = texture.texture >= 0 && static_cast<std::size_t>(texture.texture) < m_textures.size();
+        textureIndex = hasTexture ? device.bindlessIndex(m_textures[static_cast<std::size_t>(texture.texture)].texture)
+                                  : Rhi::c_invalidBindlessIndex;
+        const bool hasSampler = texture.sampler >= 0 && static_cast<std::size_t>(texture.sampler) < m_samplers.size();
+        samplerIndex = hasSampler ? device.bindlessIndex(m_samplers[static_cast<std::size_t>(texture.sampler)].sampler)
+                                  : Rhi::c_defaultSamplerIndex;
+    };
     Shader::MaterialData data{};
     data.baseColorFactor = {material.baseColorFactor.r, material.baseColorFactor.g, material.baseColorFactor.b,
                             material.baseColorFactor.a};
-    data.parameters = {material.alphaCutoff, material.metallic, material.roughness, 1.0F};
-    const bool textured =
-        material.baseColorTexture >= 0 && static_cast<std::size_t>(material.baseColorTexture) < m_textures.size();
-    data.baseColorTexture =
-        textured ? device.bindlessIndex(m_textures[static_cast<std::size_t>(material.baseColorTexture)].texture)
-                 : Rhi::c_invalidBindlessIndex;
-    data.sampler = Rhi::c_defaultSamplerIndex;
-    data.flags = material.alphaMask ? MEOW2_MATERIAL_ALPHA_MASK : 0U;
+    data.emissiveFactor = {material.emissiveFactor.r, material.emissiveFactor.g, material.emissiveFactor.b,
+                           material.occlusionStrength};
+    data.parameters = {material.alphaCutoff, material.metallic, material.roughness, material.normalScale};
+    slot(material.baseColor, data.baseColorTexture, data.baseColorSampler);
+    slot(material.metallicRoughness, data.metallicRoughnessTexture, data.metallicRoughnessSampler);
+    slot(material.normal, data.normalTexture, data.normalSampler);
+    slot(material.occlusion, data.occlusionTexture, data.occlusionSampler);
+    slot(material.emissive, data.emissiveTexture, data.emissiveSampler);
+    data.flags = (material.alphaMask ? MEOW2_MATERIAL_ALPHA_MASK : 0U) |
+                 (material.doubleSided ? MEOW2_MATERIAL_DOUBLE_SIDED : 0U) |
+                 (material.blend ? MEOW2_MATERIAL_BLEND : 0U);
     std::memcpy(device.mappedMemory(m_materialBuffer).data() + std::size_t{index} * sizeof(data), &data, sizeof(data));
+}
+
+Result<std::uint32_t> GpuScene::addSampler(const Rhi::SamplerDesc& desc)
+{
+    for (std::uint32_t i = 0; i < m_samplers.size(); ++i)
+    {
+        const Rhi::SamplerDesc& known = m_samplers[i].desc;
+        if (known.filter == desc.filter && known.addressU == desc.addressU && known.addressV == desc.addressV &&
+            known.maxAnisotropy == desc.maxAnisotropy)
+        {
+            return i; // glTF files repeat the same few samplers; one heap slot each is enough
+        }
+    }
+    Result<Rhi::SamplerHandle> sampler = m_device.device().createSampler(desc);
+    if (!sampler)
+    {
+        return Unexpected<Error>{sampler.error()};
+    }
+    m_samplers.push_back({.desc = desc, .sampler = *sampler});
+    return static_cast<std::uint32_t>(m_samplers.size() - 1);
 }
 
 Result<std::uint32_t> GpuScene::addMaterial(const MaterialDesc& material)
@@ -392,15 +507,57 @@ void GpuScene::setInstances(std::span<const Shader::InstanceData> instances)
 {
     MEOW2_ASSERT(instances.size() <= m_desc.instanceCapacity, "More instances than GpuSceneDesc::instanceCapacity");
     m_instances.assign(instances.begin(), instances.end()); // kept for the next device, after a backend switch
-    std::memcpy(m_device.device().mappedMemory(m_instanceBuffer).data(), instances.data(), instances.size_bytes());
+    m_blended.clear();
+    m_blendOrder.clear(); // its indices were into the old instances; the next setView() sorts the new ones
+    for (std::uint32_t i = 0; i < m_instances.size(); ++i)
+    {
+        Shader::InstanceData& instance = m_instances[i];
+        // A negative determinant mirrors the mesh, which reverses its triangles' winding on screen.
+        const DirectX::XMMATRIX world = DirectX::XMLoadFloat4x4(&instance.world);
+        const bool mirrored = DirectX::XMVectorGetX(DirectX::XMMatrixDeterminant(world)) < 0.0F;
+        instance.flags = mirrored ? MEOW2_INSTANCE_MIRRORED : 0U;
+        if (instance.material < m_materials.size() && m_materials[instance.material].blend)
+        {
+            m_blended.push_back(i);
+        }
+    }
+    std::memcpy(m_device.device().mappedMemory(m_instanceBuffer).data(), m_instances.data(),
+                m_instances.size() * sizeof(Shader::InstanceData));
 }
 
 void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& frame, const Math::Frustum& frustum)
 {
+    using namespace DirectX;
     Shader::FrameConstants constants = frame;
     constants.materialBuffer = m_device.device().bindlessIndex(m_materialBuffer);
     constants.materialCount = static_cast<std::uint32_t>(m_materials.size());
+    Math::Vec3 sun;
+    XMStoreFloat3(&sun, XMVector3Normalize(Math::load(m_lighting.sunDirection)));
+    constants.sunDirection = {sun.x, sun.y, sun.z, m_lighting.sunIntensity};
+    constants.sunColor = {m_lighting.sunColor.r, m_lighting.sunColor.g, m_lighting.sunColor.b, m_lighting.exposure};
+    constants.skyColor = {m_lighting.skyColor.r, m_lighting.skyColor.g, m_lighting.skyColor.b, 0.0F};
+    constants.groundColor = {m_lighting.groundColor.r, m_lighting.groundColor.g, m_lighting.groundColor.b, 0.0F};
     std::memcpy(m_device.device().mappedMemory(m_frameBuffers[frameSlot]).data(), &constants, sizeof(constants));
+
+    // Blended instances are drawn farthest first, so each mixes with what's behind it. Positions are camera relative,
+    // so the distance is the length of the box centre. Sorting whole instances is the usual compromise: overlapping
+    // surfaces of one mesh can still come out in the wrong order.
+    std::vector<std::pair<float, std::uint32_t>> distances;
+    distances.reserve(m_blended.size());
+    for (const std::uint32_t index : m_blended)
+    {
+        const Shader::InstanceData& instance = m_instances[index];
+        const Math::Vec3 local = instance.mesh < m_meshes.size() ? m_meshes[instance.mesh].bounds.center : Math::Vec3{};
+        const XMVECTOR center = XMVector3Transform(Math::load(local), XMLoadFloat4x4(&instance.world));
+        distances.emplace_back(XMVectorGetX(XMVector3LengthSq(center)), index);
+    }
+    std::sort(distances.begin(), distances.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    m_blendOrder.clear();
+    for (const auto& [distance, index] : distances)
+    {
+        m_blendOrder.push_back(index);
+    }
+
     Shader::CullConstants cull{};
     cull.plane0 = frustum.planes[0];
     cull.plane1 = frustum.planes[1];
@@ -413,6 +570,9 @@ void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& fr
     cull.drawBuffer = m_device.device().bindlessStorageIndex(m_drawBuffer);
     cull.countBuffer = m_device.device().bindlessStorageIndex(m_countBuffer);
     cull.instanceCount = instanceCount();
+    cull.materialBuffer = constants.materialBuffer;
+    cull.materialCount = constants.materialCount;
+    cull.drawCapacity = m_desc.instanceCapacity;
     std::memcpy(m_device.device().mappedMemory(m_cullBuffers[frameSlot]).data(), &cull, sizeof(cull));
 }
 
@@ -432,11 +592,25 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
     // New textures are copied first. The copies run before every later pass, which see them as shader inputs.
     if (!m_pendingTextures.empty())
     {
-        std::vector<std::pair<Rhi::BufferHandle, Rhi::TextureHandle>> uploads;
+        /// One texture's copy: where each level starts in its staging buffer.
+        struct Upload
+        {
+            Rhi::BufferHandle staging;
+            Rhi::TextureHandle texture;
+            std::vector<std::uint64_t> offsets;
+        };
+        std::vector<Upload> uploads;
         for (const std::uint32_t texture : m_pendingTextures)
         {
             TextureRecord& record = m_textures[texture];
-            uploads.emplace_back(record.staging, record.texture);
+            Upload upload{.staging = record.staging, .texture = record.texture, .offsets = {}};
+            std::uint64_t offset = 0;
+            for (const Assets::Image& level : record.mips)
+            {
+                upload.offsets.push_back(offset);
+                offset += level.pixels.size();
+            }
+            uploads.push_back(std::move(upload));
             m_spentStaging.push_back(std::exchange(record.staging, {}));
         }
         m_pendingTextures.clear();
@@ -445,11 +619,15 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
                        .record =
                            [uploads = std::move(uploads)](Rhi::IRhiCommandList& list)
                        {
-                           for (const auto& [staging, texture] : uploads)
+                           for (const Upload& upload : uploads)
                            {
-                               list.barrier(texture, ResourceState::Undefined, ResourceState::CopyTarget);
-                               list.copyBufferToTexture(staging, texture);
-                               list.barrier(texture, ResourceState::CopyTarget, ResourceState::ShaderRead);
+                               list.barrier(upload.texture, ResourceState::Undefined, ResourceState::CopyTarget);
+                               for (std::uint32_t level = 0; level < upload.offsets.size(); ++level)
+                               {
+                                   list.copyBufferToTexture(upload.staging, upload.texture, level,
+                                                            upload.offsets[level]);
+                               }
+                               list.barrier(upload.texture, ResourceState::CopyTarget, ResourceState::ShaderRead);
                            }
                        },
                        .small = true});
@@ -488,9 +666,25 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
     push.frameBuffer = device.bindlessIndex(m_frameBuffers[frameSlot]);
     push.instanceBuffer = device.bindlessIndex(m_instanceBuffer);
     push.userData = device.bindlessIndex(m_meshBuffer);
+    // Blended draws are recorded directly, one per instance, in this frame's order: {instance, index count}.
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> blended;
+    blended.reserve(m_blendOrder.size());
+    for (const std::uint32_t index : m_blendOrder)
+    {
+        if (index >= m_instances.size())
+        {
+            continue;
+        }
+        const std::uint32_t mesh = m_instances[index].mesh;
+        if (mesh < m_meshes.size())
+        {
+            blended.emplace_back(index, static_cast<std::uint32_t>(m_meshes[mesh].indices.size()));
+        }
+    }
     graph.addPass({.name = "Draw instances",
                    .accesses = std::move(drawAccesses),
-                   .record = [this, swapchain, color, depth, clear, push](Rhi::IRhiCommandList& list)
+                   .record = [this, swapchain, color, depth, clear, push,
+                              blended = std::move(blended)](Rhi::IRhiCommandList& list)
                    {
                        if (swapchain != nullptr)
                        {
@@ -501,9 +695,27 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
                            list.beginRendering(Rhi::RenderTargets{
                                .color = color, .clearColor = clear, .depth = depth, .clearDepth = 0.0F});
                        }
-                       list.setPipeline(m_pipelines.get(*m_drawPipeline));
-                       list.setPushConstants(push);
-                       list.drawIndirectCount(m_drawBuffer, m_countBuffer, m_desc.instanceCapacity);
+                       const std::uint64_t listBytes =
+                           std::uint64_t{m_desc.instanceCapacity} * sizeof(Shader::IndirectDraw);
+                       for (std::uint32_t drawList = 0; drawList < MEOW2_DRAW_LIST_COUNT; ++drawList)
+                       {
+                           list.setPipeline(m_pipelines.get(*m_drawPipelines[drawList]));
+                           list.setPushConstants(push);
+                           list.drawIndirectCount(m_drawBuffer, m_countBuffer, m_desc.instanceCapacity,
+                                                  drawList * listBytes, drawList * sizeof(std::uint32_t));
+                       }
+                       if (!blended.empty())
+                       {
+                           // After everything opaque, so they mix with it; vsBlend reads the instance from g_push.
+                           list.setPipeline(m_pipelines.get(*m_blendPipeline));
+                           for (const auto& [instance, indexCount] : blended)
+                           {
+                               Shader::PushConstants draw = push;
+                               draw.instance = instance;
+                               list.setPushConstants(draw);
+                               list.draw(indexCount);
+                           }
+                       }
                        list.endRendering();
                    }});
 }

@@ -68,9 +68,9 @@ ImGui's own backends aren't used. They'd bring SDL into the app and a separate V
 
 ### Scenes
 
-`SceneView::openModel()` imports the file ([Gltf](Gltf.md)), creates a `GpuScene` sized for its primitives, uploads it, makes the entities and frames the camera with its bounds. The `PipelineLibrary` gives every scene the same two pipelines: adding a request it already has returns the existing pipeline.
+`SceneView::openModel()` imports the file ([Gltf](Gltf.md)), creates a `GpuScene` sized for its primitives, uploads it, makes the entities and frames the camera with its bounds. The `PipelineLibrary` gives every scene the same pipelines (culling, three draw lists, blended): adding a request it already has returns the existing pipeline.
 
-The camera circles the scene's bounding sphere; its near plane follows the scene's size (1 % of the radius, between 1 mm and 10 cm), so small models aren't clipped.
+The camera circles the scene's bounding sphere, starting in front of it (on +Z: glTF models face +Z); its near plane follows the scene's size (1 % of the radius, between 1 mm and 10 cm), so small models aren't clipped.
 
 ## Tests
 

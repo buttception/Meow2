@@ -37,6 +37,10 @@ struct FrameConstants
     uint materialCount;      ///< Materials in it. An instance with a higher index gets a colour from its index.
     uint padding0;           ///< Pads to 16 bytes.
     uint padding1;           ///< Pads to 16 bytes.
+    float4 sunDirection;     ///< xyz: unit direction towards the sun; w: its intensity.
+    float4 sunColor;         ///< rgb: the sun's linear colour; w: exposure (scales the final colour).
+    float4 skyColor;         ///< rgb: ambient light from above; w: unused.
+    float4 groundColor;      ///< rgb: ambient light from below; w: unused.
 };
 
 /// One drawn object, in a buffer the GPU reads and compute culling can edit.
@@ -45,9 +49,12 @@ struct InstanceData
     MEOW2_MATRIX(world); ///< Local → camera-relative world.
     uint material;    ///< Index of the material.
     uint mesh;        ///< Index of the mesh.
+    uint flags;       ///< MEOW2_INSTANCE_* bits; set by GpuScene.
     uint padding0;    ///< Pads to 16 bytes.
-    uint padding1;    ///< Pads to 16 bytes.
 };
+
+/// Bits of InstanceData::flags.
+#define MEOW2_INSTANCE_MIRRORED 1u ///< The world matrix has a negative determinant: the winding is reversed.
 
 /// One indirect draw, written by culling. The four fields from vertexCount on are the layout VkDrawIndirectCommand and
 /// D3D12_DRAW_ARGUMENTS require. `instance` comes first because D3D12's SV_InstanceID leaves out the draw's first
@@ -64,13 +71,15 @@ struct IndirectDraw
     uint padding2;      ///< Pads to 32 bytes.
 };
 
-/// One vertex, pulled by the vertex shader. Encoded by Math::quantizePosition() and Math::packOctahedral().
+/// One vertex, pulled by the vertex shader. Encoded by Renderer::packVertex().
 struct PackedVertex
 {
-    uint xy;     ///< x and y as UNORM16, low half first, across the mesh's bounds.
-    uint z;      ///< z as UNORM16.
-    uint normal; ///< Octahedral normal.
-    uint uv;     ///< Texture coordinates as two half floats, u in the low half.
+    uint xy;      ///< x and y as UNORM16, low half first, across the mesh's bounds.
+    uint z;       ///< Low 16 bits: z as UNORM16. Bit 31: the bitangent's sign is negative.
+    uint normal;  ///< Octahedral normal.
+    uint tangent; ///< Octahedral tangent (along +U).
+    uint uv;      ///< Texture coordinates as two half floats, u in the low half.
+    uint color;   ///< Linear RGBA8 vertex colour, red in the low byte; white when the mesh has none.
 };
 
 /// One Dear ImGui draw command (Meow2Renderer's UI), read by shaders/ImGui.hlsl.
@@ -84,17 +93,33 @@ struct UiDraw
 };
 
 /// Bits of MaterialData::flags.
-#define MEOW2_MATERIAL_ALPHA_MASK 1u ///< Discard pixels whose alpha is below the cutoff.
+#define MEOW2_MATERIAL_ALPHA_MASK 1u    ///< Discard pixels whose alpha is below the cutoff.
+#define MEOW2_MATERIAL_DOUBLE_SIDED 2u  ///< Draw back faces too, lit from their own side.
+#define MEOW2_MATERIAL_BLEND 4u         ///< Blended over what's behind, after everything opaque.
 
-/// One material, in a buffer shaders read by index. Linear colours.
+/// One metallic-roughness material, in a buffer shaders read by index. Linear colours. A texture index of 0 means no
+/// texture (white, or a flat normal); each texture has its own sampler.
 struct MaterialData
 {
-    float4 baseColorFactor;  ///< Multiplies the base colour texture; RGBA.
-    float4 parameters;       ///< x: alpha cutoff; y: metallic; z: roughness; w: normal scale.
-    uint baseColorTexture;   ///< Heap index of an sRGB Texture2D, or 0 (no texture: white).
-    uint sampler;            ///< Sampler heap index.
-    uint flags;              ///< MEOW2_MATERIAL_* bits.
-    uint padding0;           ///< Pads to 16 bytes.
+    float4 baseColorFactor;        ///< Multiplies the base colour texture and vertex colour; RGBA.
+    float4 emissiveFactor;         ///< rgb: multiplies the emissive texture; w: occlusion strength.
+    float4 parameters;             ///< x: alpha cutoff; y: metallic; z: roughness; w: normal scale.
+    uint baseColorTexture;         ///< Heap index of an sRGB Texture2D.
+    uint metallicRoughnessTexture; ///< Heap index of a linear Texture2D: roughness in G, metallic in B.
+    uint normalTexture;            ///< Heap index of a linear tangent-space normal map, +Y up.
+    uint occlusionTexture;         ///< Heap index of a linear Texture2D: occlusion in R.
+    uint emissiveTexture;          ///< Heap index of an sRGB Texture2D.
+    uint flags;                    ///< MEOW2_MATERIAL_* bits.
+    uint padding0;                 ///< Pads to 16 bytes.
+    uint padding1;                 ///< Pads to 16 bytes.
+    uint baseColorSampler;         ///< Sampler heap index for each texture, in the same order.
+    uint metallicRoughnessSampler; ///< Sampler heap index.
+    uint normalSampler;            ///< Sampler heap index.
+    uint occlusionSampler;         ///< Sampler heap index.
+    uint emissiveSampler;          ///< Sampler heap index.
+    uint padding2;                 ///< Pads to 16 bytes.
+    uint padding3;                 ///< Pads to 16 bytes.
+    uint padding4;                 ///< Pads to 16 bytes.
 };
 
 /// One mesh, in a buffer shaders read by index.
@@ -119,12 +144,18 @@ struct CullConstants
     float4 plane5;       ///< Frustum plane.
     uint instanceBuffer; ///< Heap index of the InstanceData array.
     uint meshBuffer;     ///< Heap index of the MeshDraw array.
-    uint drawBuffer;     ///< Heap index of the IndirectDraw array to fill.
-    uint countBuffer;    ///< Heap index of the draw count.
+    uint drawBuffer;     ///< Heap index of the IndirectDraw lists to fill: one per MEOW2_DRAW_LIST_*, drawCapacity each.
+    uint countBuffer;    ///< Heap index of the draw counts, one uint per list.
     uint instanceCount;  ///< How many instances to test.
-    uint padding0;       ///< Pads to 16 bytes.
-    uint padding1;       ///< Pads to 16 bytes.
-    uint padding2;       ///< Pads to 16 bytes.
+    uint materialBuffer; ///< Heap index of the MaterialData array, to pick each instance's list.
+    uint materialCount;  ///< Materials in it.
+    uint drawCapacity;   ///< Draws each list has room for.
 };
+
+/// The indirect draw lists culling fills, one pipeline each. Blended instances aren't in any: they're drawn sorted.
+#define MEOW2_DRAW_LIST_BACK 0u         ///< Back faces culled: most meshes.
+#define MEOW2_DRAW_LIST_MIRRORED 1u     ///< Mirrored instances: their winding is reversed, so the other side is culled.
+#define MEOW2_DRAW_LIST_DOUBLE_SIDED 2u ///< Double-sided materials: nothing culled.
+#define MEOW2_DRAW_LIST_COUNT 3u        ///< How many lists.
 
 #endif

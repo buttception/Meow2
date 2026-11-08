@@ -330,8 +330,8 @@ TEST_F(RhiDrawTest, TextureSamplesThroughTheHeap)
     Result<TextureHandle> texture =
         m_device->createTexture({.width = c_size, .height = c_size, .format = RhiFormat::Rgba8Unorm});
     ASSERT_TRUE(texture) << texture.error().message;
-    Result<SamplerHandle> sampler =
-        m_device->createSampler({.filter = SamplerFilter::Nearest, .address = SamplerAddress::Clamp});
+    Result<SamplerHandle> sampler = m_device->createSampler(
+        {.filter = SamplerFilter::Nearest, .addressU = SamplerAddress::Clamp, .addressV = SamplerAddress::Clamp});
     ASSERT_TRUE(sampler) << sampler.error().message;
     EXPECT_NE(m_device->bindlessIndex(*sampler), c_defaultSamplerIndex);
 
@@ -369,6 +369,64 @@ TEST_F(RhiDrawTest, TextureSamplesThroughTheHeap)
     m_device->destroy(pipeline);
     m_device->destroy(target);
     m_device->destroy(readback);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
+
+TEST_F(RhiDrawTest, CopiesEveryMipLevel)
+{
+    // Two textures of two levels each, red on level 0 and green on level 1, uploaded from one buffer at offsets. Drawn
+    // across the 64-pixel target, the 256-pixel texture is minified past level 1 (nearest mip: level 1, green) and the
+    // 16-pixel one magnified (level 0, red).
+    constexpr Pixel c_red{.r = 255, .g = 0, .b = 0, .a = 255};
+    constexpr Pixel c_green{.r = 0, .g = 255, .b = 0, .a = 255};
+    struct Case
+    {
+        std::uint32_t size;
+        Pixel expected;
+    };
+    const Result<SamplerHandle> sampler = m_device->createSampler({.filter = SamplerFilter::Nearest});
+    ASSERT_TRUE(sampler) << sampler.error().message;
+    const PipelineHandle pipeline = graphicsPipeline(c_textureShader);
+    for (const Case& test : {Case{256, c_green}, Case{16, c_red}})
+    {
+        Result<TextureHandle> texture = m_device->createTexture(
+            {.width = test.size, .height = test.size, .format = RhiFormat::Rgba8Unorm, .mipLevels = 2});
+        ASSERT_TRUE(texture) << texture.error().message;
+        const std::size_t level0 = std::size_t{test.size} * test.size;
+        const std::size_t level1 = level0 / 4;
+        std::vector<Pixel> pixels(level0, c_red);
+        pixels.insert(pixels.end(), level1, c_green);
+        const BufferHandle upload = makeBuffer(sizeof(Pixel) * pixels.size(), RhiMemory::Upload);
+        std::memcpy(m_device->mappedMemory(upload).data(), pixels.data(), sizeof(Pixel) * pixels.size());
+        runFrame(
+            [&](IRhiCommandList& list)
+            {
+                list.barrier(*texture, ResourceState::Undefined, ResourceState::CopyTarget);
+                list.copyBufferToTexture(upload, *texture, 0, 0);
+                list.copyBufferToTexture(upload, *texture, 1, sizeof(Pixel) * level0);
+                list.barrier(*texture, ResourceState::CopyTarget, ResourceState::ShaderRead);
+            });
+
+        const TextureHandle target = makeTarget();
+        const BufferHandle readback = makeBuffer(sizeof(Pixel) * c_targetSize * c_targetSize, RhiMemory::Readback);
+        renderToReadback(target, readback,
+                         [&](IRhiCommandList& list)
+                         {
+                             list.setPipeline(pipeline);
+                             list.setPushConstants({.instance = m_device->bindlessIndex(*sampler),
+                                                    .userData = m_device->bindlessIndex(*texture)});
+                             list.draw(3);
+                         });
+        const Pixel center = pixelAt(readback, 32, 32);
+        EXPECT_EQ(center.r, test.expected.r) << test.size << " pixels";
+        EXPECT_EQ(center.g, test.expected.g) << test.size << " pixels";
+        m_device->destroy(*texture);
+        m_device->destroy(upload);
+        m_device->destroy(target);
+        m_device->destroy(readback);
+    }
+    m_device->destroy(pipeline);
+    m_device->destroy(*sampler);
     EXPECT_EQ(m_device->validationErrorCount(), 0U);
 }
 
@@ -509,13 +567,14 @@ std::uint32_t packColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uin
 class RhiStatesTest : public RhiDrawTest
 {
 protected:
-    PipelineHandle makePipeline(BlendMode blend)
+    PipelineHandle makePipeline(BlendMode blend, CullMode cull = CullMode::None)
     {
         const std::vector<std::byte> vertex = bytecode(c_statesShader, "vsMain");
         const std::vector<std::byte> pixel = bytecode(c_statesShader, "psMain");
         Result<PipelineHandle> pipeline = m_device->createGraphicsPipeline({.vertexCode = vertex,
                                                                             .pixelCode = pixel,
                                                                             .colorFormat = RhiFormat::Rgba8Unorm,
+                                                                            .cull = cull,
                                                                             .blend = blend,
                                                                             .name = "States"});
         EXPECT_TRUE(pipeline) << pipeline.error().message;
@@ -573,6 +632,25 @@ TEST_F(RhiStatesTest, AlphaBlendMixesWithTheTarget)
     EXPECT_NEAR(pixel.g, 128, 2);
     m_device->destroy(readback);
     m_device->destroy(pipeline);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
+
+TEST_F(RhiStatesTest, FrontCullingSkipsFrontFaces)
+{
+    // The full-screen triangle runs clockwise on screen: a front face, as in D3D, on both backends.
+    const PipelineHandle front = makePipeline(BlendMode::None, CullMode::Front);
+    const BufferHandle culled = drawStates(front, packColor(255, 0, 0, 255), std::nullopt);
+    EXPECT_EQ(pixelAt(culled, c_targetSize / 2, c_targetSize / 2).r, 0) << "front face culled";
+
+    const PipelineHandle back = makePipeline(BlendMode::None, CullMode::Back);
+    const BufferHandle drawn = drawStates(back, packColor(255, 0, 0, 255), std::nullopt);
+    EXPECT_EQ(pixelAt(drawn, c_targetSize / 2, c_targetSize / 2).r, 255) << "back culling keeps it";
+    for (const BufferHandle buffer : {culled, drawn})
+    {
+        m_device->destroy(buffer);
+    }
+    m_device->destroy(front);
+    m_device->destroy(back);
     EXPECT_EQ(m_device->validationErrorCount(), 0U);
 }
 

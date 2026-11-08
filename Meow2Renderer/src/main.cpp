@@ -556,14 +556,15 @@ int main(int argc, char** argv)
             Meow2::Renderer::RenderGraph graph;
             if (view)
             {
-                // The camera circles the scene, looking at its centre, far enough to see all of it.
+                // The camera circles the scene, looking at its centre, far enough to see all of it. It starts on +Z:
+                // glTF models face +Z, towards the viewer, so the first view is the front.
                 const Meow2::Math::Vec3& center = view->center();
                 const auto angle = static_cast<float>(clock.totalSeconds()) * 0.2F;
                 const float distance = view->radius() * 1.7F;
                 Meow2::Math::Transform camera;
                 camera.position =
                     Meow2::Math::WorldPosition{center.x + std::sin(angle) * distance, center.y + distance * 0.25F,
-                                               center.z - std::cos(angle) * distance};
+                                               center.z + std::cos(angle) * distance};
                 camera.rotation = Meow2::Math::lookRotation(Meow2::Math::Vec3{
                     center.x - camera.position.x, center.y - camera.position.y, center.z - camera.position.z});
                 const float aspect = static_cast<float>(swapchain->width()) / static_cast<float>(swapchain->height());

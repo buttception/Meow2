@@ -94,6 +94,8 @@ protected:
                              {.shader = *shader, .instanceCapacity = 8, .colorFormat = OffscreenTarget::format()});
         ASSERT_TRUE(scene) << scene.error().message;
         m_scene = std::move(*scene);
+        // The camera looks along +Z from the origin, so the sun is put behind it, lighting what it sees.
+        m_scene->setLighting({.sunDirection = {0.4F, 0.8F, -0.6F}});
         ASSERT_TRUE(m_scene->addMesh(makeCube()));
         std::vector<Shader::InstanceData> instances;
         for (const Math::Vec3 position : {Math::Vec3{0.0F, 0.0F, 3.0F}, Math::Vec3{-1.2F, 0.5F, 4.0F},
@@ -115,7 +117,7 @@ protected:
         const Result<std::uint32_t> texture = m_scene->addTexture(green, true, "Green");
         ASSERT_TRUE(texture) << texture.error().message;
         const Result<std::uint32_t> material =
-            m_scene->addMaterial({.baseColorTexture = static_cast<std::int32_t>(*texture)});
+            m_scene->addMaterial({.baseColor = {.texture = static_cast<std::int32_t>(*texture)}, .metallic = 0.0F});
         ASSERT_TRUE(material) << material.error().message;
         instances[0].material = *material;
         m_scene->setInstances(instances);
