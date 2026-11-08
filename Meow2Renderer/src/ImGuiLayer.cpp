@@ -3,6 +3,8 @@
 
 #include "ImGuiLayer.h"
 
+#include "UiTheme.h"
+
 #include <Meow2/Core/Assert.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Memory/MemTag.h>
@@ -15,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <utility>
@@ -216,9 +219,10 @@ int toImGuiKey(Input::Key key)
 }
 
 Result<std::unique_ptr<ImGuiLayer>> ImGuiLayer::create(const ImGuiLayerDeps& deps, AssetId shader,
-                                                       Rhi::RhiFormat colorFormat)
+                                                       Rhi::RhiFormat colorFormat, UiFontFiles fonts)
 {
     auto layer = std::make_unique<ImGuiLayer>(deps);
+    layer->addFonts(std::move(fonts));
     Result<Renderer::PipelineId> pipeline = deps.pipelines.add(Renderer::GraphicsPipelineRequest{
         .shader = shader, .colorFormat = colorFormat, .blend = Rhi::BlendMode::Alpha, .name = "ImGui"});
     if (!pipeline)
@@ -245,7 +249,7 @@ ImGuiLayer::ImGuiLayer(const ImGuiLayerDeps& deps)
     io.BackendRendererName = "Meow2 RHI";
     io.BackendPlatformName = "Meow2 input";
     io.IniFilename = nullptr; // window layout isn't saved yet: the next PR keeps it in the TOML config
-    ImGui::StyleColorsDark();
+    applyUiTheme(ImGui::GetStyle(), m_contentScale);
 
     Events::EventBus& events = deps.events;
     m_input.push_back(events.subscribe<Input::KeyPressed>(
@@ -343,11 +347,7 @@ void ImGuiLayer::newFrame(float deltaSeconds, float width, float height, float f
     // style is rebuilt from the defaults rather than scaled again, which would compound.
     if (contentScale > 0.0F && contentScale != m_contentScale)
     {
-        ImGuiStyle& style = ImGui::GetStyle();
-        style = ImGuiStyle{};
-        ImGui::StyleColorsDark();
-        style.ScaleAllSizes(contentScale);
-        style.FontScaleDpi = contentScale;
+        applyUiTheme(ImGui::GetStyle(), contentScale);
         m_contentScale = contentScale;
     }
     ImGuiIO& io = ImGui::GetIO();
@@ -355,6 +355,33 @@ void ImGuiLayer::newFrame(float deltaSeconds, float width, float height, float f
     io.DisplaySize = ImVec2{width, height};
     io.DisplayFramebufferScale = ImVec2{framebufferScale, framebufferScale};
     ImGui::NewFrame();
+}
+
+void ImGuiLayer::addFonts(UiFontFiles files)
+{
+    // The atlas reads the files whenever it bakes glyphs (ImGui 1.92 bakes on demand), so the bytes stay here for
+    // the layer's life and the atlas doesn't free them.
+    m_fontFiles = std::move(files);
+    ImFontAtlas& atlas = *ImGui::GetIO().Fonts;
+    const Memory::MemTagScope tag{Memory::MemTag::ImGui};
+    const auto add = [&atlas](std::vector<std::byte>& file, float size, const char* name) -> ImFont*
+    {
+        if (file.empty())
+        {
+            return nullptr;
+        }
+        ImFontConfig config;
+        config.FontDataOwnedByAtlas = false;
+        std::snprintf(config.Name, sizeof(config.Name), "%s", name);
+        return atlas.AddFontFromMemoryTTF(file.data(), static_cast<int>(file.size()), size, &config);
+    };
+    // The first font added is ImGui's default. Sizes in unscaled pixels; FontScaleDpi scales them.
+    m_fonts.text = add(m_fontFiles.text, c_textFontSize, "Barlow Semi Condensed");
+    m_fonts.mono = add(m_fontFiles.mono, c_monoFontSize, "Consolas");
+    if (m_fonts.text == nullptr)
+    {
+        MEOW2_LOG_WARN(m_deps.log, "UI font not found: using ImGui's built-in font");
+    }
 }
 
 void ImGuiLayer::skipFrame()

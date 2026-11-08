@@ -1,7 +1,7 @@
 # Script mode: checks that tracked text files follow .editorconfig's basics.
 # Usage: cmake -DMEOW2_SOURCE_DIR=<repo> -DMEOW2_GIT=<git> -P CheckTextFiles.cmake
 #
-# Rules (for text files tracked by git, outside external/):
+# Rules (for text files tracked by git, outside external/ and assets/fonts/: third-party files kept as published):
 #   - ends with a newline           (insert_final_newline)
 #   - no trailing spaces/tabs       (trim_trailing_whitespace)
 #   - no tab indentation            (indent_style = space; .gitmodules excepted)
@@ -35,7 +35,7 @@ endfunction()
 set(problems "")
 set(checkedCount 0)
 foreach(relPath IN LISTS trackedFiles)
-    if(relPath STREQUAL "" OR relPath MATCHES "^external/")
+    if(relPath STREQUAL "" OR relPath MATCHES "^external/" OR relPath MATCHES "^assets/fonts/")
         continue()
     endif()
     get_filename_component(name "${relPath}" NAME)

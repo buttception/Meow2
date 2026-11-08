@@ -3,6 +3,7 @@
 ///        the engine version (checked by the smoke tests) and runs the Qt main window.
 
 #include "EditorMainWindow.h"
+#include "EditorTheme.h"
 #include "WindowPlacement.h"
 
 #include <Meow2/Core/Config/Config.h>
@@ -15,6 +16,7 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Memory/LeakCheck.h>
 #include <Meow2/Core/Platform.h>
+#include <Meow2/Core/Process.h>
 #include <Meow2/Core/Profiling/Profile.h>
 #include <Meow2/Core/Time/FrameClock.h>
 #include <Meow2/Core/Time/GameLoop.h>
@@ -92,6 +94,8 @@ int main(int argc, char** argv)
     int qtArgumentCount = static_cast<int>(qtArguments.size()) - 1;
     QApplication application{qtArgumentCount, qtArguments.data()};
     MEOW2_LOG_INFO(engineLog, "Qt {}, platform '{}'", qVersion(), QGuiApplication::platformName().toStdString());
+    // The Meow2 theme (docs/wiki/Theme.md): black, red accent, Barlow from fonts/ next to the exe.
+    Meow2::Editor::applyEditorTheme(application, Meow2::executablePath().parent_path() / "fonts", engineLog);
 
     Meow2::Editor::EditorMainWindow window;
     Meow2::Editor::showWithDesc(

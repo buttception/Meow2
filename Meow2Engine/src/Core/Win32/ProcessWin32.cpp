@@ -1,5 +1,5 @@
 /// @file
-/// @brief Windows implementation of Meow2::executablePath().
+/// @brief Windows implementation of Meow2::executablePath() and Meow2::systemFontDirectory().
 
 #include "Meow2/Core/Process.h"
 
@@ -34,5 +34,18 @@ std::filesystem::path executablePath()
         }
         buffer.resize(buffer.size() * 2);
     }
+}
+
+std::filesystem::path systemFontDirectory()
+{
+    // Usually C:\Windows, but not always: Windows can be installed on another drive or folder.
+    std::wstring buffer(MAX_PATH, L'\0');
+    const UINT length = GetWindowsDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
+    if (length == 0 || length >= buffer.size())
+    {
+        return {};
+    }
+    buffer.resize(length);
+    return std::filesystem::path{buffer} / L"Fonts";
 }
 } // namespace Meow2

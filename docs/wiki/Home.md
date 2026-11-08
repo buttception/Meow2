@@ -53,6 +53,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | glTF import (`.gltf`/`.glb`, images, sample fetch) | [Gltf](Gltf.md) | 🟨 M6 |
 | Materials and shading (PBR, normal maps, mips, double-sided, mirrored, blended) | [Rendering](Rendering.md) | 🟨 M6 |
 | Meow2Renderer (ImGui shell, scene picker, stats) | [Renderer](Renderer.md) | 🟨 M6 |
+| Theme: colours, fonts, app and asset icons (Renderer and Editor) | [Theme](Theme.md) | ✅ |
 | RHI (Vulkan and D3D12, bindless, render graph, GPU-driven drawing, switching backends while running) | [Rhi](Rhi.md) | ✅ M5 |
 | Jobs (`JobSystem`, enkiTS) | [Jobs](Jobs.md) | ✅ M1 |
 | Profiling (Tracy) | [Profiling](Profiling.md) | ✅ M1 |

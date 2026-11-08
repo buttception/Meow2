@@ -9,6 +9,7 @@ if(MEOW2_RHI_D3D12)
 endif()
 meow2_gui_subsystem_in_release(Meow2Player) # no console window in Release
 meow2_install_app(Meow2Player)               # into the release zip (cmake/Meow2Packaging.cmake)
+meow2_app_icon(Meow2Player Meow2)             # the plain cat: exported games ship it
 meow2_source_groups(Meow2Player)
 # Started from the Visual Studio solution, log into the repository's (git-ignored) logs/ folder and keep the
 # settings in its (git-ignored) config/ folder.

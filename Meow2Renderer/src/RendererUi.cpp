@@ -12,6 +12,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <format>
 #include <numeric>
@@ -162,18 +163,21 @@ std::array<float, 240> FrameTimes::ordered() const
     return ordered;
 }
 
-StatsActions drawStatsWindow(const StatsInfo& info)
+StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts)
 {
     StatsActions actions;
     // Sizes in unscaled units times the display scale (style.FontScaleDpi), like everything else in the UI.
     const float scale = ImGui::GetStyle().FontScaleDpi;
     ImGui::SetNextWindowPos(ImVec2{10.0F * scale, 10.0F * scale}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2{340.0F * scale, 0.0F}, ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Stats"))
+    // "###Stats" keeps the window's ID (and its position) whatever the title says.
+    if (!ImGui::Begin("STATS###Stats"))
     {
         ImGui::End();
         return actions;
     }
+    drawWindowAccents();
+    pushMonoFont(fonts); // figures line up in a monospace font
     const float average = info.frames != nullptr ? info.frames->average() : 0.0F;
     ImGui::Text("%.2f ms  (%.0f FPS)", static_cast<double>(average),
                 average > 0.0F ? 1000.0 / static_cast<double>(average) : 0.0);
@@ -183,10 +187,12 @@ StatsActions drawStatsWindow(const StatsInfo& info)
         const float top = std::max(info.frames->worst(), 1.0F);
         ImGui::PlotLines("##frames", times.data(), static_cast<int>(times.size()), 0, nullptr, 0.0F, top * 1.1F,
                          ImVec2{-1.0F, 50.0F * scale});
-        ImGui::Text("Worst %.2f ms over the last %zu frames", static_cast<double>(info.frames->worst()), times.size());
+        ImGui::Text("Worst %.2f ms (last %zu frames)", static_cast<double>(info.frames->worst()), times.size());
     }
+    popMonoFont();
 
     ImGui::SeparatorText("GPU");
+    pushMonoFont(fonts);
     ImGui::Text("%.*s on %.*s", static_cast<int>(info.backend.size()), info.backend.data(),
                 static_cast<int>(info.gpu.size()), info.gpu.data());
     ImGui::Text("%u x %u pixels", info.width, info.height);
@@ -194,20 +200,22 @@ StatsActions drawStatsWindow(const StatsInfo& info)
                 formatBytes(info.gpuMemory.budgetBytes).c_str());
     if (info.validationErrors > 0)
     {
-        ImGui::TextColored(ImVec4{1.0F, 0.4F, 0.3F, 1.0F}, "Validation errors: %llu",
+        ImGui::TextColored(UiColors::c_accentBright, "Validation errors: %llu",
                            static_cast<unsigned long long>(info.validationErrors));
     }
-    if (ImGui::Button("Switch backend (F10)"))
+    popMonoFont();
+    if (ImGui::Button("SWITCH BACKEND (F10)"))
     {
         actions.switchBackend = true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Capture (F11)"))
+    if (ImGui::Button("CAPTURE (F11)"))
     {
         actions.capture = true;
     }
 
-    ImGui::SeparatorText("Scene");
+    ImGui::SeparatorText("SCENE");
+    pushMonoFont(fonts);
     ImGui::Text("%.*s", static_cast<int>(info.scene.size()), info.scene.data());
     ImGui::Text("Entities %zu, instances %u", info.entities, info.instances);
     ImGui::Text("Meshes %u, materials %u, textures %u", info.meshes, info.materials, info.textures);
@@ -215,15 +223,21 @@ StatsActions drawStatsWindow(const StatsInfo& info)
     {
         ImGui::Text("Opened in %.0f ms", info.importMilliseconds);
     }
+    popMonoFont();
 
-    if (ImGui::CollapsingHeader("Memory"))
+    // Section headers stay grey: ImGui gives them the colour of selected rows, which the theme makes red.
+    ImGui::PushStyleColor(ImGuiCol_Header, UiColors::c_frame);
+    const bool memoryOpen = ImGui::CollapsingHeader("MEMORY###Memory");
+    ImGui::PopStyleColor();
+    if (memoryOpen)
     {
         if (ImGui::BeginTable("memory", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
         {
-            ImGui::TableSetupColumn("Tag");
+            ImGui::TableSetupColumn("TAG");
             ImGui::TableSetupColumn("CPU");
             ImGui::TableSetupColumn("GPU");
             ImGui::TableHeadersRow();
+            pushMonoFont(fonts);
             for (std::size_t i = 0; i < Memory::c_memTagCount; ++i)
             {
                 const auto tag = static_cast<Memory::MemTag>(i);
@@ -242,6 +256,7 @@ StatsActions drawStatsWindow(const StatsInfo& info)
                 ImGui::TableNextColumn();
                 ImGui::TextUnformatted(formatBytes(gpu).c_str());
             }
+            popMonoFont();
             ImGui::EndTable();
         }
         if constexpr (!Memory::c_memoryTrackingAvailable)
@@ -278,7 +293,7 @@ void ScenesWindow::startFetch(const std::string& name)
     MEOW2_LOG_INFO(m_log, "Fetching the {} sample…", name);
 }
 
-std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::string_view error)
+std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::string_view error, const UiFonts& fonts)
 {
     std::optional<SceneRequest> request;
 
@@ -309,15 +324,20 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
         ImVec2{std::max(ImGui::GetIO().DisplaySize.x - 350.0F * scale, 360.0F * scale), 10.0F * scale},
         ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2{340.0F * scale, 420.0F * scale}, ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Scenes"))
+    if (!ImGui::Begin("SCENES###Scenes"))
     {
         ImGui::End();
         return request;
     }
-    ImGui::TextWrapped("Open: %.*s", static_cast<int>(current.size()), current.data());
+    drawWindowAccents();
+    ImGui::TextDisabled("OPEN");
+    ImGui::SameLine();
+    pushMonoFont(fonts);
+    ImGui::TextWrapped("%.*s", static_cast<int>(current.size()), current.data());
+    popMonoFont();
     if (!error.empty())
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{1.0F, 0.4F, 0.3F, 1.0F});
+        ImGui::PushStyleColor(ImGuiCol_Text, UiColors::c_accentBright);
         ImGui::TextWrapped("%.*s", static_cast<int>(error.size()), error.data());
         ImGui::PopStyleColor();
     }
@@ -332,7 +352,10 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
             if (sample.group != group)
             {
                 group = sample.group;
-                ImGui::SeparatorText(sample.group.c_str());
+                std::string heading = sample.group;
+                std::transform(heading.begin(), heading.end(), heading.begin(),
+                               [](char c) { return static_cast<char>(std::toupper(static_cast<unsigned char>(c))); });
+                ImGui::SeparatorText(heading.c_str());
             }
             if (!sample.downloaded)
             {
@@ -365,7 +388,7 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
         const SampleEntry& selected = m_samples[m_selected];
         if (selected.downloaded)
         {
-            if (ImGui::Button("Open"))
+            if (ImGui::Button("OPEN"))
             {
                 request = SceneRequest{.file = findSample(m_sampleRoot, selected.name)};
             }
@@ -373,7 +396,7 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
         else
         {
             ImGui::BeginDisabled(!m_fetching.empty());
-            if (ImGui::Button("Fetch and open"))
+            if (ImGui::Button("FETCH AND OPEN"))
             {
                 m_openAfterFetch = selected.name;
                 startFetch(selected.name);
@@ -381,7 +404,7 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
             ImGui::EndDisabled();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cube grid"))
+        if (ImGui::Button("CUBE GRID"))
         {
             request = SceneRequest{};
         }
@@ -391,17 +414,19 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
         ImGui::Text("Fetching %s…", m_fetching.c_str());
     }
 
-    ImGui::SeparatorText("Any file");
+    ImGui::SeparatorText("ANY FILE");
     ImGui::SetNextItemWidth(-60.0F * scale);
     const bool entered = ImGui::InputTextWithHint("##path", ".gltf or .glb path", m_path.data(), m_path.size(),
                                                   ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
-    if ((ImGui::Button("Open##path") || entered) && m_path[0] != '\0')
+    if ((ImGui::Button("OPEN##path") || entered) && m_path[0] != '\0')
     {
         // UTF-8 from ImGui: as a char8_t string, so non-ASCII paths work on Windows too.
         request = SceneRequest{.file = std::filesystem::path{reinterpret_cast<const char8_t*>(m_path.data())}};
     }
-    ImGui::TextDisabled("Samples: %s", m_sampleRoot.string().c_str());
+    pushMonoFont(fonts);
+    ImGui::TextDisabled("%s", m_sampleRoot.string().c_str());
+    popMonoFont();
     ImGui::End();
     return request;
 }

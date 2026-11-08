@@ -74,6 +74,7 @@ include(Meow2Dxc)
 include(Meow2SmokeTest)
 include(Meow2Subsystem)
 include(Meow2Packaging) # meow2_install_app(); meow2_package() is called at the end
+include(Meow2AppResources) # meow2_app_icon(), meow2_app_fonts()
 include(Meow2Agility)   # after the packaging module: it adds the runtime to the release zip
 if(MEOW2_BUILD_TESTS)
     include(Meow2Tests)

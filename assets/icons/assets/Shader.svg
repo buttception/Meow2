@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#D8D8DC" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+  <!-- Shader asset: a pixel grid, one pixel written (docs/wiki/Theme.md): grey outline, one red mark. -->
+  <rect x="4" y="4" width="16" height="16"/><path d="M4 9.3h16M4 14.6h16M9.3 4v16M14.6 4v16"/><rect x="14.6" y="9.3" width="5.4" height="5.3" fill="#E01E2D" stroke="#E01E2D"/>
+</svg>

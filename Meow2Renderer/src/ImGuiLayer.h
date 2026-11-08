@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "UiTheme.h"
+
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Id/Uuid.h>
 #include <Meow2/Core/Log/Logger.h>
@@ -58,9 +60,10 @@ public:
     /// @param deps        What it uses.
     /// @param shader      The AssetId of `shaders/ImGui.hlsl`.
     /// @param colorFormat The format of the swapchain it draws to.
+    /// @param fonts       The theme's font files; a missing one falls back to ImGui's built-in font.
     /// @return The layer, or the error from building the pipeline.
     [[nodiscard]] static Result<std::unique_ptr<ImGuiLayer>> create(const ImGuiLayerDeps& deps, AssetId shader,
-                                                                    Rhi::RhiFormat colorFormat);
+                                                                    Rhi::RhiFormat colorFormat, UiFontFiles fonts = {});
 
     /// @brief Use create().
     /// @param deps What it uses.
@@ -94,6 +97,13 @@ public:
     /// @brief Releases staging buffers whose copies are recorded. Call after the graph has executed.
     void endFrame();
 
+    /// @brief The theme's fonts in ImGui's atlas, for pushMonoFont().
+    /// @return The fonts; a member is null when its file wasn't found.
+    [[nodiscard]] const UiFonts& fonts() const
+    {
+        return m_fonts;
+    }
+
     /// @brief Whether ImGui is using the mouse (over a window), so the app should ignore it.
     /// @return ImGui's WantCaptureMouse.
     [[nodiscard]] bool wantsMouse() const;
@@ -103,6 +113,13 @@ public:
     [[nodiscard]] bool wantsKeyboard() const;
 
 private:
+    static constexpr float c_textFontSize = 16.0F; ///< Barlow's size at scale 1, in pixels.
+    static constexpr float c_monoFontSize = 14.0F; ///< Consolas' size at scale 1: it runs larger than Barlow.
+
+    /// @brief Adds the theme's fonts to ImGui's atlas; the first becomes the default.
+    /// @param files The TrueType files, kept by the layer.
+    void addFonts(UiFontFiles files);
+
     /// @brief A texture ImGui asked for; its slot index + 1 is the ImGui texture ID.
     struct TextureSlot
     {
@@ -158,6 +175,8 @@ private:
     ImGuiLayerDeps m_deps;
     ImGuiContext* m_context = nullptr;
     float m_contentScale = 1.0F; ///< The scale the style was last sized for.
+    UiFontFiles m_fontFiles;     ///< Read by the atlas whenever it bakes glyphs.
+    UiFonts m_fonts;
     std::optional<Renderer::PipelineId> m_pipeline;
     std::vector<TextureSlot> m_textures;
     std::vector<PendingUpload> m_uploads;

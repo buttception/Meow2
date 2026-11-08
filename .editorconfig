@@ -21,3 +21,7 @@ indent_size = 2
 [.gitmodules]
 # git itself writes this file with tabs
 indent_style = tab
+
+# Fonts and their licences, kept exactly as published (not checked by the lint either)
+[assets/fonts/**]
+trim_trailing_whitespace = false

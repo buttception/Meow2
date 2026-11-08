@@ -54,6 +54,10 @@ Settings given with `--set` are saved to `Meow2Renderer.toml` like the rest ([Co
 
 Dear ImGui (v1.93.0-docking, a submodule) is built as `meow2_imgui` only with the Renderer: the engine and Player never see it. Its memory is counted under `MemTag::ImGui`.
 
+### Look
+
+Black panels with red accents, Barlow Semi Condensed for labels and Consolas for figures, the R-badge cat as its icon: see [Theme](Theme.md). `UiTheme.*` holds the ImGui side.
+
 ### ImGui on the engine
 
 ImGui's own backends aren't used. They'd bring SDL into the app and a separate Vulkan and D3D12 path; instead:

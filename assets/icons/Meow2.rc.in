@@ -1,0 +1,3 @@
+// An executable's icon (cmake/Meow2AppResources.cmake, docs/wiki/Theme.md). Generated into the build folder with
+// the icon's absolute path. Qt looks for the name IDI_ICON1; SDL and Explorer take the first icon in the file.
+IDI_ICON1 ICON "@MEOW2_ICON_FILE@"

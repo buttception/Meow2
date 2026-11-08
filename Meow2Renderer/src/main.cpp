@@ -64,6 +64,38 @@
 #include <utility>
 #include <vector>
 
+namespace
+{
+/// @brief Reads the UI's fonts: Barlow Semi Condensed from `fonts/` next to the exe, Consolas from the system's font
+///        folder (Windows). A missing file is logged; the UI then uses ImGui's built-in font in its place.
+/// @param files Has `fonts/` and, where there is one, `systemfonts/` mounted.
+/// @param log   Receives what's missing.
+/// @return The files.
+Meow2::RendererApp::UiFontFiles loadUiFonts(const Meow2::FileSystem::FileSystem& files, Meow2::Log::Logger& log)
+{
+    Meow2::RendererApp::UiFontFiles fonts;
+    if (Meow2::Result<std::vector<std::byte>> text =
+            files.readFile("fonts/BarlowSemiCondensed/BarlowSemiCondensed-Regular.ttf"))
+    {
+        fonts.text = std::move(*text);
+    }
+    else
+    {
+        MEOW2_LOG_WARN(log, "UI font: {}", text.error());
+    }
+    // Consolas is Microsoft's and can't be shipped; Windows has it. Elsewhere numbers use ImGui's font for now.
+    if (Meow2::Result<std::vector<std::byte>> mono = files.readFile("systemfonts/consola.ttf"))
+    {
+        fonts.mono = std::move(*mono);
+    }
+    else
+    {
+        MEOW2_LOG_INFO(log, "No Consolas ({}): numbers use the built-in font", mono.error());
+    }
+    return fonts;
+}
+} // namespace
+
 int main(int argc, char** argv)
 {
     // First: a CPU without this build's instruction sets (AVX2) gets a clear message instead of a crash.
@@ -190,6 +222,19 @@ int main(int argc, char** argv)
     {
         MEOW2_LOG_WARN(appLog, "The pipeline cache won't be saved: {}", cacheMount.error());
     }
+    // The UI's fonts: Barlow next to the exe (copied there by the build), Consolas from the system.
+    if (const Meow2::Result<void> fontMount = files.mountDirectory("fonts", appFolder / "fonts"); !fontMount)
+    {
+        MEOW2_LOG_WARN(appLog, "No fonts folder: {}", fontMount.error());
+    }
+    if (const std::filesystem::path systemFonts = Meow2::systemFontDirectory(); !systemFonts.empty())
+    {
+        if (const Meow2::Result<void> mounted = files.mountDirectory("systemfonts", systemFonts); !mounted)
+        {
+            MEOW2_LOG_INFO(appLog, "System fonts not available: {}", mounted.error());
+        }
+    }
+    const Meow2::RendererApp::UiFontFiles uiFonts = loadUiFonts(files, appLog);
     // rhi.backend picks the graphics API to start with: "vulkan" (everywhere) or "d3d12" (Windows). Each keeps its own
     // pipeline cache.
     const std::string backendName = config.getString("rhi.backend", "vulkan");
@@ -348,7 +393,8 @@ int main(int argc, char** argv)
         {
             Meow2::Result<std::unique_ptr<Meow2::RendererApp::ImGuiLayer>> createdUi =
                 Meow2::RendererApp::ImGuiLayer::create({*renderDevice, *pipelines, events, appLog},
-                                                       assetId("01a1b5e2-3c14-8000-80a4-7b19d2e6c055"), colorFormat);
+                                                       assetId("01a1b5e2-3c14-8000-80a4-7b19d2e6c055"), colorFormat,
+                                                       uiFonts);
             if (createdUi)
             {
                 ui = std::move(*createdUi);
@@ -497,7 +543,8 @@ int main(int argc, char** argv)
             MEOW2_LOG_ERROR(appLog, "Can't start a frame: {}", list.error());
             return false;
         }
-        constexpr Meow2::Math::Color c_clear{.r = 0.02F, .g = 0.03F, .b = 0.06F};
+        // Near black, the theme's base, so scenes sit on the same background as the UI.
+        constexpr Meow2::Math::Color c_clear{.r = 0.004F, .g = 0.004F, .b = 0.005F};
         frameTimes.add(static_cast<float>(clock.deltaSeconds() * 1000.0));
 
         // The UI's windows, built before drawing; what they ask for happens next frame.
@@ -531,7 +578,8 @@ int main(int argc, char** argv)
                     stats.textures = view->gpu().textureCount();
                     stats.importMilliseconds = view->importMilliseconds();
                 }
-                const Meow2::RendererApp::StatsActions actions = Meow2::RendererApp::drawStatsWindow(stats);
+                const Meow2::RendererApp::StatsActions actions =
+                    Meow2::RendererApp::drawStatsWindow(stats, ui->fonts());
                 if (actions.switchBackend)
                 {
                     pendingSwap = renderDevice->backend() == Meow2::Rhi::RhiBackend::Vulkan
@@ -542,8 +590,8 @@ int main(int argc, char** argv)
                 {
                     renderDoc.capture();
                 }
-                if (std::optional<Meow2::RendererApp::SceneRequest> request =
-                        scenesWindow.draw(view ? std::string_view{view->name()} : std::string_view{}, sceneError))
+                if (std::optional<Meow2::RendererApp::SceneRequest> request = scenesWindow.draw(
+                        view ? std::string_view{view->name()} : std::string_view{}, sceneError, ui->fonts()))
                 {
                     pendingScene = std::move(request);
                 }
