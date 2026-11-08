@@ -79,7 +79,7 @@ There's one descriptor set for the whole engine, bound once per frame:
 
 A shader gets its indices from the 16 bytes of push constants. Binding 1 is **mutable**: each slot can hold any of the resource types, which is what lets one array serve as both buffers and textures.
 
-Every buffer gets one slot, read as a `ByteAddressBuffer` or written as a `RWByteAddressBuffer`. A texture gets a sampled slot, plus a storage slot with `TextureDesc::storage`. Slot 0 of the resource heap is never handed out, so a forgotten index shows up. Slot 0 of the sampler heap is the default sampler.
+Every buffer gets one slot, read as a `ByteAddressBuffer` or written as a `RWByteAddressBuffer`. A texture gets a sampled slot, plus a storage slot per mip level with `TextureDesc::storage` (`bindlessStorageIndex(texture, level)`): a storage view covers exactly one level, as Vulkan requires. Slot 0 of the resource heap is never handed out, so a forgotten index shows up. Slot 0 of the sampler heap is the default sampler.
 
 ### Barriers
 
@@ -248,7 +248,7 @@ Looked into for M6's capture button; nothing added yet, because each needs an SD
 - One queue family with graphics and compute
 - Dynamic rendering, synchronization2, timeline semaphores, buffer device address, demote to helper invocation (`discard`)
 - Descriptor indexing for bindless: runtime arrays, partially bound, update after bind, dynamic and non-uniform indexing
-- Storage writes in vertex and pixel shaders
+- Storage writes in vertex and pixel shaders; storage images written without a declared format
 - Multi-draw indirect, indirect draw count, 64-bit integers in shaders
 
 On D3D12:

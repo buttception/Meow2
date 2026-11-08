@@ -9,6 +9,9 @@ namespace Meow2::RendererApp
 {
 namespace
 {
+/// @brief Consolas' size relative to Barlow's: the same pixel size looks bigger in Consolas.
+constexpr float c_monoFontScale = 0.85F;
+
 /// @brief A colour with another opacity.
 constexpr ImVec4 withAlpha(const ImVec4& color, float alpha)
 {
@@ -149,8 +152,9 @@ void drawWindowAccents()
 
 void pushMonoFont(const UiFonts& fonts)
 {
-    // A null font keeps the current one; 0 keeps the current size (ImGui 1.92 dynamic fonts).
-    ImGui::PushFont(fonts.mono, 0.0F);
+    // ImGui 1.92 draws every font at style.FontSizeBase (times FontScaleDpi), whatever size it was added at. Consolas
+    // looks bigger than Barlow at the same size, so it's drawn smaller. A null font keeps the current one.
+    ImGui::PushFont(fonts.mono, ImGui::GetStyle().FontSizeBase * c_monoFontScale);
 }
 
 void popMonoFont()

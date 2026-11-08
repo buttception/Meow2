@@ -208,7 +208,7 @@ Planned as five PRs; PR 4's shell came first, at the owner's request. glTF is an
 | 3 PBR | Metallic-roughness PBR, normal maps with tangents, occlusion, emissive, vertex colours | §11 | ✅ | #174 / PR #177 |
 | 3 | `.m2texture`: cooked textures with a format field and mips from the start (BC7 later); glTF samplers; texture transforms | §13a | 🟨 mips and samplers done | #174 / PR #177 |
 | 3 | Double-sided materials and mirrored (negative-scale) nodes; alpha blending, sorted | §11 | ✅ | #174 / PR #177 |
-| 3 | Image-based lighting from an environment map | §11 | ⬜ | |
+| 3 | Image-based lighting from an environment map: a physically based sky (Hillaire, owner choice) lights the scene | §11 | ✅ | #180 / PR #181 |
 | 4 Renderer app | Dear ImGui docking shell (submodule, owner request), frame and memory stats per tag; scaled for the display, 1080p default window | §2, §7 | ✅ | #172 / PR #173, #175 / PR #176 |
 | 4 | Backend switch button, capture button (the same as F11) | §11 | ✅ | #172 / PR #173 |
 | 4 | Scene browser: the sample list, which are downloaded, fetch on click, open any `.gltf`/`.glb` (`.m2scene` with PR 2) | §13 | ✅ | #172 / PR #173 |

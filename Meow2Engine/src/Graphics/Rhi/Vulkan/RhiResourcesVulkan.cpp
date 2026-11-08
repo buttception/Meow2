@@ -379,6 +379,7 @@ BufferVulkan RhiDeviceVulkan::buffer(BufferHandle handle)
 Result<TextureHandle> RhiDeviceVulkan::createTexture(const TextureDesc& desc)
 {
     MEOW2_ASSERT(desc.width > 0 && desc.height > 0 && desc.mipLevels > 0, "A texture needs a size");
+    MEOW2_ASSERT(desc.mipLevels <= c_maxMipLevels, "More mip levels than c_maxMipLevels");
     const Memory::MemTagScope tag{Memory::MemTag::Rhi};
     const bool depth = desc.format == RhiFormat::D32Float;
     TextureVulkan record;
@@ -439,21 +440,58 @@ Result<TextureHandle> RhiDeviceVulkan::createTexture(const TextureDesc& desc)
         return fail(ErrorCode::Unknown, std::format("Texture view '{}': {}", desc.name, vulkanResultName(result)));
     }
 
+    // A storage view must cover exactly one mip level, so a storage texture gets a view and a heap slot per level.
+    const std::uint32_t storageLevels = desc.storage ? desc.mipLevels : 0;
+    bool viewsMade = true;
+    for (std::uint32_t level = 0; viewsMade && level < storageLevels; ++level)
+    {
+        VkImageViewCreateInfo levelInfo = viewInfo;
+        levelInfo.subresourceRange.baseMipLevel = level;
+        levelInfo.subresourceRange.levelCount = 1;
+        viewsMade = vkCreateImageView(m_device, &levelInfo, nullptr, &record.storageViews[level]) == VK_SUCCESS;
+    }
+    bool slots = viewsMade;
     {
         const std::scoped_lock lock{m_resourceMutex};
-        record.heapIndex = m_resourceSlots.allocate();
-        record.storageIndex = desc.storage ? m_resourceSlots.allocate() : c_invalidBindlessIndex;
+        record.heapIndex = slots ? m_resourceSlots.allocate() : c_invalidBindlessIndex;
+        slots = slots && record.heapIndex != c_invalidBindlessIndex;
+        for (std::uint32_t level = 0; slots && level < storageLevels; ++level)
+        {
+            record.storageIndices[level] = m_resourceSlots.allocate();
+            slots = record.storageIndices[level] != c_invalidBindlessIndex;
+        }
+        if (!slots)
+        {
+            // Give back what was taken before something ran out.
+            for (const std::uint32_t index : record.storageIndices)
+            {
+                if (index != c_invalidBindlessIndex)
+                {
+                    m_resourceSlots.release(index);
+                }
+            }
+            if (record.heapIndex != c_invalidBindlessIndex)
+            {
+                m_resourceSlots.release(record.heapIndex);
+            }
+        }
     }
-    if (record.heapIndex == c_invalidBindlessIndex || (desc.storage && record.storageIndex == c_invalidBindlessIndex))
+    if (!slots)
     {
+        for (const VkImageView levelView : record.storageViews)
+        {
+            vkDestroyImageView(m_device, levelView, nullptr); // a null view is ignored
+        }
         vkDestroyImageView(m_device, record.view, nullptr);
         vmaDestroyImage(m_allocator, record.image, record.allocation);
-        return fail(ErrorCode::OutOfMemory, "The bindless heap is full");
+        return fail(ErrorCode::OutOfMemory,
+                    viewsMade ? "The bindless heap is full" : std::format("Texture '{}': storage views", desc.name));
     }
     writeImageDescriptor(record.heapIndex, record.view, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-    if (desc.storage)
+    for (std::uint32_t level = 0; level < storageLevels; ++level)
     {
-        writeImageDescriptor(record.storageIndex, record.view, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        writeImageDescriptor(record.storageIndices[level], record.storageViews[level],
+                             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
     }
 
     const std::scoped_lock lock{m_resourceMutex};
@@ -476,14 +514,21 @@ void RhiDeviceVulkan::destroy(TextureHandle texture)
     deferDestroy(
         [this, record]
         {
+            for (const VkImageView levelView : record.storageViews)
+            {
+                vkDestroyImageView(m_device, levelView, nullptr); // a null view is ignored
+            }
             vkDestroyImageView(m_device, record.view, nullptr);
             vmaDestroyImage(m_allocator, record.image, record.allocation);
             m_bytesByTag[static_cast<std::size_t>(record.tag)] -= record.bytes;
             const std::scoped_lock lock{m_resourceMutex};
             m_resourceSlots.release(record.heapIndex);
-            if (record.storageIndex != c_invalidBindlessIndex)
+            for (const std::uint32_t index : record.storageIndices)
             {
-                m_resourceSlots.release(record.storageIndex);
+                if (index != c_invalidBindlessIndex)
+                {
+                    m_resourceSlots.release(index);
+                }
             }
         });
 }
@@ -495,11 +540,11 @@ std::uint32_t RhiDeviceVulkan::bindlessIndex(TextureHandle texture)
     return found != nullptr ? found->heapIndex : c_invalidBindlessIndex;
 }
 
-std::uint32_t RhiDeviceVulkan::bindlessStorageIndex(TextureHandle texture)
+std::uint32_t RhiDeviceVulkan::bindlessStorageIndex(TextureHandle texture, std::uint32_t mipLevel)
 {
     const std::shared_lock lock{m_resourceMutex};
     const TextureVulkan* found = m_textures.get(texture);
-    return found != nullptr ? found->storageIndex : c_invalidBindlessIndex;
+    return found != nullptr && mipLevel < c_maxMipLevels ? found->storageIndices[mipLevel] : c_invalidBindlessIndex;
 }
 
 TextureVulkan RhiDeviceVulkan::texture(TextureHandle handle)

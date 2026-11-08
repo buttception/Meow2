@@ -29,6 +29,7 @@
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
+#include <Meow2/Graphics/Renderer/SkyAtmosphere.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 #include <Meow2/Graphics/Rhi/RenderDocCapture.h>
 #include <Meow2/Math/Camera.h>
@@ -274,6 +275,14 @@ int main(int argc, char** argv)
         }
     }
     std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
+    // The sky (renderer.sky): lights every scene and is drawn behind it. Scenes refer to it: declared before them.
+    std::unique_ptr<Meow2::Renderer::SkyAtmosphere> sky;
+    // The starting sun: renderer.sunElevation and renderer.sunDirection, in degrees (the Stats window's sliders).
+    Meow2::RendererApp::SunControls sun;
+    sun.elevationDegrees =
+        static_cast<float>(config.getFloat("renderer.sunElevation", static_cast<double>(sun.elevationDegrees)));
+    sun.azimuthDegrees =
+        static_cast<float>(config.getFloat("renderer.sunDirection", static_cast<double>(sun.azimuthDegrees)));
     // The open scene, and the ImGui shell (renderer.ui; F1 hides it). Both use the pipelines: declared after them.
     std::optional<Meow2::RendererApp::SceneViewDeps> viewDeps;
     std::unique_ptr<Meow2::RendererApp::SceneView> view;
@@ -362,6 +371,21 @@ int main(int argc, char** argv)
                 .and_then([](const Meow2::Uuid& uuid) { return Meow2::AssetId::fromUuid(uuid); })
                 .value_or(Meow2::AssetId{});
         };
+        if (config.getBool("renderer.sky", true))
+        {
+            Meow2::Result<std::unique_ptr<Meow2::Renderer::SkyAtmosphere>> made =
+                Meow2::Renderer::SkyAtmosphere::create(
+                    *renderDevice, *pipelines,
+                    {.shader = assetId("01a1b5e2-3c16-8000-80a4-7b19d2e6c057"), .colorFormat = colorFormat});
+            if (made)
+            {
+                sky = std::move(*made);
+            }
+            else
+            {
+                MEOW2_LOG_WARN(appLog, "No sky, flat ambient light instead: {}", made.error());
+            }
+        }
         viewDeps.emplace(Meow2::RendererApp::SceneViewDeps{.device = *renderDevice,
                                                            .pipelines = *pipelines,
                                                            .files = files,
@@ -369,7 +393,8 @@ int main(int argc, char** argv)
                                                            .jobs = jobs,
                                                            .log = appLog,
                                                            .shader = assetId("01a1b5e2-3c12-8000-80a4-7b19d2e6c053"),
-                                                           .colorFormat = colorFormat});
+                                                           .colorFormat = colorFormat,
+                                                           .sky = sky.get()});
         const auto cubeCount = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000));
         Meow2::Result<std::unique_ptr<Meow2::RendererApp::SceneView>> opened =
@@ -463,9 +488,9 @@ int main(int argc, char** argv)
         depthTexture = *depth;
         return true;
     };
-    const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &view, &viewDeps, &ui, &jobs, &depthTexture,
-                              &makeDepth, &renderDoc, &clock, &pendingSwap, &pendingScene, &sceneError, &scenesWindow,
-                              &frameTimes, &showUi, &sampleRoot, &switchScene, captureFrame, swapAtFrame,
+    const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &view, &viewDeps, &ui, &sky, &sun, &jobs,
+                              &depthTexture, &makeDepth, &renderDoc, &clock, &pendingSwap, &pendingScene, &sceneError,
+                              &scenesWindow, &frameTimes, &showUi, &sampleRoot, &switchScene, captureFrame, swapAtFrame,
                               switchSceneAtFrame,
                               cubeCount = static_cast<std::uint32_t>(
                                   std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000))]
@@ -579,7 +604,7 @@ int main(int argc, char** argv)
                     stats.importMilliseconds = view->importMilliseconds();
                 }
                 const Meow2::RendererApp::StatsActions actions =
-                    Meow2::RendererApp::drawStatsWindow(stats, ui->fonts());
+                    Meow2::RendererApp::drawStatsWindow(stats, ui->fonts(), &sun);
                 if (actions.switchBackend)
                 {
                     pendingSwap = renderDevice->backend() == Meow2::Rhi::RhiBackend::Vulkan
@@ -624,6 +649,21 @@ int main(int argc, char** argv)
                 frame.view = matrices.view;
                 frame.projection = matrices.projection;
                 frame.viewProjection = matrices.viewProjection;
+                frame.cameraPosition = {camera.position.x, camera.position.y, camera.position.z, 0.0F};
+                // The sun from the Stats window's sliders, the same for the sky and the shading.
+                const Meow2::Math::Vec3 sunDirection = Meow2::RendererApp::sunDirection(sun);
+                view->gpu().setLighting(
+                    {.sunDirection = sunDirection, .sunIntensity = sun.intensity, .exposure = sun.exposure});
+                if (sky)
+                {
+                    // Scenes are in metres; the atmosphere in kilometres, measured from the ground at y = 0.
+                    sky->setView(device.frameSlot(),
+                                 {.sunDirection = sunDirection,
+                                  .sunIlluminance = {sun.intensity, sun.intensity, sun.intensity, 1.0F},
+                                  .cameraAltitudeKm = 0.05F + std::max(camera.position.y, 0.0F) * 0.001F},
+                                 matrices.viewProjection);
+                    sky->addPasses(graph, device.frameSlot());
+                }
                 view->gpu().setView(device.frameSlot(), frame, Meow2::Math::frustumFromCamera(matrices));
                 view->gpu().addPasses(graph, device.frameSlot(), swapchain.get(), {}, depthTexture, c_clear);
             }
@@ -649,6 +689,10 @@ int main(int argc, char** argv)
             if (view)
             {
                 view->gpu().endFrame(graph);
+                if (sky)
+                {
+                    sky->endFrame();
+                }
             }
             if (ui)
             {

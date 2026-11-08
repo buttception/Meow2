@@ -59,7 +59,7 @@ T loadElement(uint bufferIndex, uint element)
 // HLSL's half of the size checks; BindlessLayout.h has the C++ half.
 // A wrong size makes an array of negative length, a compile error: DXC has no global _Static_assert.
 typedef uint Meow2CheckPushConstants[sizeof(PushConstants) == 16 ? 1 : -1];
-typedef uint Meow2CheckFrameConstants[sizeof(FrameConstants) == 304 ? 1 : -1];
+typedef uint Meow2CheckFrameConstants[sizeof(FrameConstants) == 336 ? 1 : -1];
 typedef uint Meow2CheckInstanceData[sizeof(InstanceData) == 80 ? 1 : -1];
 typedef uint Meow2CheckIndirectDraw[sizeof(IndirectDraw) == 32 ? 1 : -1];
 typedef uint Meow2CheckPackedVertex[sizeof(PackedVertex) == 24 ? 1 : -1];
@@ -67,5 +67,6 @@ typedef uint Meow2CheckMaterialData[sizeof(MaterialData) == 112 ? 1 : -1];
 typedef uint Meow2CheckUiDraw[sizeof(UiDraw) == 32 ? 1 : -1];
 typedef uint Meow2CheckMeshDraw[sizeof(MeshDraw) == 48 ? 1 : -1];
 typedef uint Meow2CheckCullConstants[sizeof(CullConstants) == 128 ? 1 : -1];
+typedef uint Meow2CheckSkyConstants[sizeof(SkyConstants) == 160 ? 1 : -1];
 
 #endif

@@ -2,8 +2,7 @@
 // three lists (MEOW2_DRAW_LIST_*). vsMain draws the lists, vsBlend the blended instances the CPU sorted, and psMain
 // shades both with metallic-roughness PBR. Indices and vertices are pulled from heap buffers: no vertex input at all.
 #include "Common.hlsli"
-
-static const float c_pi = 3.14159265;
+#include "Atmosphere.hlsli" // c_pi, toneMapNeutral, the sky lookups
 
 /// Signed distance from a plane, positive inside.
 float planeDistance(float4 plane, float3 position)
@@ -198,24 +197,26 @@ float3 environmentBrdf(float3 f0, float nDotV, float roughness)
     return f0 * scaleBias.x + scaleBias.y;
 }
 
-/// Khronos PBR Neutral tone mapping: keeps base colours as authored up to about 0.8, then rolls highlights off to white.
-float3 toneMapNeutral(float3 color)
+/// Irradiance from the sky in a normal's direction: its 9 spherical-harmonic coefficients (already convolved with
+/// the cosine lobe by Sky.hlsl's csIrradiance) evaluated there.
+float3 skyIrradiance(uint buffer, float3 n)
 {
-    const float startCompression = 0.8 - 0.04;
-    const float desaturation = 0.15;
-    const float lowest = min(color.r, min(color.g, color.b));
-    const float offset = lowest < 0.08 ? lowest - 6.25 * lowest * lowest : 0.04;
-    color -= offset;
-    const float peak = max(color.r, max(color.g, color.b));
-    if (peak < startCompression)
+    const ByteAddressBuffer coefficients = heapBuffer(buffer);
+    const float basis[9] = {0.282095,
+                            0.488603 * n.y,
+                            0.488603 * n.z,
+                            0.488603 * n.x,
+                            1.092548 * n.x * n.y,
+                            1.092548 * n.y * n.z,
+                            0.315392 * (3.0 * n.z * n.z - 1.0),
+                            1.092548 * n.x * n.z,
+                            0.546274 * (n.x * n.x - n.y * n.y)};
+    float3 irradiance = 0.0;
+    for (uint k = 0; k < 9; ++k)
     {
-        return color;
+        irradiance += coefficients.Load<float4>(k * 16).rgb * basis[k];
     }
-    const float d = 1.0 - startCompression;
-    const float newPeak = 1.0 - d * d / (peak + d - startCompression);
-    color *= newPeak / peak;
-    const float g = 1.0 - 1.0 / (desaturation * (peak - newPeak) + 1.0);
-    return lerp(color, newPeak.xxx, g);
+    return max(irradiance, 0.0);
 }
 
 float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
@@ -287,7 +288,7 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
     const float3 diffuseColor = baseColor.rgb * (1.0 - metallic);
     const float3 f0 = lerp(float3(0.04, 0.04, 0.04), baseColor.rgb, metallic);
 
-    const float3 view = normalize(-input.worldPosition);
+    const float3 view = normalize(frame.cameraPosition.xyz - input.worldPosition);
     const float3 light = frame.sunDirection.xyz;
     const float3 halfway = normalize(view + light);
     const float nDotV = max(dot(normal, view), 1e-4);
@@ -298,14 +299,35 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
     const float3 fresnel = fresnelSchlick(f0, vDotH);
     const float3 specular = fresnel * distributionGgx(nDotH, alpha) * visibilitySmithGgx(nDotL, nDotV, alpha);
     const float3 diffuse = (1.0 - fresnel) * diffuseColor / c_pi;
-    const float3 sun = frame.sunColor.rgb * frame.sunDirection.w;
+    float3 sun = frame.sunColor.rgb * frame.sunDirection.w;
+    const bool sky = frame.environmentMap != 0;
+    if (sky)
+    {
+        // Sunlight reaching the ground has crossed the atmosphere: reddened and dimmed when the sun is low.
+        sun *= sampleTransmittance(frame.transmittanceLut, frame.environmentSampler,
+                                   viewHeightFromAltitude(frame.groundColor.w), light.y);
+    }
     float3 color = (diffuse + specular) * sun * nDotL;
 
-    // Ambient: a sky above and the ground below, blended by where the normal (diffuse) or the reflection (specular)
-    // points. Until image-based lighting arrives this stands in for the environment.
+    // Ambient light from the surroundings. With a sky: image-based lighting, the split-sum approximation (Karis 2013)
+    // - diffuse from the sky's spherical harmonics, specular from its environment map blurred for this roughness,
+    // weighted by the analytic environment BRDF. Without one: a sky colour above and a ground colour below.
     const float3 reflected = reflect(-view, normal);
-    const float3 diffuseAmbient = lerp(frame.groundColor.rgb, frame.skyColor.rgb, normal.y * 0.5 + 0.5);
-    const float3 specularAmbient = lerp(frame.groundColor.rgb, frame.skyColor.rgb, reflected.y * 0.5 + 0.5);
+    float3 diffuseAmbient;
+    float3 specularAmbient;
+    if (sky)
+    {
+        diffuseAmbient = skyIrradiance(frame.irradianceBuffer, normal) / c_pi;
+        Texture2D<float4> environment = ResourceDescriptorHeap[frame.environmentMap];
+        const float lod = roughness * float(frame.environmentLevels - 1);
+        specularAmbient = environment.SampleLevel(heapSampler(frame.environmentSampler),
+                                                  octahedralUv(reflected), lod).rgb;
+    }
+    else
+    {
+        diffuseAmbient = lerp(frame.groundColor.rgb, frame.skyColor.rgb, normal.y * 0.5 + 0.5);
+        specularAmbient = lerp(frame.groundColor.rgb, frame.skyColor.rgb, reflected.y * 0.5 + 0.5);
+    }
     color += (diffuseColor * diffuseAmbient + environmentBrdf(f0, nDotV, roughness) * specularAmbient) * occlusion;
     color += emissive;
 

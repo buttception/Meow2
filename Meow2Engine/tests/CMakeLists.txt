@@ -132,7 +132,8 @@ endif()
 # RhiGpuD3D12.* on D3D12.
 set(meow2RhiGpuTestSources
     Graphics/Renderer/FrameResourcesTests.cpp Graphics/Renderer/GpuSceneTests.cpp
-    Graphics/Renderer/RenderDeviceTests.cpp Graphics/Rhi/RhiDrawTests.cpp Graphics/Rhi/RhiGpuTests.cpp)
+    Graphics/Renderer/RenderDeviceTests.cpp Graphics/Renderer/SkyAtmosphereTests.cpp Graphics/Rhi/RhiDrawTests.cpp
+    Graphics/Rhi/RhiGpuTests.cpp)
 if(MEOW2_RHI_VULKAN AND MEOW2_GPU_TESTS AND MEOW2_SHADER_TOOLS)
     meow2_add_test_suite(
         TARGET    Meow2EngineRhiGpuTests

@@ -13,8 +13,11 @@
 #include <Meow2/Graphics/Renderer/FrameResources.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Renderer/SceneModel.h>
+#include <Meow2/Graphics/Renderer/SkyAtmosphere.h>
 #include <Meow2/Math/Bounds.h>
 #include <Meow2/Math/Camera.h>
+#include <Meow2/Math/Quaternion.h>
+#include <Meow2/Math/Scalar.h>
 #include <Meow2/Math/Transform.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
 #include <Meow2/Scene/Scene.h>
@@ -27,6 +30,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <format>
 #include <memory>
 #include <span>
 #include <utility>
@@ -69,6 +73,7 @@ protected:
     void TearDown() override
     {
         m_scene.reset();
+        m_sky.reset(); // after the scene, which refers to it
         m_library.reset();
         if (m_depth.isSet())
         {
@@ -106,6 +111,20 @@ protected:
         m_depth = *depth;
     }
 
+    /// @brief Gives the scene a sky (shaders/Sky.hlsl) to light it and be drawn behind it.
+    void makeSky()
+    {
+        const Result<Uuid> uuid = Uuid::parse("01a1b5e2-3c16-8000-80a4-7b19d2e6c057");
+        ASSERT_TRUE(uuid);
+        const Result<AssetId> shader = AssetId::fromUuid(*uuid);
+        ASSERT_TRUE(shader);
+        Result<std::unique_ptr<SkyAtmosphere>> sky =
+            SkyAtmosphere::create(*m_render, *m_library, {.shader = *shader, .colorFormat = OffscreenTarget::format()});
+        ASSERT_TRUE(sky) << sky.error().message;
+        m_sky = std::move(*sky);
+        m_scene->setSky(m_sky.get());
+    }
+
     static Shader::InstanceData instanceAt(const Math::Vec3& position, std::uint32_t material = 1)
     {
         Math::Transform transform;
@@ -125,6 +144,10 @@ protected:
         frame.view = matrices.view;
         frame.projection = matrices.projection;
         frame.viewProjection = matrices.viewProjection;
+        if (m_sky)
+        {
+            m_sky->setView(slot, {.sunDirection = m_sun}, matrices.viewProjection);
+        }
         m_scene->setView(slot, frame, frustum);
     }
 
@@ -141,12 +164,20 @@ protected:
         setCamera(m_render->device().frameSlot(), frustum);
 
         RenderGraph sceneGraph;
+        if (m_sky)
+        {
+            m_sky->addPasses(sceneGraph, m_render->device().frameSlot());
+        }
         const Math::Color clear{.a = 1.0F};
         m_scene->addPasses(sceneGraph, m_render->device().frameSlot(), nullptr, m_target->texture(), m_depth, clear);
         sceneGraph.compile();
         Result<std::vector<Rhi::IRhiCommandList*>> lists = sceneGraph.execute(m_render->device(), m_jobs);
         EXPECT_TRUE(lists) << lists.error().message;
         m_scene->endFrame(sceneGraph);
+        if (m_sky)
+        {
+            m_sky->endFrame();
+        }
 
         Result<Rhi::IRhiCommandList*> last = m_render->device().commandList(0);
         EXPECT_TRUE(last);
@@ -184,6 +215,8 @@ protected:
     Jobs::JobSystem m_jobs;
     std::unique_ptr<RenderDevice> m_render;
     std::unique_ptr<PipelineLibrary> m_library;
+    std::unique_ptr<SkyAtmosphere> m_sky; ///< Optional: declared before the scene, which refers to it.
+    Math::Vec3 m_sun{0.4F, 0.8F, -0.6F};  ///< The sky's sun: the same as the fixture's scene lighting.
     std::unique_ptr<GpuScene> m_scene;
     std::unique_ptr<OffscreenTarget> m_target;
     Rhi::TextureHandle m_depth;
@@ -439,5 +472,37 @@ TEST_F(GpuSceneTest, NormalMapChangesLighting)
     EXPECT_EQ(runFrame(frustum), 1U);
     const int bumpyLight = brightness(pixelAt(c_size / 2, c_size / 2));
     EXPECT_GT(bumpyLight, flatLight + 20) << "the map turns the surface towards the sun";
+}
+
+TEST_F(GpuSceneTest, SmoothMetalReflectsTheSky)
+{
+    makeScene(4);
+    makeSky();
+    const Result<std::uint32_t> quad = m_scene->addMesh(makeQuad());
+    const Result<std::uint32_t> mirror = m_scene->addMaterial({.metallic = 1.0F, .roughness = 0.05F});
+    ASSERT_TRUE(quad && mirror);
+    Math::Frustum frustum{};
+    // The camera looks along +Z. Tilted back 45°, the quad reflects the view straight up, into the sky; tilted
+    // forward, straight down, at the ground. (The target is linear, so the values are small: the zenith is darker
+    // than ground lit by a sun 53° up.)
+    std::array<std::array<std::uint8_t, 4>, 2> seen{};
+    for (const float tilt : {45.0F, -45.0F})
+    {
+        Math::Transform transform = at({0.0F, 0.0F, 3.0F});
+        transform.rotation = Math::fromAxisAngle({1.0F, 0.0F, 0.0F}, Math::toRadians(tilt));
+        const std::vector<Shader::InstanceData> instances{instanceOf(transform, *quad, *mirror)};
+        m_scene->setInstances(instances);
+        EXPECT_EQ(runFrame(frustum), 1U);
+        seen[tilt > 0.0F ? 0 : 1] = pixelAt(c_size / 2, c_size / 2);
+    }
+    const auto& sky = seen[0];
+    const auto& ground = seen[1];
+    const auto values =
+        std::format("sky {} {} {}, ground {} {} {}", sky[0], sky[1], sky[2], ground[0], ground[1], ground[2]);
+    EXPECT_GT(sky[2], sky[0] * 2 + 4) << "blue from the sky overhead: " << values;
+    EXPECT_GT(ground[0], ground[2]) << "the sunlit ground is a warm grey: " << values;
+    EXPECT_GT(ground[0], sky[0] + 10) << "the two reflections differ: " << values;
+    const auto corner = pixelAt(0, 0);
+    EXPECT_GT(corner[0] + corner[1] + corner[2], 0) << "the sky is drawn behind the scene";
 }
 } // namespace Meow2::Renderer

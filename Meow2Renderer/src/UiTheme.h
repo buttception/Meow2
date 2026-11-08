@@ -60,7 +60,7 @@ struct UiFontFiles
     std::vector<std::byte> mono{}; ///< A TrueType file for UiFonts::mono.
 };
 
-/// @brief Draws the following text in the monospace font, until popMonoFont(). Keeps the current size.
+/// @brief Draws the following text in the monospace font, a little smaller than the UI font, until popMonoFont().
 /// @param fonts The fonts; with no monospace font this changes nothing (but must still be popped).
 void pushMonoFont(const UiFonts& fonts);
 

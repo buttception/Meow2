@@ -8,6 +8,7 @@
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/Logger.h>
 #include <Meow2/Graphics/Rhi/RhiTypes.h>
+#include <Meow2/Math/Types.h>
 
 #include <array>
 #include <atomic>
@@ -100,11 +101,26 @@ struct StatsActions
     bool capture = false;       ///< The same as F11.
 };
 
+/// @brief The sun, as the stats window's sliders set it. Plain data.
+struct SunControls
+{
+    float elevationDegrees = 35.0F; ///< Above the horizon: -10 (just set) to 90 (overhead).
+    float azimuthDegrees = 30.0F;   ///< Around +Y from +Z (where glTF models face), towards +X.
+    float intensity = 3.0F;         ///< The sun's illuminance in the scene's units.
+    float exposure = 1.0F;          ///< Scales the final colour before the tone curve.
+};
+
+/// @brief The direction towards the sun for some controls.
+/// @param sun The controls.
+/// @return A unit vector, world space (+Y up, +Z forward).
+[[nodiscard]] Math::Vec3 sunDirection(const SunControls& sun);
+
 /// @brief Draws the stats window.
 /// @param info  What to show.
 /// @param fonts The theme's fonts: numbers are drawn in the monospace one.
+/// @param sun   The sun's sliders, edited in place; null to leave them out.
 /// @return The buttons pressed this frame.
-StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts = {});
+StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts = {}, SunControls* sun = nullptr);
 
 /// @brief The scene picker: Khronos samples (fetching ones that aren't downloaded) and any file by path.
 /// @par Thread safety

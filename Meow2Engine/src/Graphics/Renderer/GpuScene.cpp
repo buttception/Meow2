@@ -537,19 +537,30 @@ void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& fr
     constants.sunColor = {m_lighting.sunColor.r, m_lighting.sunColor.g, m_lighting.sunColor.b, m_lighting.exposure};
     constants.skyColor = {m_lighting.skyColor.r, m_lighting.skyColor.g, m_lighting.skyColor.b, 0.0F};
     constants.groundColor = {m_lighting.groundColor.r, m_lighting.groundColor.g, m_lighting.groundColor.b, 0.0F};
+    if (m_sky != nullptr)
+    {
+        const SkyShadingInputs inputs = m_sky->shadingInputs();
+        constants.environmentMap = inputs.environmentMap;
+        constants.environmentLevels = inputs.environmentLevels;
+        constants.irradianceBuffer = inputs.irradianceBuffer;
+        constants.transmittanceLut = inputs.transmittanceLut;
+        constants.environmentSampler = inputs.environmentSampler;
+        constants.groundColor.w = m_sky->settings().cameraAltitudeKm;
+    }
     std::memcpy(m_device.device().mappedMemory(m_frameBuffers[frameSlot]).data(), &constants, sizeof(constants));
 
-    // Blended instances are drawn farthest first, so each mixes with what's behind it. Positions are camera relative,
-    // so the distance is the length of the box centre. Sorting whole instances is the usual compromise: overlapping
+    // Blended instances are drawn farthest first, so each mixes with what's behind it, by the distance from the
+    // camera to the box centre. Sorting whole instances is the usual compromise: overlapping
     // surfaces of one mesh can still come out in the wrong order.
     std::vector<std::pair<float, std::uint32_t>> distances;
     distances.reserve(m_blended.size());
+    const XMVECTOR camera = XMVectorSet(frame.cameraPosition.x, frame.cameraPosition.y, frame.cameraPosition.z, 0.0F);
     for (const std::uint32_t index : m_blended)
     {
         const Shader::InstanceData& instance = m_instances[index];
         const Math::Vec3 local = instance.mesh < m_meshes.size() ? m_meshes[instance.mesh].bounds.center : Math::Vec3{};
         const XMVECTOR center = XMVector3Transform(Math::load(local), XMLoadFloat4x4(&instance.world));
-        distances.emplace_back(XMVectorGetX(XMVector3LengthSq(center)), index);
+        distances.emplace_back(XMVectorGetX(XMVector3LengthSq(XMVectorSubtract(center, camera))), index);
     }
     std::sort(distances.begin(), distances.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
     m_blendOrder.clear();
@@ -683,7 +694,7 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
     }
     graph.addPass({.name = "Draw instances",
                    .accesses = std::move(drawAccesses),
-                   .record = [this, swapchain, color, depth, clear, push,
+                   .record = [this, swapchain, color, depth, clear, push, frameSlot, sky = m_sky,
                               blended = std::move(blended)](Rhi::IRhiCommandList& list)
                    {
                        if (swapchain != nullptr)
@@ -703,6 +714,11 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
                            list.setPushConstants(push);
                            list.drawIndirectCount(m_drawBuffer, m_countBuffer, m_desc.instanceCapacity,
                                                   drawList * listBytes, drawList * sizeof(std::uint32_t));
+                       }
+                       if (sky != nullptr)
+                       {
+                           // Behind everything opaque (it only fills untouched depth), before what's blended over it.
+                           sky->drawSky(list, frameSlot, push.frameBuffer);
                        }
                        if (!blended.empty())
                        {

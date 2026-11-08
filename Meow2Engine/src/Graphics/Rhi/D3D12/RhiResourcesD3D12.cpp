@@ -409,6 +409,7 @@ BufferD3D12 RhiDeviceD3D12::buffer(BufferHandle handle)
 Result<TextureHandle> RhiDeviceD3D12::createTexture(const TextureDesc& desc)
 {
     MEOW2_ASSERT(desc.width > 0 && desc.height > 0 && desc.mipLevels > 0, "A texture needs a size");
+    MEOW2_ASSERT(desc.mipLevels <= c_maxMipLevels, "More mip levels than c_maxMipLevels");
     const Memory::MemTagScope tag{Memory::MemTag::Rhi};
     const bool depth = desc.format == RhiFormat::D32Float;
     D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
@@ -455,11 +456,34 @@ Result<TextureHandle> RhiDeviceD3D12::createTexture(const TextureDesc& desc)
     m_bytesByTag[static_cast<std::size_t>(record.tag)] += record.bytes;
 
     bool slots = false;
+    const std::uint32_t storageLevels = desc.storage ? desc.mipLevels : 0;
     {
         const std::scoped_lock lock{m_resourceMutex};
         slots = m_resourceSlots.allocate(record.heapIndex) &&
-                (!desc.storage || m_resourceSlots.allocate(record.storageIndex)) &&
                 (!desc.renderTarget || (depth ? m_dsvSlots : m_rtvSlots).allocate(record.targetIndex));
+        for (std::uint32_t level = 0; slots && level < storageLevels; ++level)
+        {
+            slots = m_resourceSlots.allocate(record.storageIndices[level]);
+        }
+        if (!slots)
+        {
+            // Give back what was taken before the heap ran out.
+            for (const std::uint32_t index : record.storageIndices)
+            {
+                if (index != c_invalidBindlessIndex)
+                {
+                    m_resourceSlots.release(index);
+                }
+            }
+            if (record.heapIndex != c_invalidBindlessIndex)
+            {
+                m_resourceSlots.release(record.heapIndex);
+            }
+            if (record.targetIndex != 0)
+            {
+                (depth ? m_dsvSlots : m_rtvSlots).release(record.targetIndex);
+            }
+        }
     }
     if (!slots)
     {
@@ -472,12 +496,13 @@ Result<TextureHandle> RhiDeviceD3D12::createTexture(const TextureDesc& desc)
         .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
         .Texture2D = {.MostDetailedMip = 0, .MipLevels = desc.mipLevels, .PlaneSlice = 0, .ResourceMinLODClamp = 0.0F}};
     m_device->CreateShaderResourceView(record.resource, &srv, m_resourceHeap.cpu(record.heapIndex));
-    if (desc.storage)
+    for (std::uint32_t level = 0; level < storageLevels; ++level)
     {
         const D3D12_UNORDERED_ACCESS_VIEW_DESC uav{.Format = viewFormat(desc.format),
                                                    .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D,
-                                                   .Texture2D = {.MipSlice = 0, .PlaneSlice = 0}};
-        m_device->CreateUnorderedAccessView(record.resource, nullptr, &uav, m_resourceHeap.cpu(record.storageIndex));
+                                                   .Texture2D = {.MipSlice = level, .PlaneSlice = 0}};
+        m_device->CreateUnorderedAccessView(record.resource, nullptr, &uav,
+                                            m_resourceHeap.cpu(record.storageIndices[level]));
     }
     if (desc.renderTarget && depth)
     {
@@ -519,9 +544,12 @@ void RhiDeviceD3D12::destroy(TextureHandle texture)
             m_bytesByTag[static_cast<std::size_t>(record.tag)] -= record.bytes;
             const std::scoped_lock lock{m_resourceMutex};
             m_resourceSlots.release(record.heapIndex);
-            if (record.storageIndex != c_invalidBindlessIndex)
+            for (const std::uint32_t index : record.storageIndices)
             {
-                m_resourceSlots.release(record.storageIndex);
+                if (index != c_invalidBindlessIndex)
+                {
+                    m_resourceSlots.release(index);
+                }
             }
             if (record.targetIndex != 0)
             {
@@ -537,11 +565,11 @@ std::uint32_t RhiDeviceD3D12::bindlessIndex(TextureHandle texture)
     return found != nullptr ? found->heapIndex : c_invalidBindlessIndex;
 }
 
-std::uint32_t RhiDeviceD3D12::bindlessStorageIndex(TextureHandle texture)
+std::uint32_t RhiDeviceD3D12::bindlessStorageIndex(TextureHandle texture, std::uint32_t mipLevel)
 {
     const std::shared_lock lock{m_resourceMutex};
     const TextureD3D12* found = m_textures.get(texture);
-    return found != nullptr ? found->storageIndex : c_invalidBindlessIndex;
+    return found != nullptr && mipLevel < c_maxMipLevels ? found->storageIndices[mipLevel] : c_invalidBindlessIndex;
 }
 
 TextureD3D12 RhiDeviceD3D12::texture(TextureHandle handle)

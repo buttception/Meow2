@@ -36,7 +36,7 @@ The values live in two places, because the apps share no UI code: `Meow2Renderer
 `applyUiTheme(style, scale)` sets every size and colour: no rounding, 1-pixel borders, the palette above. It rebuilds the style from ImGui's defaults each time, so a new display scale (a window moved to a 150 % screen) doesn't compound. `drawWindowAccents()` draws the corner brackets and the title tick; each window calls it after `Begin()`.
 
 - Window and section titles are written in capitals (`"STATS###Stats"`: the `###` part keeps the window's ID, and so its position, whatever the title says).
-- `ImGuiLayer` adds Barlow first (so it's the default font) and Consolas second; `pushMonoFont(ui.fonts())` switches to Consolas for figures and paths.
+- `ImGuiLayer` adds Barlow first (so it's the default font) and Consolas second; `pushMonoFont(ui.fonts())` switches to Consolas for figures and paths. ImGui 1.92 draws every font at `style.FontSizeBase` (13 px, times the display scale), whatever size it was added at, so Consolas, which looks bigger than Barlow at the same size, is pushed at 85 % of it.
 - ImGui uses one colour for selected rows and collapsing headers; the theme makes it red for selection, so headers push grey around themselves.
 
 ## In Meow2Editor (Qt)

@@ -18,6 +18,7 @@
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 #include <Meow2/Graphics/Shader/BindlessLayout.h>
 #include <Meow2/Math/Color.h>
+#include <Meow2/Math/Packing.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
 
 #include <gtest/gtest.h>
@@ -46,7 +47,8 @@ namespace fs = std::filesystem;
 constexpr std::string_view c_triangleShader = "01a1b5e2-3c10-8000-80a4-7b19d2e6c051";
 constexpr std::string_view c_textureShader = "01a1b5e2-3c11-8000-80a4-7b19d2e6c052";
 constexpr std::string_view c_probeShader = "01a1b158-0216-8000-808e-12fd3223a2ac";
-constexpr std::string_view c_statesShader = "01a1b5e2-3c13-8000-80a4-7b19d2e6c054"; // RhiStates.hlsl
+constexpr std::string_view c_statesShader = "01a1b5e2-3c13-8000-80a4-7b19d2e6c054";  // RhiStates.hlsl
+constexpr std::string_view c_storageShader = "01a1b5e2-3c15-8000-80a4-7b19d2e6c056"; // RhiStorage.hlsl
 constexpr std::uint32_t c_targetSize = 64;
 
 /// @brief What BindlessTriangle.hlsl reads from the heap.
@@ -427,6 +429,78 @@ TEST_F(RhiDrawTest, CopiesEveryMipLevel)
     }
     m_device->destroy(pipeline);
     m_device->destroy(*sampler);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
+
+TEST_F(RhiDrawTest, WritesEachMipThroughItsStorageView)
+{
+    // A 256-pixel, two-level float texture: compute writes red into level 0 and green into level 1, each through
+    // its own storage slot. Level 0 is copied back; drawing the texture minified past level 1 shows level 1.
+    constexpr std::uint32_t c_size = 256;
+    Result<TextureHandle> texture = m_device->createTexture({.width = c_size,
+                                                             .height = c_size,
+                                                             .format = RhiFormat::Rgba16Float,
+                                                             .mipLevels = 2,
+                                                             .storage = true,
+                                                             .name = "Storage mips"});
+    ASSERT_TRUE(texture) << texture.error().message;
+    const std::uint32_t level0 = m_device->bindlessStorageIndex(*texture, 0);
+    const std::uint32_t level1 = m_device->bindlessStorageIndex(*texture, 1);
+    EXPECT_NE(level0, c_invalidBindlessIndex);
+    EXPECT_NE(level1, c_invalidBindlessIndex);
+    EXPECT_NE(level0, level1) << "one slot per level";
+    EXPECT_EQ(m_device->bindlessStorageIndex(*texture, 2), c_invalidBindlessIndex) << "past the last level";
+
+    const std::vector<std::byte> code = bytecode(c_storageShader, "csFill");
+    Result<PipelineHandle> fill = m_device->createComputePipeline({.code = code, .entry = "csFill", .name = "Fill"});
+    ASSERT_TRUE(fill) << fill.error().message;
+    constexpr std::uint32_t c_group = 8; // RhiStorage.hlsl's thread group
+    const BufferHandle readback = makeBuffer(std::uint64_t{c_size} * c_size * 8, RhiMemory::Readback);
+    runFrame(
+        [&](IRhiCommandList& list)
+        {
+            list.barrier(*texture, ResourceState::Undefined, ResourceState::ShaderWrite);
+            list.setPipeline(*fill);
+            list.setPushConstants({.instance = 0xFF0000FFU, .userData = level0}); // red
+            list.dispatch(c_size / c_group, c_size / c_group);
+            list.setPushConstants({.instance = 0xFF00FF00U, .userData = level1}); // green
+            list.dispatch(c_size / 2 / c_group, c_size / 2 / c_group);
+            list.barrier(*texture, ResourceState::ShaderWrite, ResourceState::CopySource);
+            list.copyTextureToBuffer(*texture, readback);
+            list.barrier(*texture, ResourceState::CopySource, ResourceState::ShaderRead);
+            list.barrier(readback, ResourceState::CopyTarget, ResourceState::HostRead);
+        });
+    std::array<std::uint16_t, 4> texel{};
+    std::memcpy(texel.data(), m_device->mappedMemory(readback).data() + (std::size_t{c_size} * 10 + 10) * 8, 8);
+    EXPECT_FLOAT_EQ(Math::fromHalf(texel[0]), 1.0F) << "level 0 is red";
+    EXPECT_FLOAT_EQ(Math::fromHalf(texel[1]), 0.0F);
+
+    const Result<SamplerHandle> sampler = m_device->createSampler({.filter = SamplerFilter::Nearest});
+    ASSERT_TRUE(sampler) << sampler.error().message;
+    const PipelineHandle draw = graphicsPipeline(c_textureShader);
+    const TextureHandle target = makeTarget();
+    const BufferHandle pixels = makeBuffer(sizeof(Pixel) * c_targetSize * c_targetSize, RhiMemory::Readback);
+    renderToReadback(target, pixels,
+                     [&](IRhiCommandList& list)
+                     {
+                         list.setPipeline(draw);
+                         list.setPushConstants({.instance = m_device->bindlessIndex(*sampler),
+                                                .userData = m_device->bindlessIndex(*texture)});
+                         list.draw(3);
+                     });
+    const Pixel center = pixelAt(pixels, 32, 32);
+    EXPECT_EQ(center.r, 0) << "minified past level 1: green";
+    EXPECT_EQ(center.g, 255);
+
+    for (const BufferHandle buffer : {readback, pixels})
+    {
+        m_device->destroy(buffer);
+    }
+    m_device->destroy(*texture);
+    m_device->destroy(*sampler);
+    m_device->destroy(*fill);
+    m_device->destroy(draw);
+    m_device->destroy(target);
     EXPECT_EQ(m_device->validationErrorCount(), 0U);
 }
 
