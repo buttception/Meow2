@@ -438,13 +438,24 @@ ImportedMaterial importMaterial(const cgltf_material& material, const cgltf_data
             warnings.push_back(
                 std::format("material '{}': {} uses UV set {}; only set 0 is imported", out.name, slot, view.texcoord));
         }
+        ImportedTexture texture{.image = indexIn(view.texture->image, data.images),
+                                .sampler = indexIn(view.texture->sampler, data.samplers)};
         if (view.has_transform)
         {
-            warnings.push_back(
-                std::format("material '{}': {} has a texture transform, not imported yet", out.name, slot));
+            // KHR_texture_transform. UVs aren't touched by the handedness conversion (only positions and normals
+            // are), so the values apply as they are.
+            const cgltf_texture_transform& transform = view.transform;
+            texture.offset = {transform.offset[0], transform.offset[1]};
+            texture.rotation = transform.rotation;
+            texture.scale = {transform.scale[0], transform.scale[1]};
+            if (transform.has_texcoord && transform.texcoord != 0)
+            {
+                warnings.push_back(std::format("material '{}': {}'s texture transform uses UV set {}; only set 0 is "
+                                               "imported",
+                                               out.name, slot, transform.texcoord));
+            }
         }
-        return ImportedTexture{.image = indexIn(view.texture->image, data.images),
-                               .sampler = indexIn(view.texture->sampler, data.samplers)};
+        return texture;
     };
     if (material.has_pbr_metallic_roughness)
     {

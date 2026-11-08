@@ -149,6 +149,18 @@ struct MaterialData
     uint padding2;                 ///< Pads to 16 bytes.
     uint padding3;                 ///< Pads to 16 bytes.
     uint padding4;                 ///< Pads to 16 bytes.
+    // KHR_texture_transform per texture, in the same order: uv' = (dot(row0.xyz, (u, v, 1)), dot(row1.xyz, (u, v, 1))),
+    // so offset, rotation and scale cost one multiply-add each. Rows (1, 0, 0) and (0, 1, 0) leave the UV as it is.
+    float4 baseColorUv0;           ///< Row 0 of the base colour texture's UV transform; w unused.
+    float4 baseColorUv1;           ///< Row 1.
+    float4 metallicRoughnessUv0;   ///< Row 0 of the metallic-roughness texture's UV transform.
+    float4 metallicRoughnessUv1;   ///< Row 1.
+    float4 normalUv0;              ///< Row 0 of the normal map's UV transform.
+    float4 normalUv1;              ///< Row 1.
+    float4 occlusionUv0;           ///< Row 0 of the occlusion texture's UV transform.
+    float4 occlusionUv1;           ///< Row 1.
+    float4 emissiveUv0;            ///< Row 0 of the emissive texture's UV transform.
+    float4 emissiveUv1;            ///< Row 1.
 };
 
 /// One mesh, in a buffer shaders read by index.

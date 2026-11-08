@@ -37,6 +37,7 @@ struct SceneViewDeps
     AssetId shader;                               ///< `shaders/GpuDriven.hlsl`.
     Rhi::RhiFormat colorFormat;                   ///< The swapchain's format.
     const Renderer::SkyAtmosphere* sky = nullptr; ///< Lights every view and is drawn behind it; null for none.
+    Renderer::TextureCooking textures{};          ///< How models' textures are cooked (BC7/BC5, the cache).
 };
 
 /// @brief Where a Khronos sample lives in the fetched samples folder.

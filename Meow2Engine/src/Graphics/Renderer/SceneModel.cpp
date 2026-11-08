@@ -31,22 +31,26 @@ std::span<const GpuSubmesh> RenderMeshes::find(AssetId mesh) const
 }
 
 Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::ImportedModel& model, UuidGenerator& ids,
-                                         RenderMeshes& meshes, Log::Logger& log)
+                                         RenderMeshes& meshes, Log::Logger& log, const TextureCooking& cooking)
 {
-    // Only images a material uses are uploaded, each once per colour space: colour (base colour, emissive) is sRGB,
-    // data (normals, metallic-roughness, occlusion) linear. An image used both ways is uploaded twice.
-    std::vector<std::array<std::int32_t, 2>> textureOf(model.images.size(), {-1, -1});
-    const auto texture = [&](std::int32_t image, bool srgb) -> std::int32_t
+    // Only images a material uses are uploaded, each once per kind: colour (base colour, emissive) is sRGB, data
+    // (metallic-roughness, occlusion) linear, normal maps BC5 when compressed. An image used two ways is cooked twice.
+    std::vector<std::array<std::int32_t, 3>> textureOf(model.images.size(), {-1, -1, -1});
+    const auto texture = [&](std::int32_t image, Assets::TextureKind kind) -> std::int32_t
     {
         if (image < 0 || static_cast<std::size_t>(image) >= model.images.size())
         {
             return -1;
         }
-        std::int32_t& slot = textureOf[static_cast<std::size_t>(image)][srgb ? 1 : 0];
+        std::int32_t& slot = textureOf[static_cast<std::size_t>(image)][static_cast<std::size_t>(kind)];
         if (slot < 0 && !model.images[static_cast<std::size_t>(image)].pixels.empty())
         {
-            Result<std::uint32_t> added =
-                scene.addTexture(model.images[static_cast<std::size_t>(image)], srgb, std::format("Image {}", image));
+            const Assets::Image& source = model.images[static_cast<std::size_t>(image)];
+            Result<Assets::CookedTexture> cooked =
+                cooking.cache != nullptr ? cooking.cache->cook(source, kind, cooking.compress, cooking.jobs)
+                                         : Assets::cookTexture(source, kind, cooking.compress, cooking.jobs);
+            Result<std::uint32_t> added = cooked ? scene.addTexture(std::move(*cooked), std::format("Image {}", image))
+                                                 : Result<std::uint32_t>{Unexpected<Error>{cooked.error()}};
             if (added)
             {
                 slot = static_cast<std::int32_t>(*added);
@@ -89,11 +93,14 @@ Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::Imported
         }
         samplerOf.push_back(added ? static_cast<std::int32_t>(*added) : -1);
     }
-    const auto slot = [&](const Assets::ImportedTexture& imported, bool srgb) -> MaterialTexture
+    const auto slot = [&](const Assets::ImportedTexture& imported, Assets::TextureKind kind) -> MaterialTexture
     {
         const bool hasSampler = imported.sampler >= 0 && static_cast<std::size_t>(imported.sampler) < samplerOf.size();
-        return {.texture = texture(imported.image, srgb),
-                .sampler = hasSampler ? samplerOf[static_cast<std::size_t>(imported.sampler)] : -1};
+        return {.texture = texture(imported.image, kind),
+                .sampler = hasSampler ? samplerOf[static_cast<std::size_t>(imported.sampler)] : -1,
+                .uvOffset = imported.offset,
+                .uvRotation = imported.rotation,
+                .uvScale = imported.scale};
     };
 
     // The model's materials, then one default (white, opaque) for primitives that name none.
@@ -101,16 +108,16 @@ Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::Imported
     for (const Assets::ImportedMaterial& material : model.materials)
     {
         Result<std::uint32_t> added = scene.addMaterial({.baseColorFactor = material.baseColorFactor,
-                                                         .baseColor = slot(material.baseColor, true),
+                                                         .baseColor = slot(material.baseColor, Assets::TextureKind::Color),
                                                          .metallic = material.metallicFactor,
                                                          .roughness = material.roughnessFactor,
-                                                         .metallicRoughness = slot(material.metallicRoughness, false),
-                                                         .normal = slot(material.normal, false),
+                                                         .metallicRoughness = slot(material.metallicRoughness, Assets::TextureKind::Data),
+                                                         .normal = slot(material.normal, Assets::TextureKind::NormalMap),
                                                          .normalScale = material.normalScale,
-                                                         .occlusion = slot(material.occlusion, false),
+                                                         .occlusion = slot(material.occlusion, Assets::TextureKind::Data),
                                                          .occlusionStrength = material.occlusionStrength,
                                                          .emissiveFactor = material.emissiveFactor,
-                                                         .emissive = slot(material.emissive, true),
+                                                         .emissive = slot(material.emissive, Assets::TextureKind::Color),
                                                          .alphaMask = material.alphaMode == Assets::AlphaMode::Mask,
                                                          .alphaCutoff = material.alphaCutoff,
                                                          .blend = material.alphaMode == Assets::AlphaMode::Blend,

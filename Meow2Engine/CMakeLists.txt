@@ -17,6 +17,7 @@ target_sources(Meow2Engine
         src/Assets/Texture/CookedTexture.cpp
         src/Assets/Texture/DirectXTex/BlockCompressionDirectXTex.cpp
         src/Assets/Texture/Image.cpp
+        src/Assets/Texture/TextureCache.cpp
         src/Core/Assert.cpp
         src/Core/CommandLine.cpp
         src/Core/CommandLine.h
@@ -81,6 +82,7 @@ target_sources(Meow2Engine
             include/Meow2/Assets/Shader/ShaderMeta.h
             include/Meow2/Assets/Texture/CookedTexture.h
             include/Meow2/Assets/Texture/Image.h
+            include/Meow2/Assets/Texture/TextureCache.h
             include/Meow2/Core/Assert.h
             include/Meow2/Core/Config/Config.h
             include/Meow2/Core/Crash/CrashHandler.h

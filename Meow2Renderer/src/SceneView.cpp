@@ -83,7 +83,7 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
     view->m_gpu = std::move(*gpu);
     view->m_gpu->setSky(deps.sky);
     Result<std::vector<AssetId>> meshIds =
-        Renderer::uploadModel(*view->m_gpu, *model, deps.ids, view->m_meshes, deps.log);
+        Renderer::uploadModel(*view->m_gpu, *model, deps.ids, view->m_meshes, deps.log, deps.textures);
     if (!meshIds)
     {
         return Unexpected<Error>{meshIds.error()};

@@ -5,6 +5,8 @@
 #pragma once
 
 #include <Meow2/Assets/Gltf/GltfImporter.h>
+#include <Meow2/Assets/Texture/TextureCache.h>
+#include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Id/Uuid.h>
 #include <Meow2/Core/Id/UuidGenerator.h>
 #include <Meow2/Core/Log/Logger.h>
@@ -65,6 +67,14 @@ private:
     std::unordered_map<AssetId, std::vector<GpuSubmesh>> m_meshes;
 };
 
+/// @brief How uploadModel() cooks a model's textures. Plain data.
+struct TextureCooking
+{
+    bool compress = false;                 ///< BC7 for colour and data, BC5 for normal maps; false keeps RGBA8.
+    Assets::TextureCache* cache = nullptr; ///< Keeps cooked textures between runs; null cooks every time.
+    Jobs::JobSystem* jobs = nullptr;       ///< Compresses in parallel; null cooks on the calling thread.
+};
+
 /// @brief Uploads a model's meshes, materials and the textures they use to a GpuScene.
 ///
 /// Every mesh gets a new AssetId. Textures the materials don't use aren't uploaded. A texture or material that can't be
@@ -74,10 +84,12 @@ private:
 /// @param ids    Makes the mesh IDs.
 /// @param meshes Receives each mesh's parts.
 /// @param log    Receives what was skipped.
+/// @param cooking How textures are cooked: each image once per kind it's used as (colour, data, normal map).
 /// @return The AssetId of each of `model.meshes`, in order; an error if a mesh can't be uploaded (the GPU scene is
 ///         full, or the device refused).
 [[nodiscard]] Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::ImportedModel& model,
-                                                       UuidGenerator& ids, RenderMeshes& meshes, Log::Logger& log);
+                                                       UuidGenerator& ids, RenderMeshes& meshes, Log::Logger& log,
+                                                       const TextureCooking& cooking = {});
 
 /// @brief Makes an entity per node of a model, with its local transform, parent and MeshRenderer.
 /// @param scene     The scene.
