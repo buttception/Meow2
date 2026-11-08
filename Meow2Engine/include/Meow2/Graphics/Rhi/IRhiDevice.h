@@ -153,11 +153,16 @@ public:
     /// @note Thread-safe.
     [[nodiscard]] virtual std::uint32_t bindlessIndex(TextureHandle texture) = 0;
 
-    /// @brief A texture's writable heap slot, for `ResourceDescriptorHeap[index]` as a RWTexture2D.
-    /// @param texture The texture, created with TextureDesc::storage.
-    /// @return The index; c_invalidBindlessIndex otherwise.
+    /// @brief The writable heap slot of one mip level of a texture, for `ResourceDescriptorHeap[index]` as a
+    ///        RWTexture2D.
+    ///
+    /// Every level has its own: a storage view covers exactly one level (Vulkan requires it), so a shader writing
+    /// level 3 uses level 3's index, and one reading level 2 to build level 3 can read it through level 2's.
+    /// @param texture  The texture, created with TextureDesc::storage.
+    /// @param mipLevel The level; below the texture's TextureDesc::mipLevels.
+    /// @return The index; c_invalidBindlessIndex for a texture without storage, a stale handle or a level out of range.
     /// @note Thread-safe.
-    [[nodiscard]] virtual std::uint32_t bindlessStorageIndex(TextureHandle texture) = 0;
+    [[nodiscard]] virtual std::uint32_t bindlessStorageIndex(TextureHandle texture, std::uint32_t mipLevel = 0) = 0;
 
     /// @brief Creates a sampler and gives it a slot in the sampler heap.
     /// @param desc Filtering and addressing.

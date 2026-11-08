@@ -24,6 +24,9 @@ inline constexpr std::uint32_t c_invalidBindlessIndex = 0;
 /// @brief Sampler heap slot of the sampler every device creates: linear filtering, repeat addressing.
 inline constexpr std::uint32_t c_defaultSamplerIndex = 0;
 
+/// @brief Most mip levels a texture can have: a 32768-pixel side halved down to 1.
+inline constexpr std::uint32_t c_maxMipLevels = 16;
+
 /// @brief The graphics APIs behind the RHI, chosen at runtime (techstack.md §11).
 enum class RhiBackend : std::uint8_t
 {
@@ -126,7 +129,7 @@ struct TextureDesc
     RhiFormat format = RhiFormat::Rgba8Unorm; ///< Pixel format.
     std::uint32_t mipLevels = 1;              ///< Number of mip levels; >= 1.
     bool renderTarget = false;                ///< Can be drawn to (colour or depth, by its format).
-    bool storage = false;                     ///< Can be written by shaders; gets a second heap slot.
+    bool storage = false;                     ///< Can be written by shaders; gets a heap slot per mip level too.
     Memory::MemTag tag = Memory::MemTag::Rhi; ///< What it counts under in GpuMemoryStats.
     std::string name = "Texture";             ///< Shown in debugging tools.
 };

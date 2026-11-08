@@ -106,6 +106,7 @@ VulkanGpuFacts readGpuFacts(VkPhysicalDevice gpu, const VkPhysicalDeviceProperti
     facts.dynamicRendering = features.v13.dynamicRendering != VK_FALSE;
     facts.synchronization2 = features.v13.synchronization2 != VK_FALSE;
     facts.demoteToHelperInvocation = features.v13.shaderDemoteToHelperInvocation != VK_FALSE;
+    facts.storageImageWithoutFormat = features.core.features.shaderStorageImageWriteWithoutFormat != VK_FALSE;
     facts.timelineSemaphore = features.v12.timelineSemaphore != VK_FALSE;
     facts.bufferDeviceAddress = features.v12.bufferDeviceAddress != VK_FALSE;
     facts.mutableDescriptorType = features.mutableDescriptor.mutableDescriptorType != VK_FALSE;
@@ -384,6 +385,9 @@ Result<void> RhiDeviceVulkan::createDevice(const RhiDeviceDesc& desc)
     features.core.features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
     features.core.features.shaderStorageBufferArrayDynamicIndexing = VK_TRUE;
     features.core.features.shaderStorageImageArrayDynamicIndexing = VK_TRUE;
+    // HLSL storage textures carry no format, so SPIR-V declares them "Unknown": this lets shaders write them anyway.
+    // (Reading them needs shaderStorageImageReadWithoutFormat; nothing does, so it isn't required.)
+    features.core.features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
     features.v12.timelineSemaphore = VK_TRUE;
     features.v12.bufferDeviceAddress = VK_TRUE;
     features.v12.drawIndirectCount = VK_TRUE;

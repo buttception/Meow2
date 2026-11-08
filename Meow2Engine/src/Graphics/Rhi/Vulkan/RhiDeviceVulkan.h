@@ -60,7 +60,8 @@ struct TextureVulkan
     std::uint32_t mipLevels = 1;              ///< Mip levels.
     bool depth = false;                       ///< A depth format.
     std::uint32_t heapIndex = 0;              ///< Sampled slot in the resource heap.
-    std::uint32_t storageIndex = 0;           ///< Writable slot in the resource heap; 0 if it has none.
+    std::array<std::uint32_t, c_maxMipLevels> storageIndices{}; ///< Writable slot of each mip level; 0 if none.
+    std::array<VkImageView, c_maxMipLevels> storageViews{};     ///< One view per level: storage views cover one.
     Memory::MemTag tag = Memory::MemTag::Rhi; ///< Which GpuMemoryStats counter it's in.
     std::uint64_t bytes = 0;                  ///< Memory it takes.
 };
@@ -238,7 +239,7 @@ public:
     [[nodiscard]] Result<TextureHandle> createTexture(const TextureDesc& desc) override;
     void destroy(TextureHandle texture) override;
     [[nodiscard]] std::uint32_t bindlessIndex(TextureHandle texture) override;
-    [[nodiscard]] std::uint32_t bindlessStorageIndex(TextureHandle texture) override;
+    [[nodiscard]] std::uint32_t bindlessStorageIndex(TextureHandle texture, std::uint32_t mipLevel) override;
     [[nodiscard]] Result<SamplerHandle> createSampler(const SamplerDesc& desc) override;
     void destroy(SamplerHandle sampler) override;
     [[nodiscard]] std::uint32_t bindlessIndex(SamplerHandle sampler) override;

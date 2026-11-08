@@ -248,7 +248,7 @@ Looked into for M6's capture button; nothing added yet, because each needs an SD
 - One queue family with graphics and compute
 - Dynamic rendering, synchronization2, timeline semaphores, buffer device address, demote to helper invocation (`discard`)
 - Descriptor indexing for bindless: runtime arrays, partially bound, update after bind, dynamic and non-uniform indexing
-- Storage writes in vertex and pixel shaders
+- Storage writes in vertex and pixel shaders; storage images written without a declared format
 - Multi-draw indirect, indirect draw count, 64-bit integers in shaders
 
 On D3D12:
