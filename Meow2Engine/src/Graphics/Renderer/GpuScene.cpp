@@ -508,6 +508,7 @@ void GpuScene::setInstances(std::span<const Shader::InstanceData> instances)
     MEOW2_ASSERT(instances.size() <= m_desc.instanceCapacity, "More instances than GpuSceneDesc::instanceCapacity");
     m_instances.assign(instances.begin(), instances.end()); // kept for the next device, after a backend switch
     m_blended.clear();
+    m_blendOrder.clear(); // its indices were into the old instances; the next setView() sorts the new ones
     for (std::uint32_t i = 0; i < m_instances.size(); ++i)
     {
         Shader::InstanceData& instance = m_instances[i];
@@ -670,6 +671,10 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
     blended.reserve(m_blendOrder.size());
     for (const std::uint32_t index : m_blendOrder)
     {
+        if (index >= m_instances.size())
+        {
+            continue;
+        }
         const std::uint32_t mesh = m_instances[index].mesh;
         if (mesh < m_meshes.size())
         {
