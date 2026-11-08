@@ -253,3 +253,34 @@ if(MEOW2_RHI_D3D12)
     target_link_libraries(meow2_d3d12ma PUBLIC meow2_directx_headers)
     set_target_properties(meow2_d3d12ma PROPERTIES FOLDER "External")
 endif()
+
+# ---- DirectXTex (texture cooking: BC7 and BC5 compression; techstack.md §4, §13a) ----------------------------------
+# Microsoft's texture library, compiled here from its sources rather than through its CMakeLists.txt: that one always
+# adds install rules (its library, headers and CMake package would land in our release zip) and exports its target,
+# which then can't link to ours. Its tools, sample and GPU (D3D11) compression aren't built, and it doesn't use
+# OpenMP: the cooker spreads work over the job system instead. Only src/Assets/Texture/ includes it.
+set(meow2DirectXTexDir "${PROJECT_SOURCE_DIR}/external/DirectXTex")
+meow2_require_submodule(DirectXTex "${meow2DirectXTexDir}")
+set(meow2DirectXTexSources
+    BC.cpp BC4BC5.cpp BC6HBC7.cpp DirectXTexCompress.cpp DirectXTexConvert.cpp DirectXTexDDS.cpp DirectXTexHDR.cpp
+    DirectXTexImage.cpp DirectXTexMipmaps.cpp DirectXTexMisc.cpp DirectXTexNormalMaps.cpp DirectXTexPMAlpha.cpp
+    DirectXTexResize.cpp DirectXTexTGA.cpp DirectXTexUtil.cpp)
+if(WIN32)
+    list(APPEND meow2DirectXTexSources DirectXTexFlipRotate.cpp DirectXTexWIC.cpp) # as its own build does
+endif()
+list(TRANSFORM meow2DirectXTexSources PREPEND "${meow2DirectXTexDir}/DirectXTex/")
+add_library(meow2_directxtex STATIC ${meow2DirectXTexSources})
+target_include_directories(meow2_directxtex SYSTEM PUBLIC "${meow2DirectXTexDir}/DirectXTex")
+target_link_libraries(meow2_directxtex PUBLIC meow2_directxmath)
+if(WIN32)
+    target_link_libraries(meow2_directxtex PUBLIC ole32) # CoCreateInstance, for WIC
+else()
+    # dxgiformat.h and the Windows types it needs, from DirectX-Headers' stubs for non-Windows builds.
+    set(meow2DirectXHeadersDir "${PROJECT_SOURCE_DIR}/external/DirectX-Headers")
+    meow2_require_submodule(DirectX-Headers "${meow2DirectXHeadersDir}")
+    target_include_directories(meow2_directxtex SYSTEM PUBLIC
+        "${meow2DirectXHeadersDir}/include" "${meow2DirectXHeadersDir}/include/wsl/stubs")
+    target_compile_definitions(meow2_directxtex PUBLIC USING_DIRECTX_HEADERS)
+endif()
+set_target_properties(meow2_directxtex PROPERTIES FOLDER "External")
+add_library(DirectXTex::DirectXTex ALIAS meow2_directxtex)
