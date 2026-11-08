@@ -98,6 +98,12 @@ DXGI_FORMAT d3d12Format(RhiFormat format)
             return DXGI_FORMAT_R32_FLOAT;
         case RhiFormat::D32Float:
             return DXGI_FORMAT_R32_TYPELESS;
+        case RhiFormat::Bc7Unorm:
+            return DXGI_FORMAT_BC7_UNORM;
+        case RhiFormat::Bc7Srgb:
+            return DXGI_FORMAT_BC7_UNORM_SRGB;
+        case RhiFormat::Bc5Unorm:
+            return DXGI_FORMAT_BC5_UNORM;
     }
     return DXGI_FORMAT_UNKNOWN;
 }

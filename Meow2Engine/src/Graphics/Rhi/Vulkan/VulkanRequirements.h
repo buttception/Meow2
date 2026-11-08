@@ -28,6 +28,7 @@ struct VulkanGpuFacts
     bool synchronization2 = false;          ///< The newer barrier and submit calls.
     bool demoteToHelperInvocation = false;  ///< HLSL discard keeps derivatives working (core in 1.3, but optional).
     bool storageImageWithoutFormat = false; ///< Storage images written without a declared format (HLSL RWTexture2D).
+    bool textureCompressionBc = false;      ///< BC1–BC7 block-compressed textures.
     bool timelineSemaphore = false;         ///< Semaphores with a counter, used to pace frames.
     bool bufferDeviceAddress = false;       ///< Buffers read through GPU pointers.
     bool bindlessDescriptors = false;       ///< Every descriptor-indexing feature the bindless heap needs.

@@ -184,12 +184,13 @@ meow2_add_test_suite(
     MODULE    Assets
     SOURCES
         Assets/AssetManagerTests.cpp
+        Assets/CookedTextureTests.cpp
         Assets/GltfImporterTests.cpp
         Assets/ImageTests.cpp
         Assets/ShaderAssetTests.cpp
         Assets/ShaderMetaTests.cpp
         Assets/TestFiles.h)
-target_include_directories(Meow2EngineAssetsTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(Meow2EngineAssetsTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/Meow2Engine/src")
 
 # Cooked shaders load with no DXC anywhere near the executable.
 add_test(NAME Assets.ShaderAsset.LoadsFromAFolderWithoutDxc

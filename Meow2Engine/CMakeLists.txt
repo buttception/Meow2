@@ -13,6 +13,9 @@ target_sources(Meow2Engine
         src/Assets/LibraryMemory.h
         src/Assets/Shader/ShaderAsset.cpp
         src/Assets/Shader/ShaderMeta.cpp
+        src/Assets/Texture/BlockCompression.h
+        src/Assets/Texture/CookedTexture.cpp
+        src/Assets/Texture/DirectXTex/BlockCompressionDirectXTex.cpp
         src/Assets/Texture/Image.cpp
         src/Core/Assert.cpp
         src/Core/CommandLine.cpp
@@ -76,6 +79,7 @@ target_sources(Meow2Engine
             include/Meow2/Assets/Shader/ShaderCooker.h
             include/Meow2/Assets/Shader/ShaderHotReload.h
             include/Meow2/Assets/Shader/ShaderMeta.h
+            include/Meow2/Assets/Texture/CookedTexture.h
             include/Meow2/Assets/Texture/Image.h
             include/Meow2/Core/Assert.h
             include/Meow2/Core/Config/Config.h
@@ -265,6 +269,7 @@ target_link_libraries(Meow2Engine
     PRIVATE
         SDL3::SDL3-static
         meow2_cgltf
+        meow2_directxtex
         meow2_stb_image
         enkiTS
         Tracy::TracyClient

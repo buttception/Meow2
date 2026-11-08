@@ -53,14 +53,6 @@ D3D12State d3d12State(ResourceState state)
     }
     return {};
 }
-
-/// @brief Bytes per pixel of the formats textures use.
-/// @param format The format.
-/// @return The size.
-std::uint32_t pixelSize(RhiFormat format)
-{
-    return format == RhiFormat::Rgba16Float ? 8U : 4U;
-}
 } // namespace
 
 RhiCommandListD3D12::RhiCommandListD3D12(RhiDeviceD3D12& device)
@@ -304,8 +296,14 @@ D3D12_TEXTURE_COPY_LOCATION RhiCommandListD3D12::bufferFootprint(const TextureD3
 {
     // Rows tightly packed, as on Vulkan. Needs the unrestricted copy pitch, which the requirements check asks for;
     // otherwise rows would have to be 256-byte aligned (and level offsets 512-byte aligned).
-    const std::uint32_t width = std::max(texture.width >> mipLevel, 1U);
-    const std::uint32_t height = std::max(texture.height >> mipLevel, 1U);
+    std::uint32_t width = std::max(texture.width >> mipLevel, 1U);
+    std::uint32_t height = std::max(texture.height >> mipLevel, 1U);
+    if (isBlockCompressed(texture.format))
+    {
+        // Block formats copy whole 4 × 4 blocks, so a 2 × 2 or 1 × 1 level still takes one block.
+        width = (width + 3U) / 4U * 4U;
+        height = (height + 3U) / 4U * 4U;
+    }
     return {
         .pResource = buffer,
         .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
@@ -314,7 +312,7 @@ D3D12_TEXTURE_COPY_LOCATION RhiCommandListD3D12::bufferFootprint(const TextureD3
                                           .Width = width,
                                           .Height = height,
                                           .Depth = 1,
-                                          .RowPitch = width * pixelSize(texture.format)}}};
+                                          .RowPitch = rowBytes(texture.format, width)}}};
 }
 
 void RhiCommandListD3D12::copyBufferToTexture(BufferHandle source, TextureHandle target, std::uint32_t mipLevel,
