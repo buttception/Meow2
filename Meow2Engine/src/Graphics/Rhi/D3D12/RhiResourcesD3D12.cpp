@@ -555,16 +555,20 @@ TextureD3D12 RhiDeviceD3D12::texture(TextureHandle handle)
 void RhiDeviceD3D12::writeSampler(const SamplerDesc& desc, std::uint32_t index)
 {
     const bool linear = desc.filter == SamplerFilter::Linear;
-    const D3D12_TEXTURE_ADDRESS_MODE address =
-        desc.address == SamplerAddress::Repeat ? D3D12_TEXTURE_ADDRESS_MODE_WRAP : D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    const auto addressMode = [](SamplerAddress address)
+    {
+        return address == SamplerAddress::Repeat   ? D3D12_TEXTURE_ADDRESS_MODE_WRAP
+               : address == SamplerAddress::Mirror ? D3D12_TEXTURE_ADDRESS_MODE_MIRROR
+                                                   : D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    };
     const float anisotropy = std::clamp(desc.maxAnisotropy, 1.0F, static_cast<float>(D3D12_MAX_MAXANISOTROPY));
     const D3D12_FILTER filter = anisotropy > 1.0F ? D3D12_FILTER_ANISOTROPIC
                                 : linear          ? D3D12_FILTER_MIN_MAG_MIP_LINEAR
                                                   : D3D12_FILTER_MIN_MAG_MIP_POINT;
     const D3D12_SAMPLER_DESC samplerDesc{.Filter = filter,
-                                         .AddressU = address,
-                                         .AddressV = address,
-                                         .AddressW = address,
+                                         .AddressU = addressMode(desc.addressU),
+                                         .AddressV = addressMode(desc.addressV),
+                                         .AddressW = addressMode(desc.addressU),
                                          .MipLODBias = 0.0F,
                                          .MaxAnisotropy = static_cast<UINT>(anisotropy),
                                          .ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER,
@@ -664,8 +668,9 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     pipelineDesc.SampleMask = UINT_MAX;
     // Clockwise front faces, as on Vulkan (CullMode).
     pipelineDesc.RasterizerState = {.FillMode = D3D12_FILL_MODE_SOLID,
-                                    .CullMode =
-                                        desc.cull == CullMode::Back ? D3D12_CULL_MODE_BACK : D3D12_CULL_MODE_NONE,
+                                    .CullMode = desc.cull == CullMode::Back    ? D3D12_CULL_MODE_BACK
+                                                : desc.cull == CullMode::Front ? D3D12_CULL_MODE_FRONT
+                                                                               : D3D12_CULL_MODE_NONE,
                                     .FrontCounterClockwise = FALSE,
                                     .DepthClipEnable = TRUE};
     pipelineDesc.DepthStencilState = {.DepthEnable = hasDepth ? TRUE : FALSE,

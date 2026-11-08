@@ -28,4 +28,22 @@ struct Image
 /// @return The image, or ErrorCode::ParseError naming what the decoder didn't like (an unsupported format included).
 /// @note Thread-safe. Decoding memory is counted under MemTag::Assets.
 [[nodiscard]] Result<Image> decodeImage(std::span<const std::byte> encoded);
+
+/// @brief The mip chain of an image: the image, then each level half the size of the one before (rounded down, at
+///        least 1), down to 1 × 1.
+///
+/// Each level is a 2 × 2 box filter of the one before. For colour images (`srgb`), the averaging is done on linear
+/// light and encoded back, so distant textures don't darken; alpha and data images (normals, roughness) are averaged
+/// as they are.
+/// @param image The full-size image, RGBA8.
+/// @param srgb  Whether its RGB is sRGB-encoded colour.
+/// @return Every level, the full-size image first.
+/// @note Thread-safe.
+[[nodiscard]] std::vector<Image> makeMipChain(const Image& image, bool srgb);
+
+/// @brief How many mip levels an image of this size has, down to 1 × 1.
+/// @param width  Width in pixels; > 0.
+/// @param height Height in pixels; > 0.
+/// @return floor(log2(max(width, height))) + 1.
+[[nodiscard]] std::uint32_t mipLevelCount(std::uint32_t width, std::uint32_t height);
 } // namespace Meow2::Assets

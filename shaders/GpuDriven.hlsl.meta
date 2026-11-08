@@ -11,3 +11,7 @@ stage = "vertex"
 [[entry]]
 name = "psMain"
 stage = "pixel"
+
+[[entry]]
+name = "vsBlend"
+stage = "vertex"

@@ -514,17 +514,21 @@ Result<SamplerVulkan> RhiDeviceVulkan::makeSampler(const SamplerDesc& desc)
 {
     const bool linear = desc.filter == SamplerFilter::Linear;
     const VkFilter filter = linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-    const VkSamplerAddressMode address =
-        desc.address == SamplerAddress::Repeat ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    const auto addressMode = [](SamplerAddress address)
+    {
+        return address == SamplerAddress::Repeat   ? VK_SAMPLER_ADDRESS_MODE_REPEAT
+               : address == SamplerAddress::Mirror ? VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
+                                                   : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    };
     const float anisotropy = std::clamp(desc.maxAnisotropy, 1.0F, m_maxAnisotropy);
     const VkSamplerCreateInfo info{.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
                                    .magFilter = filter,
                                    .minFilter = filter,
                                    .mipmapMode =
                                        linear ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                                   .addressModeU = address,
-                                   .addressModeV = address,
-                                   .addressModeW = address,
+                                   .addressModeU = addressMode(desc.addressU),
+                                   .addressModeV = addressMode(desc.addressV),
+                                   .addressModeW = addressMode(desc.addressU),
                                    .anisotropyEnable = anisotropy > 1.0F ? VK_TRUE : VK_FALSE,
                                    .maxAnisotropy = anisotropy,
                                    .maxLod = VK_LOD_CLAMP_NONE};
@@ -635,8 +639,9 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
     const VkPipelineRasterizationStateCreateInfo rasterization{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode =
-            static_cast<VkCullModeFlags>(desc.cull == CullMode::Back ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE),
+        .cullMode = static_cast<VkCullModeFlags>(desc.cull == CullMode::Back    ? VK_CULL_MODE_BACK_BIT
+                                                 : desc.cull == CullMode::Front ? VK_CULL_MODE_FRONT_BIT
+                                                                                : VK_CULL_MODE_NONE),
         .frontFace = VK_FRONT_FACE_CLOCKWISE,
         .lineWidth = 1.0F};
     const VkPipelineMultisampleStateCreateInfo multisample{.sType =

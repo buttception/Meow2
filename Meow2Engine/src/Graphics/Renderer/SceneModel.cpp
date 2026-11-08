@@ -8,11 +8,17 @@
 #include <DirectXMath.h>
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <utility>
 
 namespace Meow2::Renderer
 {
+namespace
+{
+constexpr float c_anisotropy = 8.0F; // clamped to what the GPU supports by the RHI
+} // namespace
+
 void RenderMeshes::add(AssetId mesh, std::vector<GpuSubmesh> parts)
 {
     m_meshes[mesh] = std::move(parts);
@@ -27,19 +33,20 @@ std::span<const GpuSubmesh> RenderMeshes::find(AssetId mesh) const
 Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::ImportedModel& model, UuidGenerator& ids,
                                          RenderMeshes& meshes, Log::Logger& log)
 {
-    // Base colour textures are sRGB. Only images a material uses are uploaded, each once.
-    std::vector<std::int32_t> textureOf(model.images.size(), -1);
-    const auto texture = [&](std::int32_t image) -> std::int32_t
+    // Only images a material uses are uploaded, each once per colour space: colour (base colour, emissive) is sRGB,
+    // data (normals, metallic-roughness, occlusion) linear. An image used both ways is uploaded twice.
+    std::vector<std::array<std::int32_t, 2>> textureOf(model.images.size(), {-1, -1});
+    const auto texture = [&](std::int32_t image, bool srgb) -> std::int32_t
     {
         if (image < 0 || static_cast<std::size_t>(image) >= model.images.size())
         {
             return -1;
         }
-        std::int32_t& slot = textureOf[static_cast<std::size_t>(image)];
+        std::int32_t& slot = textureOf[static_cast<std::size_t>(image)][srgb ? 1 : 0];
         if (slot < 0 && !model.images[static_cast<std::size_t>(image)].pixels.empty())
         {
             Result<std::uint32_t> added =
-                scene.addTexture(model.images[static_cast<std::size_t>(image)], true, std::format("Image {}", image));
+                scene.addTexture(model.images[static_cast<std::size_t>(image)], srgb, std::format("Image {}", image));
             if (added)
             {
                 slot = static_cast<std::int32_t>(*added);
@@ -52,16 +59,62 @@ Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::Imported
         return slot;
     };
 
+    // The file's samplers; the scene shares identical ones. Linear filtering gets anisotropy, which keeps textures
+    // sharp on surfaces seen at a grazing angle (floors, Sponza's walls).
+    std::vector<std::int32_t> samplerOf;
+    for (const Assets::ImportedSampler& imported : model.samplers)
+    {
+        const auto address = [](Assets::ImportedWrap wrap)
+        {
+            switch (wrap)
+            {
+                case Assets::ImportedWrap::Clamp:
+                    return Rhi::SamplerAddress::Clamp;
+                case Assets::ImportedWrap::Mirror:
+                    return Rhi::SamplerAddress::Mirror;
+                case Assets::ImportedWrap::Repeat:
+                    break;
+            }
+            return Rhi::SamplerAddress::Repeat;
+        };
+        Result<std::uint32_t> added =
+            scene.addSampler({.filter = imported.linear ? Rhi::SamplerFilter::Linear : Rhi::SamplerFilter::Nearest,
+                              .addressU = address(imported.wrapU),
+                              .addressV = address(imported.wrapV),
+                              .maxAnisotropy = imported.linear ? c_anisotropy : 1.0F,
+                              .name = "glTF sampler"});
+        if (!added)
+        {
+            MEOW2_LOG_WARN(log, "Sampler not created, using the default: {}", added.error());
+        }
+        samplerOf.push_back(added ? static_cast<std::int32_t>(*added) : -1);
+    }
+    const auto slot = [&](const Assets::ImportedTexture& imported, bool srgb) -> MaterialTexture
+    {
+        const bool hasSampler = imported.sampler >= 0 && static_cast<std::size_t>(imported.sampler) < samplerOf.size();
+        return {.texture = texture(imported.image, srgb),
+                .sampler = hasSampler ? samplerOf[static_cast<std::size_t>(imported.sampler)] : -1};
+    };
+
     // The model's materials, then one default (white, opaque) for primitives that name none.
     std::vector<std::uint32_t> materialOf;
     for (const Assets::ImportedMaterial& material : model.materials)
     {
         Result<std::uint32_t> added = scene.addMaterial({.baseColorFactor = material.baseColorFactor,
-                                                         .baseColorTexture = texture(material.baseColorImage),
+                                                         .baseColor = slot(material.baseColor, true),
+                                                         .metallic = material.metallicFactor,
+                                                         .roughness = material.roughnessFactor,
+                                                         .metallicRoughness = slot(material.metallicRoughness, false),
+                                                         .normal = slot(material.normal, false),
+                                                         .normalScale = material.normalScale,
+                                                         .occlusion = slot(material.occlusion, false),
+                                                         .occlusionStrength = material.occlusionStrength,
+                                                         .emissiveFactor = material.emissiveFactor,
+                                                         .emissive = slot(material.emissive, true),
                                                          .alphaMask = material.alphaMode == Assets::AlphaMode::Mask,
                                                          .alphaCutoff = material.alphaCutoff,
-                                                         .metallic = material.metallicFactor,
-                                                         .roughness = material.roughnessFactor});
+                                                         .blend = material.alphaMode == Assets::AlphaMode::Blend,
+                                                         .doubleSided = material.doubleSided});
         if (!added)
         {
             return Unexpected<Error>{added.error()};
@@ -81,8 +134,13 @@ Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::Imported
         std::vector<GpuSubmesh> parts;
         for (const Assets::ImportedPrimitive& primitive : mesh.primitives)
         {
-            Result<std::uint32_t> uploaded = scene.addMesh(
-                makeMesh(primitive.positions, primitive.normals, primitive.uvs, primitive.indices, primitive.bounds));
+            Result<std::uint32_t> uploaded = scene.addMesh(makeMesh({.positions = primitive.positions,
+                                                                     .normals = primitive.normals,
+                                                                     .tangents = primitive.tangents,
+                                                                     .uvs = primitive.uvs,
+                                                                     .colors = primitive.colors,
+                                                                     .indices = primitive.indices},
+                                                                    primitive.bounds));
             if (!uploaded)
             {
                 return Unexpected<Error>{uploaded.error()};

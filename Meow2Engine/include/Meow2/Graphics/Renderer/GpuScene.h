@@ -31,7 +31,8 @@ struct GpuSceneDesc
     Rhi::RhiFormat colorFormat = Rhi::RhiFormat::Unknown; ///< Format of the colour target.
 };
 
-/// @brief A mesh ready to upload: quantised positions, octahedral normals, half-float UVs, 32-bit indices. Plain data.
+/// @brief A mesh ready to upload: quantised positions, octahedral normals and tangents, half-float UVs, RGBA8 colours,
+///        32-bit indices. Plain data.
 struct MeshData
 {
     std::vector<Shader::PackedVertex> vertices; ///< Made by makeMesh() or packVertex().
@@ -39,46 +40,95 @@ struct MeshData
     Math::Aabb bounds{};                        ///< The box the positions are quantised in.
 };
 
-/// @brief Encodes one vertex: its position quantised within `bounds`, an octahedral normal and half-float UVs.
-/// @param position Its position, inside `bounds`.
-/// @param normal   Its unit normal.
-/// @param uv       Its texture coordinates.
-/// @param bounds   The mesh's box.
+/// @brief One vertex before packing. Plain data.
+struct VertexAttributes
+{
+    Math::Vec3 position{};                      ///< Inside the mesh's bounds.
+    Math::Vec3 normal{0.0F, 1.0F, 0.0F};        ///< Unit normal.
+    Math::Vec4 tangent{1.0F, 0.0F, 0.0F, 1.0F}; ///< xyz along +U, unit; w the bitangent's sign (±1).
+    Math::Vec2 uv{};                            ///< Texture coordinates.
+    Math::Color color{1.0F, 1.0F, 1.0F, 1.0F};  ///< Linear vertex colour.
+};
+
+/// @brief Encodes one vertex: position quantised within `bounds`, octahedral normal and tangent, half-float UVs, RGBA8
+///        colour.
+/// @param vertex The vertex.
+/// @param bounds The mesh's box.
 /// @return The packed vertex.
-[[nodiscard]] Shader::PackedVertex packVertex(const Math::Vec3& position, const Math::Vec3& normal,
-                                              const Math::Vec2& uv, const Math::Aabb& bounds);
+[[nodiscard]] Shader::PackedVertex packVertex(const VertexAttributes& vertex, const Math::Aabb& bounds);
+
+/// @brief The vertex arrays of a mesh, for makeMesh(). Plain data.
+struct MeshArrays
+{
+    std::span<const Math::Vec3> positions{};  ///< Positions.
+    std::span<const Math::Vec3> normals{};    ///< Unit normals; as many as positions.
+    std::span<const Math::Vec4> tangents{};   ///< As many as positions, or empty (tangents along +X).
+    std::span<const Math::Vec2> uvs{};        ///< As many as positions.
+    std::span<const Math::Color> colors{};    ///< As many as positions, or empty (white).
+    std::span<const std::uint32_t> indices{}; ///< Three per triangle, clockwise.
+};
 
 /// @brief Packs a mesh for upload.
-/// @param positions Positions.
-/// @param normals   Unit normals; as many as positions.
-/// @param uvs       Texture coordinates; as many as positions.
-/// @param indices   Three per triangle, clockwise.
-/// @param bounds    A box around the positions.
+/// @param arrays Its vertex arrays and indices.
+/// @param bounds A box around the positions.
 /// @return The mesh.
-/// @pre The three vertex arrays are the same size (asserted).
-[[nodiscard]] MeshData makeMesh(std::span<const Math::Vec3> positions, std::span<const Math::Vec3> normals,
-                                std::span<const Math::Vec2> uvs, std::span<const std::uint32_t> indices,
-                                const Math::Aabb& bounds);
+/// @pre The vertex arrays that are given have as many elements as `positions` (asserted).
+[[nodiscard]] MeshData makeMesh(const MeshArrays& arrays, const Math::Aabb& bounds);
 
 /// @brief A unit cube, for test scenes.
 /// @return Its 24 vertices and 36 indices, with UVs 0..1 on each face.
 [[nodiscard]] MeshData makeCube();
 
-/// @brief A material to add to a GpuScene. Plain data.
-struct MaterialDesc
+/// @brief One texture slot of a material. Plain data.
+struct MaterialTexture
 {
-    Math::Color baseColorFactor{1.0F, 1.0F, 1.0F, 1.0F}; ///< Linear RGBA; multiplies the texture.
-    std::int32_t baseColorTexture = -1;                  ///< From GpuScene::addTexture() (sRGB), or -1 for none.
-    bool alphaMask = false;                              ///< Discard pixels whose alpha is below `alphaCutoff`.
-    float alphaCutoff = 0.5F;                            ///< For `alphaMask`.
-    float metallic = 1.0F;                               ///< Kept for the PBR pass; 0..1.
-    float roughness = 1.0F;                              ///< Kept for the PBR pass; 0..1.
+    std::int32_t texture = -1; ///< From GpuScene::addTexture(), or -1 for none.
+    std::int32_t sampler = -1; ///< From GpuScene::addSampler(), or -1 for linear, repeating, mipmapped.
 };
 
-/// @brief The GPU-driven path: one compute pass culls every instance, and one indirect call draws what's left.
+/// @brief A metallic-roughness material to add to a GpuScene (glTF's model). Plain data.
+struct MaterialDesc
+{
+    Math::Color baseColorFactor{1.0F, 1.0F, 1.0F, 1.0F}; ///< Linear RGBA; multiplies the texture and vertex colour.
+    MaterialTexture baseColor{};                         ///< sRGB texture.
+    float metallic = 1.0F;                               ///< 0..1; multiplies the texture's B.
+    float roughness = 1.0F;                              ///< 0..1; multiplies the texture's G.
+    MaterialTexture metallicRoughness{};                 ///< Linear texture.
+    MaterialTexture normal{};                            ///< Linear tangent-space normal map, +Y up.
+    float normalScale = 1.0F;                            ///< Scales the normal map's X and Y.
+    MaterialTexture occlusion{};                         ///< Linear texture, occlusion in R.
+    float occlusionStrength = 1.0F;                      ///< 0..1.
+    Math::Color emissiveFactor{0.0F, 0.0F, 0.0F, 1.0F};  ///< Linear RGB; multiplies the texture.
+    MaterialTexture emissive{};                          ///< sRGB texture.
+    bool alphaMask = false;                              ///< Discard pixels whose alpha is below `alphaCutoff`.
+    float alphaCutoff = 0.5F;                            ///< For `alphaMask`.
+    bool blend = false;                                  ///< Blended over what's behind, sorted, no depth writes.
+    bool doubleSided = false;                            ///< Both sides drawn, each lit from its own side.
+};
+
+/// @brief The scene's light until lights are entities: one sun and a sky/ground ambient. Plain data.
+struct SceneLighting
+{
+    Math::Vec3 sunDirection{0.4F, 0.8F, 0.6F};          ///< Towards the sun; normalised. In front of glTF models (+Z).
+    Math::Color sunColor{1.0F, 0.96F, 0.9F, 1.0F};      ///< Linear colour.
+    float sunIntensity = 3.0F;                          ///< Multiplies sunColor.
+    Math::Color skyColor{0.45F, 0.55F, 0.7F, 1.0F};     ///< Ambient light from above, linear.
+    Math::Color groundColor{0.15F, 0.13F, 0.11F, 1.0F}; ///< Ambient light from below, linear.
+    float exposure = 1.0F;                              ///< Scales the final colour before the tone curve.
+};
+
+/// @brief The GPU-driven path: one compute pass culls every instance and sorts the survivors into draw lists, and one
+///        indirect call per list draws them with metallic-roughness PBR.
 ///
-/// There's no per-object work on the CPU, so the cost of a frame doesn't grow with the instance count. Instances and
-/// meshes live in buffers the shaders read by heap index, and vertices are pulled by the vertex shader.
+/// There's no per-object work on the CPU for opaque and alpha-masked surfaces, so the cost of a frame doesn't grow with
+/// the instance count. Instances and meshes live in buffers the shaders read by heap index, and vertices are pulled by
+/// the vertex shader.
+///
+/// - **Draw lists** (MEOW2_DRAW_LIST_*): back faces culled (most meshes), mirrored instances (negative scale reverses
+///   the winding, so front faces are culled instead), and double-sided materials (nothing culled).
+/// - **Blended materials** are left out of the lists. They're drawn after them, one direct draw per instance, sorted
+///   back to front on the CPU, without writing depth.
+/// - **Light:** one sun and a sky/ground ambient (SceneLighting), then exposure and a tone curve.
 ///
 /// It's a RenderDevice user: it keeps a CPU copy of its meshes and instances, and makes its buffers again from them
 /// when the backend changes.
@@ -119,6 +169,18 @@ public:
     /// @return Its index, for MaterialDesc, or an error (an empty image, or the device refused).
     [[nodiscard]] Result<std::uint32_t> addTexture(const Assets::Image& image, bool srgb, std::string name = "Texture");
 
+    /// @brief Adds a sampler, or finds an identical one already added; kept for the next device.
+    /// @param desc How it filters and wraps.
+    /// @return Its index, for MaterialTexture::sampler, or an error from the device.
+    [[nodiscard]] Result<std::uint32_t> addSampler(const Rhi::SamplerDesc& desc);
+
+    /// @brief Sets the sun and ambient light, from the next setView().
+    /// @param lighting The light.
+    void setLighting(const SceneLighting& lighting)
+    {
+        m_lighting = lighting;
+    }
+
     /// @brief Adds a material, and keeps a copy for the next device.
     /// @param material Its parameters.
     /// @return Its index, for Shader::InstanceData::material, or an error when the scene has too many.
@@ -150,8 +212,9 @@ public:
     /// @param graph The graph.
     void endFrame(const RenderGraph& graph);
 
-    /// @brief Where the surviving draw count lands, for tests and statistics.
-    /// @return A buffer holding one `uint`. Changes when the backend does.
+    /// @brief Where the surviving draw counts land, for tests and statistics.
+    /// @return A buffer holding one `uint` per draw list (MEOW2_DRAW_LIST_*), the back-culled list first. Changes when
+    ///         the backend does.
     [[nodiscard]] Rhi::BufferHandle countBuffer() const
     {
         return m_countBuffer;
@@ -222,7 +285,8 @@ private:
     PipelineLibrary& m_pipelines;
     GpuSceneDesc m_desc;
     std::optional<PipelineId> m_cullPipeline;
-    std::optional<PipelineId> m_drawPipeline;
+    std::array<std::optional<PipelineId>, MEOW2_DRAW_LIST_COUNT> m_drawPipelines{}; ///< One per draw list.
+    std::optional<PipelineId> m_blendPipeline;
     Rhi::BufferHandle m_instanceBuffer;
     Rhi::BufferHandle m_meshBuffer;
     Rhi::BufferHandle m_drawBuffer;
@@ -236,16 +300,27 @@ private:
     /// @brief A texture, its pixels kept for the next device, and its upload until the GPU has done it.
     struct TextureRecord
     {
-        Assets::Image image{};        ///< CPU copy.
-        bool srgb = false;            ///< Which format.
-        std::string name{};           ///< For debugging tools.
-        Rhi::TextureHandle texture{}; ///< On the current device.
-        Rhi::BufferHandle staging{};  ///< Holds the pixels until the copy is recorded; unset after.
+        std::vector<Assets::Image> mips{}; ///< CPU copy of every level, full size first.
+        bool srgb = false;                 ///< Which format.
+        std::string name{};                ///< For debugging tools.
+        Rhi::TextureHandle texture{};      ///< On the current device.
+        Rhi::BufferHandle staging{};       ///< Holds the pixels until the copy is recorded; unset after.
     };
     std::vector<TextureRecord> m_textures;
     std::vector<std::uint32_t> m_pendingTextures;  ///< Textures whose copy the next frame records.
     std::vector<Rhi::BufferHandle> m_spentStaging; ///< Staging buffers to destroy once their copies are recorded.
     std::vector<MaterialDesc> m_materials;         ///< CPU copies, for the next device.
+
+    /// @brief A sampler and how to make it again.
+    struct SamplerRecord
+    {
+        Rhi::SamplerDesc desc{};      ///< How it samples.
+        Rhi::SamplerHandle sampler{}; ///< On the current device.
+    };
+    std::vector<SamplerRecord> m_samplers;
+    std::vector<std::uint32_t> m_blended;    ///< Instances with blended materials, drawn sorted.
+    std::vector<std::uint32_t> m_blendOrder; ///< This frame's back-to-front order of m_blended.
+    SceneLighting m_lighting{};
     Rhi::BufferHandle m_materialBuffer;
     Rhi::ResourceState m_drawState = Rhi::ResourceState::Undefined;
     Rhi::ResourceState m_countState = Rhi::ResourceState::Undefined;

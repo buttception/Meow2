@@ -270,7 +270,7 @@ TEST_F(GltfImporterTest, GlbWithAnEmbeddedTexture)
     ASSERT_EQ(model->materials.size(), 1U);
     const ImportedMaterial& material = model->materials[0];
     EXPECT_EQ(material.name, "Orange");
-    EXPECT_EQ(material.baseColorImage, 0);
+    EXPECT_EQ(material.baseColor.image, 0);
     EXPECT_FLOAT_EQ(material.baseColorFactor.r, 0.5F);
     EXPECT_EQ(material.alphaMode, AlphaMode::Mask);
     EXPECT_FLOAT_EQ(material.alphaCutoff, 0.25F);
@@ -307,5 +307,121 @@ TEST_F(GltfImporterTest, PointsAreSkipped)
     EXPECT_TRUE(model->meshes.empty());
     EXPECT_EQ(model->nodes[1].mesh, -1) << "its only primitive was points";
     EXPECT_FALSE(model->warnings.empty());
+}
+namespace
+{
+/// The triangle with normals (+Z), UVs (U along +X, V along +Y), optional tangents and vertex colours: 200 bytes.
+std::vector<std::byte> attributeBuffer()
+{
+    std::vector<std::byte> buffer = triangleBuffer();
+    buffer.resize(44); // indices padded to 4 bytes
+    const auto append = [&buffer](std::span<const float> values)
+    {
+        const std::vector<std::byte> bytes = bytesOf<float>(values);
+        buffer.insert(buffer.end(), bytes.begin(), bytes.end());
+    };
+    append(std::array<float, 9>{0, 0, 1, 0, 0, 1, 0, 0, 1});              // NORMAL at 44
+    append(std::array<float, 12>{1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1});    // TANGENT at 80
+    append(std::array<float, 12>{1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0.5F}); // COLOR_0 at 128
+    append(std::array<float, 6>{0, 0, 1, 0, 0, 1});                       // TEXCOORD_0 at 176
+    return buffer;
+}
+
+/// A document around attributeBuffer(): `attributes` lists the primitive's attributes beyond POSITION; one material
+/// with a normal map that has a sampler (nearest, mirrored across, clamped down).
+std::string attributeJson(std::string_view bufferUri, std::string_view imageUri, std::string_view attributes)
+{
+    return std::format(R"({{
+  "asset": {{"version": "2.0"}},
+  "buffers": [{{"byteLength": 200, "uri": "{}"}}],
+  "bufferViews": [{{"buffer": 0, "byteOffset": 0, "byteLength": 36}},
+                  {{"buffer": 0, "byteOffset": 36, "byteLength": 6}},
+                  {{"buffer": 0, "byteOffset": 44, "byteLength": 36}},
+                  {{"buffer": 0, "byteOffset": 80, "byteLength": 48}},
+                  {{"buffer": 0, "byteOffset": 128, "byteLength": 48}},
+                  {{"buffer": 0, "byteOffset": 176, "byteLength": 24}}],
+  "accessors": [{{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+                  "min": [0, 0, 0], "max": [1, 1, 0]}},
+                {{"bufferView": 1, "componentType": 5123, "count": 3, "type": "SCALAR"}},
+                {{"bufferView": 2, "componentType": 5126, "count": 3, "type": "VEC3"}},
+                {{"bufferView": 3, "componentType": 5126, "count": 3, "type": "VEC4"}},
+                {{"bufferView": 4, "componentType": 5126, "count": 3, "type": "VEC4"}},
+                {{"bufferView": 5, "componentType": 5126, "count": 3, "type": "VEC2"}}],
+  "images": [{{"uri": "{}"}}],
+  "samplers": [{{"magFilter": 9728, "wrapS": 33648, "wrapT": 33071}}],
+  "textures": [{{"source": 0, "sampler": 0}}],
+  "materials": [{{"name": "Glass", "alphaMode": "BLEND", "doubleSided": true,
+                 "normalTexture": {{"index": 0, "scale": 0.5}}}}],
+  "meshes": [{{"primitives": [{{"attributes": {{"POSITION": 0{}}}, "indices": 1, "material": 0}}]}}],
+  "nodes": [{{"mesh": 0}}],
+  "scenes": [{{"nodes": [0]}}],
+  "scene": 0
+}})",
+                       bufferUri, imageUri, attributes);
+}
+
+/// A 1 × 1 flat normal map as a data URI.
+std::string flatNormalUri()
+{
+    const std::array<std::uint8_t, 4> flat{128, 128, 255, 255};
+    return dataUri(Testing::encodePng(1, 1, 4, flat), "image/png");
+}
+} // namespace
+
+TEST_F(GltfImporterTest, ReadsTangentsColoursAndSamplers)
+{
+    write("attributes.gltf", attributeJson(dataUri(attributeBuffer()), flatNormalUri(),
+                                           R"(, "NORMAL": 2, "TANGENT": 3, "COLOR_0": 4, "TEXCOORD_0": 5)"));
+
+    const Result<ImportedModel> model = import("attributes.gltf");
+
+    ASSERT_TRUE(model) << model.error().message;
+    const ImportedPrimitive& triangle = model->meshes[0].primitives[0];
+    ASSERT_EQ(triangle.tangents.size(), 3U);
+    // Mirrored with X, and the bitangent's sign flips with the handedness.
+    EXPECT_FLOAT_EQ(triangle.tangents[0].x, -1.0F);
+    EXPECT_FLOAT_EQ(triangle.tangents[0].w, -1.0F);
+    ASSERT_EQ(triangle.colors.size(), 3U);
+    EXPECT_FLOAT_EQ(triangle.colors[0].r, 1.0F);
+    EXPECT_FLOAT_EQ(triangle.colors[1].g, 1.0F);
+    EXPECT_FLOAT_EQ(triangle.colors[2].a, 0.5F);
+
+    ASSERT_EQ(model->samplers.size(), 1U);
+    const ImportedSampler& sampler = model->samplers[0];
+    EXPECT_FALSE(sampler.linear);
+    EXPECT_EQ(sampler.wrapU, ImportedWrap::Mirror);
+    EXPECT_EQ(sampler.wrapV, ImportedWrap::Clamp);
+
+    ASSERT_EQ(model->materials.size(), 1U);
+    const ImportedMaterial& material = model->materials[0];
+    EXPECT_EQ(material.normal.image, 0);
+    EXPECT_EQ(material.normal.sampler, 0);
+    EXPECT_FLOAT_EQ(material.normalScale, 0.5F);
+    EXPECT_EQ(material.alphaMode, AlphaMode::Blend);
+    EXPECT_TRUE(material.doubleSided);
+}
+
+TEST_F(GltfImporterTest, GeneratesTangentsFromUvs)
+{
+    write("attributes.gltf",
+          attributeJson(dataUri(attributeBuffer()), flatNormalUri(), R"(, "NORMAL": 2, "TEXCOORD_0": 5)"));
+
+    const Result<ImportedModel> model = import("attributes.gltf");
+
+    ASSERT_TRUE(model) << model.error().message;
+    const ImportedPrimitive& triangle = model->meshes[0].primitives[0];
+    ASSERT_EQ(triangle.tangents.size(), 3U);
+    EXPECT_TRUE(triangle.colors.empty()) << "white when the file has none";
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        const Math::Vec4& tangent = triangle.tangents[i];
+        // U ran along glTF's +X, which is the engine's -X; the tangent is perpendicular to the normal (+Z).
+        expectNear({tangent.x, tangent.y, tangent.z}, {-1.0F, 0.0F, 0.0F});
+        EXPECT_NEAR(tangent.x * triangle.normals[i].x + tangent.y * triangle.normals[i].y +
+                        tangent.z * triangle.normals[i].z,
+                    0.0F, 1e-5F);
+        // cross(+Z, -X) = -Y, towards decreasing V (V ran along +Y): so the sign is +1.
+        EXPECT_FLOAT_EQ(tangent.w, 1.0F);
+    }
 }
 } // namespace Meow2::Assets

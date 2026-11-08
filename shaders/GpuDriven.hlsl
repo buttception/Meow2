@@ -1,6 +1,9 @@
-// The GPU-driven path. csCull tests every instance against the frustum and writes a draw for each survivor. vsMain and
-// psMain draw them, pulling indices and vertices from heap buffers, so there's no vertex input at all.
+// The GPU-driven path. csCull tests every instance against the frustum and writes a draw for each survivor into one of
+// three lists (MEOW2_DRAW_LIST_*). vsMain draws the lists, vsBlend the blended instances the CPU sorted, and psMain
+// shades both with metallic-roughness PBR. Indices and vertices are pulled from heap buffers: no vertex input at all.
 #include "Common.hlsli"
+
+static const float c_pi = 3.14159265;
 
 /// Signed distance from a plane, positive inside.
 float planeDistance(float4 plane, float3 position)
@@ -31,9 +34,28 @@ void csCull(uint3 id : SV_DispatchThreadID)
         return;
     }
 
+    // Which list: decided by the material's sides and the instance's winding. Blended ones are drawn by the CPU.
+    uint drawList = (instance.flags & MEOW2_INSTANCE_MIRRORED) != 0 ? MEOW2_DRAW_LIST_MIRRORED : MEOW2_DRAW_LIST_BACK;
+    if (instance.material < cull.materialCount)
+    {
+        const MaterialData material = loadElement<MaterialData>(cull.materialBuffer, instance.material);
+        if ((material.flags & MEOW2_MATERIAL_BLEND) != 0)
+        {
+            return;
+        }
+        if ((material.flags & MEOW2_MATERIAL_DOUBLE_SIDED) != 0)
+        {
+            drawList = MEOW2_DRAW_LIST_DOUBLE_SIDED;
+        }
+    }
+
     RWByteAddressBuffer count = ResourceDescriptorHeap[cull.countBuffer];
     uint slot = 0;
-    count.InterlockedAdd(0, 1, slot);
+    count.InterlockedAdd(drawList * 4, 1, slot);
+    if (slot >= cull.drawCapacity)
+    {
+        return; // can't happen while every list has room for every instance; a guard against writing past the list
+    }
 
     RWByteAddressBuffer draws = ResourceDescriptorHeap[cull.drawBuffer];
     IndirectDraw draw;
@@ -45,15 +67,19 @@ void csCull(uint3 id : SV_DispatchThreadID)
     draw.padding0 = 0;
     draw.padding1 = 0;
     draw.padding2 = 0;
-    draws.Store<IndirectDraw>(slot * sizeof(IndirectDraw), draw);
+    draws.Store<IndirectDraw>((drawList * cull.drawCapacity + slot) * sizeof(IndirectDraw), draw);
 }
 
 struct VertexOutput
 {
     float4 position : SV_Position;
+    float3 worldPosition : POSITION0; ///< Camera relative: the camera is at the origin.
     float3 normal : NORMAL0;
+    float4 tangent : TANGENT0; ///< xyz along +U; w: the bitangent's sign, already corrected for mirroring.
     float2 uv : TEXCOORD0;
+    float4 color : COLOR0;
     nointerpolation uint material : MATERIAL0;
+    nointerpolation uint mirrored : MIRRORED0;
 };
 
 /// The inverse of Math::packOctahedral.
@@ -73,54 +99,217 @@ float3 unpackOctahedral(uint encoded)
 /// The inverse of Math::quantizePosition.
 float3 unpackPosition(PackedVertex stored, MeshDraw mesh)
 {
-    const float3 fraction = float3(stored.xy & 0xFFFF, stored.xy >> 16, stored.z) / 65535.0;
+    const float3 fraction = float3(stored.xy & 0xFFFF, stored.xy >> 16, stored.z & 0xFFFF) / 65535.0;
     return mesh.boundsCenter.xyz - mesh.boundsExtents.xyz + fraction * 2.0 * mesh.boundsExtents.xyz;
 }
 
-VertexOutput vsMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
+/// One vertex of an instance, for both entry points.
+VertexOutput shadeVertex(uint instanceIndex, uint vertexId)
 {
     const FrameConstants frame = frameConstants();
-    const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, indirectInstance(instanceId));
+    const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, instanceIndex);
     const MeshDraw mesh = loadElement<MeshDraw>(g_push.userData, instance.mesh);
-    const uint index = loadElement<uint>(mesh.indexBuffer, vertexId);
+    const uint index = loadElement<uint>(mesh.indexBuffer, mesh.firstIndex + vertexId);
     const PackedVertex stored = loadElement<PackedVertex>(mesh.vertexBuffer, index);
 
     VertexOutput output;
     const float4x4 worldMatrix = MEOW2_ROWS(instance, world);
     const float4 world = mul(float4(unpackPosition(stored, mesh), 1.0), worldMatrix);
     output.position = mul(world, MEOW2_ROWS(frame, viewProjection));
-    output.normal = mul(float4(unpackOctahedral(stored.normal), 0.0), worldMatrix).xyz;
+    output.worldPosition = world.xyz;
+
+    // Normals go through the inverse transpose, so non-uniform scale doesn't tilt them. For rows a, b, c it's the rows
+    // cross(b, c), cross(c, a), cross(a, b) over the determinant; only the determinant's sign matters before normalising,
+    // and it keeps a mirrored normal pointing outwards.
+    const float3 a = instance.worldRow0.xyz;
+    const float3 b = instance.worldRow1.xyz;
+    const float3 c = instance.worldRow2.xyz;
+    const bool mirrored = (instance.flags & MEOW2_INSTANCE_MIRRORED) != 0;
+    const float side = mirrored ? -1.0 : 1.0;
+    const float3 normal = unpackOctahedral(stored.normal);
+    output.normal = side * (normal.x * cross(b, c) + normal.y * cross(c, a) + normal.z * cross(a, b));
+    // Tangents follow the surface like positions do. Mirroring flips the handedness of normal × tangent, so the
+    // bitangent's sign flips with it.
+    output.tangent.xyz = mul(float4(unpackOctahedral(stored.tangent), 0.0), worldMatrix).xyz;
+    output.tangent.w = ((stored.z & 0x80000000u) != 0 ? -1.0 : 1.0) * side;
     output.uv = float2(f16tof32(stored.uv & 0xFFFF), f16tof32(stored.uv >> 16));
+    output.color = float4(stored.color & 255, (stored.color >> 8) & 255, (stored.color >> 16) & 255,
+                          stored.color >> 24) / 255.0;
     output.material = instance.material;
+    output.mirrored = mirrored ? 1 : 0;
     return output;
 }
 
-float4 psMain(VertexOutput input) : SV_Target
+/// The indirect lists.
+VertexOutput vsMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
+{
+    return shadeVertex(indirectInstance(instanceId), vertexId);
+}
+
+/// Blended instances: one direct draw each, the instance in g_push.instance.
+VertexOutput vsBlend(uint vertexId : SV_VertexID)
+{
+    return shadeVertex(g_push.instance, vertexId);
+}
+
+/// A texture of a material, or `fallback` when it has none (index 0).
+float4 sampleMaterial(uint texture, uint sampler, float2 uv, float4 fallback)
+{
+    if (texture == 0)
+    {
+        return fallback;
+    }
+    // The index differs between draws, so it's marked non-uniform for drivers that need to know.
+    Texture2D<float4> image = ResourceDescriptorHeap[NonUniformResourceIndex(texture)];
+    return image.Sample(heapSampler(NonUniformResourceIndex(sampler)), uv);
+}
+
+/// GGX (Trowbridge-Reitz) normal distribution: how many microfacets face along the half vector.
+float distributionGgx(float nDotH, float alpha)
+{
+    const float alpha2 = alpha * alpha;
+    const float d = nDotH * nDotH * (alpha2 - 1.0) + 1.0;
+    return alpha2 / (c_pi * d * d);
+}
+
+/// Height-correlated Smith visibility for GGX, with the 1 / (4 n·l n·v) of the specular term folded in.
+float visibilitySmithGgx(float nDotL, float nDotV, float alpha)
+{
+    const float alpha2 = alpha * alpha;
+    const float lightTerm = nDotV * sqrt(nDotL * nDotL * (1.0 - alpha2) + alpha2);
+    const float viewTerm = nDotL * sqrt(nDotV * nDotV * (1.0 - alpha2) + alpha2);
+    return 0.5 / max(lightTerm + viewTerm, 1e-5);
+}
+
+/// Schlick's Fresnel: reflectance rises towards 1 at grazing angles.
+float3 fresnelSchlick(float3 f0, float vDotH)
+{
+    return f0 + (1.0 - f0) * pow(1.0 - vDotH, 5.0);
+}
+
+/// Karis' analytic fit of the split-sum environment BRDF, for the ambient specular without a lookup texture.
+float3 environmentBrdf(float3 f0, float nDotV, float roughness)
+{
+    const float4 c0 = float4(-1.0, -0.0275, -0.572, 0.022);
+    const float4 c1 = float4(1.0, 0.0425, 1.04, -0.04);
+    const float4 r = roughness * c0 + c1;
+    const float a004 = min(r.x * r.x, exp2(-9.28 * nDotV)) * r.x + r.y;
+    const float2 scaleBias = float2(-1.04, 1.04) * a004 + r.zw;
+    return f0 * scaleBias.x + scaleBias.y;
+}
+
+/// Khronos PBR Neutral tone mapping: keeps base colours as authored up to about 0.8, then rolls highlights off to white.
+float3 toneMapNeutral(float3 color)
+{
+    const float startCompression = 0.8 - 0.04;
+    const float desaturation = 0.15;
+    const float lowest = min(color.r, min(color.g, color.b));
+    const float offset = lowest < 0.08 ? lowest - 6.25 * lowest * lowest : 0.04;
+    color -= offset;
+    const float peak = max(color.r, max(color.g, color.b));
+    if (peak < startCompression)
+    {
+        return color;
+    }
+    const float d = 1.0 - startCompression;
+    const float newPeak = 1.0 - d * d / (peak + d - startCompression);
+    color *= newPeak / peak;
+    const float g = 1.0 - 1.0 / (desaturation * (peak - newPeak) + 1.0);
+    return lerp(color, newPeak.xxx, g);
+}
+
+float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
 {
     const FrameConstants frame = frameConstants();
-    float4 color;
+
+    float4 baseColor = input.color;
+    float metallic = 0.0;
+    float roughness = 0.5;
+    float occlusion = 1.0;
+    float3 emissive = float3(0.0, 0.0, 0.0);
+    float3 normal = normalize(input.normal);
+    float3 tangent = input.tangent.xyz;
+    float bitangentSign = input.tangent.w;
+    // Back faces of double-sided surfaces are lit from their own side. A mirrored triangle's front face shows up as a
+    // back face to the rasterizer, so the instance's flag is taken into account.
+    const bool facing = frontFace != (input.mirrored != 0);
+    if (!facing)
+    {
+        normal = -normal;
+        tangent = -tangent;
+        bitangentSign = -bitangentSign;
+    }
+
     if (input.material < frame.materialCount)
     {
         const MaterialData material = loadElement<MaterialData>(frame.materialBuffer, input.material);
-        color = material.baseColorFactor;
-        if (material.baseColorTexture != 0)
-        {
-            // The index differs between draws, so it's marked non-uniform for drivers that need to know.
-            Texture2D<float4> baseColor = ResourceDescriptorHeap[NonUniformResourceIndex(material.baseColorTexture)];
-            color *= baseColor.Sample(heapSampler(NonUniformResourceIndex(material.sampler)), input.uv);
-        }
-        if ((material.flags & MEOW2_MATERIAL_ALPHA_MASK) != 0 && color.a < material.parameters.x)
+        baseColor *= material.baseColorFactor *
+                     sampleMaterial(material.baseColorTexture, material.baseColorSampler, input.uv, float4(1, 1, 1, 1));
+        if ((material.flags & MEOW2_MATERIAL_ALPHA_MASK) != 0 && baseColor.a < material.parameters.x)
         {
             discard;
+        }
+        // glTF packs roughness in G and metallic in B.
+        const float4 metalRough = sampleMaterial(material.metallicRoughnessTexture, material.metallicRoughnessSampler,
+                                                 input.uv, float4(1, 1, 1, 1));
+        metallic = material.parameters.y * metalRough.b;
+        roughness = material.parameters.z * metalRough.g;
+        const float ao = sampleMaterial(material.occlusionTexture, material.occlusionSampler, input.uv, float4(1, 1, 1, 1)).r;
+        occlusion = 1.0 + material.emissiveFactor.w * (ao - 1.0);
+        emissive = material.emissiveFactor.rgb *
+                   sampleMaterial(material.emissiveTexture, material.emissiveSampler, input.uv, float4(1, 1, 1, 1)).rgb;
+        if (material.normalTexture != 0)
+        {
+            // Tangent space: X along +U, Y along the bitangent (towards decreasing V, glTF's +Y up), Z the normal.
+            float3 local = sampleMaterial(material.normalTexture, material.normalSampler, input.uv, float4(0.5, 0.5, 1, 1))
+                               .xyz * 2.0 - 1.0;
+            local.xy *= material.parameters.w;
+            tangent = normalize(tangent - normal * dot(normal, tangent)); // re-orthogonalised after interpolation
+            const float3 bitangent = cross(normal, tangent) * bitangentSign;
+            normal = normalize(local.x * tangent + local.y * bitangent + local.z * normal);
+        }
+        if ((material.flags & MEOW2_MATERIAL_BLEND) == 0)
+        {
+            baseColor.a = 1.0;
         }
     }
     else
     {
         // No material (test scenes of many cubes): a colour from the index, so neighbours differ.
         const uint hash = input.material * 2654435761u;
-        color = float4(float3(hash & 255, (hash >> 8) & 255, (hash >> 16) & 255) / 255.0, 1.0);
+        baseColor = float4(float3(hash & 255, (hash >> 8) & 255, (hash >> 16) & 255) / 255.0, 1.0);
     }
-    // Lambert from one fixed light plus ambient, until the PBR pass. Linear: the target's sRGB view encodes it.
-    const float light = 0.3 + 0.7 * saturate(dot(normalize(input.normal), normalize(float3(0.4, 0.8, -0.5))));
-    return float4(color.rgb * light, 1.0);
+
+    // Cook-Torrance: Lambert diffuse for the light that enters the surface, GGX specular for what reflects off it.
+    // Metals have no diffuse and tint their reflection; dielectrics reflect 4 % at normal incidence.
+    roughness = clamp(roughness, 0.045, 1.0); // a perfect mirror would turn the sun into a single bright pixel
+    const float alpha = roughness * roughness;
+    const float3 diffuseColor = baseColor.rgb * (1.0 - metallic);
+    const float3 f0 = lerp(float3(0.04, 0.04, 0.04), baseColor.rgb, metallic);
+
+    const float3 view = normalize(-input.worldPosition);
+    const float3 light = frame.sunDirection.xyz;
+    const float3 halfway = normalize(view + light);
+    const float nDotV = max(dot(normal, view), 1e-4);
+    const float nDotL = saturate(dot(normal, light));
+    const float nDotH = saturate(dot(normal, halfway));
+    const float vDotH = saturate(dot(view, halfway));
+
+    const float3 fresnel = fresnelSchlick(f0, vDotH);
+    const float3 specular = fresnel * distributionGgx(nDotH, alpha) * visibilitySmithGgx(nDotL, nDotV, alpha);
+    const float3 diffuse = (1.0 - fresnel) * diffuseColor / c_pi;
+    const float3 sun = frame.sunColor.rgb * frame.sunDirection.w;
+    float3 color = (diffuse + specular) * sun * nDotL;
+
+    // Ambient: a sky above and the ground below, blended by where the normal (diffuse) or the reflection (specular)
+    // points. Until image-based lighting arrives this stands in for the environment.
+    const float3 reflected = reflect(-view, normal);
+    const float3 diffuseAmbient = lerp(frame.groundColor.rgb, frame.skyColor.rgb, normal.y * 0.5 + 0.5);
+    const float3 specularAmbient = lerp(frame.groundColor.rgb, frame.skyColor.rgb, reflected.y * 0.5 + 0.5);
+    color += (diffuseColor * diffuseAmbient + environmentBrdf(f0, nDotV, roughness) * specularAmbient) * occlusion;
+    color += emissive;
+
+    // Exposure and the tone curve, in linear light; the target's sRGB view encodes the result.
+    color = toneMapNeutral(color * frame.sunColor.w);
+    return float4(color, baseColor.a);
 }

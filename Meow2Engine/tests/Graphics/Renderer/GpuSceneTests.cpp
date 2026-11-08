@@ -90,6 +90,8 @@ protected:
             {.shader = *shader, .instanceCapacity = capacity, .colorFormat = OffscreenTarget::format()});
         ASSERT_TRUE(scene) << scene.error().message;
         m_scene = std::move(*scene);
+        // The camera looks along +Z from the origin, so the sun is put behind it, lighting what it sees.
+        m_scene->setLighting({.sunDirection = {0.4F, 0.8F, -0.6F}});
         ASSERT_TRUE(m_scene->addMesh(makeCube()));
 
         Result<std::unique_ptr<OffscreenTarget>> target = OffscreenTarget::create(m_render->device(), c_size, c_size);
@@ -126,11 +128,13 @@ protected:
         m_scene->setView(slot, frame, frustum);
     }
 
-    /// @brief Runs one frame through the graph and reads the draw count back.
+    /// @brief Runs one frame through the graph and reads the draw counts back.
+    /// @return The draws in every list together (blended instances aren't in any).
     std::uint32_t runFrame(Math::Frustum& frustum)
     {
+        constexpr std::uint64_t c_countBytes = MEOW2_DRAW_LIST_COUNT * sizeof(std::uint32_t);
         Result<Rhi::BufferHandle> readback =
-            m_render->device().createBuffer({.size = sizeof(std::uint32_t), .memory = Rhi::RhiMemory::Readback});
+            m_render->device().createBuffer({.size = c_countBytes, .memory = Rhi::RhiMemory::Readback});
         EXPECT_TRUE(readback);
         Result<Rhi::IRhiCommandList*> first = m_render->device().beginFrame();
         EXPECT_TRUE(first);
@@ -149,7 +153,7 @@ protected:
         lists->push_back(*last);
         Rhi::IRhiCommandList& tail = **last;
         tail.barrier(m_scene->countBuffer(), Rhi::ResourceState::IndirectArgs, Rhi::ResourceState::CopySource);
-        tail.copyBuffer(m_scene->countBuffer(), *readback, sizeof(std::uint32_t));
+        tail.copyBuffer(m_scene->countBuffer(), *readback, c_countBytes);
         tail.barrier(m_scene->countBuffer(), Rhi::ResourceState::CopySource, Rhi::ResourceState::IndirectArgs);
         tail.barrier(*readback, Rhi::ResourceState::CopyTarget, Rhi::ResourceState::HostRead);
         tail.barrier(m_target->texture(), Rhi::ResourceState::ColorTarget, Rhi::ResourceState::CopySource);
@@ -157,10 +161,11 @@ protected:
         EXPECT_TRUE(m_render->device().endFrame(*lists));
         m_render->device().waitIdle();
 
-        std::uint32_t result = 0;
-        std::memcpy(&result, m_render->device().mappedMemory(*readback).data(), sizeof(result));
+        std::array<std::uint32_t, MEOW2_DRAW_LIST_COUNT> counts{};
+        std::memcpy(counts.data(), m_render->device().mappedMemory(*readback).data(), c_countBytes);
         m_render->device().destroy(*readback);
-        return result;
+        m_lastCounts = counts;
+        return counts[0] + counts[1] + counts[2];
     }
 
     [[nodiscard]] std::array<std::uint8_t, 4> pixelAt(std::uint32_t x, std::uint32_t y) const
@@ -182,6 +187,7 @@ protected:
     std::unique_ptr<GpuScene> m_scene;
     std::unique_ptr<OffscreenTarget> m_target;
     Rhi::TextureHandle m_depth;
+    std::array<std::uint32_t, MEOW2_DRAW_LIST_COUNT> m_lastCounts{}; ///< Per list, from the last runFrame().
 };
 } // namespace
 
@@ -259,7 +265,8 @@ TEST_F(GpuSceneTest, ModelDrawsWithItsTexture)
     }
     model.images.push_back(red);
     Assets::ImportedMaterial material;
-    material.baseColorImage = 0;
+    material.baseColor.image = 0;
+    material.metallicFactor = 0.0F; // a dielectric shows its colour; a metal (glTF's default) only reflects
     model.materials.push_back(material);
     Assets::ImportedPrimitive quad;
     quad.positions = {{-1.0F, -1.0F, 0.0F}, {-1.0F, 1.0F, 0.0F}, {1.0F, 1.0F, 0.0F}, {1.0F, -1.0F, 0.0F}};
@@ -295,5 +302,142 @@ TEST_F(GpuSceneTest, ModelDrawsWithItsTexture)
     EXPECT_GT(center[0], 100) << "red from the texture, lit";
     EXPECT_LT(center[1], 30);
     EXPECT_LT(center[2], 30);
+}
+namespace
+{
+/// @brief A 2 × 2 quad in the XY plane facing -Z (towards a camera on -Z), clockwise from there, U along +X.
+MeshData makeQuad()
+{
+    const std::array<Math::Vec3, 4> positions{
+        {{-1.0F, -1.0F, 0.0F}, {-1.0F, 1.0F, 0.0F}, {1.0F, 1.0F, 0.0F}, {1.0F, -1.0F, 0.0F}}};
+    const std::array<Math::Vec3, 4> normals{
+        {{0.0F, 0.0F, -1.0F}, {0.0F, 0.0F, -1.0F}, {0.0F, 0.0F, -1.0F}, {0.0F, 0.0F, -1.0F}}};
+    // The bitangent, cross(normal, tangent) × w, must point to decreasing V (+Y here): cross(-Z, +X) = -Y, so w = -1.
+    const std::array<Math::Vec4, 4> tangents{
+        {{1.0F, 0.0F, 0.0F, -1.0F}, {1.0F, 0.0F, 0.0F, -1.0F}, {1.0F, 0.0F, 0.0F, -1.0F}, {1.0F, 0.0F, 0.0F, -1.0F}}};
+    const std::array<Math::Vec2, 4> uvs{{{0.0F, 1.0F}, {0.0F, 0.0F}, {1.0F, 0.0F}, {1.0F, 1.0F}}};
+    const std::array<std::uint32_t, 6> indices{0, 1, 2, 0, 2, 3};
+    return makeMesh({.positions = positions, .normals = normals, .tangents = tangents, .uvs = uvs, .indices = indices},
+                    {.center = {0.0F, 0.0F, 0.0F}, .extents = {1.0F, 1.0F, 0.01F}});
+}
+
+/// @brief A transform that only moves. (Built by assignment: Transform::rotation has no default member initialiser,
+///        so a designated initialiser naming only some fields warns on Clang.)
+Math::Transform at(const Math::Vec3& position)
+{
+    Math::Transform transform;
+    transform.position = position;
+    return transform;
+}
+
+/// @brief An instance of `mesh` with a transform.
+Shader::InstanceData instanceOf(const Math::Transform& transform, std::uint32_t mesh, std::uint32_t material)
+{
+    Shader::InstanceData instance{};
+    instance.world = Math::toMat4(transform);
+    instance.mesh = mesh;
+    instance.material = material;
+    return instance;
+}
+
+/// @brief A 1 × 1 image of one colour.
+Assets::Image solidImage(std::uint8_t r, std::uint8_t g, std::uint8_t b)
+{
+    return {.width = 1, .height = 1, .pixels = {std::byte{r}, std::byte{g}, std::byte{b}, std::byte{255}}};
+}
+
+/// @brief The sum of a pixel's colour channels.
+int brightness(const std::array<std::uint8_t, 4>& pixel)
+{
+    return pixel[0] + pixel[1] + pixel[2];
+}
+} // namespace
+
+TEST_F(GpuSceneTest, MirroredAndDoubleSidedInstancesDraw)
+{
+    makeScene(4);
+    const Result<std::uint32_t> quad = m_scene->addMesh(makeQuad());
+    ASSERT_TRUE(quad);
+    const Result<std::uint32_t> oneSided = m_scene->addMaterial({.metallic = 0.0F});
+    const Result<std::uint32_t> twoSided = m_scene->addMaterial({.metallic = 0.0F, .doubleSided = true});
+    ASSERT_TRUE(oneSided && twoSided);
+    Math::Frustum frustum{};
+
+    // Turned around, the quad shows its back: culled when one-sided, drawn when double-sided.
+    Math::Transform behind = at({0.0F, 0.0F, 3.0F});
+    behind.rotation = Math::fromAxisAngle(Math::c_up, Math::c_pi);
+    std::vector<Shader::InstanceData> instances{instanceOf(behind, *quad, *oneSided)};
+    m_scene->setInstances(instances);
+    EXPECT_EQ(runFrame(frustum), 1U);
+    EXPECT_EQ(brightness(pixelAt(c_size / 2, c_size / 2)), 0) << "one-sided, seen from behind: culled";
+
+    instances = {instanceOf(behind, *quad, *twoSided)};
+    m_scene->setInstances(instances);
+    EXPECT_EQ(runFrame(frustum), 1U);
+    EXPECT_EQ(m_lastCounts[MEOW2_DRAW_LIST_DOUBLE_SIDED], 1U);
+    EXPECT_GT(brightness(pixelAt(c_size / 2, c_size / 2)), 60) << "double-sided: drawn, and lit from its own side";
+
+    // Mirrored by a negative scale, the front faces wind the other way; the mirrored list culls the right side.
+    Math::Transform mirrored = at({0.0F, 0.0F, 3.0F});
+    mirrored.scale = {-1.0F, 1.0F, 1.0F};
+    instances = {instanceOf(mirrored, *quad, *oneSided)};
+    m_scene->setInstances(instances);
+    EXPECT_EQ(runFrame(frustum), 1U);
+    EXPECT_EQ(m_lastCounts[MEOW2_DRAW_LIST_MIRRORED], 1U);
+    EXPECT_GT(brightness(pixelAt(c_size / 2, c_size / 2)), 60) << "mirrored: its front face is visible";
+}
+
+TEST_F(GpuSceneTest, BlendedMaterialMixesWithWhatsBehind)
+{
+    makeScene(4);
+    const Result<std::uint32_t> quad = m_scene->addMesh(makeQuad());
+    ASSERT_TRUE(quad);
+    const Result<std::uint32_t> green =
+        m_scene->addMaterial({.baseColorFactor = {0.0F, 1.0F, 0.0F, 1.0F}, .metallic = 0.0F});
+    const Result<std::uint32_t> glass =
+        m_scene->addMaterial({.baseColorFactor = {1.0F, 0.0F, 0.0F, 0.5F}, .metallic = 0.0F, .blend = true});
+    ASSERT_TRUE(green && glass);
+    Math::Frustum frustum{};
+
+    std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 4.0F}), *quad, *green)};
+    m_scene->setInstances(instances);
+    EXPECT_EQ(runFrame(frustum), 1U);
+    const auto opaque = pixelAt(c_size / 2, c_size / 2);
+    EXPECT_GT(opaque[1], 60);
+
+    instances.push_back(instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *glass));
+    m_scene->setInstances(instances);
+    EXPECT_EQ(runFrame(frustum), 1U) << "the blended quad isn't in the indirect lists";
+    const auto mixed = pixelAt(c_size / 2, c_size / 2);
+    EXPECT_GT(mixed[0], 60) << "red from the glass";
+    EXPECT_GT(mixed[1], 30) << "green through it";
+    EXPECT_LT(mixed[1], opaque[1]) << "but less of it";
+}
+
+TEST_F(GpuSceneTest, NormalMapChangesLighting)
+{
+    makeScene(4);
+    const Result<std::uint32_t> quad = m_scene->addMesh(makeQuad());
+    ASSERT_TRUE(quad);
+    // A normal tilted 45° towards +U (+X), where the sun is: x = 0.707 encodes as 218, z as 218.
+    const Result<std::uint32_t> tilted = m_scene->addTexture(solidImage(218, 128, 218), false, "Tilted normal");
+    ASSERT_TRUE(tilted);
+    const Result<std::uint32_t> flat = m_scene->addMaterial({.metallic = 0.0F});
+    const Result<std::uint32_t> bumpy =
+        m_scene->addMaterial({.metallic = 0.0F, .normal = {.texture = static_cast<std::int32_t>(*tilted)}});
+    ASSERT_TRUE(flat && bumpy);
+    m_scene->setLighting({.sunDirection = {1.0F, 0.0F, -1.0F}, .sunIntensity = 2.0F});
+    Math::Frustum frustum{};
+
+    std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *flat)};
+    m_scene->setInstances(instances);
+    EXPECT_EQ(runFrame(frustum), 1U);
+    const int flatLight = brightness(pixelAt(c_size / 2, c_size / 2));
+
+    instances = {instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *bumpy)};
+    m_scene->setInstances(instances);
+    EXPECT_EQ(runFrame(frustum), 1U);
+    const int bumpyLight = brightness(pixelAt(c_size / 2, c_size / 2));
+    EXPECT_GT(bumpyLight, flatLight + 20) << "the map turns the surface towards the sun";
 }
 } // namespace Meow2::Renderer

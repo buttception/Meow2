@@ -52,6 +52,7 @@ glTF is right-handed: +Y up, +Z forward (the front of a model faces +Z), +X to t
 
 - **Positions and normals:** `x = -x`.
 - **Triangles:** mirroring the model and the camera together puts the same picture on screen, so a front face still looks counter-clockwise there, which is glTF's rule. The engine's rule is clockwise (D3D style), so every triangle's last two indices are swapped.
+- **Tangents:** X is negated like normals, and the bitangent's sign flips, because mirroring reverses the handedness of `cross(normal, tangent)`.
 - **Node transforms:** with `S` mirroring X, the left-handed matrix is `S × M × S`, decomposed back into scale, rotation and translation. A rotation about X stays the same, rotations about Y and Z turn the other way, and translations lose the sign of X.
 
 A model seen from a camera at `(-x, y, z)` in the engine looks exactly like the glTF viewer's picture from `(x, y, z)`. The Duck, OrientationTest and DamagedHelmet were checked against their reference screenshots this way.
@@ -61,8 +62,9 @@ A model seen from a camera at `(-x, y, z)` in the engine looks exactly like the 
 | glTF | Engine | Notes |
 |---|---|---|
 | Default scene's nodes | `ImportedNode`, parents first | The first scene if there's no default; every root if there's none |
-| Triangle primitives | `ImportedPrimitive`: positions, normals, UV set 0, 32-bit indices | Points, lines and strips are skipped with a warning. Missing normals are computed from the triangles, missing UVs are zeros |
-| Metallic-roughness materials | `ImportedMaterial` | All the core parameters are read; this PR draws the base colour and alpha mask |
+| Triangle primitives | `ImportedPrimitive`: positions, normals, tangents, UV set 0, vertex colours (`COLOR_0`), 32-bit indices | Points, lines and strips are skipped with a warning. Missing normals are computed from the triangles, missing tangents from the UVs (in glTF's space, before mirroring), missing UVs are zeros, missing colours white |
+| Metallic-roughness materials | `ImportedMaterial` | Every core parameter and texture slot, alpha mode, double-sided |
+| Samplers | `ImportedSampler` | Linear or nearest, wrap per axis (repeat, clamp, mirrored repeat) |
 | PNG and JPEG images | `Image`, RGBA8 | A missing or broken image is a warning: the model draws without it |
 
 Accessors are read with `cgltf_accessor_unpack_floats`, so normalised integers (`KHR_mesh_quantization`) and sparse accessors work.
@@ -71,21 +73,19 @@ Accessors are read with `cgltf_accessor_unpack_floats`, so normalised integers (
 
 ### On the GPU
 
-`uploadModel` adds each primitive to the `GpuScene` as a mesh, each material as a `MaterialData` record, and each base colour image as an sRGB texture. Vertices are 16 bytes: positions quantised to 16 bits within the primitive's box, an octahedral normal, and UVs as two half floats.
+`uploadModel` adds each primitive to the `GpuScene` as a mesh, each material as a `MaterialData` record, each sampler once, and each image a material uses as a texture: sRGB for base colour and emissive, linear for normal, metallic-roughness and occlusion maps (an image used both ways is uploaded twice). Vertices are 24 bytes: positions quantised to 16 bits within the primitive's box, octahedral normal and tangent, the bitangent's sign, UVs as two half floats, and an RGBA8 colour.
 
 New textures are copied at the start of the next frame, by an "Upload textures" pass in the render graph. The pixels stay on the CPU, so the textures can be made again after a backend switch, like everything else in the `GpuScene` ([Rhi → Switching backends](Rhi.md#switching-backends-while-running)).
 
-The draw shader (`shaders/GpuDriven.hlsl`) reads the instance's material, samples its base colour texture, discards alpha-masked pixels below the cutoff, and lights the result with one fixed light. That's a placeholder until M6's PBR pass. Instances without a material (the cube grid) keep their colour from their index.
+How they're drawn (PBR, normal maps, mips, double-sided, mirrored and blended surfaces) is in [Rendering](Rendering.md). Instances without a material (the cube grid) keep their colour from their index.
 
 ## Not yet
 
-- PBR: metallic and roughness, normal maps, occlusion and emissive are imported, not drawn.
-- Double-sided materials and mirrored (negative-scale) nodes: everything is drawn with back faces culled, so these lose faces.
-- Alpha blending is drawn as opaque.
-- Mips, glTF samplers (filtering and wrap modes) and texture transforms: textures use linear filtering with repeat.
+- Texture transforms (`KHR_texture_transform`), UV sets other than 0, and the `KHR_materials_*` extensions.
+- glTF's sampler `minFilter` is reduced to "mipmaps or not": every texture has mips, and nearest filtering applies to them too.
 - Scene files: models are imported each run.
 - Images are decoded one after another on one thread; big scenes such as Sponza take a few seconds in Debug.
 
 ## Tests
 
-`Assets.Image.*` and `Assets.GltfImporterTest.*` write small files in code (a tiny PNG encoder and a `.glb` writer, `tests/Assets/TestFiles.h`), so they need no samples and run in CI. They check the mirroring and winding, computed normals, node transforms, buffers next to the file, `.glb` with an embedded texture, materials, and each failure. `RhiGpu*.GpuSceneTest.ModelDrawsWithItsTexture` draws a textured model through `SceneModel` on both backends.
+`Assets.Image.*` and `Assets.GltfImporterTest.*` write small files in code (a tiny PNG encoder and a `.glb` writer, `tests/Assets/TestFiles.h`), so they need no samples and run in CI. They check the mirroring and winding, computed normals, tangents (from the file and generated), vertex colours, samplers, node transforms, buffers next to the file, `.glb` with an embedded texture, materials, and each failure. `RhiGpu*.GpuSceneTest.ModelDrawsWithItsTexture` draws a textured model through `SceneModel` on both backends.

@@ -28,23 +28,47 @@ enum class AlphaMode : std::uint8_t
     Blend   ///< Blended over what's behind.
 };
 
+/// @brief What a sampler does outside 0..1 (glTF `wrapS`, `wrapT`).
+enum class ImportedWrap : std::uint8_t
+{
+    Repeat, ///< Wraps around.
+    Clamp,  ///< Keeps the edge texel.
+    Mirror  ///< Wraps around, flipping every other repeat.
+};
+
+/// @brief How a texture is sampled (glTF `sampler`). Plain data.
+struct ImportedSampler
+{
+    bool linear = true;                        ///< Linear filtering; false for nearest (pixel art).
+    bool mipmaps = true;                       ///< Whether minification uses mipmaps.
+    ImportedWrap wrapU = ImportedWrap::Repeat; ///< Across.
+    ImportedWrap wrapV = ImportedWrap::Repeat; ///< Down.
+};
+
+/// @brief One texture slot of a material: an image and how to sample it. Plain data.
+struct ImportedTexture
+{
+    std::int32_t image = -1;   ///< Index into ImportedModel::images, or -1 for none.
+    std::int32_t sampler = -1; ///< Index into ImportedModel::samplers, or -1 for the default (linear, repeat).
+};
+
 /// @brief A material's metallic-roughness parameters (glTF core). Plain data.
 ///
-/// Texture fields are indices into ImportedModel::images, or -1 for none. Factors multiply the textures.
+/// Factors multiply the textures.
 struct ImportedMaterial
 {
     std::string name{};                                  ///< From the file; may be empty.
     Math::Color baseColorFactor{1.0F, 1.0F, 1.0F, 1.0F}; ///< Linear RGBA.
-    std::int32_t baseColorImage = -1;                    ///< sRGB colour and alpha.
+    ImportedTexture baseColor{};                         ///< sRGB colour and alpha.
     float metallicFactor = 1.0F;                         ///< 0..1.
     float roughnessFactor = 1.0F;                        ///< 0..1.
-    std::int32_t metallicRoughnessImage = -1;            ///< Linear: roughness in G, metallic in B.
-    std::int32_t normalImage = -1;                       ///< Linear tangent-space normal.
+    ImportedTexture metallicRoughness{};                 ///< Linear: roughness in G, metallic in B.
+    ImportedTexture normal{};                            ///< Linear tangent-space normal, +Y up (OpenGL style).
     float normalScale = 1.0F;                            ///< Scales the normal map's X and Y.
-    std::int32_t occlusionImage = -1;                    ///< Linear: occlusion in R.
+    ImportedTexture occlusion{};                         ///< Linear: occlusion in R.
     float occlusionStrength = 1.0F;                      ///< 0..1.
     Math::Color emissiveFactor{0.0F, 0.0F, 0.0F, 1.0F};  ///< Linear RGB; alpha unused.
-    std::int32_t emissiveImage = -1;                     ///< sRGB emissive colour.
+    ImportedTexture emissive{};                          ///< sRGB emissive colour.
     AlphaMode alphaMode = AlphaMode::Opaque;             ///< How alpha is used.
     float alphaCutoff = 0.5F;                            ///< For AlphaMode::Mask.
     bool doubleSided = false;                            ///< Draw back faces too.
@@ -56,9 +80,13 @@ struct ImportedMaterial
 /// clockwise as the engine expects.
 struct ImportedPrimitive
 {
-    std::vector<Math::Vec3> positions{};  ///< Model-space positions.
-    std::vector<Math::Vec3> normals{};    ///< Unit normals; computed from the triangles when the file has none.
-    std::vector<Math::Vec2> uvs{};        ///< First texture coordinate set; zeros when the file has none.
+    std::vector<Math::Vec3> positions{}; ///< Model-space positions.
+    std::vector<Math::Vec3> normals{};   ///< Unit normals; computed from the triangles when the file has none.
+    std::vector<Math::Vec2> uvs{};       ///< First texture coordinate set; zeros when the file has none.
+    /// @brief Tangents: xyz along +U, w the bitangent's sign (bitangent = cross(normal, tangent) × w). From the file,
+    ///        or computed from the UVs when it has none.
+    std::vector<Math::Vec4> tangents{};
+    std::vector<Math::Color> colors{};    ///< Linear vertex colours (COLOR_0); empty when the file has none (white).
     std::vector<std::uint32_t> indices{}; ///< Three per triangle, clockwise.
     std::int32_t material = -1;           ///< Index into ImportedModel::materials, or -1 for the default material.
     Math::Aabb bounds{};                  ///< Box around the positions.
@@ -86,6 +114,7 @@ struct ImportedModel
     std::vector<ImportedMesh> meshes{};        ///< Every mesh with at least one triangle primitive.
     std::vector<ImportedMaterial> materials{}; ///< Every material.
     std::vector<Image> images{};               ///< Decoded images, RGBA8.
+    std::vector<ImportedSampler> samplers{};   ///< The file's samplers.
     std::vector<ImportedNode> nodes{};         ///< The default scene's nodes, parents before children.
     std::vector<std::string> warnings{};       ///< What was skipped (points and lines, unknown extensions, …).
 };

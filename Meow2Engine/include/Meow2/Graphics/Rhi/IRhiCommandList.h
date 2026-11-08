@@ -95,7 +95,10 @@ public:
     /// @param draws   The draws; in ResourceState::IndirectArgs.
     /// @param count   One `uint`; in ResourceState::IndirectArgs.
     /// @param maxDraws The most it may run.
-    virtual void drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws) = 0;
+    /// @param drawOffset  Byte offset of the first Shader::IndirectDraw in `draws`; a multiple of its size.
+    /// @param countOffset Byte offset of the count in `count`; a multiple of 4.
+    virtual void drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws,
+                                   std::uint64_t drawOffset = 0, std::uint64_t countOffset = 0) = 0;
 
     /// @brief Runs the current compute pipeline.
     /// @param x Thread groups along X.
@@ -136,10 +139,13 @@ public:
     virtual void copyBuffer(BufferHandle source, BufferHandle target, std::uint64_t size,
                             std::uint64_t sourceOffset = 0, std::uint64_t targetOffset = 0) = 0;
 
-    /// @brief Copies tightly packed pixels from a buffer to a texture's first mip level.
-    /// @param source Read from.
-    /// @param target Written to; in ResourceState::CopyTarget.
-    virtual void copyBufferToTexture(BufferHandle source, TextureHandle target) = 0;
+    /// @brief Copies tightly packed pixels from a buffer to one mip level of a texture.
+    /// @param source       Read from.
+    /// @param target       Written to; in ResourceState::CopyTarget.
+    /// @param mipLevel     Which level; its size is the texture's halved `mipLevel` times (at least 1).
+    /// @param sourceOffset Where the level's pixels start in `source`, in bytes; a multiple of 4.
+    virtual void copyBufferToTexture(BufferHandle source, TextureHandle target, std::uint32_t mipLevel = 0,
+                                     std::uint64_t sourceOffset = 0) = 0;
 
     /// @brief Copies a texture's first mip level to a buffer, tightly packed.
     /// @param source Read from; in ResourceState::CopySource.

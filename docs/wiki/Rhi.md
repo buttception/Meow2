@@ -58,7 +58,7 @@ Vulkan can't make a zero-sized swapchain, so a minimised window has no images: `
 
 ### Resources
 
-`createBuffer()`, `createTexture()` and `createSampler()` return handles. Every buffer can be used for everything (storage, copies, indices, indirect arguments), so there are no usage flags to get wrong. `RhiMemory` picks where it lives: `GpuOnly`, `Upload` or `Readback`. The last two stay mapped: `mappedMemory()` returns their bytes.
+`createBuffer()`, `createTexture()` and `createSampler()` return handles. Textures can have mip levels, each filled by `copyBufferToTexture(source, texture, level, offset)`; samplers set U and V addressing separately (repeat, clamp, mirror), and pipelines cull back faces, front faces (for mirrored meshes) or neither. Every buffer can be used for everything (storage, copies, indices, indirect arguments), so there are no usage flags to get wrong. `RhiMemory` picks where it lives: `GpuOnly`, `Upload` or `Readback`. The last two stay mapped: `mappedMemory()` returns their bytes.
 
 These functions are thread-safe; recording and the frame functions aren't.
 
@@ -160,7 +160,7 @@ Passes marked `small` share a list with the small passes next to them, because a
 
 ### GPU-driven drawing
 
-`Renderer::GpuScene` keeps meshes and instances in buffers. A compute pass tests every instance against the frustum and writes an `IndirectDraw` for each survivor, then one `drawIndirectCount()` call draws them. So the CPU's cost doesn't grow with the instance count.
+`Renderer::GpuScene` keeps meshes and instances in buffers. A compute pass tests every instance against the frustum and writes an `IndirectDraw` for each survivor into one of three lists (back-culled, mirrored, double-sided), then one `drawIndirectCount()` per list draws them, with offsets into one draw buffer and one count buffer. So the CPU's cost doesn't grow with the instance count. Materials, shading and the lists are in [Rendering](Rendering.md).
 
 There's no vertex input. The vertex shader takes `SV_VertexID`, reads the index from a heap buffer, then reads the `PackedVertex`: positions are 16-bit in the mesh's bounds, and normals are octahedral.
 
