@@ -8,6 +8,7 @@
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
+#include <Meow2/Graphics/Renderer/SkyAtmosphere.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 #include <Meow2/Graphics/Shader/BindlessLayout.h>
 #include <Meow2/Math/Bounds.h>
@@ -110,7 +111,7 @@ struct MaterialDesc
 struct SceneLighting
 {
     Math::Vec3 sunDirection{0.4F, 0.8F, 0.6F};          ///< Towards the sun; normalised. In front of glTF models (+Z).
-    Math::Color sunColor{1.0F, 0.96F, 0.9F, 1.0F};      ///< Linear colour.
+    Math::Color sunColor{1.0F, 1.0F, 1.0F, 1.0F};       ///< Linear colour; with a sky, the atmosphere tints it.
     float sunIntensity = 3.0F;                          ///< Multiplies sunColor.
     Math::Color skyColor{0.45F, 0.55F, 0.7F, 1.0F};     ///< Ambient light from above, linear.
     Math::Color groundColor{0.15F, 0.13F, 0.11F, 1.0F}; ///< Ambient light from below, linear.
@@ -179,6 +180,15 @@ public:
     void setLighting(const SceneLighting& lighting)
     {
         m_lighting = lighting;
+    }
+
+    /// @brief Lights the scene with a sky and draws it behind the scene, or goes back to the flat sky and ground
+    ///        colours of SceneLighting.
+    /// @param sky The sky, or null for none. Must outlive the scene, or be unset first; its addPasses() goes before
+    ///            this scene's each frame.
+    void setSky(const SkyAtmosphere* sky)
+    {
+        m_sky = sky;
     }
 
     /// @brief Adds a material, and keeps a copy for the next device.
@@ -321,6 +331,7 @@ private:
     std::vector<std::uint32_t> m_blended;    ///< Instances with blended materials, drawn sorted.
     std::vector<std::uint32_t> m_blendOrder; ///< This frame's back-to-front order of m_blended.
     SceneLighting m_lighting{};
+    const SkyAtmosphere* m_sky = nullptr; ///< Optional: lights the scene and is drawn behind it.
     Rhi::BufferHandle m_materialBuffer;
     Rhi::ResourceState m_drawState = Rhi::ResourceState::Undefined;
     Rhi::ResourceState m_countState = Rhi::ResourceState::Undefined;

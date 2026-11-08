@@ -201,4 +201,15 @@ TEST(UiTheme, ScalesSizes)
     applyUiTheme(large, 1.0F);
     EXPECT_FLOAT_EQ(large.WindowPadding.x, normal.WindowPadding.x);
 }
+TEST(SunControls, DirectionFromAngles)
+{
+    const Math::Vec3 overhead = sunDirection({.elevationDegrees = 90.0F, .azimuthDegrees = 0.0F});
+    EXPECT_NEAR(overhead.y, 1.0F, 1e-5F);
+    const Math::Vec3 front = sunDirection({.elevationDegrees = 0.0F, .azimuthDegrees = 0.0F});
+    EXPECT_NEAR(front.z, 1.0F, 1e-5F) << "azimuth 0 is +Z, where glTF models face";
+    const Math::Vec3 right = sunDirection({.elevationDegrees = 0.0F, .azimuthDegrees = 90.0F});
+    EXPECT_NEAR(right.x, 1.0F, 1e-5F) << "positive azimuth turns towards +X";
+    const Math::Vec3 any = sunDirection({.elevationDegrees = 35.0F, .azimuthDegrees = 30.0F});
+    EXPECT_NEAR(any.x * any.x + any.y * any.y + any.z * any.z, 1.0F, 1e-5F) << "a unit vector";
+}
 } // namespace Meow2::RendererApp

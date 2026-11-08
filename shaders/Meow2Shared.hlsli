@@ -31,7 +31,7 @@ struct FrameConstants
     MEOW2_MATRIX(view);           ///< World (camera-relative) → view space.
     MEOW2_MATRIX(projection);     ///< View → clip space, reversed Z.
     MEOW2_MATRIX(viewProjection); ///< view × projection.
-    float4 cameraPosition;   ///< xyz: the camera in world space; w: unused.
+    float4 cameraPosition;   ///< xyz: the camera in the instances' space (0 when they're camera relative); w: unused.
     float4 viewport;         ///< xy: size in pixels; zw: 1 / size.
     uint materialBuffer;     ///< Heap index of the MaterialData array; set by GpuScene.
     uint materialCount;      ///< Materials in it. An instance with a higher index gets a colour from its index.
@@ -39,8 +39,16 @@ struct FrameConstants
     uint padding1;           ///< Pads to 16 bytes.
     float4 sunDirection;     ///< xyz: unit direction towards the sun; w: its intensity.
     float4 sunColor;         ///< rgb: the sun's linear colour; w: exposure (scales the final colour).
-    float4 skyColor;         ///< rgb: ambient light from above; w: unused.
-    float4 groundColor;      ///< rgb: ambient light from below; w: unused.
+    float4 skyColor;         ///< rgb: ambient light from above, without a sky; w: unused.
+    float4 groundColor;      ///< rgb: ambient light from below, without a sky; w: the camera's altitude in km.
+    uint environmentMap;     ///< Heap index of the sky's prefiltered octahedral environment map; 0 without a sky.
+    uint environmentLevels;  ///< Its mip levels: level i is prefiltered for roughness i / (levels - 1).
+    uint irradianceBuffer;   ///< Heap index of the sky's diffuse light: 9 float4 spherical-harmonic coefficients.
+    uint transmittanceLut;   ///< Heap index of the atmosphere's transmittance LUT, for the sun's colour.
+    uint environmentSampler; ///< Sampler heap index: linear, clamped, mipmapped.
+    uint padding2;           ///< Pads to 16 bytes.
+    uint padding3;           ///< Pads to 16 bytes.
+    uint padding4;           ///< Pads to 16 bytes.
 };
 
 /// One drawn object, in a buffer the GPU reads and compute culling can edit.
@@ -80,6 +88,27 @@ struct PackedVertex
     uint tangent; ///< Octahedral tangent (along +U).
     uint uv;      ///< Texture coordinates as two half floats, u in the low half.
     uint color;   ///< Linear RGBA8 vertex colour, red in the low byte; white when the mesh has none.
+};
+
+/// What the sky's passes read (SkyAtmosphere, shaders/Sky.hlsl), once per frame.
+struct SkyConstants
+{
+    MEOW2_MATRIX(inverseViewProjection); ///< Clip space → world, for the sky's view directions.
+    float4 sunDirection;           ///< xyz: unit direction towards the sun; w: its angular radius in radians.
+    float4 sunIlluminance;         ///< rgb: the sun's illuminance above the atmosphere; w: the camera's altitude in km.
+    float4 groundAlbedo;           ///< rgb: the planet's albedo; w: unused.
+    uint transmittanceLut;         ///< Heap index (read) of the transmittance LUT.
+    uint multiScatteringLut;       ///< Heap index (read) of the multiple-scattering LUT.
+    uint skyViewLut;               ///< Heap index (read) of the sky-view LUT.
+    uint environment;              ///< Heap index (read) of the environment map, the source of the prefiltered one.
+    uint transmittanceStorage;     ///< Heap index (write) of the transmittance LUT.
+    uint multiScatteringStorage;   ///< Heap index (write) of the multiple-scattering LUT.
+    uint skyViewStorage;           ///< Heap index (write) of the sky-view LUT.
+    uint irradianceStorage;        ///< Heap index (write) of the spherical-harmonic buffer.
+    uint linearSampler;            ///< Sampler heap index: linear, clamped, mipmapped.
+    uint environmentLevels;        ///< Mip levels of the environment map.
+    uint padding0;                 ///< Pads to 16 bytes.
+    uint padding1;                 ///< Pads to 16 bytes.
 };
 
 /// One Dear ImGui draw command (Meow2Renderer's UI), read by shaders/ImGui.hlsl.

@@ -1,0 +1,33 @@
+id = "01a1b5e2-3c16-8000-80a4-7b19d2e6c057"
+
+[[entry]]
+name = "csTransmittance"
+stage = "compute"
+
+[[entry]]
+name = "csMultiScattering"
+stage = "compute"
+
+[[entry]]
+name = "csSkyView"
+stage = "compute"
+
+[[entry]]
+name = "csEnvironment"
+stage = "compute"
+
+[[entry]]
+name = "csPrefilter"
+stage = "compute"
+
+[[entry]]
+name = "csIrradiance"
+stage = "compute"
+
+[[entry]]
+name = "vsSky"
+stage = "vertex"
+
+[[entry]]
+name = "psSky"
+stage = "pixel"

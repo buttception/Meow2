@@ -113,8 +113,10 @@ public:
     [[nodiscard]] bool wantsKeyboard() const;
 
 private:
-    static constexpr float c_textFontSize = 16.0F; ///< Barlow's size at scale 1, in pixels.
-    static constexpr float c_monoFontSize = 14.0F; ///< Consolas' size at scale 1: it runs larger than Barlow.
+    // The sizes the fonts are added at. ImGui 1.92 draws at style.FontSizeBase instead (13 px, times the display
+    // scale), so these only set the atlas's first bake; UiTheme's pushMonoFont() sizes Consolas.
+    static constexpr float c_textFontSize = 13.0F; ///< Barlow's size at scale 1, in pixels.
+    static constexpr float c_monoFontSize = 11.0F; ///< Consolas' size at scale 1.
 
     /// @brief Adds the theme's fonts to ImGui's atlas; the first becomes the default.
     /// @param files The TrueType files, kept by the layer.

@@ -29,7 +29,7 @@ using float4x4 = Math::Mat4;
 
 // C++'s half of the size checks; shaders/Common.hlsli has the HLSL half.
 static_assert(sizeof(PushConstants) == 16, "16 bytes: Vulkan guarantees 128, and D3D12 root constants are costly");
-static_assert(sizeof(FrameConstants) == 304);
+static_assert(sizeof(FrameConstants) == 336);
 static_assert(sizeof(InstanceData) == 80);
 static_assert(sizeof(IndirectDraw) == 32);
 static_assert(offsetof(IndirectDraw, instance) == 0, "D3D12's command signature writes it first");
@@ -39,6 +39,7 @@ static_assert(sizeof(MaterialData) == 112);
 static_assert(sizeof(UiDraw) == 32);
 static_assert(sizeof(MeshDraw) == 48);
 static_assert(sizeof(CullConstants) == 128);
+static_assert(sizeof(SkyConstants) == 160);
 static_assert(offsetof(FrameConstants, cameraPosition) == 192);
 static_assert(offsetof(InstanceData, material) == 64);
 } // namespace Meow2::Shader

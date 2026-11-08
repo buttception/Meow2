@@ -81,6 +81,7 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
         return Unexpected<Error>{gpu.error()};
     }
     view->m_gpu = std::move(*gpu);
+    view->m_gpu->setSky(deps.sky);
     Result<std::vector<AssetId>> meshIds =
         Renderer::uploadModel(*view->m_gpu, *model, deps.ids, view->m_meshes, deps.log);
     if (!meshIds)
@@ -116,6 +117,7 @@ Result<std::unique_ptr<SceneView>> SceneView::cubeGrid(const SceneViewDeps& deps
         return Unexpected<Error>{gpu.error()};
     }
     view->m_gpu = std::move(*gpu);
+    view->m_gpu->setSky(deps.sky);
     if (Result<std::uint32_t> cube = view->m_gpu->addMesh(Renderer::makeCube()); !cube)
     {
         return Unexpected<Error>{cube.error()};

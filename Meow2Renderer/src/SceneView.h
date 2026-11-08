@@ -28,14 +28,15 @@ namespace Meow2::RendererApp
 /// @brief What a SceneView uses. Plain data; everything must outlive the views made with it.
 struct SceneViewDeps
 {
-    Renderer::RenderDevice& device;       ///< Holds the GPU scene's objects.
-    Renderer::PipelineLibrary& pipelines; ///< Builds the GPU-driven pipelines (shared between views).
-    FileSystem::FileSystem& files;        ///< Reads models; mount `model` is (re)made for each one.
-    UuidGenerator& ids;                   ///< Makes entity and mesh IDs.
-    Jobs::JobSystem& jobs;                ///< Runs the transform hierarchy.
-    Log::Logger& log;                     ///< Receives import warnings.
-    AssetId shader;                       ///< `shaders/GpuDriven.hlsl`.
-    Rhi::RhiFormat colorFormat;           ///< The swapchain's format.
+    Renderer::RenderDevice& device;               ///< Holds the GPU scene's objects.
+    Renderer::PipelineLibrary& pipelines;         ///< Builds the GPU-driven pipelines (shared between views).
+    FileSystem::FileSystem& files;                ///< Reads models; mount `model` is (re)made for each one.
+    UuidGenerator& ids;                           ///< Makes entity and mesh IDs.
+    Jobs::JobSystem& jobs;                        ///< Runs the transform hierarchy.
+    Log::Logger& log;                             ///< Receives import warnings.
+    AssetId shader;                               ///< `shaders/GpuDriven.hlsl`.
+    Rhi::RhiFormat colorFormat;                   ///< The swapchain's format.
+    const Renderer::SkyAtmosphere* sky = nullptr; ///< Lights every view and is drawn behind it; null for none.
 };
 
 /// @brief Where a Khronos sample lives in the fetched samples folder.

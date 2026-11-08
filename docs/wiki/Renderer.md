@@ -32,6 +32,8 @@ build\windows-msvc-debug\bin\Meow2Renderer.exe
 | Key | Default | Meaning |
 |---|---|---|
 | `renderer.ui` | true | The ImGui shell |
+| `renderer.sky` | true | Hillaire's sky behind the scene and image-based lighting from it; false for the flat ambient light ([Rendering](Rendering.md#sky-and-image-based-lighting)) |
+| `renderer.sunElevation`, `renderer.sunDirection` | 35, 30 | The starting sun, in degrees: above the horizon, and around +Y from +Z towards +X. The Stats window's SUN sliders change it, with intensity and exposure |
 | `renderer.scene` | empty | Scene to open at start: a sample name or a `.gltf`/`.glb` path; empty for the cube grid |
 | `renderer.sampleAssets` | `<repo>/assets/gltf-sample-assets` | Where the samples are |
 | `renderer.instances` | 100000 | Cubes in the cube grid |

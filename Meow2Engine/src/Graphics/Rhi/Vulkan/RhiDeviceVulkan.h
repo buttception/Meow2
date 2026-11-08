@@ -52,18 +52,18 @@ struct BufferVulkan
 /// @brief A texture's Vulkan objects. Plain data.
 struct TextureVulkan
 {
-    VkImage image = VK_NULL_HANDLE;           ///< The image.
-    VkImageView view = VK_NULL_HANDLE;        ///< A view of every mip level.
-    VmaAllocation allocation = nullptr;       ///< Its memory.
-    VkFormat format = VK_FORMAT_UNDEFINED;    ///< Its format.
-    VkExtent2D extent{};                      ///< Size in pixels.
-    std::uint32_t mipLevels = 1;              ///< Mip levels.
-    bool depth = false;                       ///< A depth format.
-    std::uint32_t heapIndex = 0;              ///< Sampled slot in the resource heap.
+    VkImage image = VK_NULL_HANDLE;                             ///< The image.
+    VkImageView view = VK_NULL_HANDLE;                          ///< A view of every mip level.
+    VmaAllocation allocation = nullptr;                         ///< Its memory.
+    VkFormat format = VK_FORMAT_UNDEFINED;                      ///< Its format.
+    VkExtent2D extent{};                                        ///< Size in pixels.
+    std::uint32_t mipLevels = 1;                                ///< Mip levels.
+    bool depth = false;                                         ///< A depth format.
+    std::uint32_t heapIndex = 0;                                ///< Sampled slot in the resource heap.
     std::array<std::uint32_t, c_maxMipLevels> storageIndices{}; ///< Writable slot of each mip level; 0 if none.
     std::array<VkImageView, c_maxMipLevels> storageViews{};     ///< One view per level: storage views cover one.
-    Memory::MemTag tag = Memory::MemTag::Rhi; ///< Which GpuMemoryStats counter it's in.
-    std::uint64_t bytes = 0;                  ///< Memory it takes.
+    Memory::MemTag tag = Memory::MemTag::Rhi;                   ///< Which GpuMemoryStats counter it's in.
+    std::uint64_t bytes = 0;                                    ///< Memory it takes.
 };
 
 /// @brief A sampler's Vulkan object. Plain data.

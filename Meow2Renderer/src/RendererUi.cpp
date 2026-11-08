@@ -8,11 +8,13 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Memory/MemTag.h>
 #include <Meow2/Core/Memory/TrackingAllocator.h>
+#include <Meow2/Math/Scalar.h>
 
 #include <imgui.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <format>
 #include <numeric>
@@ -163,7 +165,14 @@ std::array<float, 240> FrameTimes::ordered() const
     return ordered;
 }
 
-StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts)
+Math::Vec3 sunDirection(const SunControls& sun)
+{
+    const float elevation = Math::toRadians(sun.elevationDegrees);
+    const float azimuth = Math::toRadians(sun.azimuthDegrees);
+    return {std::cos(elevation) * std::sin(azimuth), std::sin(elevation), std::cos(elevation) * std::cos(azimuth)};
+}
+
+StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts, SunControls* sun)
 {
     StatsActions actions;
     // Sizes in unscaled units times the display scale (style.FontScaleDpi), like everything else in the UI.
@@ -224,6 +233,15 @@ StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts)
         ImGui::Text("Opened in %.0f ms", info.importMilliseconds);
     }
     popMonoFont();
+
+    if (sun != nullptr)
+    {
+        ImGui::SeparatorText("SUN");
+        ImGui::SliderFloat("ELEVATION", &sun->elevationDegrees, -10.0F, 90.0F, "%.0f deg");
+        ImGui::SliderFloat("DIRECTION", &sun->azimuthDegrees, -180.0F, 180.0F, "%.0f deg");
+        ImGui::SliderFloat("INTENSITY", &sun->intensity, 0.1F, 20.0F, "%.1f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderFloat("EXPOSURE", &sun->exposure, 0.1F, 8.0F, "%.2f", ImGuiSliderFlags_Logarithmic);
+    }
 
     // Section headers stay grey: ImGui gives them the colour of selected rows, which the theme makes red.
     ImGui::PushStyleColor(ImGuiCol_Header, UiColors::c_frame);

@@ -47,7 +47,7 @@ namespace fs = std::filesystem;
 constexpr std::string_view c_triangleShader = "01a1b5e2-3c10-8000-80a4-7b19d2e6c051";
 constexpr std::string_view c_textureShader = "01a1b5e2-3c11-8000-80a4-7b19d2e6c052";
 constexpr std::string_view c_probeShader = "01a1b158-0216-8000-808e-12fd3223a2ac";
-constexpr std::string_view c_statesShader = "01a1b5e2-3c13-8000-80a4-7b19d2e6c054"; // RhiStates.hlsl
+constexpr std::string_view c_statesShader = "01a1b5e2-3c13-8000-80a4-7b19d2e6c054";  // RhiStates.hlsl
 constexpr std::string_view c_storageShader = "01a1b5e2-3c15-8000-80a4-7b19d2e6c056"; // RhiStorage.hlsl
 constexpr std::uint32_t c_targetSize = 64;
 

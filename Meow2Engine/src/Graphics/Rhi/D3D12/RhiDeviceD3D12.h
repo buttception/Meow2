@@ -116,9 +116,9 @@ struct TextureD3D12
     bool renderTarget = false;                 ///< Can be drawn to: its first barrier discards the old contents.
     std::uint32_t heapIndex = 0;               ///< Readable slot in the resource heap.
     std::array<std::uint32_t, c_maxMipLevels> storageIndices{}; ///< Writable slot of each mip level; 0 if none.
-    std::uint32_t targetIndex = 0;             ///< Slot in the RTV or DSV heap; 0 if it isn't a render target.
-    Memory::MemTag tag = Memory::MemTag::Rhi;  ///< Which GpuMemoryStats counter it's in.
-    std::uint64_t bytes = 0;                   ///< Memory it takes.
+    std::uint32_t targetIndex = 0;            ///< Slot in the RTV or DSV heap; 0 if it isn't a render target.
+    Memory::MemTag tag = Memory::MemTag::Rhi; ///< Which GpuMemoryStats counter it's in.
+    std::uint64_t bytes = 0;                  ///< Memory it takes.
 };
 
 /// @brief A sampler's slot. Plain data: D3D12 samplers are only descriptors.
