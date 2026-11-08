@@ -83,16 +83,20 @@ std::string fetchCommand(const std::string& name)
 }
 } // namespace
 
+namespace
+{
+/// @brief Whether a character may appear in a model folder name.
+bool isModelNameCharacter(char c)
+{
+    const bool letter = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+    const bool digit = c >= '0' && c <= '9';
+    return letter || digit || c == '-' || c == '_';
+}
+} // namespace
+
 bool isModelName(std::string_view name)
 {
-    return !name.empty() && name.size() < 128 &&
-           std::ranges::all_of(
-               name,
-               [](char c)
-               {
-                   return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
-                          c == '_';
-               });
+    return !name.empty() && name.size() < 128 && std::ranges::all_of(name, isModelNameCharacter);
 }
 
 std::vector<SampleEntry> listSamples(const std::filesystem::path& sampleRoot)
