@@ -73,11 +73,13 @@ public:
     ImGuiLayer& operator=(const ImGuiLayer&) = delete; ///< Not copyable: owns the ImGui context.
 
     /// @brief Starts an ImGui frame; call ImGui functions after it.
-    /// @param deltaSeconds   Time since the last frame.
-    /// @param width          Window width in desktop units (the units of mouse positions).
-    /// @param height         Window height in desktop units.
-    /// @param framebufferScale Pixels per desktop unit (above 1 on high-DPI screens).
-    void newFrame(float deltaSeconds, float width, float height, float framebufferScale);
+    /// @param deltaSeconds     Time since the last frame.
+    /// @param width            Window width in window coordinates: the units of mouse positions.
+    /// @param height           Window height in window coordinates.
+    /// @param framebufferScale Pixels per window coordinate: 1 on Windows, 2 on a Retina Mac.
+    /// @param contentScale     How much larger UI should be drawn, in window coordinates: the display's scale (1.25 at
+    ///                          125 %) over `framebufferScale`. Text and widgets are scaled by it.
+    void newFrame(float deltaSeconds, float width, float height, float framebufferScale, float contentScale);
 
     /// @brief Ends the ImGui frame and adds its pass (and any texture uploads) to the graph, drawing on top of the
     ///        swapchain's contents.
@@ -155,6 +157,7 @@ private:
 
     ImGuiLayerDeps m_deps;
     ImGuiContext* m_context = nullptr;
+    float m_contentScale = 1.0F; ///< The scale the style was last sized for.
     std::optional<Renderer::PipelineId> m_pipeline;
     std::vector<TextureSlot> m_textures;
     std::vector<PendingUpload> m_uploads;

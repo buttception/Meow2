@@ -209,7 +209,7 @@ Planned as five PRs; PR 4's shell came first, at the owner's request. glTF is an
 | 3 | `.m2texture`: cooked textures with a format field and mips from the start (BC7 later); glTF samplers; texture transforms | §13a | ⬜ | |
 | 3 | Double-sided materials and mirrored (negative-scale) nodes; alpha blending, sorted | §11 | ⬜ | |
 | 3 | Image-based lighting from an environment map | §11 | ⬜ | |
-| 4 Renderer app | Dear ImGui docking shell (submodule, owner request), frame and memory stats per tag | §2, §7 | ✅ | #172 / PR #173 |
+| 4 Renderer app | Dear ImGui docking shell (submodule, owner request), frame and memory stats per tag; scaled for the display, 1080p default window | §2, §7 | ✅ | #172 / PR #173, #175 / PR #176 |
 | 4 | Backend switch button, capture button (the same as F11) | §11 | ✅ | #172 / PR #173 |
 | 4 | Scene browser: the sample list, which are downloaded, fetch on click, open any `.gltf`/`.glb` (`.m2scene` with PR 2) | §13 | ✅ | #172 / PR #173 |
 | 4 | Log console (ring-buffer sink), settings window for debug tools saved to the TOML config, saved window layout | §7, §11 | ⬜ | |

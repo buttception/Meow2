@@ -16,6 +16,10 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ### Changed
 - Roadmap: M6 is now "glTF scenes and Meow2Renderer", with the old M7 merged in and stopping at PBR; a new M13 holds advanced rendering (#170).
 - Vulkan GPUs need `shaderDemoteToHelperInvocation`, for `discard` in shaders (#170).
+- Every app opens at 1920 x 1080 (1080p) by default instead of 1280 x 720; a size saved in the app's config still wins (#176).
+
+### Fixed
+- Meow2Renderer: the mouse lines up with the ImGui buttons on a scaled display (125 %, 150 %), and the UI is drawn at the display's scale (#176).
 
 ## [0.6.0] — 2026-11-07
 

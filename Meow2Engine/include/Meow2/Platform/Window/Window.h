@@ -47,8 +47,8 @@ struct WindowRect
 struct WindowDesc
 {
     std::string title = "Meow2";     ///< Text in the title bar and taskbar (UTF-8).
-    std::int32_t width = 1280;       ///< Client-area width when windowed, in desktop coordinates.
-    std::int32_t height = 720;       ///< Client-area height when windowed, in desktop coordinates.
+    std::int32_t width = 1920;       ///< Client-area width when windowed, in desktop coordinates (1080p by default).
+    std::int32_t height = 1080;      ///< Client-area height when windowed, in desktop coordinates.
     std::optional<std::int32_t> x{}; ///< Left edge; centred on the primary display if unset or off every display.
     std::optional<std::int32_t> y{}; ///< Top edge; centred on the primary display if unset or off every display.
     bool maximized = false;          ///< Open maximized (windowed mode); width/height are the size when restored.

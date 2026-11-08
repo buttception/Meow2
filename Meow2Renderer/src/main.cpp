@@ -503,11 +503,14 @@ int main(int argc, char** argv)
         // The UI's windows, built before drawing; what they ask for happens next frame.
         if (ui)
         {
-            // ImGui works in desktop units, like the mouse positions it gets: pixels over the display scale. (The
-            // window's bounds aren't used: they can still hold the requested size before the first resize event.)
-            const float scale = window->displayScale();
-            ui->newFrame(clock.deltaSecondsFloat(), static_cast<float>(swapchain->width()) / scale,
-                         static_cast<float>(swapchain->height()) / scale, scale);
+            // ImGui works in window coordinates, the units of the mouse positions it gets. On Windows those are
+            // pixels whatever the display scale; on a Retina Mac a pixel is half of one. The display scale (1.25 at
+            // 125 %) only makes the UI bigger, through its style.
+            const Meow2::Platform::WindowRect bounds = window->bounds();
+            const float pixelsPerUnit =
+                bounds.width > 0 ? static_cast<float>(window->pixelWidth()) / static_cast<float>(bounds.width) : 1.0F;
+            ui->newFrame(clock.deltaSecondsFloat(), static_cast<float>(bounds.width), static_cast<float>(bounds.height),
+                         pixelsPerUnit, window->displayScale() / pixelsPerUnit);
             if (showUi)
             {
                 Meow2::RendererApp::StatsInfo stats{
