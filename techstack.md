@@ -146,7 +146,7 @@ ctest --preset windows-msvc-debug -L unit
 | RHI | `IRhiDevice`, `IRhiCommandList`, `IRhiSwapchain`, resources by handle | Vulkan, D3D12 | §11 |
 | Shader | `ShaderCompiler` | DXC (HLSL → DXIL / SPIR-V) | Interface leaves room for a custom shader language (§12) |
 | Renderer | `Renderer`, render graph | on RHI only | |
-| Assets | `AssetManager`, `importGltf`, `decodeImage` | asset core and shader assets (M4, §13a); glTF **2.0** importer, `.gltf` and `.glb`, through **cgltf**; PNG/JPEG through **stb_image** | §13, §13a |
+| Assets | `AssetManager`, `importGltf`, `decodeImage` | asset core and shader assets (M4, §13a); glTF **2.0** importer, `.gltf` and `.glb`, through **cgltf**; PNG/JPEG through **stb_image**; textures cooked to BC7/BC5 `.m2texture` through **DirectXTex** | §13, §13a |
 | Physics | `PhysicsWorld`, `RigidBody`, `Shape`, `PhysicsDebugDraw` | **Jolt** | PhysX / Box3D selectable at build time later (§14) |
 | GameUI | `UiContext`, widgets | in-house, drawn via Renderer | Used by `Meow2Player` |
 | Packaging | `GamePackager` | in-house | Editor export |
@@ -182,6 +182,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | D3D12MemoryAllocator v3.2.1 | D3D12 memory | MIT | submodule; implementation in its own library, outside the engine's warnings |
 | DirectX-Headers v1.620.1 | D3D12 headers, the same version as the Agility SDK | MIT | submodule; header-only target, ahead of the Windows SDK's own `d3d12.h`; only included under `src/Graphics/Rhi/D3D12/` |
 | cgltf v1.15 | glTF 2.0 import (`.gltf`, `.glb`) | MIT | submodule; one header, its implementation in its own library (`meow2_cgltf`) outside the engine's warnings; files read through the VFS and memory under `MemTag::Assets` through its callbacks. Chosen over fastgltf (owner decision 2026-11-07): neither decodes Draco, and cgltf is one header with no dependencies. Only included under `src/Assets/Gltf/` |
+| DirectXTex may2026 | BC7 and BC5 texture compression for the texture cooker | MIT | submodule (owner-approved 2026-11-08); built from its sources as its own library (`meow2_directxtex`) outside the engine's warnings, without its CMake project (which adds install rules); on Linux it uses DirectX-Headers' WSL stubs and our `sal.h` shim; UBSan is off for it (its BC7 encoder has a misaligned read and a negative shift, harmless on x64/arm64; ASan still on). Only included by `src/Assets/Texture/DirectXTex/`, because its header pulls in the D3D11 and Windows headers on Windows |
 | GoogleTest v1.17.0 | unit tests (gmock off) | BSD-3 | submodule |
 | tl::expected v1.3.1 | `Result<T>` until C++23 `std::expected` (only the `std::expected`-compatible API is used) | CC0 | submodule; header-only, own INTERFACE target (its CMakeLists pulls in CTest/Catch2). **Public-header exception:** included by `Meow2/Core/Result.h` |
 | EnTT v3.16.0 | ECS for `Scene` (§25) | MIT | submodule; header-only, own INTERFACE target (`EnTT::EnTT`, linked PUBLIC). **Public-header exception:** `Meow2/Scene/Scene.h` exposes the registry and views. The registry allocates through `Memory::ResourceAllocator` (EnTT doesn't build with `std::pmr::polymorphic_allocator`) |
@@ -741,3 +742,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-07 — §3/§4/§13: cgltf v1.15 and stb_image v2.30 added (owner-approved); the glTF loader is no longer open; the sample fetch script implemented; `Assets/Texture` module.
 - 2026-11-07 — §4: Dear ImGui v1.93.0-docking added (owner request) for Meow2Renderer; drawn through the RHI, fed by engine input.
 - 2026-11-08 — §4: Barlow Semi Condensed bundled as the UI font (owner-approved); Consolas used from the system on Windows.
+- 2026-11-09 — §3/§4: DirectXTex may2026 added (owner-approved) for BC7 and BC5 texture cooking; BC formats need `textureCompressionBC` on Vulkan.

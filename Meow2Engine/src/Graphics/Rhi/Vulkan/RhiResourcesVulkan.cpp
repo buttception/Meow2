@@ -102,6 +102,12 @@ VkFormat vulkanFormat(RhiFormat format)
             return VK_FORMAT_R32_SFLOAT;
         case RhiFormat::D32Float:
             return VK_FORMAT_D32_SFLOAT;
+        case RhiFormat::Bc7Unorm:
+            return VK_FORMAT_BC7_UNORM_BLOCK;
+        case RhiFormat::Bc7Srgb:
+            return VK_FORMAT_BC7_SRGB_BLOCK;
+        case RhiFormat::Bc5Unorm:
+            return VK_FORMAT_BC5_UNORM_BLOCK;
     }
     return VK_FORMAT_UNDEFINED;
 }

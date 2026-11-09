@@ -43,8 +43,42 @@ enum class RhiFormat : std::uint8_t
     Rgba8Unorm,  ///< 8-bit RGBA, linear.
     Rgba16Float, ///< 16-bit float RGBA.
     R32Float,    ///< 32-bit float, one channel.
-    D32Float     ///< 32-bit float depth (techstack.md §10).
+    D32Float,    ///< 32-bit float depth (techstack.md §10).
+    Bc7Unorm,    ///< BC7: 4 × 4 pixel blocks of 16 bytes, RGBA, linear (1 byte per pixel). For data textures.
+    Bc7Srgb,     ///< BC7, sRGB-encoded: colour textures.
+    Bc5Unorm     ///< BC5: 4 × 4 blocks of 16 bytes, two channels (RG); normal maps, Z rebuilt in the shader.
 };
+
+/// @brief Whether a format stores 4 × 4 pixel blocks (BC7, BC5) rather than pixels.
+/// @param format The format.
+/// @return True for the block-compressed formats.
+[[nodiscard]] constexpr bool isBlockCompressed(RhiFormat format) noexcept
+{
+    return format == RhiFormat::Bc7Unorm || format == RhiFormat::Bc7Srgb || format == RhiFormat::Bc5Unorm;
+}
+
+/// @brief Bytes of one row of a mip level as stored tightly in a buffer: pixels × their size, or for a block format
+///        one row of blocks (4 pixel rows), its width rounded up to whole blocks.
+/// @param format The format.
+/// @param width  The level's width in pixels.
+/// @return The size in bytes.
+[[nodiscard]] constexpr std::uint32_t rowBytes(RhiFormat format, std::uint32_t width) noexcept
+{
+    if (isBlockCompressed(format))
+    {
+        return (width + 3U) / 4U * 16U;
+    }
+    return width * (format == RhiFormat::Rgba16Float ? 8U : 4U);
+}
+
+/// @brief Rows of a mip level as stored in a buffer: its height, or for a block format its rows of blocks.
+/// @param format The format.
+/// @param height The level's height in pixels.
+/// @return The count.
+[[nodiscard]] constexpr std::uint32_t rowCount(RhiFormat format, std::uint32_t height) noexcept
+{
+    return isBlockCompressed(format) ? (height + 3U) / 4U : height;
+}
 
 /// @brief Where a buffer's memory lives, and so who can reach it.
 enum class RhiMemory : std::uint8_t

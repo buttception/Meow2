@@ -151,6 +151,13 @@ VertexOutput vsBlend(uint vertexId : SV_VertexID)
     return shadeVertex(g_push.instance, vertexId);
 }
 
+/// A texture's UV after its KHR_texture_transform, stored as the two rows of a 2 × 3 matrix (MaterialData).
+float2 transformUv(float4 row0, float4 row1, float2 uv)
+{
+    const float3 homogeneous = float3(uv, 1.0);
+    return float2(dot(row0.xyz, homogeneous), dot(row1.xyz, homogeneous));
+}
+
 /// A texture of a material, or `fallback` when it has none (index 0).
 float4 sampleMaterial(uint texture, uint sampler, float2 uv, float4 fallback)
 {
@@ -245,25 +252,35 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
     {
         const MaterialData material = loadElement<MaterialData>(frame.materialBuffer, input.material);
         baseColor *= material.baseColorFactor *
-                     sampleMaterial(material.baseColorTexture, material.baseColorSampler, input.uv, float4(1, 1, 1, 1));
+                     sampleMaterial(material.baseColorTexture, material.baseColorSampler,
+                                    transformUv(material.baseColorUv0, material.baseColorUv1, input.uv), float4(1, 1, 1, 1));
         if ((material.flags & MEOW2_MATERIAL_ALPHA_MASK) != 0 && baseColor.a < material.parameters.x)
         {
             discard;
         }
         // glTF packs roughness in G and metallic in B.
-        const float4 metalRough = sampleMaterial(material.metallicRoughnessTexture, material.metallicRoughnessSampler,
-                                                 input.uv, float4(1, 1, 1, 1));
+        const float4 metalRough = sampleMaterial(
+            material.metallicRoughnessTexture, material.metallicRoughnessSampler,
+            transformUv(material.metallicRoughnessUv0, material.metallicRoughnessUv1, input.uv), float4(1, 1, 1, 1));
         metallic = material.parameters.y * metalRough.b;
         roughness = material.parameters.z * metalRough.g;
-        const float ao = sampleMaterial(material.occlusionTexture, material.occlusionSampler, input.uv, float4(1, 1, 1, 1)).r;
+        const float ao = sampleMaterial(material.occlusionTexture, material.occlusionSampler,
+                                        transformUv(material.occlusionUv0, material.occlusionUv1, input.uv),
+                                        float4(1, 1, 1, 1)).r;
         occlusion = 1.0 + material.emissiveFactor.w * (ao - 1.0);
         emissive = material.emissiveFactor.rgb *
-                   sampleMaterial(material.emissiveTexture, material.emissiveSampler, input.uv, float4(1, 1, 1, 1)).rgb;
+                   sampleMaterial(material.emissiveTexture, material.emissiveSampler,
+                                  transformUv(material.emissiveUv0, material.emissiveUv1, input.uv), float4(1, 1, 1, 1)).rgb;
         if (material.normalTexture != 0)
         {
             // Tangent space: X along +U, Y along the bitangent (towards decreasing V, glTF's +Y up), Z the normal.
-            float3 local = sampleMaterial(material.normalTexture, material.normalSampler, input.uv, float4(0.5, 0.5, 1, 1))
-                               .xyz * 2.0 - 1.0;
+            // Only X and Y are read: BC5 normal maps keep just those two, so Z is rebuilt from them (a unit vector
+            // facing out of the surface). For uncompressed maps it's the same Z, up to rounding.
+            float3 local;
+            local.xy = sampleMaterial(material.normalTexture, material.normalSampler,
+                                      transformUv(material.normalUv0, material.normalUv1, input.uv), float4(0.5, 0.5, 1, 1))
+                           .xy * 2.0 - 1.0;
+            local.z = sqrt(saturate(1.0 - dot(local.xy, local.xy)));
             local.xy *= material.parameters.w;
             tangent = normalize(tangent - normal * dot(normal, tangent)); // re-orthogonalised after interpolation
             const float3 bitangent = cross(normal, tangent) * bitangentSign;

@@ -7,6 +7,7 @@
 #include <Meow2/Assets/AssetManager.h>
 #include <Meow2/Assets/Shader/ShaderAsset.h>
 #include <Meow2/Assets/Shader/ShaderHotReload.h>
+#include <Meow2/Assets/Texture/CookedTexture.h>
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Id/UuidGenerator.h>
 #include <Meow2/Core/Jobs/JobSystem.h>
@@ -422,6 +423,81 @@ TEST_F(RhiDrawTest, CopiesEveryMipLevel)
         const Pixel center = pixelAt(readback, 32, 32);
         EXPECT_EQ(center.r, test.expected.r) << test.size << " pixels";
         EXPECT_EQ(center.g, test.expected.g) << test.size << " pixels";
+        m_device->destroy(*texture);
+        m_device->destroy(upload);
+        m_device->destroy(target);
+        m_device->destroy(readback);
+    }
+    m_device->destroy(pipeline);
+    m_device->destroy(*sampler);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
+
+TEST_F(RhiDrawTest, SamplesBlockCompressedMips)
+{
+    // As CopiesEveryMipLevel, with BC7 blocks cooked by DirectXTex: red on level 0, green on level 1. The 4-pixel
+    // texture's level 1 is 2 × 2, less than one block: its copy covers a whole block.
+    constexpr Pixel c_red{.r = 255, .g = 0, .b = 0, .a = 255};
+    constexpr Pixel c_green{.r = 0, .g = 255, .b = 0, .a = 255};
+    const auto flat = [](std::uint32_t size, Pixel colour)
+    {
+        Assets::Image image{.width = size, .height = size, .pixels = {}};
+        for (std::uint32_t i = 0; i < size * size; ++i)
+        {
+            image.pixels.insert(image.pixels.end(),
+                                {std::byte{colour.r}, std::byte{colour.g}, std::byte{colour.b}, std::byte{colour.a}});
+        }
+        return image;
+    };
+    struct Case
+    {
+        std::uint32_t size;
+        Pixel expected;
+    };
+    const Result<SamplerHandle> sampler = m_device->createSampler({.filter = SamplerFilter::Nearest});
+    ASSERT_TRUE(sampler) << sampler.error().message;
+    const PipelineHandle pipeline = graphicsPipeline(c_textureShader);
+    for (const Case& test : {Case{256, c_green}, Case{16, c_red}, Case{4, c_red}})
+    {
+        const Result<Assets::CookedTexture> level0 =
+            Assets::cookTexture(flat(test.size, c_red), Assets::TextureKind::Data, true);
+        const Result<Assets::CookedTexture> level1 =
+            Assets::cookTexture(flat(test.size / 2, c_green), Assets::TextureKind::Data, true);
+        ASSERT_TRUE(level0) << level0.error().message;
+        ASSERT_TRUE(level1) << level1.error().message;
+        // A 2-pixel image isn't whole blocks, so it cooks as RGBA8: its level is compressed as a small mip instead.
+        const std::vector<std::byte>& level1Bytes =
+            level1->format == Assets::CookedFormat::Bc7Unorm ? level1->mips[0].bytes : level0->mips[1].bytes;
+        const std::vector<std::byte>& level0Bytes = level0->mips[0].bytes;
+        ASSERT_EQ(level0->format, Assets::CookedFormat::Bc7Unorm);
+        Result<TextureHandle> texture = m_device->createTexture(
+            {.width = test.size, .height = test.size, .format = RhiFormat::Bc7Unorm, .mipLevels = 2});
+        ASSERT_TRUE(texture) << texture.error().message;
+        const BufferHandle upload = makeBuffer(level0Bytes.size() + level1Bytes.size(), RhiMemory::Upload);
+        std::memcpy(m_device->mappedMemory(upload).data(), level0Bytes.data(), level0Bytes.size());
+        std::memcpy(m_device->mappedMemory(upload).data() + level0Bytes.size(), level1Bytes.data(), level1Bytes.size());
+        runFrame(
+            [&](IRhiCommandList& list)
+            {
+                list.barrier(*texture, ResourceState::Undefined, ResourceState::CopyTarget);
+                list.copyBufferToTexture(upload, *texture, 0, 0);
+                list.copyBufferToTexture(upload, *texture, 1, level0Bytes.size());
+                list.barrier(*texture, ResourceState::CopyTarget, ResourceState::ShaderRead);
+            });
+
+        const TextureHandle target = makeTarget();
+        const BufferHandle readback = makeBuffer(sizeof(Pixel) * c_targetSize * c_targetSize, RhiMemory::Readback);
+        renderToReadback(target, readback,
+                         [&](IRhiCommandList& list)
+                         {
+                             list.setPipeline(pipeline);
+                             list.setPushConstants({.instance = m_device->bindlessIndex(*sampler),
+                                                    .userData = m_device->bindlessIndex(*texture)});
+                             list.draw(3);
+                         });
+        const Pixel center = pixelAt(readback, 32, 32);
+        EXPECT_NEAR(center.r, test.expected.r, 2) << test.size << " pixels";
+        EXPECT_NEAR(center.g, test.expected.g, 2) << test.size << " pixels";
         m_device->destroy(*texture);
         m_device->destroy(upload);
         m_device->destroy(target);

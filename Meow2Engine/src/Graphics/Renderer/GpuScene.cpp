@@ -21,6 +21,25 @@ namespace
 constexpr std::uint32_t c_maxMeshes = 4096;
 constexpr std::uint32_t c_maxMaterials = 4096;
 constexpr std::uint32_t c_cullGroupSize = 64; // [numthreads] in GpuDriven.hlsl
+
+/// @brief The RHI format of a cooked texture.
+Rhi::RhiFormat rhiFormat(Assets::CookedFormat format)
+{
+    switch (format)
+    {
+        case Assets::CookedFormat::Rgba8Unorm:
+            return Rhi::RhiFormat::Rgba8Unorm;
+        case Assets::CookedFormat::Rgba8Srgb:
+            return Rhi::RhiFormat::Rgba8Srgb;
+        case Assets::CookedFormat::Bc7Unorm:
+            return Rhi::RhiFormat::Bc7Unorm;
+        case Assets::CookedFormat::Bc7Srgb:
+            return Rhi::RhiFormat::Bc7Srgb;
+        case Assets::CookedFormat::Bc5Unorm:
+            return Rhi::RhiFormat::Bc5Unorm;
+    }
+    return Rhi::RhiFormat::Rgba8Unorm;
+}
 } // namespace
 
 Shader::PackedVertex packVertex(const VertexAttributes& vertex, const Math::Aabb& bounds)
@@ -371,12 +390,12 @@ Result<void> GpuScene::uploadMesh(Rhi::IRhiDevice& device, const MeshData& mesh,
 Result<void> GpuScene::createTexture(Rhi::IRhiDevice& device, std::uint32_t index)
 {
     TextureRecord& record = m_textures[index];
-    const Assets::Image& top = record.mips.front();
+    const Assets::CookedMip& top = record.cooked.mips.front();
     Result<Rhi::TextureHandle> texture =
         device.createTexture({.width = top.width,
                               .height = top.height,
-                              .format = record.srgb ? Rhi::RhiFormat::Rgba8Srgb : Rhi::RhiFormat::Rgba8Unorm,
-                              .mipLevels = static_cast<std::uint32_t>(record.mips.size()),
+                              .format = rhiFormat(record.cooked.format),
+                              .mipLevels = static_cast<std::uint32_t>(record.cooked.mips.size()),
                               .tag = Memory::MemTag::Renderer,
                               .name = record.name});
     if (!texture)
@@ -385,10 +404,12 @@ Result<void> GpuScene::createTexture(Rhi::IRhiDevice& device, std::uint32_t inde
     }
     record.texture = *texture;
     // Every level goes into one staging buffer, one after another; the upload pass copies each from its offset.
+    // Each level's size is a multiple of 16 bytes for block formats (whole blocks), the offset alignment Vulkan asks
+    // for; D3D12 copies at any offset with the unrestricted copy pitch the requirements check asks for.
     std::uint64_t bytes = 0;
-    for (const Assets::Image& level : record.mips)
+    for (const Assets::CookedMip& level : record.cooked.mips)
     {
-        bytes += level.pixels.size();
+        bytes += level.bytes.size();
     }
     Result<Rhi::BufferHandle> staging = device.createBuffer(
         {.size = bytes, .memory = Rhi::RhiMemory::Upload, .tag = Memory::MemTag::Renderer, .name = "Texture upload"});
@@ -399,10 +420,10 @@ Result<void> GpuScene::createTexture(Rhi::IRhiDevice& device, std::uint32_t inde
     record.staging = *staging;
     std::byte* const mapped = device.mappedMemory(*staging).data();
     std::uint64_t offset = 0;
-    for (const Assets::Image& level : record.mips)
+    for (const Assets::CookedMip& level : record.cooked.mips)
     {
-        std::memcpy(mapped + offset, level.pixels.data(), level.pixels.size());
-        offset += level.pixels.size();
+        std::memcpy(mapped + offset, level.bytes.data(), level.bytes.size());
+        offset += level.bytes.size();
     }
     m_pendingTextures.push_back(index);
     return {};
@@ -414,9 +435,24 @@ Result<std::uint32_t> GpuScene::addTexture(const Assets::Image& image, bool srgb
     {
         return fail(ErrorCode::InvalidArgument, std::format("Texture '{}' has no pixels", name));
     }
+    Result<Assets::CookedTexture> cooked =
+        Assets::cookTexture(image, srgb ? Assets::TextureKind::Color : Assets::TextureKind::Data, false);
+    if (!cooked)
+    {
+        return Unexpected<Error>{cooked.error()};
+    }
+    return addTexture(std::move(*cooked), std::move(name));
+}
+
+Result<std::uint32_t> GpuScene::addTexture(Assets::CookedTexture texture, std::string name)
+{
+    if (texture.mips.empty() || texture.mips.front().width == 0 || texture.mips.front().height == 0)
+    {
+        return fail(ErrorCode::InvalidArgument, std::format("Texture '{}' has no levels", name));
+    }
     const auto index = static_cast<std::uint32_t>(m_textures.size());
-    // The chain is made once and kept: a backend switch uploads it again without filtering again.
-    m_textures.push_back({.mips = Assets::makeMipChain(image, srgb), .srgb = srgb, .name = std::move(name)});
+    // The levels are kept: a backend switch uploads them again without cooking again.
+    m_textures.push_back({.cooked = std::move(texture), .name = std::move(name)});
     if (Result<void> made = createTexture(m_device.device(), index); !made)
     {
         m_device.device().destroy(m_textures.back().texture);
@@ -439,6 +475,14 @@ void GpuScene::writeMaterial(Rhi::IRhiDevice& device, std::uint32_t index)
         samplerIndex = hasSampler ? device.bindlessIndex(m_samplers[static_cast<std::size_t>(texture.sampler)].sampler)
                                   : Rhi::c_defaultSamplerIndex;
     };
+    // KHR_texture_transform as two rows of translation × rotation × scale (the extension's GLSL, written out).
+    const auto uvRows = [](const MaterialTexture& texture, Shader::float4& row0, Shader::float4& row1)
+    {
+        const float c = std::cos(texture.uvRotation);
+        const float s = std::sin(texture.uvRotation);
+        row0 = {c * texture.uvScale.x, -s * texture.uvScale.y, texture.uvOffset.x, 0.0F};
+        row1 = {s * texture.uvScale.x, c * texture.uvScale.y, texture.uvOffset.y, 0.0F};
+    };
     Shader::MaterialData data{};
     data.baseColorFactor = {material.baseColorFactor.r, material.baseColorFactor.g, material.baseColorFactor.b,
                             material.baseColorFactor.a};
@@ -450,6 +494,11 @@ void GpuScene::writeMaterial(Rhi::IRhiDevice& device, std::uint32_t index)
     slot(material.normal, data.normalTexture, data.normalSampler);
     slot(material.occlusion, data.occlusionTexture, data.occlusionSampler);
     slot(material.emissive, data.emissiveTexture, data.emissiveSampler);
+    uvRows(material.baseColor, data.baseColorUv0, data.baseColorUv1);
+    uvRows(material.metallicRoughness, data.metallicRoughnessUv0, data.metallicRoughnessUv1);
+    uvRows(material.normal, data.normalUv0, data.normalUv1);
+    uvRows(material.occlusion, data.occlusionUv0, data.occlusionUv1);
+    uvRows(material.emissive, data.emissiveUv0, data.emissiveUv1);
     data.flags = (material.alphaMask ? MEOW2_MATERIAL_ALPHA_MASK : 0U) |
                  (material.doubleSided ? MEOW2_MATERIAL_DOUBLE_SIDED : 0U) |
                  (material.blend ? MEOW2_MATERIAL_BLEND : 0U);
@@ -616,10 +665,10 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
             TextureRecord& record = m_textures[texture];
             Upload upload{.staging = record.staging, .texture = record.texture, .offsets = {}};
             std::uint64_t offset = 0;
-            for (const Assets::Image& level : record.mips)
+            for (const Assets::CookedMip& level : record.cooked.mips)
             {
                 upload.offsets.push_back(offset);
-                offset += level.pixels.size();
+                offset += level.bytes.size();
             }
             uploads.push_back(std::move(upload));
             m_spentStaging.push_back(std::exchange(record.staging, {}));

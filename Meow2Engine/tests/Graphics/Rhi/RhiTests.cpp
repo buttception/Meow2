@@ -38,6 +38,7 @@ VulkanGpuFacts capableGpu()
     facts.dynamicRendering = true;
     facts.synchronization2 = true;
     facts.demoteToHelperInvocation = true;
+    facts.textureCompressionBc = true;
     facts.storageImageWithoutFormat = true;
     facts.timelineSemaphore = true;
     facts.bufferDeviceAddress = true;

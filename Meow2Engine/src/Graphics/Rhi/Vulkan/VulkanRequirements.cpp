@@ -41,6 +41,7 @@ std::vector<std::string> missingVulkanRequirements(const VulkanGpuFacts& facts, 
     require(facts.dynamicRendering, "dynamic rendering");
     require(facts.synchronization2, "synchronization2");
     require(facts.demoteToHelperInvocation, "shader demote to helper invocation (discard)");
+    require(facts.textureCompressionBc, "BC texture compression");
     require(facts.storageImageWithoutFormat, "storage image writes without a format (RWTexture2D)");
     require(facts.timelineSemaphore, "timeline semaphores");
     require(facts.bufferDeviceAddress, "buffer device address");

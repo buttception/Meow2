@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <Meow2/Assets/Texture/CookedTexture.h>
 #include <Meow2/Assets/Texture/Image.h>
 #include <Meow2/Core/Result.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
@@ -83,8 +84,11 @@ struct MeshArrays
 /// @brief One texture slot of a material. Plain data.
 struct MaterialTexture
 {
-    std::int32_t texture = -1; ///< From GpuScene::addTexture(), or -1 for none.
-    std::int32_t sampler = -1; ///< From GpuScene::addSampler(), or -1 for linear, repeating, mipmapped.
+    std::int32_t texture = -1;       ///< From GpuScene::addTexture(), or -1 for none.
+    std::int32_t sampler = -1;       ///< From GpuScene::addSampler(), or -1 for linear, repeating, mipmapped.
+    Math::Vec2 uvOffset{0.0F, 0.0F}; ///< KHR_texture_transform: added to the UV last.
+    float uvRotation = 0.0F;         ///< KHR_texture_transform: radians, counter-clockwise in UV space.
+    Math::Vec2 uvScale{1.0F, 1.0F};  ///< KHR_texture_transform: multiplies the UV first.
 };
 
 /// @brief A metallic-roughness material to add to a GpuScene (glTF's model). Plain data.
@@ -164,11 +168,20 @@ public:
     [[nodiscard]] Result<std::uint32_t> addMesh(const MeshData& mesh);
 
     /// @brief Uploads a texture at the start of the next frame, and keeps a copy for the next device.
+    ///
+    /// The image is cooked uncompressed (RGBA8 with mips); cook it with Assets::cookTexture() for BC7 or BC5.
     /// @param image The pixels, RGBA8.
     /// @param srgb  True for colour (base colour, emissive), false for data (normals, roughness).
     /// @param name  Shown in debugging tools.
     /// @return Its index, for MaterialDesc, or an error (an empty image, or the device refused).
     [[nodiscard]] Result<std::uint32_t> addTexture(const Assets::Image& image, bool srgb, std::string name = "Texture");
+
+    /// @brief Uploads a cooked texture (BC7, BC5 or RGBA8, every level) at the start of the next frame, and keeps it
+    ///        for the next device.
+    /// @param texture The texture, from Assets::cookTexture() or a `.m2texture` file.
+    /// @param name    Shown in debugging tools.
+    /// @return Its index, for MaterialDesc, or an error (no levels, or the device refused).
+    [[nodiscard]] Result<std::uint32_t> addTexture(Assets::CookedTexture texture, std::string name = "Texture");
 
     /// @brief Adds a sampler, or finds an identical one already added; kept for the next device.
     /// @param desc How it filters and wraps.
@@ -307,14 +320,13 @@ private:
     std::vector<MeshData> m_meshes;                 ///< CPU copies, for the next device.
     std::vector<Shader::InstanceData> m_instances;  ///< CPU copy, for the next device.
 
-    /// @brief A texture, its pixels kept for the next device, and its upload until the GPU has done it.
+    /// @brief A texture, its levels kept for the next device, and its upload until the GPU has done it.
     struct TextureRecord
     {
-        std::vector<Assets::Image> mips{}; ///< CPU copy of every level, full size first.
-        bool srgb = false;                 ///< Which format.
-        std::string name{};                ///< For debugging tools.
-        Rhi::TextureHandle texture{};      ///< On the current device.
-        Rhi::BufferHandle staging{};       ///< Holds the pixels until the copy is recorded; unset after.
+        Assets::CookedTexture cooked{}; ///< CPU copy of every level, full size first.
+        std::string name{};             ///< For debugging tools.
+        Rhi::TextureHandle texture{};   ///< On the current device.
+        Rhi::BufferHandle staging{};    ///< Holds the pixels until the copy is recorded; unset after.
     };
     std::vector<TextureRecord> m_textures;
     std::vector<std::uint32_t> m_pendingTextures;  ///< Textures whose copy the next frame records.

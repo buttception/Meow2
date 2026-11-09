@@ -206,7 +206,7 @@ Planned as five PRs; PR 4's shell came first, at the owner's request. glTF is an
 | 2 | Each app registers the components it knows and skips the rest (Renderer ignores scripts) | §25 | ⬜ | |
 | 2 | glTF import writes assets with `.meta` sidecars (stable `AssetId`s) and a prefab, so re-importing keeps edits | §13a | ⬜ | |
 | 3 PBR | Metallic-roughness PBR, normal maps with tangents, occlusion, emissive, vertex colours | §11 | ✅ | #174 / PR #177 |
-| 3 | `.m2texture`: cooked textures with a format field and mips from the start (BC7 later); glTF samplers; texture transforms | §13a | 🟨 mips and samplers done | #174 / PR #177 |
+| 3 | `.m2texture`: cooked textures with a format field and mips, BC7 and BC5 through DirectXTex (owner-approved), a texture cache; glTF samplers; texture transforms | §13a | ✅ | #174 / PR #177, #183 / PR #185 |
 | 3 | Double-sided materials and mirrored (negative-scale) nodes; alpha blending, sorted | §11 | ✅ | #174 / PR #177 |
 | 3 | Image-based lighting from an environment map: a physically based sky (Hillaire, owner choice) lights the scene | §11 | ✅ | #180 / PR #181 |
 | 4 Renderer app | Dear ImGui docking shell (submodule, owner request), frame and memory stats per tag; scaled for the display, 1080p default window | §2, §7 | ✅ | #172 / PR #173, #175 / PR #176 |
