@@ -223,6 +223,14 @@ public:
         m_sky = sky;
     }
 
+    /// @brief Whether the sky is drawn behind the scene (it still lights it). Debugging views turn it off, so their
+    ///        background is plain and an overdraw count isn't raised by it.
+    /// @param draw True to draw it (the default).
+    void setSkyPass(bool draw)
+    {
+        m_skyPass = draw;
+    }
+
     /// @brief Adds a material, and keeps a copy for the next device.
     /// @param material Its parameters.
     /// @return Its index, for Shader::InstanceData::material, or an error when the scene has too many.
@@ -395,6 +403,7 @@ private:
     std::vector<std::uint32_t> m_blendOrder; ///< This frame's back-to-front order of m_blended.
     SceneLighting m_lighting{};
     const SkyAtmosphere* m_sky = nullptr; ///< Optional: lights the scene and is drawn behind it.
+    bool m_skyPass = true;                ///< Whether the sky's pass is added (setSkyPass()).
     Rhi::BufferHandle m_materialBuffer;
     Rhi::ResourceState m_drawState = Rhi::ResourceState::Undefined;
     Rhi::ResourceState m_countState = Rhi::ResourceState::Undefined;

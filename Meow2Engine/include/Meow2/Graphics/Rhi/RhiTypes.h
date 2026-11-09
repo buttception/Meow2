@@ -235,12 +235,12 @@ struct GraphicsPipelineDesc
     std::string pixelEntry = "psMain";          ///< Its entry point.
     RhiFormat colorFormat = RhiFormat::Unknown; ///< Format of the colour target.
     RhiFormat depthFormat = RhiFormat::Unknown; ///< Format of the depth target; Unknown for none.
-    bool depthTest = true;                      ///< Whether depth is tested (when there's a depth target).
-    bool depthWrite = true;                     ///< Whether drawing updates depth.
-    CullMode cull = CullMode::None;             ///< Which triangles to skip.
-    BlendMode blend = BlendMode::None;          ///< How output combines with the target.
-    FillMode fill = FillMode::Solid;            ///< Filled triangles, or only their edges.
-    std::string name = "Pipeline";              ///< Shown in debugging tools.
+    bool depthTest = true;             ///< Whether depth is tested; false passes every pixel (depth stays bound).
+    bool depthWrite = true;            ///< Whether drawing updates depth.
+    CullMode cull = CullMode::None;    ///< Which triangles to skip.
+    BlendMode blend = BlendMode::None; ///< How output combines with the target.
+    FillMode fill = FillMode::Solid;   ///< Filled triangles, or only their edges.
+    std::string name = "Pipeline";     ///< Shown in debugging tools.
 };
 
 /// @brief What to create a compute pipeline with. Plain data. The bytecode is only read during the call.

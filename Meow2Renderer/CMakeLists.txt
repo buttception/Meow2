@@ -8,6 +8,8 @@ add_library(Meow2RendererCore STATIC
     src/ConsoleWindow.h
     src/ImGuiLayer.cpp
     src/ImGuiLayer.h
+    src/RenderDebug.cpp
+    src/RenderDebug.h
     src/RendererUi.cpp
     src/RendererUi.h
     src/SceneView.cpp

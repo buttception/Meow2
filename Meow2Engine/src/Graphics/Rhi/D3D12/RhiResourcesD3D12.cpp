@@ -709,10 +709,11 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
                                                                                : D3D12_CULL_MODE_NONE,
                                     .FrontCounterClockwise = FALSE,
                                     .DepthClipEnable = TRUE};
-    pipelineDesc.DepthStencilState = {.DepthEnable = hasDepth && desc.depthTest ? TRUE : FALSE,
+    pipelineDesc.DepthStencilState = {.DepthEnable = hasDepth ? TRUE : FALSE,
                                       .DepthWriteMask = hasDepth && desc.depthWrite ? D3D12_DEPTH_WRITE_MASK_ALL
                                                                                     : D3D12_DEPTH_WRITE_MASK_ZERO,
-                                      .DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL}; // reversed Z
+                                      .DepthFunc = desc.depthTest ? D3D12_COMPARISON_FUNC_GREATER_EQUAL // reversed Z
+                                                                  : D3D12_COMPARISON_FUNC_ALWAYS};
     pipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     pipelineDesc.NumRenderTargets = 1;
     pipelineDesc.RTVFormats[0] = d3d12Format(desc.colorFormat);
@@ -731,6 +732,7 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     // with the same shaders (a wireframe view would load the solid one).
     key.addValue(pipelineDesc.RasterizerState.FillMode);
     key.addValue(pipelineDesc.DepthStencilState.DepthEnable);
+    key.addValue(pipelineDesc.DepthStencilState.DepthFunc);
     key.addValue(pipelineDesc.BlendState.RenderTarget[0].SrcBlend);
     key.addValue(pipelineDesc.BlendState.RenderTarget[0].DestBlend);
     key.addValue(pipelineDesc.BlendState.RenderTarget[0].DestBlendAlpha);

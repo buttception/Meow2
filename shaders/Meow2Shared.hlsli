@@ -147,7 +147,8 @@ struct UiDraw
 #define MEOW2_DEBUG_VIEW_LIGHTING 16u       ///< Lighting on a white, non-metallic surface.
 #define MEOW2_DEBUG_VIEW_DIFFUSE 17u        ///< Diffuse light only (sun and ambient).
 #define MEOW2_DEBUG_VIEW_SPECULAR 18u       ///< Specular light only (sun and reflections).
-#define MEOW2_DEBUG_VIEW_COUNT 19u          ///< How many.
+#define MEOW2_DEBUG_VIEW_BLACK 19u          ///< Black, depth written: the base of a hidden-line wireframe.
+#define MEOW2_DEBUG_VIEW_COUNT 20u          ///< How many.
 
 /// One metallic-roughness material, in a buffer shaders read by index. Linear colours. A texture index of 0 means no
 /// texture (white, or a flat normal); each texture has its own sampler.

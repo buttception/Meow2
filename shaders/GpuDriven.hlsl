@@ -81,6 +81,7 @@ struct VertexOutput
     nointerpolation uint mirrored : MIRRORED0;
 #if DEBUG_VIEW == 1
     nointerpolation uint instance : INSTANCE0; ///< For the instance view.
+    nointerpolation uint triangleIndex : TRIANGLE0; ///< For the triangle view: draws are non-indexed, so vertex / 3.
 #endif
 };
 
@@ -141,6 +142,8 @@ VertexOutput shadeVertex(uint instanceIndex, uint vertexId)
     output.mirrored = mirrored ? 1 : 0;
 #if DEBUG_VIEW == 1
     output.instance = instanceIndex;
+    // Not SV_PrimitiveID: in a pixel shader it needs geometry-shader support on Vulkan, which many GPUs lack.
+    output.triangleIndex = vertexId / 3;
 #endif
     return output;
 }
@@ -241,12 +244,7 @@ float3 hashColor(uint value)
 }
 #endif
 
-float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace
-#if DEBUG_VIEW == 1
-              ,
-              uint primitive : SV_PrimitiveID
-#endif
-              ) : SV_Target
+float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
 {
 #if DEBUG_VIEW == 2
     // The wireframe overlay (a line-fill pipeline): every edge in the bright accent, whatever the material.
@@ -397,7 +395,7 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace
     switch (frame.debugView)
     {
         case MEOW2_DEBUG_VIEW_TRIANGLES:
-            return float4(hashColor(primitive) * (0.6 + 0.4 * saturate(dot(normal, view))), 1.0);
+            return float4(hashColor(input.triangleIndex) * (0.6 + 0.4 * saturate(dot(normal, view))), 1.0);
         case MEOW2_DEBUG_VIEW_INSTANCES:
             return float4(hashColor(input.instance), 1.0);
         case MEOW2_DEBUG_VIEW_MATERIALS:
@@ -456,6 +454,8 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace
             return float4((sunDiffuse + ambientDiffuse) * frame.sunColor.w, 1.0);
         case MEOW2_DEBUG_VIEW_SPECULAR:
             return float4((sunSpecular + ambientSpecular) * frame.sunColor.w, 1.0);
+        case MEOW2_DEBUG_VIEW_BLACK:
+            return float4(0.0, 0.0, 0.0, 1.0);
         default:
             break;
     }

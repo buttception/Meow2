@@ -701,9 +701,11 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
     const bool hasDepth = desc.depthFormat != RhiFormat::Unknown;
     const VkPipelineDepthStencilStateCreateInfo depth{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = hasDepth && desc.depthTest ? VK_TRUE : VK_FALSE,
+        .depthTestEnable = hasDepth ? VK_TRUE : VK_FALSE,
         .depthWriteEnable = hasDepth && desc.depthWrite ? VK_TRUE : VK_FALSE,
-        .depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL}; // reversed Z
+        // Reversed Z. "No depth test" passes everything rather than switching depth off, so the pipeline still matches
+        // a pass that has a depth target (D3D12 warns about the mismatch otherwise).
+        .depthCompareOp = desc.depthTest ? VK_COMPARE_OP_GREATER_OR_EQUAL : VK_COMPARE_OP_ALWAYS};
     const bool additive = desc.blend == BlendMode::Additive;
     const VkPipelineColorBlendAttachmentState blendAttachment{
         .blendEnable = desc.blend != BlendMode::None ? VK_TRUE : VK_FALSE,

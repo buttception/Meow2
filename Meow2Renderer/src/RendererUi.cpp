@@ -321,8 +321,8 @@ void ScenesWindow::startFetch(const std::string& name)
 void dockWindows()
 {
     // Window titles with their ### IDs, as each window passes them to ImGui::Begin().
-    constexpr std::array<const char*, 4> c_panelWindows{"STATS###Stats", "SCENES###Scenes", "SETTINGS###Settings",
-                                                        "CAMERA###Camera"};
+    constexpr std::array<const char*, 5> c_panelWindows{"STATS###Stats", "SCENES###Scenes", "DEBUG###Debug",
+                                                        "SETTINGS###Settings", "CAMERA###Camera"};
     const ImGuiID dockSpace = ImGui::GetID("Meow2RendererDockSpace");
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     if (ImGui::DockBuilderGetNode(dockSpace) == nullptr)

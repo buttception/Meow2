@@ -5,6 +5,7 @@
 
 #include "ConsoleWindow.h"
 #include "ImGuiLayer.h"
+#include "RenderDebug.h"
 #include "RendererUi.h"
 #include "SceneView.h"
 #include "SettingsWindow.h"
@@ -289,7 +290,8 @@ int main(int argc, char** argv)
     std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
     // The sky (renderer.sky): lights every scene and is drawn behind it. Scenes refer to it: declared before them.
     std::unique_ptr<Meow2::Renderer::SkyAtmosphere> sky;
-    std::unique_ptr<Meow2::Renderer::ToneMapPass> toneMap; // the scene's HDR colour into the swapchain
+    std::unique_ptr<Meow2::Renderer::ToneMapPass> toneMap;        // the scene's HDR colour into the swapchain
+    std::unique_ptr<Meow2::RendererApp::RenderDebug> renderDebug; // debug views, wireframes, frozen culling
     // The starting sun: renderer.sunElevation and renderer.sunDirection, in degrees (the Stats window's sliders).
     Meow2::RendererApp::SunControls sun;
     sun.elevationDegrees =
@@ -406,6 +408,20 @@ int main(int argc, char** argv)
             made)
         {
             toneMap = std::move(*made);
+            renderDebug = std::make_unique<Meow2::RendererApp::RenderDebug>(
+                *pipelines, assetId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058"), colorFormat, appLog);
+            // renderer.debugView (a MEOW2_DEBUG_VIEW_* number, -1 shaded) and renderer.wireframe (off, overlay, only):
+            // how the views start, for checks and captures without the mouse.
+            renderDebug->state().view = static_cast<int>(
+                std::clamp<std::int64_t>(config.getInt("renderer.debugView", -1), -1, MEOW2_DEBUG_VIEW_COUNT - 1));
+            if (const std::string wireframe = config.getString("renderer.wireframe", "off"); wireframe == "overlay")
+            {
+                renderDebug->state().wireframe = Meow2::RendererApp::WireframeMode::Overlay;
+            }
+            else if (wireframe == "only")
+            {
+                renderDebug->state().wireframe = Meow2::RendererApp::WireframeMode::Only;
+            }
         }
         else
         {
@@ -562,9 +578,9 @@ int main(int argc, char** argv)
         return true;
     };
     const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &view, &viewDeps, &ui, &sky, &sun, &jobs,
-                              &depthTexture, &sceneColor, &toneMap, &makeDepth, &renderDoc, &clock, &pendingSwap,
-                              &pendingScene, &sceneError, &scenesWindow, &consoleWindow, &settingsWindow, &config,
-                              &orbit, &fly, &cameraState, &startCamera, &cameraScene, &posedAnimation, &input,
+                              &depthTexture, &sceneColor, &toneMap, &renderDebug, &makeDepth, &renderDoc, &clock,
+                              &pendingSwap, &pendingScene, &sceneError, &scenesWindow, &consoleWindow, &settingsWindow,
+                              &config, &orbit, &fly, &cameraState, &startCamera, &cameraScene, &posedAnimation, &input,
                               &frameTimes, &showUi, &sampleRoot, &switchScene, captureFrame, swapAtFrame,
                               switchSceneAtFrame,
                               cubeCount = static_cast<std::uint32_t>(
@@ -702,6 +718,10 @@ int main(int argc, char** argv)
                 {
                     Meow2::RendererApp::drawCameraWindow(cameraState, view->cameras(), view->animations(), orbit, fly,
                                                          ui->fonts());
+                }
+                if (renderDebug)
+                {
+                    renderDebug->drawWindow(ui->fonts());
                 }
                 for (const std::string_view key : settingsWindow.takeNextSceneChanges())
                 {
@@ -843,10 +863,22 @@ int main(int argc, char** argv)
                                  matrices.viewProjection);
                     sky->addPasses(graph, device.frameSlot());
                 }
-                view->gpu().setView(device.frameSlot(), frame, Meow2::Math::frustumFromCamera(matrices));
+                Meow2::Math::Frustum frustum = Meow2::Math::frustumFromCamera(matrices);
+                Meow2::Math::Color clear = c_clear;
+                if (renderDebug)
+                {
+                    renderDebug->apply(view->gpu(), frame); // the view mode, its pipelines, the sky pass
+                    frustum = renderDebug->cullingFrustum(frustum);
+                    clear = renderDebug->clearColor(c_clear);
+                }
+                view->gpu().setView(device.frameSlot(), frame, frustum);
                 const Meow2::Renderer::GraphResource hdr =
-                    view->gpu().addPasses(graph, device.frameSlot(), nullptr, sceneColor, depthTexture, c_clear);
-                if (toneMap)
+                    view->gpu().addPasses(graph, device.frameSlot(), nullptr, sceneColor, depthTexture, clear);
+                if (renderDebug)
+                {
+                    renderDebug->addOverlays(graph, view->gpu(), hdr, sceneColor, depthTexture, device.frameSlot());
+                }
+                if (!(renderDebug && renderDebug->addPresent(graph, hdr, sceneColor, *swapchain, device)) && toneMap)
                 {
                     toneMap->addPass(graph, hdr, sceneColor, *swapchain, device);
                 }

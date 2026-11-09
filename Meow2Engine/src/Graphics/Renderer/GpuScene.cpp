@@ -775,7 +775,7 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
                        list.endRendering();
                    }});
 
-    if (m_sky != nullptr)
+    if (m_sky != nullptr && m_skyPass)
     {
         graph.addPass({.name = "Sky",
                        .accesses = targets(false),

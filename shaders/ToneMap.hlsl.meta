@@ -7,3 +7,7 @@ stage = "vertex"
 [[entry]]
 name = "psMain"
 stage = "pixel"
+
+# 1: Meow2Renderer's debug present (debug-view colours as they are, or an overdraw heat map); games use 0.
+[options]
+DEBUG_OUTPUT = [0, 1]
