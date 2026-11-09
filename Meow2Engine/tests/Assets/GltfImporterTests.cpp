@@ -401,6 +401,31 @@ TEST_F(GltfImporterTest, ReadsTangentsColoursAndSamplers)
     EXPECT_TRUE(material.doubleSided);
 }
 
+TEST_F(GltfImporterTest, ReadsTextureTransforms)
+{
+    std::string json = attributeJson(dataUri(attributeBuffer()), flatNormalUri(), R"(, "TEXCOORD_0": 5)");
+    const std::string_view normal = R"("normalTexture": {"index": 0, "scale": 0.5})";
+    json.replace(json.find(normal), normal.size(),
+                 R"("normalTexture": {"index": 0, "scale": 0.5, "extensions": {"KHR_texture_transform":)"
+                 R"( {"offset": [0.25, 0.5], "rotation": 1.5, "scale": [2, 3]}}})");
+    json.replace(json.find(R"("asset")"), 0, R"("extensionsUsed": ["KHR_texture_transform"], )");
+    write("transform.gltf", json);
+
+    const Result<ImportedModel> model = import("transform.gltf");
+
+    ASSERT_TRUE(model) << model.error().message;
+    const ImportedTexture& texture = model->materials[0].normal;
+    EXPECT_FLOAT_EQ(texture.offset.x, 0.25F);
+    EXPECT_FLOAT_EQ(texture.offset.y, 0.5F);
+    EXPECT_FLOAT_EQ(texture.rotation, 1.5F);
+    EXPECT_FLOAT_EQ(texture.scale.x, 2.0F);
+    EXPECT_FLOAT_EQ(texture.scale.y, 3.0F);
+    EXPECT_TRUE(model->warnings.empty()) << model->warnings.front();
+    const ImportedTexture& none = model->materials[0].baseColor;
+    EXPECT_FLOAT_EQ(none.scale.x, 1.0F) << "no transform: the identity";
+    EXPECT_FLOAT_EQ(none.offset.x, 0.0F);
+}
+
 TEST_F(GltfImporterTest, GeneratesTangentsFromUvs)
 {
     write("attributes.gltf",

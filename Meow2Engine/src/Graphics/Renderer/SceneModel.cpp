@@ -107,21 +107,22 @@ Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::Imported
     std::vector<std::uint32_t> materialOf;
     for (const Assets::ImportedMaterial& material : model.materials)
     {
-        Result<std::uint32_t> added = scene.addMaterial({.baseColorFactor = material.baseColorFactor,
-                                                         .baseColor = slot(material.baseColor, Assets::TextureKind::Color),
-                                                         .metallic = material.metallicFactor,
-                                                         .roughness = material.roughnessFactor,
-                                                         .metallicRoughness = slot(material.metallicRoughness, Assets::TextureKind::Data),
-                                                         .normal = slot(material.normal, Assets::TextureKind::NormalMap),
-                                                         .normalScale = material.normalScale,
-                                                         .occlusion = slot(material.occlusion, Assets::TextureKind::Data),
-                                                         .occlusionStrength = material.occlusionStrength,
-                                                         .emissiveFactor = material.emissiveFactor,
-                                                         .emissive = slot(material.emissive, Assets::TextureKind::Color),
-                                                         .alphaMask = material.alphaMode == Assets::AlphaMode::Mask,
-                                                         .alphaCutoff = material.alphaCutoff,
-                                                         .blend = material.alphaMode == Assets::AlphaMode::Blend,
-                                                         .doubleSided = material.doubleSided});
+        Result<std::uint32_t> added =
+            scene.addMaterial({.baseColorFactor = material.baseColorFactor,
+                               .baseColor = slot(material.baseColor, Assets::TextureKind::Color),
+                               .metallic = material.metallicFactor,
+                               .roughness = material.roughnessFactor,
+                               .metallicRoughness = slot(material.metallicRoughness, Assets::TextureKind::Data),
+                               .normal = slot(material.normal, Assets::TextureKind::NormalMap),
+                               .normalScale = material.normalScale,
+                               .occlusion = slot(material.occlusion, Assets::TextureKind::Data),
+                               .occlusionStrength = material.occlusionStrength,
+                               .emissiveFactor = material.emissiveFactor,
+                               .emissive = slot(material.emissive, Assets::TextureKind::Color),
+                               .alphaMask = material.alphaMode == Assets::AlphaMode::Mask,
+                               .alphaCutoff = material.alphaCutoff,
+                               .blend = material.alphaMode == Assets::AlphaMode::Blend,
+                               .doubleSided = material.doubleSided});
         if (!added)
         {
             return Unexpected<Error>{added.error()};

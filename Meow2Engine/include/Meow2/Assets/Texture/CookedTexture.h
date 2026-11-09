@@ -67,7 +67,8 @@ struct CookedTexture
 /// @param compress Whether to compress; false keeps RGBA8 (fast, for previews and tests).
 /// @param jobs     Runs the compression in parallel; null compresses on the calling thread.
 /// @return The cooked texture, or ErrorCode::InvalidArgument for an empty image, or an error from DirectXTex.
-/// @note Thread-safe. BC7 is slow: about a second for a 2048-pixel texture on one thread.
+/// @note Thread-safe. BC7 is slow: seconds per 2048-pixel texture even spread over the job system; cache the result
+///       (TextureCache).
 [[nodiscard]] Result<CookedTexture> cookTexture(const Image& image, TextureKind kind, bool compress,
                                                 Jobs::JobSystem* jobs = nullptr);
 

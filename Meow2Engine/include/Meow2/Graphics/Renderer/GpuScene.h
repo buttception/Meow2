@@ -84,8 +84,8 @@ struct MeshArrays
 /// @brief One texture slot of a material. Plain data.
 struct MaterialTexture
 {
-    std::int32_t texture = -1; ///< From GpuScene::addTexture(), or -1 for none.
-    std::int32_t sampler = -1; ///< From GpuScene::addSampler(), or -1 for linear, repeating, mipmapped.
+    std::int32_t texture = -1;       ///< From GpuScene::addTexture(), or -1 for none.
+    std::int32_t sampler = -1;       ///< From GpuScene::addSampler(), or -1 for linear, repeating, mipmapped.
     Math::Vec2 uvOffset{0.0F, 0.0F}; ///< KHR_texture_transform: added to the UV last.
     float uvRotation = 0.0F;         ///< KHR_texture_transform: radians, counter-clockwise in UV space.
     Math::Vec2 uvScale{1.0F, 1.0F};  ///< KHR_texture_transform: multiplies the UV first.
@@ -323,10 +323,10 @@ private:
     /// @brief A texture, its levels kept for the next device, and its upload until the GPU has done it.
     struct TextureRecord
     {
-        Assets::CookedTexture cooked{};    ///< CPU copy of every level, full size first.
-        std::string name{};                ///< For debugging tools.
-        Rhi::TextureHandle texture{};      ///< On the current device.
-        Rhi::BufferHandle staging{};       ///< Holds the pixels until the copy is recorded; unset after.
+        Assets::CookedTexture cooked{}; ///< CPU copy of every level, full size first.
+        std::string name{};             ///< For debugging tools.
+        Rhi::TextureHandle texture{};   ///< On the current device.
+        Rhi::BufferHandle staging{};    ///< Holds the pixels until the copy is recorded; unset after.
     };
     std::vector<TextureRecord> m_textures;
     std::vector<std::uint32_t> m_pendingTextures;  ///< Textures whose copy the next frame records.

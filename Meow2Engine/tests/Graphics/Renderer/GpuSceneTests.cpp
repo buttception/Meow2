@@ -474,6 +474,42 @@ TEST_F(GpuSceneTest, NormalMapChangesLighting)
     EXPECT_GT(bumpyLight, flatLight + 20) << "the map turns the surface towards the sun";
 }
 
+TEST_F(GpuSceneTest, TextureTransformMovesTheTexture)
+{
+    makeScene(4);
+    const Result<std::uint32_t> quad = m_scene->addMesh(makeQuad());
+    ASSERT_TRUE(quad);
+    // Four texels across: red, green, green, red. The quad's centre is U = 0.5, between the two greens; offset by half
+    // the texture it's U = 1.0, which wraps to between the two reds.
+    Assets::Image stripes{.width = 4, .height = 1, .pixels = {}};
+    for (const std::uint8_t red : std::array<std::uint8_t, 4>{255, 0, 0, 255})
+    {
+        stripes.pixels.insert(stripes.pixels.end(), {std::byte{red}, std::byte{static_cast<std::uint8_t>(255 - red)},
+                                                     std::byte{0}, std::byte{255}});
+    }
+    const Result<std::uint32_t> texture = m_scene->addTexture(stripes, true, "Stripes");
+    ASSERT_TRUE(texture);
+    const auto textureIndex = static_cast<std::int32_t>(*texture);
+    const Result<std::uint32_t> plain =
+        m_scene->addMaterial({.baseColor = {.texture = textureIndex}, .metallic = 0.0F});
+    const Result<std::uint32_t> moved =
+        m_scene->addMaterial({.baseColor = {.texture = textureIndex, .uvOffset = {0.5F, 0.0F}}, .metallic = 0.0F});
+    ASSERT_TRUE(plain && moved);
+    Math::Frustum frustum{};
+
+    std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *plain)};
+    m_scene->setInstances(instances);
+    EXPECT_EQ(runFrame(frustum), 1U);
+    const auto before = pixelAt(c_size / 2, c_size / 2);
+    EXPECT_GT(before[1], before[0] + 50) << "green in the middle";
+
+    instances = {instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *moved)};
+    m_scene->setInstances(instances);
+    EXPECT_EQ(runFrame(frustum), 1U);
+    const auto after = pixelAt(c_size / 2, c_size / 2);
+    EXPECT_GT(after[0], after[1] + 50) << "red in the middle once the texture moves by half";
+}
+
 TEST_F(GpuSceneTest, SmoothMetalReflectsTheSky)
 {
     makeScene(4);

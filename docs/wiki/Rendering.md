@@ -2,7 +2,7 @@
 
 How `Renderer::GpuScene` draws a scene: glTF's metallic-roughness materials, lit by one sun and a physically based sky (image-based lighting), on Vulkan and D3D12 alike. The buffers, culling and indirect drawing underneath are in [Rhi → GPU-driven drawing](Rhi.md#gpu-driven-drawing); how glTF files get here is in [Gltf](Gltf.md).
 
-- **Status:** 🟨 M6. PBR, normal maps, mipmaps, samplers, double-sided, mirrored and blended surfaces (#174); Hillaire's sky and image-based lighting from it (#180). Cooked `.m2texture` files (DirectXTex, BC7) and texture transforms come next.
+- **Status:** 🟨 M6. PBR, normal maps, mipmaps, samplers, double-sided, mirrored and blended surfaces (#174); Hillaire's sky and image-based lighting from it (#180); cooked `.m2texture` files with BC7 and BC5 (DirectXTex), a texture cache, and texture transforms (#183).
 
 ## Using it
 
@@ -98,6 +98,27 @@ Sorting whole instances is the usual compromise: overlapping triangles inside on
 
 Without mips, a texture seen from far away skips texels between pixels, which shimmers and aliases. Mips are pre-shrunk copies the GPU picks by distance. Linear samplers from glTF files get 8× anisotropic filtering, which keeps floors and walls seen at a grazing angle sharp.
 
+### Cooked textures: BC7, BC5 and the cache
+
+A GPU reads compressed textures directly, without unpacking them first. *Block compression* (BC) stores each 4 × 4 pixel block in 16 bytes, so a block of RGBA8 (64 bytes) takes a quarter of the memory and bandwidth. The GPU decodes a block in the texture unit as it samples, so it costs nothing at draw time.
+
+- **BC7** (colour and data textures): two endpoint colours per block (or per partition of it) and an index per pixel saying where between them it lies. Close to the original for photos and painted textures. Encoding is a search over modes and partitions, so it's slow even in BC7's quick mode: DamagedHelmet's five 2048-pixel textures take about 15 s on 16 threads (RelWithDebInfo), and 0.4 s to read back from the cache.
+- **BC5** (normal maps): two channels, X and Y, each with its own endpoints, the same 16 bytes per block. A normal map's three channels aren't independent (a unit vector), so the shader rebuilds Z = √(1 − X² − Y²), and X and Y get all the precision. BC7 on a normal map would spend bits on Z and blur its directions.
+
+`Assets::cookTexture(image, kind, compress, jobs)` (`<Meow2/Assets/Texture/CookedTexture.h>`) makes the mip chain, then compresses each level with **DirectXTex** (Microsoft's MIT-licensed texture library), in strips of 64 rows spread over the job system. Strips are independent because blocks are: the result is identical to compressing on one thread (`CookedTexture.JobsGiveTheSameBlocks`). Mips smaller than a block (2 × 2, 1 × 1) are padded by repeating their edge and take one whole block, which is what both APIs expect. A top level whose sides aren't multiples of 4 stays RGBA8: D3D12 refuses BC textures of that size.
+
+DirectXTex is called from one file, `src/Assets/Texture/DirectXTex/`, behind `BlockCompression.h`: on Windows its header brings in the D3D11 and Windows headers, which stay out of the rest of the engine. It's built from its sources as `meow2_directxtex`, without its CMake project, which adds install rules that would put the library in the release zip.
+
+A cooked texture is saved as a **`.m2texture`** file: `M2TX`, a version, the format, then each level's size and bytes, little-endian. `decodeM2Texture` checks every size against the format, so a damaged file is a `ParseError`, never a bad upload.
+
+`Assets::TextureCache` keeps them in a folder (`cache/textures` in Meow2Renderer) named by `textureCacheKey()`: a 64-bit FNV-1a hash of the pixels, the size, the kind, compression and the cooker's version. The first load of a model cooks; later loads read the files, which takes milliseconds. Changing the cooker bumps its version, so old entries stop matching instead of being used. Deleting the folder is always safe.
+
+`uploadModel(scene, model, ids, meshes, log, {.compress, .cache, .jobs})` cooks each image once per kind it's used as. `GpuScene::addTexture(CookedTexture)` uploads every level as it is (`addTexture(Image, srgb)` still works: it cooks RGBA8 with mips). `renderer.compressTextures` turns compression on (the default except in Debug, where the unoptimised encoder takes minutes over a big model).
+
+### Texture transforms
+
+`KHR_texture_transform` gives a texture slot an offset, a rotation and a scale, so a texture atlas or a tiled floor can reuse one image. The extension defines uv′ = T × R × S × (u, v, 1); `GpuScene` multiplies that out once per material into two rows of a 2 × 3 matrix per slot (`MaterialData::baseColorUv0/1`, …), so the shader does two dot products per sample. Without a transform the rows are the identity.
+
 `addSampler()` returns an existing sampler when an identical one was added before; glTF files repeat the same few. glTF's mirrored repeat maps to `SamplerAddress::Mirror`.
 
 ### Sky and image-based lighting
@@ -137,7 +158,8 @@ The PBR shader then uses `skyIrradiance(normal) / π` for diffuse ambient light,
 ## Not yet
 
 - Aerial perspective, clouds, a night sky; punctual lights from `KHR_lights_punctual`.
-- Cooked `.m2texture` files with GPU compression (BC7), `KHR_texture_transform`.
+- Cooking at import time (with M6 PR 2's asset files) rather than on first load; BC6H for HDR images.
+- Rotated texture transforms don't rotate the tangent frame, so a rotated normal map is lit slightly wrong (rare in practice).
 - Exact MikkTSpace tangents (needs a library, with approval).
 - Shadows.
 
@@ -155,6 +177,9 @@ The PBR shader then uses `skyIrradiance(normal) / π` for diffuse ambient light,
 | `RhiGpu*.GpuSceneTest.NormalMapChangesLighting` | a normal map tilted towards the sun brightens the surface |
 | `RhiGpu*.RhiDrawTest.CopiesEveryMipLevel` | both levels of a texture are uploaded from one buffer at offsets, and sampled at the right distance |
 | `RhiGpu*.RhiStatesTest.FrontCullingSkipsFrontFaces` | `CullMode::Front` removes a clockwise triangle, `Back` keeps it |
+| `Assets.CookedTexture.*` | `.m2texture` round trip and bad files; BC7 and BC5 within 2/255 on every level, small mips included; non-block sizes stay RGBA8; jobs give the same blocks; the cache key |
+| `RhiGpu*.RhiDrawTest.SamplesBlockCompressedMips` | BC7 levels uploaded from one buffer, sampled at the right distance, a sub-block level included |
+| `RhiGpu*.GpuSceneTest.TextureTransformMovesTheTexture` | an offset of half the texture shows its other half |
 | `Assets.Image.MipChainHalvesToOnePixel`, `Assets.Image.SrgbMipsAverageInLinearLight` | the chain's sizes, and colour averaging in linear light |
 
 By hand, on both backends: MetalRoughSpheres, NormalTangentTest, NegativeScaleTest, AlphaBlendModeTest, TextureSettingsTest and DamagedHelmet, against their reference screenshots. Golden-image tests follow in M6 PR 5.

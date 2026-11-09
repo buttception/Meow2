@@ -6,9 +6,9 @@
 
 #include <Meow2/Assets/Gltf/GltfImporter.h>
 #include <Meow2/Assets/Texture/TextureCache.h>
-#include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Id/Uuid.h>
 #include <Meow2/Core/Id/UuidGenerator.h>
+#include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/Logger.h>
 #include <Meow2/Core/Result.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>

@@ -48,8 +48,8 @@ struct ImportedSampler
 /// @brief One texture slot of a material: an image and how to sample it. Plain data.
 struct ImportedTexture
 {
-    std::int32_t image = -1;   ///< Index into ImportedModel::images, or -1 for none.
-    std::int32_t sampler = -1; ///< Index into ImportedModel::samplers, or -1 for the default (linear, repeat).
+    std::int32_t image = -1;       ///< Index into ImportedModel::images, or -1 for none.
+    std::int32_t sampler = -1;     ///< Index into ImportedModel::samplers, or -1 for the default (linear, repeat).
     Math::Vec2 offset{0.0F, 0.0F}; ///< KHR_texture_transform: added to the UV last.
     float rotation = 0.0F;         ///< KHR_texture_transform: radians, counter-clockwise in UV space.
     Math::Vec2 scale{1.0F, 1.0F};  ///< KHR_texture_transform: multiplies the UV first.

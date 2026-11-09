@@ -154,8 +154,8 @@ VertexOutput vsBlend(uint vertexId : SV_VertexID)
 /// A texture's UV after its KHR_texture_transform, stored as the two rows of a 2 × 3 matrix (MaterialData).
 float2 transformUv(float4 row0, float4 row1, float2 uv)
 {
-    const float3 point = float3(uv, 1.0);
-    return float2(dot(row0.xyz, point), dot(row1.xyz, point));
+    const float3 homogeneous = float3(uv, 1.0);
+    return float2(dot(row0.xyz, homogeneous), dot(row1.xyz, homogeneous));
 }
 
 /// A texture of a material, or `fallback` when it has none (index 0).

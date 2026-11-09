@@ -392,19 +392,19 @@ int main(int argc, char** argv)
         // renderer.compressTextures: BC7 and BC5, on by default except in Debug, where the unoptimised encoder would
         // take minutes over a large model's first load. Cooked textures are cached either way.
         const bool compressTextures = config.getBool("renderer.compressTextures", MEOW2_CONFIG_DEBUG == 0);
-        viewDeps.emplace(Meow2::RendererApp::SceneViewDeps{.device = *renderDevice,
-                                                           .pipelines = *pipelines,
-                                                           .files = files,
-                                                           .ids = ids,
-                                                           .jobs = jobs,
-                                                           .log = appLog,
-                                                           .shader = assetId("01a1b5e2-3c12-8000-80a4-7b19d2e6c053"),
-                                                           .colorFormat = colorFormat,
-                                                           .sky = sky.get(),
-                                                           .textures = {.compress = compressTextures,
-                                                                        .cache = files.isMounted("cache") ? &textureCache
-                                                                                                          : nullptr,
-                                                                        .jobs = &jobs}});
+        viewDeps.emplace(
+            Meow2::RendererApp::SceneViewDeps{.device = *renderDevice,
+                                              .pipelines = *pipelines,
+                                              .files = files,
+                                              .ids = ids,
+                                              .jobs = jobs,
+                                              .log = appLog,
+                                              .shader = assetId("01a1b5e2-3c12-8000-80a4-7b19d2e6c053"),
+                                              .colorFormat = colorFormat,
+                                              .sky = sky.get(),
+                                              .textures = {.compress = compressTextures,
+                                                           .cache = files.isMounted("cache") ? &textureCache : nullptr,
+                                                           .jobs = &jobs}});
         const auto cubeCount = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000));
         Meow2::Result<std::unique_ptr<Meow2::RendererApp::SceneView>> opened =

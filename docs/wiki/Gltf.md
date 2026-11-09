@@ -65,6 +65,7 @@ A model seen from a camera at `(-x, y, z)` in the engine looks exactly like the 
 | Triangle primitives | `ImportedPrimitive`: positions, normals, tangents, UV set 0, vertex colours (`COLOR_0`), 32-bit indices | Points, lines and strips are skipped with a warning. Missing normals are computed from the triangles, missing tangents from the UVs (in glTF's space, before mirroring), missing UVs are zeros, missing colours white |
 | Metallic-roughness materials | `ImportedMaterial` | Every core parameter and texture slot, alpha mode, double-sided |
 | Samplers | `ImportedSampler` | Linear or nearest, wrap per axis (repeat, clamp, mirrored repeat) |
+| `KHR_texture_transform` | `ImportedTexture::offset`, `rotation`, `scale` | Per texture slot; a transform that picks another UV set is a warning |
 | PNG and JPEG images | `Image`, RGBA8 | A missing or broken image is a warning: the model draws without it |
 
 Accessors are read with `cgltf_accessor_unpack_floats`, so normalised integers (`KHR_mesh_quantization`) and sparse accessors work.
@@ -73,7 +74,7 @@ Accessors are read with `cgltf_accessor_unpack_floats`, so normalised integers (
 
 ### On the GPU
 
-`uploadModel` adds each primitive to the `GpuScene` as a mesh, each material as a `MaterialData` record, each sampler once, and each image a material uses as a texture: sRGB for base colour and emissive, linear for normal, metallic-roughness and occlusion maps (an image used both ways is uploaded twice). Vertices are 24 bytes: positions quantised to 16 bits within the primitive's box, octahedral normal and tangent, the bitangent's sign, UVs as two half floats, and an RGBA8 colour.
+`uploadModel` adds each primitive to the `GpuScene` as a mesh, each material as a `MaterialData` record, each sampler once, and each image a material uses as a texture, cooked by kind: colour (base colour, emissive) as sRGB BC7, data (metallic-roughness, occlusion) as linear BC7, normal maps as BC5; uncompressed RGBA8 when compression is off. An image used two ways is cooked twice. Cooked textures are cached ([Rendering → Cooked textures](Rendering.md#cooked-textures-bc7-bc5-and-the-cache)). Vertices are 24 bytes: positions quantised to 16 bits within the primitive's box, octahedral normal and tangent, the bitangent's sign, UVs as two half floats, and an RGBA8 colour.
 
 New textures are copied at the start of the next frame, by an "Upload textures" pass in the render graph. The pixels stay on the CPU, so the textures can be made again after a backend switch, like everything else in the `GpuScene` ([Rhi → Switching backends](Rhi.md#switching-backends-while-running)).
 
@@ -81,7 +82,7 @@ How they're drawn (PBR, normal maps, mips, double-sided, mirrored and blended su
 
 ## Not yet
 
-- Texture transforms (`KHR_texture_transform`), UV sets other than 0, and the `KHR_materials_*` extensions.
+- UV sets other than 0, and the `KHR_materials_*` extensions.
 - glTF's sampler `minFilter` is reduced to "mipmaps or not": every texture has mips, and nearest filtering applies to them too.
 - Scene files: models are imported each run.
 - Images are decoded one after another on one thread; big scenes such as Sponza take a few seconds in Debug.
