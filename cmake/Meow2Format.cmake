@@ -56,7 +56,10 @@ foreach(dir Meow2Engine Meow2Renderer Meow2Editor Meow2Player Meow2ShaderCompile
     endforeach()
 endforeach()
 # CONFIGURE_DEPENDS: the build re-globs and re-configures when files are added/removed.
-file(GLOB_RECURSE meow2FormatFiles CONFIGURE_DEPENDS ${meow2FormatGlobs})
+# RELATIVE: every command below runs in the source folder, so the files are passed as short relative paths. With
+# absolute ones, the command line grew with the checkout's depth and passed Windows' 32 767-character limit in a
+# worktree ("name too long", the test not even started).
+file(GLOB_RECURSE meow2FormatFiles RELATIVE "${PROJECT_SOURCE_DIR}" CONFIGURE_DEPENDS ${meow2FormatGlobs})
 
 add_custom_target(format
     COMMAND "${MEOW2_CLANG_FORMAT}" -i ${meow2FormatFiles}

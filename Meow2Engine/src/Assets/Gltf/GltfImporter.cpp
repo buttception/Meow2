@@ -421,6 +421,125 @@ std::optional<Math::Transform> localTransform(const cgltf_node& node)
     return Math::fromMatrix(DirectX::XMLoadFloat4x4(&rows));
 }
 
+/// @brief A camera in the engine's terms. glTF cameras look along −Z; the node's mirrored transform turns that into
+///        the engine's +Z (see ImportedCamera), so only the lens is converted here.
+ImportedCamera importCamera(const cgltf_camera& camera)
+{
+    ImportedCamera out;
+    out.name = camera.name != nullptr ? camera.name : "";
+    if (camera.type == cgltf_camera_type_orthographic)
+    {
+        out.perspective = false;
+        out.halfHeight = camera.data.orthographic.ymag;
+        out.nearZ = camera.data.orthographic.znear;
+        out.farZ = camera.data.orthographic.zfar;
+    }
+    else
+    {
+        out.verticalFov = camera.data.perspective.yfov;
+        out.nearZ = camera.data.perspective.znear;
+        out.farZ = camera.data.perspective.has_zfar != 0 ? camera.data.perspective.zfar : 0.0F;
+    }
+    return out;
+}
+
+/// @brief An animation's translation, rotation and scale channels on nodes of the imported scene, in left-handed space.
+///        Weights (morph targets) and channels on other nodes are skipped.
+/// @return The animation, or nothing if no channel is left.
+std::optional<ImportedAnimation> importAnimation(const cgltf_animation& animation, const cgltf_data& data,
+                                                 const std::vector<std::int32_t>& nodeIndexOf,
+                                                 std::vector<std::string>& warnings)
+{
+    ImportedAnimation out;
+    out.name = animation.name != nullptr ? animation.name : "";
+    bool skippedWeights = false;
+    for (std::size_t c = 0; c < animation.channels_count; ++c)
+    {
+        const cgltf_animation_channel& channel = animation.channels[c];
+        const cgltf_animation_sampler* sampler = channel.sampler;
+        if (channel.target_node == nullptr || sampler == nullptr || sampler->input == nullptr ||
+            sampler->output == nullptr)
+        {
+            continue;
+        }
+        const std::int32_t node = nodeIndexOf[static_cast<std::size_t>(channel.target_node - data.nodes)];
+        if (node < 0)
+        {
+            continue; // a node outside the imported scene
+        }
+        ImportedChannel outChannel;
+        outChannel.node = node;
+        std::size_t components = 3;
+        switch (channel.target_path)
+        {
+            case cgltf_animation_path_type_translation:
+                outChannel.path = AnimationPath::Translation;
+                break;
+            case cgltf_animation_path_type_rotation:
+                outChannel.path = AnimationPath::Rotation;
+                components = 4;
+                break;
+            case cgltf_animation_path_type_scale:
+                outChannel.path = AnimationPath::Scale;
+                break;
+            default:
+                skippedWeights = true;
+                continue;
+        }
+        switch (sampler->interpolation)
+        {
+            case cgltf_interpolation_type_step:
+                outChannel.interpolation = AnimationInterpolation::Step;
+                break;
+            case cgltf_interpolation_type_cubic_spline:
+                outChannel.interpolation = AnimationInterpolation::CubicSpline;
+                break;
+            default:
+                outChannel.interpolation = AnimationInterpolation::Linear;
+                break;
+        }
+        outChannel.times = unpackFloats(*sampler->input, 1);
+        const std::vector<float> values = unpackFloats(*sampler->output, components);
+        const std::size_t perKey = outChannel.interpolation == AnimationInterpolation::CubicSpline ? 3 : 1;
+        if (outChannel.times.empty() || values.size() != outChannel.times.size() * perKey * components)
+        {
+            warnings.push_back(
+                std::format("animation '{}': channel {} has mismatched keyframes; skipped", out.name, c));
+            continue;
+        }
+        outChannel.values.reserve(values.size() / components);
+        for (std::size_t v = 0; v < values.size(); v += components)
+        {
+            // Mirroring X (S × M × S, like node transforms): positions negate x; a rotation's axis is mirrored and its
+            // angle reversed, which negates the quaternion's y and z. Scale is unchanged. Tangents are linear in the
+            // values, so they convert the same way.
+            if (outChannel.path == AnimationPath::Rotation)
+            {
+                outChannel.values.push_back({values[v], -values[v + 1], -values[v + 2], values[v + 3]});
+            }
+            else if (outChannel.path == AnimationPath::Translation)
+            {
+                outChannel.values.push_back({-values[v], values[v + 1], values[v + 2], 0.0F});
+            }
+            else
+            {
+                outChannel.values.push_back({values[v], values[v + 1], values[v + 2], 0.0F});
+            }
+        }
+        out.duration = std::max(out.duration, outChannel.times.back());
+        out.channels.push_back(std::move(outChannel));
+    }
+    if (skippedWeights)
+    {
+        warnings.push_back(std::format("animation '{}': morph-target weights aren't imported", out.name));
+    }
+    if (out.channels.empty())
+    {
+        return std::nullopt;
+    }
+    return out;
+}
+
 /// @brief Fills a material from cgltf's.
 ImportedMaterial importMaterial(const cgltf_material& material, const cgltf_data& data,
                                 std::vector<std::string>& warnings)
@@ -624,6 +743,9 @@ Result<ImportedModel> importGltf(const FileSystem::FileSystem& files, std::strin
         }
     }
     std::vector<std::pair<const cgltf_node*, std::int32_t>> stack; // node, parent
+    // Our index of each of the file's nodes in the imported scene (-1: not in it), for cameras and animations.
+    std::vector<std::int32_t> nodeIndexOf(data->nodes_count, -1);
+    std::vector<std::int32_t> cameraIndexOf(data->cameras_count, -1);
     for (auto root = roots.rbegin(); root != roots.rend(); ++root)
     {
         stack.emplace_back(*root, -1);
@@ -649,11 +771,31 @@ Result<ImportedModel> importGltf(const FileSystem::FileSystem& files, std::strin
                                                  "using the identity",
                                                  out.name));
         }
+        if (node->camera != nullptr)
+        {
+            const auto fileCamera = static_cast<std::size_t>(node->camera - data->cameras);
+            if (cameraIndexOf[fileCamera] < 0)
+            {
+                cameraIndexOf[fileCamera] = static_cast<std::int32_t>(model.cameras.size());
+                model.cameras.push_back(importCamera(*node->camera));
+            }
+            out.camera = cameraIndexOf[fileCamera];
+        }
         const auto index = static_cast<std::int32_t>(model.nodes.size());
+        nodeIndexOf[static_cast<std::size_t>(node - data->nodes)] = index;
         model.nodes.push_back(std::move(out));
         for (std::size_t c = node->children_count; c-- > 0;)
         {
             stack.emplace_back(node->children[c], index);
+        }
+    }
+
+    for (std::size_t i = 0; i < data->animations_count; ++i)
+    {
+        if (std::optional<ImportedAnimation> animation =
+                importAnimation(data->animations[i], *data, nodeIndexOf, model.warnings))
+        {
+            model.animations.push_back(std::move(*animation));
         }
     }
 

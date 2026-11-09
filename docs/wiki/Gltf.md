@@ -64,6 +64,8 @@ A model seen from a camera at `(-x, y, z)` in the engine looks exactly like the 
 | Default scene's nodes | `ImportedNode`, parents first | The first scene if there's no default; every root if there's none |
 | Triangle primitives | `ImportedPrimitive`: positions, normals, tangents, UV set 0, vertex colours (`COLOR_0`), 32-bit indices | Points, lines and strips are skipped with a warning. Missing normals are computed from the triangles, missing tangents from the UVs (in glTF's space, before mirroring), missing UVs are zeros, missing colours white |
 | Metallic-roughness materials | `ImportedMaterial` | Every core parameter and texture slot, alpha mode, double-sided |
+| Cameras | `ImportedCamera`, `ImportedNode::camera` | Perspective (vertical field of view, near, far) and orthographic (`ymag`); they still look along the node's −Z, see [Renderer → Cameras](Renderer.md#cameras) |
+| Animations | `ImportedAnimation` with `ImportedChannel`s | Translation, rotation and scale of the imported nodes, with step, linear and cubic-spline keys, converted to left-handed space like node transforms (positions negate x; quaternions negate y and z). `animatedTransform()` samples one node at a time. Morph-target weights are skipped with a warning |
 | Samplers | `ImportedSampler` | Linear or nearest, wrap per axis (repeat, clamp, mirrored repeat) |
 | `KHR_texture_transform` | `ImportedTexture::offset`, `rotation`, `scale` | Per texture slot; a transform that picks another UV set is a warning |
 | PNG and JPEG images | `Image`, RGBA8 | A missing or broken image is a warning: the model draws without it |
@@ -84,9 +86,10 @@ How they're drawn (PBR, normal maps, mips, double-sided, mirrored and blended su
 
 - UV sets other than 0, and the `KHR_materials_*` extensions.
 - glTF's sampler `minFilter` is reduced to "mipmaps or not": every texture has mips, and nearest filtering applies to them too.
-- Scene files: models are imported each run.
+- Scene files: models are imported each run (M7).
+- Skins, morph targets and an animation system (blending, events): M12. Animations are only sampled per node.
 - Images are decoded one after another on one thread; big scenes such as Sponza take a few seconds in Debug.
 
 ## Tests
 
-`Assets.Image.*` and `Assets.GltfImporterTest.*` write small files in code (a tiny PNG encoder and a `.glb` writer, `tests/Assets/TestFiles.h`), so they need no samples and run in CI. They check the mirroring and winding, computed normals, tangents (from the file and generated), vertex colours, samplers, node transforms, buffers next to the file, `.glb` with an embedded texture, materials, and each failure. `RhiGpu*.GpuSceneTest.ModelDrawsWithItsTexture` draws a textured model through `SceneModel` on both backends.
+`Assets.Image.*` and `Assets.GltfImporterTest.*` write small files in code (a tiny PNG encoder and a `.glb` writer, `tests/Assets/TestFiles.h`), so they need no samples and run in CI. They check the mirroring and winding, computed normals, tangents (from the file and generated), vertex colours, samplers, node transforms, buffers next to the file, `.glb` with an embedded texture, materials, cameras and animations (`ReadsCamerasAndAnimations`, `GltfAnimation.CubicSplineFollowsItsTangents`), and each failure. `RhiGpu*.GpuSceneTest.ModelDrawsWithItsTexture` draws a textured model through `SceneModel` on both backends.

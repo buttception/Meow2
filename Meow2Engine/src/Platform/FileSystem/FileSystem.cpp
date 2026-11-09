@@ -23,7 +23,7 @@ struct DirectoryMount
 };
 
 /// @brief What a mount reads from. A variant, not a virtual interface (techstack.md §3): packages (M11) and Android
-///        assets (M12) become further alternatives.
+///        assets (M13) become further alternatives.
 using MountSource = std::variant<DirectoryMount>;
 
 /// @brief One entry of the mount table.

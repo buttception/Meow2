@@ -3,6 +3,7 @@
 
 #include <Meow2/Core/Assert.h>
 #include <Meow2/Core/Log/AssertLogging.h>
+#include <Meow2/Core/Log/ConsoleBuffer.h>
 #include <Meow2/Core/Log/LogSystem.h>
 
 #include <gtest/gtest.h>
@@ -14,6 +15,7 @@
 #include <regex>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace
 {
@@ -249,4 +251,24 @@ TEST(AssertLogging, RestoresPreviousHandler)
     }
     // After the scope, the handler from before it (the default) is back.
     EXPECT_EQ(Meow2::setAssertHandler(nullptr), &Meow2::defaultAssertHandler);
+}
+
+TEST(LogSystem, WritesToTheConsoleBuffer)
+{
+    const fs::path directory = testDirectory("WritesToTheConsoleBuffer");
+    Meow2::Log::ConsoleBuffer buffer{16};
+    {
+        LogSystemDesc desc = testDesc(directory);
+        desc.consoleBuffer = &buffer;
+        LogSystem logSystem{desc};
+        Meow2::Log::Logger log = logSystem.createLogger("Test");
+        log.warn("disk {}% full", 90);
+    }
+    std::vector<Meow2::Log::LogLine> lines;
+    EXPECT_EQ(buffer.linesSince(0, lines), 0U);
+    ASSERT_EQ(lines.size(), 1U);
+    EXPECT_EQ(lines[0].level, LogLevel::Warn);
+    EXPECT_EQ(lines[0].logger, "Test");
+    EXPECT_EQ(lines[0].message, "disk 90% full");
+    EXPECT_TRUE(std::regex_match(lines[0].time, std::regex{R"(\d{2}:\d{2}:\d{2}\.\d{3})"})) << lines[0].time;
 }

@@ -9,6 +9,8 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Meow2Renderer: a Console window with every log line (filters by level and text, copy, follow), a Settings window for the debug tools and start-up options that saves to the config at once, and window positions kept between runs (#189).
+- Meow2Renderer: orbit and fly (noclip) cameras, the glTF file's own cameras, and its animations played on the scene, so animated cameras and objects move; `renderer.camera`, `renderer.sceneCamera` and `renderer.animation` pick them at start (#189).
 - glTF textures are compressed to BC7 (colour, data) and BC5 (normal maps) with DirectXTex: a quarter of the GPU memory. Cooked textures are saved as `.m2texture` files in a cache, so only a model's first load compresses; `renderer.compressTextures` turns it off. Texture transforms (`KHR_texture_transform`: offset, rotation, scale) are drawn (#185).
 - A physically based sky (Sébastien Hillaire's method): blue by day, red and orange at sunset, the sun's disc, the ground below the horizon. The scene is lit by it: smooth metals reflect the sky, rough ones a blur of it, and everything gets soft light from all around; sunlight reddens as the sun sets. Meow2Renderer's Stats window has sliders for the sun (#181).
 - A new look for Meow2Renderer and Meow2Editor: pure black with one red accent, square panels with red corner brackets, uppercase headings, Barlow Semi Condensed for the UI and Consolas for numbers and logs. Each app has a red cat icon; the editor's carries an E badge, the renderer's an R. Icons for asset types are ready for the editor's asset browser (#179).
@@ -18,9 +20,10 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - glTF 2.0 import: `.gltf` and `.glb` files open in Meow2Renderer (`--set renderer.scene=Duck`, or a path) with their node tree, meshes and base colour textures, converted to the engine's left-handed space, on Vulkan and D3D12. `cmake -P cmake/FetchGltfSample.cmake <Model>` downloads Khronos sample models on demand (#170).
 
 ### Changed
+- Roadmap: M7 is now the Editor (with scene files, moved out of M6), M8 Physics, M9 Scripting (new), M12 Advanced rendering and M13 Platforms; meshlets move into M6 (#189).
 - Meow2Renderer's UI text is smaller, and its figures in Consolas no longer look larger than the labels (#181).
 - Meow2Renderer's camera starts in front of a glTF model (on +Z, which glTF models face) instead of behind it, and the default sun lights the front (#177).
-- Roadmap: M6 is now "glTF scenes and Meow2Renderer", with the old M7 merged in and stopping at PBR; a new M13 holds advanced rendering (#170).
+- Roadmap: M6 is now "glTF scenes and Meow2Renderer", with the old M7 merged in and stopping at PBR; a new milestone (now M12) holds advanced rendering (#170).
 - Vulkan GPUs need BC texture compression (`textureCompressionBC`), which every desktop GPU has (#185).
 - Vulkan GPUs need `shaderDemoteToHelperInvocation`, for `discard` in shaders (#170).
 - Every app opens at 1920 x 1080 (1080p) by default instead of 1280 x 720; a size saved in the app's config still wins (#176).

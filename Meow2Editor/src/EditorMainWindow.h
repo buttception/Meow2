@@ -1,7 +1,7 @@
 #pragma once
 
 /// @file
-/// @brief EditorMainWindow: the editor's top-level window. Docks, menus and commands come with M9.
+/// @brief EditorMainWindow: the editor's top-level window. Docks, menus and commands come with M7.
 
 #include "ViewportWidget.h"
 
@@ -11,7 +11,7 @@ namespace Meow2::Editor
 {
 /// @brief The editor's main window: for now a title bar and the viewport filling it.
 ///
-/// Later (M9) it gets the dock layout (scene hierarchy, inspector, log console). Every UI action will go through an
+/// Later (M7) it gets the dock layout (scene hierarchy, inspector, log console). Every UI action will go through an
 /// editor command (techstack.md §20), so this window will never change editor state directly.
 /// @par Thread safety
 /// Not thread-safe; GUI thread only, like every QWidget.

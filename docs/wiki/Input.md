@@ -8,11 +8,11 @@
   - `#include <Meow2/Platform/Input/InputEvents.h>`: what sources submit, and the bus events
   - `#include <Meow2/Platform/Input/SdlInputSource.h>`, `SdlGamepadSource.h`: the SDL sources
 - Namespace: `Meow2::Input`.
-- Status: ✅ M2 (#89, SDL sources #91). Player and Renderer get keyboard, mouse and gamepads from SDL. The editor's viewport input (`QtInputSource`) comes with M9.
+- Status: ✅ M2 (#89, SDL sources #91). Player and Renderer get keyboard, mouse and gamepads from SDL. The editor's viewport input (`QtInputSource`) comes with M7.
 
 ```
 Player / Renderer:   SDL events ───► SdlInputSource   ─┐
-Editor viewport:     Qt events  ───► QtInputSource    ─┼─► InputSystem::submit(InputEvent)   (QtInputSource: M9)
+Editor viewport:     Qt events  ───► QtInputSource    ─┼─► InputSystem::submit(InputEvent)   (QtInputSource: M7)
 Player / Renderer:   SDL gamepads ─► SdlGamepadSource ─┘            │
                                                                     ├─► polling: isDown, wasPressed, mouseDelta, axis, …
                                                                     └─► bus events: KeyPressed, MouseMoved, GamepadConnected, …
@@ -115,11 +115,11 @@ Meow2::Time::GameLoop loop{clock, events, loopDesc,
 
 ## Not yet
 
-- `QtInputSource` for the editor viewport (M9); gamepads in the editor (it has no Platform yet).
+- `QtInputSource` for the editor viewport (M7); gamepads in the editor (it has no Platform yet).
 - Switching text input on (`SDL_StartTextInput`), mouse capture (relative mode), rumble, an action layer ("Jump" = Space or A) with bindings in the config.
 
 See also: techstack.md §9, [GameLoop](GameLoop.md), [Events](Events.md), [Window](Window.md).
 
 ## Implementation summary
 
-- `SdlInputSource` (keyboard, mouse, text) and `SdlGamepadSource` (`create()` → `Result`, opens pads on `GAMEPAD_ADDED`, `GamepadId` = SDL joystick id) in `src/Platform/Input/Sdl/`; `Platform::pumpEvents()` passes non-window SDL events to registered handlers. Player and Renderer only (the editor gets `QtInputSource` in M9). Tested with pushed SDL events and an SDL virtual gamepad.
+- `SdlInputSource` (keyboard, mouse, text) and `SdlGamepadSource` (`create()` → `Result`, opens pads on `GAMEPAD_ADDED`, `GamepadId` = SDL joystick id) in `src/Platform/Input/Sdl/`; `Platform::pumpEvents()` passes non-window SDL events to registered handlers. Player and Renderer only (the editor gets `QtInputSource` in M7). Tested with pushed SDL events and an SDL virtual gamepad.

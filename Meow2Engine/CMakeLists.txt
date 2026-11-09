@@ -9,6 +9,7 @@ configure_file(src/Core/Version.h.in "${meow2GeneratedDir}/Meow2/Core/Version.h"
 target_sources(Meow2Engine
     PRIVATE
         src/Assets/AssetManager.cpp
+        src/Assets/Gltf/GltfAnimation.cpp
         src/Assets/Gltf/GltfImporter.cpp
         src/Assets/LibraryMemory.h
         src/Assets/Shader/ShaderAsset.cpp
@@ -27,6 +28,7 @@ target_sources(Meow2Engine
         src/Core/Id/UuidGenerator.cpp
         src/Core/Jobs/Enkits/JobSystemEnkits.cpp
         src/Core/Log/AssertLogging.cpp
+        src/Core/Log/ConsoleBuffer.cpp
         src/Core/Log/Logger.cpp
         src/Core/Log/LoggerImpl.h
         src/Core/Log/LogSystem.cpp
@@ -92,6 +94,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Id/UuidGenerator.h
             include/Meow2/Core/Jobs/JobSystem.h
             include/Meow2/Core/Log/AssertLogging.h
+            include/Meow2/Core/Log/ConsoleBuffer.h
             include/Meow2/Core/Log/Logger.h
             include/Meow2/Core/Log/LogSystem.h
             include/Meow2/Core/Memory/BlockArena.h

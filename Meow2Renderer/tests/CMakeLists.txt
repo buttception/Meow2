@@ -3,5 +3,7 @@ meow2_add_test_suite(
     TARGET    Meow2RendererTests
     MODULE    RendererApp
     SOURCES
+        CameraControlsTests.cpp
         RendererUiTests.cpp
+        ShellWindowsTests.cpp
     LIBRARIES Meow2RendererCore)

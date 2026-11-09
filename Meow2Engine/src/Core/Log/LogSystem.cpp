@@ -5,13 +5,19 @@
 
 #include "Core/CommandLine.h"
 #include "Core/Log/LoggerImpl.h"
+#include "Meow2/Core/Log/ConsoleBuffer.h"
 #include "Meow2/Core/Process.h"
 
+#include <spdlog/details/null_mutex.h>
 #include <spdlog/details/os.h>
 #include <spdlog/pattern_formatter.h>
+#include <spdlog/sinks/base_sink.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
+#include <algorithm>
+#include <array>
+#include <chrono>
 #include <ctime>
 #include <exception>
 #include <format>
@@ -62,6 +68,62 @@ private:
         }
         return "?";
     }
+};
+
+/// @brief Writes every line into a ConsoleBuffer, for in-app consoles (techstack.md §7, "ConsoleRingSink").
+///
+/// The buffer locks itself, so the sink needs no mutex of its own (`null_mutex`); it formats nothing with spdlog's
+/// formatter, only the time, so the level, name and text stay separate fields the console can colour and filter.
+class ConsoleRingSink final : public spdlog::sinks::base_sink<spdlog::details::null_mutex>
+{
+public:
+    explicit ConsoleRingSink(ConsoleBuffer& buffer)
+        : m_buffer(buffer)
+    {
+    }
+
+protected:
+    void sink_it_(const spdlog::details::log_msg& msg) override
+    {
+        const auto sinceEpoch = msg.time.time_since_epoch();
+        const std::tm local = spdlog::details::os::localtime(std::chrono::system_clock::to_time_t(msg.time));
+        const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(sinceEpoch).count() % 1000;
+        // Formatted into a stack array and passed as views: the buffer copies into its own fixed slots, so writing a
+        // line allocates nothing.
+        std::array<char, 16> time{};
+        const auto written = std::format_to_n(time.data(), time.size(), "{:02}:{:02}:{:02}.{:03}", local.tm_hour,
+                                              local.tm_min, local.tm_sec, milliseconds);
+        m_buffer.add(levelOf(msg.level),
+                     std::string_view{time.data(), std::min(static_cast<std::size_t>(written.size), time.size())},
+                     std::string_view{msg.logger_name.data(), msg.logger_name.size()},
+                     std::string_view{msg.payload.data(), msg.payload.size()});
+    }
+
+    void flush_() override {}
+
+private:
+    static LogLevel levelOf(spdlog::level::level_enum level)
+    {
+        switch (level)
+        {
+            case spdlog::level::trace:
+            case spdlog::level::debug:
+                return LogLevel::Debug;
+            case spdlog::level::info:
+                return LogLevel::Info;
+            case spdlog::level::warn:
+                return LogLevel::Warn;
+            case spdlog::level::err:
+                return LogLevel::Error;
+            case spdlog::level::critical:
+            case spdlog::level::off:
+            case spdlog::level::n_levels:
+                break;
+        }
+        return LogLevel::Fatal;
+    }
+
+    ConsoleBuffer& m_buffer; ///< Outlives every logger (ConsoleBuffer's lifetime rule).
 };
 
 /// @brief `[14:03:27.512]<warn> Engine: message` (techstack.md §7). `%^…%$` marks the part the
@@ -122,6 +184,10 @@ LogSystem::LogSystem(const LogSystemDesc& desc)
     if (desc.console)
     {
         m_impl->sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
+    }
+    if (desc.consoleBuffer != nullptr)
+    {
+        m_impl->sinks.push_back(std::make_shared<ConsoleRingSink>(*desc.consoleBuffer));
     }
 
     for (const spdlog::sink_ptr& sink : m_impl->sinks)

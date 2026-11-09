@@ -48,7 +48,7 @@ The values live in two places, because the apps share no UI code: `Meow2Renderer
 3. **Barlow** registered with `QFontDatabase::addApplicationFont` and set as the application font.
 4. **Style sheet** (`editorStyleSheet()`): square corners, thin borders, red focus, hover and selection; dock titles with a red left bar; the selected tab underlined in red; thin scroll bars.
 
-`editorMonospaceFont()` is the Consolas font for the console dock (M9). Dock titles are written in capitals by convention, like the Renderer's.
+`editorMonospaceFont()` is the Consolas font for the console dock (M7). Dock titles are written in capitals by convention, like the Renderer's.
 
 The editor's window is only the viewport so far, so most of this shows once docks and menus arrive. `Editor.EditorThemeTest.ThemedWidgetsDrawBlackAndRed` builds a stand-in layout off-screen (menu bar, a dock with a selected row, tabs, a field and a button), checks its colours, and saves it as `meow2-editor-theme.png` in the temp folder.
 
@@ -70,7 +70,7 @@ The editor's window is only the viewport so far, so most of this shows once dock
 
 ### Asset icons
 
-`assets/icons/assets/*.svg`, 24 × 24 outlines in light grey with one red detail, for the editor's asset browser (M9):
+`assets/icons/assets/*.svg`, 24 × 24 outlines in light grey with one red detail, for the editor's asset browser (M7):
 
 | Icon | Asset |
 |---|---|

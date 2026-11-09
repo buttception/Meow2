@@ -9,6 +9,7 @@ meow2_add_test_suite(
         Core/Events/EventBusTests.cpp
         Core/Id/UuidTests.cpp
         Core/Jobs/JobSystemTests.cpp
+        Core/Log/ConsoleBufferTests.cpp
         Core/Log/LogTests.cpp
         Core/Memory/BlockArenaTests.cpp
         Core/Memory/CountingResource.h

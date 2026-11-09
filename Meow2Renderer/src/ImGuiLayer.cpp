@@ -248,7 +248,7 @@ ImGuiLayer::ImGuiLayer(const ImGuiLayerDeps& deps)
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
     io.BackendRendererName = "Meow2 RHI";
     io.BackendPlatformName = "Meow2 input";
-    io.IniFilename = nullptr; // window layout isn't saved yet: the next PR keeps it in the TOML config
+    io.IniFilename = nullptr; // no imgui.ini: the layout goes into the TOML config (loadLayout, takeLayoutChange)
     applyUiTheme(ImGui::GetStyle(), m_contentScale);
 
     Events::EventBus& events = deps.events;
@@ -655,6 +655,29 @@ void ImGuiLayer::addPasses(Renderer::RenderGraph& graph, std::uint32_t frameSlot
              }
              list.endRendering();
          }});
+}
+
+void ImGuiLayer::loadLayout(std::string_view layout)
+{
+    if (!layout.empty())
+    {
+        ImGui::LoadIniSettingsFromMemory(layout.data(), layout.size());
+    }
+}
+
+std::optional<std::string> ImGuiLayer::takeLayoutChange()
+{
+    // With no IniFilename, ImGui only raises this flag (io.IniSavingRate seconds after a change) and leaves the saving
+    // to us.
+    ImGuiIO& io = ImGui::GetIO();
+    if (!io.WantSaveIniSettings)
+    {
+        return std::nullopt;
+    }
+    io.WantSaveIniSettings = false;
+    std::size_t size = 0;
+    const char* text = ImGui::SaveIniSettingsToMemory(&size);
+    return std::string{text, size};
 }
 
 void ImGuiLayer::endFrame()
