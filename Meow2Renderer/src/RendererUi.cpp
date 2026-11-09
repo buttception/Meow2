@@ -11,6 +11,7 @@
 #include <Meow2/Math/Scalar.h>
 
 #include <imgui.h>
+#include <imgui_internal.h> // DockBuilder: the default layout
 
 #include <algorithm>
 #include <cctype>
@@ -315,6 +316,31 @@ void ScenesWindow::startFetch(const std::string& name)
     m_fetchJob = m_jobs.run([command = fetchCommand(name), result = m_fetchResult]
                             { result->store(std::system(command.c_str())); });
     MEOW2_LOG_INFO(m_log, "Fetching the {} sample…", name);
+}
+
+void dockWindows()
+{
+    // Window titles with their ### IDs, as each window passes them to ImGui::Begin().
+    constexpr std::array<const char*, 4> c_panelWindows{"STATS###Stats", "SCENES###Scenes", "SETTINGS###Settings",
+                                                        "CAMERA###Camera"};
+    const ImGuiID dockSpace = ImGui::GetID("Meow2RendererDockSpace");
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    if (ImGui::DockBuilderGetNode(dockSpace) == nullptr)
+    {
+        // DockBuilder is ImGui's internal API (imgui_internal.h), the documented way to make a layout in code.
+        ImGui::DockBuilderAddNode(dockSpace, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dockSpace, viewport->WorkSize);
+        ImGuiID centre = dockSpace;
+        const ImGuiID panel = ImGui::DockBuilderSplitNode(centre, ImGuiDir_Left, 0.24F, nullptr, &centre);
+        const ImGuiID bottom = ImGui::DockBuilderSplitNode(centre, ImGuiDir_Down, 0.25F, nullptr, &centre);
+        for (const char* window : c_panelWindows)
+        {
+            ImGui::DockBuilderDockWindow(window, panel);
+        }
+        ImGui::DockBuilderDockWindow("CONSOLE###Console", bottom);
+        ImGui::DockBuilderFinish(dockSpace);
+    }
+    ImGui::DockSpaceOverViewport(dockSpace, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
 }
 
 std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::string_view error, const UiFonts& fonts)

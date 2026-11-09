@@ -675,6 +675,11 @@ std::optional<std::string> ImGuiLayer::takeLayoutChange()
         return std::nullopt;
     }
     io.WantSaveIniSettings = false;
+    return currentLayout();
+}
+
+std::string ImGuiLayer::currentLayout() const
+{
     std::size_t size = 0;
     const char* text = ImGui::SaveIniSettingsToMemory(&size);
     return std::string{text, size};

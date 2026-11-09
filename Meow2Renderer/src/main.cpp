@@ -660,6 +660,7 @@ int main(int argc, char** argv)
                          pixelsPerUnit, window->displayScale() / pixelsPerUnit);
             if (showUi)
             {
+                Meow2::RendererApp::dockWindows(); // before the windows, so they land in their docks
                 Meow2::RendererApp::StatsInfo stats{
                     .backend = renderDevice->backend() == Meow2::Rhi::RhiBackend::D3D12 ? "D3D12" : "Vulkan",
                     .gpu = device.adapter().name,
@@ -936,6 +937,11 @@ int main(int argc, char** argv)
     MEOW2_LOG_INFO(appLog, "Ran {} frames ({} fixed steps) in {:.2f} s", clock.frameCount(), loop.fixedStepCount(),
                    clock.totalSeconds());
 
+    if (ui)
+    {
+        config.setString(Meow2::RendererApp::c_uiLayoutKey,
+                         ui->currentLayout()); // also a change made just before quitting
+    }
     if (renderDevice && renderDevice->hasDevice())
     {
         renderDevice->device().waitIdle();

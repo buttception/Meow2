@@ -97,6 +97,12 @@ public:
     /// @return ImGui's `.ini` text, or std::nullopt when nothing changed since the last call.
     [[nodiscard]] std::optional<std::string> takeLayoutChange();
 
+    /// @brief The layout now, whether or not ImGui flagged a change: saved at exit, since ImGui flags a change only a
+    /// few
+    ///        seconds after it happens.
+    /// @return ImGui's `.ini` text.
+    [[nodiscard]] std::string currentLayout() const;
+
     /// @brief Ends the ImGui frame and adds its pass (and any texture uploads) to the graph, drawing on top of the
     ///        swapchain's contents.
     /// @param graph     The frame's graph, after the passes that draw the scene.

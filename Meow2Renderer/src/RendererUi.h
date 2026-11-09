@@ -124,6 +124,14 @@ struct SunControls
 /// @return The buttons pressed this frame.
 StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts = {}, SunControls* sun = nullptr);
 
+/// @brief The window docking: a dock space over the whole window whose middle stays clear (the scene shows, and the
+///        mouse reaches the camera), with the default layout on first use: every window but the console as tabs of one
+///        panel on the left, the console along the bottom.
+///
+/// The default is built only when the saved layout (renderer.uiLayout) has no dock space yet; after that, windows stay
+/// where the user dragged them. Call it every frame after ImGuiLayer::newFrame(), before the windows.
+void dockWindows();
+
 /// @brief The scene picker: Khronos samples (fetching ones that aren't downloaded) and any file by path.
 /// @par Thread safety
 /// Not thread-safe; use on the main thread. A fetch runs on a job and only touches the atomic status.
