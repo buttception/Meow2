@@ -390,6 +390,7 @@ Result<TextureHandle> RhiDeviceVulkan::createTexture(const TextureDesc& desc)
     const bool depth = desc.format == RhiFormat::D32Float;
     TextureVulkan record;
     record.format = vulkanFormat(desc.format);
+    record.rhiFormat = desc.format;
     record.extent = {desc.width, desc.height};
     record.mipLevels = desc.mipLevels;
     record.depth = depth;
@@ -551,6 +552,15 @@ std::uint32_t RhiDeviceVulkan::bindlessStorageIndex(TextureHandle texture, std::
     const std::shared_lock lock{m_resourceMutex};
     const TextureVulkan* found = m_textures.get(texture);
     return found != nullptr && mipLevel < c_maxMipLevels ? found->storageIndices[mipLevel] : c_invalidBindlessIndex;
+}
+
+TextureInfo RhiDeviceVulkan::textureInfo(TextureHandle texture)
+{
+    const TextureVulkan record = this->texture(texture);
+    return {.width = record.extent.width,
+            .height = record.extent.height,
+            .mipLevels = record.mipLevels,
+            .format = record.rhiFormat};
 }
 
 TextureVulkan RhiDeviceVulkan::texture(TextureHandle handle)

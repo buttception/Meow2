@@ -56,6 +56,7 @@ struct TextureVulkan
     VkImageView view = VK_NULL_HANDLE;                          ///< A view of every mip level.
     VmaAllocation allocation = nullptr;                         ///< Its memory.
     VkFormat format = VK_FORMAT_UNDEFINED;                      ///< Its format.
+    RhiFormat rhiFormat = RhiFormat::Unknown;                   ///< The same, as the engine names it.
     VkExtent2D extent{};                                        ///< Size in pixels.
     std::uint32_t mipLevels = 1;                                ///< Mip levels.
     bool depth = false;                                         ///< A depth format.
@@ -239,6 +240,7 @@ public:
     [[nodiscard]] Result<TextureHandle> createTexture(const TextureDesc& desc) override;
     void destroy(TextureHandle texture) override;
     [[nodiscard]] std::uint32_t bindlessIndex(TextureHandle texture) override;
+    [[nodiscard]] TextureInfo textureInfo(TextureHandle texture) override;
     [[nodiscard]] std::uint32_t bindlessStorageIndex(TextureHandle texture, std::uint32_t mipLevel) override;
     [[nodiscard]] Result<SamplerHandle> createSampler(const SamplerDesc& desc) override;
     void destroy(SamplerHandle sampler) override;

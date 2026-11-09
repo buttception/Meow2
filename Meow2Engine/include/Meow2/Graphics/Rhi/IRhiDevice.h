@@ -147,6 +147,12 @@ public:
     /// @note Thread-safe.
     virtual void destroy(TextureHandle texture) = 0;
 
+    /// @brief What a texture is: its size, mip levels and format.
+    /// @param texture A live texture.
+    /// @return Its description; zeros for a stale handle (asserted in Debug).
+    /// @note Thread-safe, like resource creation.
+    [[nodiscard]] virtual TextureInfo textureInfo(TextureHandle texture) = 0;
+
     /// @brief A texture's heap slot, for `ResourceDescriptorHeap[index]` as a Texture2D.
     /// @param texture The texture.
     /// @return The index; c_invalidBindlessIndex for a stale handle or a depth texture.

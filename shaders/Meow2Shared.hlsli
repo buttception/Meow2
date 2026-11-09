@@ -111,6 +111,20 @@ struct SkyConstants
     uint padding1;                 ///< Pads to 16 bytes.
 };
 
+/// How Meow2Renderer's texture inspector shows a texture (shaders/DebugTexture.hlsl): a value range mapped to 0..1, and
+/// which channels show. Read from a buffer by index.
+struct DebugDisplay
+{
+    uint source;     ///< Heap index of the texture to show.
+    uint sampler;    ///< Sampler heap index (point, so texels stay sharp when magnified).
+    uint channels;   ///< Bits 0..3: R, G, B, A shown. One bit alone shows that channel as grey.
+    uint isDepth;    ///< 1: a depth texture (one channel, reversed Z); the range applies to its raw value.
+    float rangeMin;  ///< The value shown as black.
+    float rangeMax;  ///< The value shown as white.
+    uint padding0;   ///< Pads to 16 bytes.
+    uint padding1;   ///< Pads to 16 bytes.
+};
+
 /// One Dear ImGui draw command (Meow2Renderer's UI), read by shaders/ImGui.hlsl.
 struct UiDraw
 {

@@ -201,6 +201,15 @@ enum class CullMode : std::uint8_t
     Front ///< Skip triangles facing the viewer: for meshes mirrored by a negative scale, whose winding is reversed.
 };
 
+/// @brief What a texture is, as the device reports it (IRhiDevice::textureInfo()). Plain data.
+struct TextureInfo
+{
+    std::uint32_t width = 0;               ///< Width in pixels.
+    std::uint32_t height = 0;              ///< Height in pixels.
+    std::uint32_t mipLevels = 1;           ///< Mip levels.
+    RhiFormat format = RhiFormat::Unknown; ///< Its format.
+};
+
 /// @brief How a graphics pipeline combines its output with what's in the target.
 enum class BlendMode : std::uint8_t
 {

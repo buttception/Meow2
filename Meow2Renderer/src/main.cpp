@@ -4,6 +4,7 @@
 ///        a grid of cubes through the GPU-driven path, and shows an ImGui shell to pick scenes and read stats.
 
 #include "ConsoleWindow.h"
+#include "FrameInspector.h"
 #include "ImGuiLayer.h"
 #include "RenderDebug.h"
 #include "RendererUi.h"
@@ -290,8 +291,9 @@ int main(int argc, char** argv)
     std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
     // The sky (renderer.sky): lights every scene and is drawn behind it. Scenes refer to it: declared before them.
     std::unique_ptr<Meow2::Renderer::SkyAtmosphere> sky;
-    std::unique_ptr<Meow2::Renderer::ToneMapPass> toneMap;        // the scene's HDR colour into the swapchain
-    std::unique_ptr<Meow2::RendererApp::RenderDebug> renderDebug; // debug views, wireframes, frozen culling
+    std::unique_ptr<Meow2::Renderer::ToneMapPass> toneMap;         // the scene's HDR colour into the swapchain
+    std::unique_ptr<Meow2::RendererApp::RenderDebug> renderDebug;  // debug views, wireframes, frozen culling
+    std::unique_ptr<Meow2::RendererApp::FrameInspector> inspector; // render-graph view, pass view, frame capture
     // The starting sun: renderer.sunElevation and renderer.sunDirection, in degrees (the Stats window's sliders).
     Meow2::RendererApp::SunControls sun;
     sun.elevationDegrees =
@@ -408,6 +410,9 @@ int main(int argc, char** argv)
             made)
         {
             toneMap = std::move(*made);
+            inspector = std::make_unique<Meow2::RendererApp::FrameInspector>(
+                *renderDevice, *pipelines, assetId("01a1b5e2-3c18-8000-80a4-7b19d2e6c059"), appLog);
+            inspector->watch(config.getString("renderer.watchPass", "")); // for checks without the mouse
             renderDebug = std::make_unique<Meow2::RendererApp::RenderDebug>(
                 *pipelines, assetId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058"), colorFormat, appLog);
             // renderer.debugView (a MEOW2_DEBUG_VIEW_* number, -1 shaded) and renderer.wireframe (off, overlay, only):
@@ -487,8 +492,12 @@ int main(int argc, char** argv)
     // F10 switches between Vulkan and D3D12 at the next frame boundary. rhi.swapAtFrame switches once with no keyboard.
     std::optional<Meow2::Rhi::RhiBackend> pendingSwap;
     const Meow2::Events::Subscription onSwapKey = events.subscribe<Meow2::Input::KeyPressed>(
-        [&pendingSwap, &renderDevice](const Meow2::Input::KeyPressed& e)
+        [&pendingSwap, &renderDevice, &inspector](const Meow2::Input::KeyPressed& e)
         {
+            if (e.key == Meow2::Input::Key::F9 && !e.repeat && inspector)
+            {
+                inspector->requestCapture(); // the engine's frame capture (F11 is RenderDoc's)
+            }
             if (e.key == Meow2::Input::Key::F10 && !e.repeat && renderDevice)
             {
                 pendingSwap = renderDevice->backend() == Meow2::Rhi::RhiBackend::Vulkan
@@ -497,6 +506,8 @@ int main(int argc, char** argv)
             }
         });
     const std::int64_t swapAtFrame = config.getInt("rhi.swapAtFrame", 0);
+    // renderer.captureAtFrame: the engine's frame capture (F9) once at that frame, for checks without the keyboard.
+    const std::int64_t captureAtFrame = config.getInt("renderer.captureAtFrame", 0);
     // renderer.switchSceneAtFrame opens renderer.switchScene (a sample name) once at that frame, like picking it in the
     // Scenes window: for checks with no mouse.
     const std::int64_t switchSceneAtFrame = config.getInt("renderer.switchSceneAtFrame", 0);
@@ -578,14 +589,18 @@ int main(int argc, char** argv)
         return true;
     };
     const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &view, &viewDeps, &ui, &sky, &sun, &jobs,
-                              &depthTexture, &sceneColor, &toneMap, &renderDebug, &makeDepth, &renderDoc, &clock,
-                              &pendingSwap, &pendingScene, &sceneError, &scenesWindow, &consoleWindow, &settingsWindow,
-                              &config, &orbit, &fly, &cameraState, &startCamera, &cameraScene, &posedAnimation, &input,
-                              &frameTimes, &showUi, &sampleRoot, &switchScene, captureFrame, swapAtFrame,
-                              switchSceneAtFrame,
+                              &depthTexture, &sceneColor, &toneMap, &renderDebug, &inspector, &makeDepth, &renderDoc,
+                              &clock, &pendingSwap, &pendingScene, &sceneError, &scenesWindow, &consoleWindow,
+                              &settingsWindow, &config, &orbit, &fly, &cameraState, &startCamera, &cameraScene,
+                              &posedAnimation, &input, &frameTimes, &showUi, &sampleRoot, &switchScene, captureFrame,
+                              captureAtFrame, swapAtFrame, switchSceneAtFrame,
                               cubeCount = static_cast<std::uint32_t>(
                                   std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000))]
     {
+        if (captureAtFrame > 0 && inspector && static_cast<std::int64_t>(clock.frameCount()) == captureAtFrame)
+        {
+            inspector->requestCapture();
+        }
         if (swapAtFrame > 0 && static_cast<std::int64_t>(clock.frameCount()) == swapAtFrame)
         {
             pendingSwap = renderDevice->backend() == Meow2::Rhi::RhiBackend::Vulkan ? Meow2::Rhi::RhiBackend::D3D12
@@ -722,6 +737,10 @@ int main(int argc, char** argv)
                 if (renderDebug)
                 {
                     renderDebug->drawWindow(ui->fonts());
+                }
+                if (inspector)
+                {
+                    inspector->drawWindows(*ui, ui->fonts());
                 }
                 for (const std::string_view key : settingsWindow.takeNextSceneChanges())
                 {
@@ -896,9 +915,18 @@ int main(int argc, char** argv)
                                },
                                .small = true});
             }
+            if (inspector)
+            {
+                inspector->beginFrame(graph, device.frameSlot()); // its textures, the capture viewer
+            }
             if (ui)
             {
-                ui->addPasses(graph, device.frameSlot(), *swapchain);
+                ui->addPasses(graph, device.frameSlot(), *swapchain,
+                              inspector ? inspector->uiReads() : std::span<const Meow2::Renderer::GraphResource>{});
+            }
+            if (inspector)
+            {
+                inspector->afterPasses(graph, device.frameSlot()); // the watched pass's view, a capture
             }
             graph.compile();
             Meow2::Result<std::vector<Meow2::Rhi::IRhiCommandList*>> recorded = graph.execute(device, jobs);
@@ -913,6 +941,10 @@ int main(int argc, char** argv)
             if (ui)
             {
                 ui->endFrame();
+            }
+            if (inspector)
+            {
+                inspector->endFrame(graph);
             }
             if (!recorded)
             {

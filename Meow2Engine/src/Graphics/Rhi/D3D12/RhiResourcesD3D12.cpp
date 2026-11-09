@@ -446,6 +446,7 @@ Result<TextureHandle> RhiDeviceD3D12::createTexture(const TextureDesc& desc)
     record.format = desc.format;
     record.width = desc.width;
     record.height = desc.height;
+    record.mipLevels = desc.mipLevels;
     record.depth = depth;
     record.renderTarget = desc.renderTarget;
     if (const HRESULT result = m_allocator->CreateResource3(&allocation, &resourceDesc, D3D12_BARRIER_LAYOUT_UNDEFINED,
@@ -576,6 +577,12 @@ std::uint32_t RhiDeviceD3D12::bindlessStorageIndex(TextureHandle texture, std::u
     const std::shared_lock lock{m_resourceMutex};
     const TextureD3D12* found = m_textures.get(texture);
     return found != nullptr && mipLevel < c_maxMipLevels ? found->storageIndices[mipLevel] : c_invalidBindlessIndex;
+}
+
+TextureInfo RhiDeviceD3D12::textureInfo(TextureHandle texture)
+{
+    const TextureD3D12 record = this->texture(texture);
+    return {.width = record.width, .height = record.height, .mipLevels = record.mipLevels, .format = record.format};
 }
 
 TextureD3D12 RhiDeviceD3D12::texture(TextureHandle handle)

@@ -112,6 +112,7 @@ struct TextureD3D12
     RhiFormat format = RhiFormat::Unknown;     ///< Its format.
     std::uint32_t width = 0;                   ///< Width in pixels.
     std::uint32_t height = 0;                  ///< Height in pixels.
+    std::uint32_t mipLevels = 1;               ///< Mip levels.
     bool depth = false;                        ///< A depth format.
     bool renderTarget = false;                 ///< Can be drawn to: its first barrier discards the old contents.
     std::uint32_t heapIndex = 0;               ///< Readable slot in the resource heap.
@@ -285,6 +286,7 @@ public:
     [[nodiscard]] Result<TextureHandle> createTexture(const TextureDesc& desc) override;
     void destroy(TextureHandle texture) override;
     [[nodiscard]] std::uint32_t bindlessIndex(TextureHandle texture) override;
+    [[nodiscard]] TextureInfo textureInfo(TextureHandle texture) override;
     [[nodiscard]] std::uint32_t bindlessStorageIndex(TextureHandle texture, std::uint32_t mipLevel) override;
     [[nodiscard]] Result<SamplerHandle> createSampler(const SamplerDesc& desc) override;
     void destroy(SamplerHandle sampler) override;

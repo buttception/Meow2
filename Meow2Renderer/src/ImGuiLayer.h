@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -108,7 +109,19 @@ public:
     /// @param graph     The frame's graph, after the passes that draw the scene.
     /// @param frameSlot IRhiDevice::frameSlot().
     /// @param swapchain The acquired swapchain.
-    void addPasses(Renderer::RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain& swapchain);
+    /// @param reads     Engine textures the UI shows this frame (engineTexture()), as graph resources: the graph puts
+    ///                  them in ShaderRead before the UI pass.
+    void addPasses(Renderer::RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain& swapchain,
+                   std::span<const Renderer::GraphResource> reads = {});
+
+    /// @brief An ImGui texture ID for an engine texture, for `ImGui::Image()` this frame.
+    ///
+    /// The ID names a slot in a list that's cleared each newFrame(), and is turned into the texture's heap index only
+    /// when the frame is drawn, so a backend switch never leaves a stale index in ImGui. The texture must be in
+    /// ShaderRead when the UI pass runs: pass it to addPasses() as a read.
+    /// @param texture A sampled texture, alive until the frame is drawn.
+    /// @return The ID (an ImTextureID).
+    [[nodiscard]] std::uint64_t engineTexture(Rhi::TextureHandle texture);
 
     /// @brief Ends an ImGui frame that won't be drawn (minimised window, no swapchain image).
     void skipFrame();
@@ -200,6 +213,9 @@ private:
     UiFonts m_fonts;
     std::optional<Renderer::PipelineId> m_pipeline;
     std::vector<TextureSlot> m_textures;
+    std::vector<Rhi::TextureHandle> m_engineTextures; ///< This frame's engineTexture() slots.
+    /// @brief The bit that marks an engineTexture() ID; ImGui's own texture IDs are small slot numbers.
+    static constexpr std::uint64_t c_engineTextureBit = std::uint64_t{1} << 62;
     std::vector<PendingUpload> m_uploads;
     std::vector<Rhi::BufferHandle> m_spentStaging;
     std::array<FrameBuffers, Rhi::c_maxFramesInFlight> m_frames{};
