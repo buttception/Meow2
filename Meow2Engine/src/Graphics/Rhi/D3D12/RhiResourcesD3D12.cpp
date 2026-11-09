@@ -709,7 +709,7 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
                                                                                : D3D12_CULL_MODE_NONE,
                                     .FrontCounterClockwise = FALSE,
                                     .DepthClipEnable = TRUE};
-    pipelineDesc.DepthStencilState = {.DepthEnable = hasDepth ? TRUE : FALSE,
+    pipelineDesc.DepthStencilState = {.DepthEnable = hasDepth && desc.depthTest ? TRUE : FALSE,
                                       .DepthWriteMask = hasDepth && desc.depthWrite ? D3D12_DEPTH_WRITE_MASK_ALL
                                                                                     : D3D12_DEPTH_WRITE_MASK_ZERO,
                                       .DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL}; // reversed Z
@@ -727,6 +727,13 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     key.addValue(pipelineDesc.RasterizerState.CullMode);
     key.addValue(pipelineDesc.DepthStencilState.DepthWriteMask);
     key.addValue(pipelineDesc.BlendState.RenderTarget[0].BlendEnable);
+    // Every state that differs between our pipelines must be in the key, or the library hands back another pipeline
+    // with the same shaders (a wireframe view would load the solid one).
+    key.addValue(pipelineDesc.RasterizerState.FillMode);
+    key.addValue(pipelineDesc.DepthStencilState.DepthEnable);
+    key.addValue(pipelineDesc.BlendState.RenderTarget[0].SrcBlend);
+    key.addValue(pipelineDesc.BlendState.RenderTarget[0].DestBlend);
+    key.addValue(pipelineDesc.BlendState.RenderTarget[0].DestBlendAlpha);
     const std::wstring name = key.name(L"g");
     Result<ID3D12PipelineState*> state = libraryPipeline(
         name, [&](ID3D12PipelineState** out)

@@ -701,7 +701,7 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
     const bool hasDepth = desc.depthFormat != RhiFormat::Unknown;
     const VkPipelineDepthStencilStateCreateInfo depth{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = hasDepth ? VK_TRUE : VK_FALSE,
+        .depthTestEnable = hasDepth && desc.depthTest ? VK_TRUE : VK_FALSE,
         .depthWriteEnable = hasDepth && desc.depthWrite ? VK_TRUE : VK_FALSE,
         .depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL}; // reversed Z
     const bool additive = desc.blend == BlendMode::Additive;

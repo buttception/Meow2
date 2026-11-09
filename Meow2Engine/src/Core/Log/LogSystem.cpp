@@ -4,6 +4,7 @@
 #include "Meow2/Core/Log/LogSystem.h"
 
 #include "Core/CommandLine.h"
+#include "Core/Console.h"
 #include "Core/Log/LoggerImpl.h"
 #include "Meow2/Core/Log/ConsoleBuffer.h"
 #include "Meow2/Core/Process.h"
@@ -183,6 +184,7 @@ LogSystem::LogSystem(const LogSystemDesc& desc)
 
     if (desc.console)
     {
+        enableUtf8ConsoleOutput(); // lines are UTF-8; a Windows console would decode them with its old code page
         m_impl->sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
     }
     if (desc.consoleBuffer != nullptr)

@@ -27,6 +27,7 @@ struct GraphicsPipelineRequest
     std::string pixelEntry = "psMain";                    ///< Pixel entry point.
     Rhi::RhiFormat colorFormat = Rhi::RhiFormat::Unknown; ///< Format of the colour target.
     Rhi::RhiFormat depthFormat = Rhi::RhiFormat::Unknown; ///< Format of the depth target; Unknown for none.
+    bool depthTest = true;                                ///< Whether depth is tested (when there's a depth target).
     bool depthWrite = true;                               ///< Whether drawing updates depth.
     Rhi::CullMode cull = Rhi::CullMode::None;             ///< Which triangles to skip.
     Rhi::BlendMode blend = Rhi::BlendMode::None;          ///< How output combines with the target.

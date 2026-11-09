@@ -766,7 +766,8 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
                            std::uint64_t{m_desc.instanceCapacity} * sizeof(Shader::IndirectDraw);
                        for (std::uint32_t drawList = 0; drawList < MEOW2_DRAW_LIST_COUNT; ++drawList)
                        {
-                           list.setPipeline(m_pipelines.get(*m_drawPipelines[drawList]));
+                           list.setPipeline(
+                               m_pipelines.get(m_override ? m_override->lists[drawList] : *m_drawPipelines[drawList]));
                            list.setPushConstants(push);
                            list.drawIndirectCount(m_drawBuffer, m_countBuffer, m_desc.instanceCapacity,
                                                   drawList * listBytes, drawList * sizeof(std::uint32_t));
@@ -804,6 +805,7 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
             blended.emplace_back(index, static_cast<std::uint32_t>(m_meshes[mesh].indices.size()));
         }
     }
+    m_blendDraws = blended; // for overlay passes this frame
     if (!blended.empty())
     {
         graph.addPass({.name = "Blended",
@@ -813,7 +815,7 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
                        {
                            // After everything opaque, so they mix with it; vsBlend reads the instance from g_push.
                            begin(list, std::nullopt, std::nullopt);
-                           list.setPipeline(m_pipelines.get(*m_blendPipeline));
+                           list.setPipeline(m_pipelines.get(m_override ? m_override->blend : *m_blendPipeline));
                            for (const auto& [instance, indexCount] : blended)
                            {
                                Shader::PushConstants draw = push;
@@ -828,7 +830,91 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
     return colorResource;
 }
 
+Result<DrawPipelines> GpuScene::makeDrawPipelines(const DrawPipelineOptions& options)
+{
+    // The same lists as the scene's own pipelines (see create()), with the variant and states asked for.
+    constexpr std::array<std::pair<Rhi::CullMode, const char*>, MEOW2_DRAW_LIST_COUNT> c_lists{
+        std::pair{Rhi::CullMode::Back, "instances"}, std::pair{Rhi::CullMode::Front, "mirrored instances"},
+        std::pair{Rhi::CullMode::None, "double-sided instances"}};
+    DrawPipelines out;
+    for (std::uint32_t list = 0; list < MEOW2_DRAW_LIST_COUNT; ++list)
+    {
+        Result<PipelineId> draw =
+            m_pipelines.add(GraphicsPipelineRequest{.shader = m_desc.shader,
+                                                    .options = options.options,
+                                                    .colorFormat = m_desc.colorFormat,
+                                                    .depthFormat = Rhi::RhiFormat::D32Float,
+                                                    .depthTest = options.depthTest,
+                                                    .depthWrite = options.depthWrite,
+                                                    .cull = c_lists[list].first,
+                                                    .blend = options.blend,
+                                                    .fill = options.fill,
+                                                    .name = std::format("{}: {}", options.name, c_lists[list].second)});
+        if (!draw)
+        {
+            return Unexpected<Error>{draw.error()};
+        }
+        out.lists[list] = *draw;
+    }
+    Result<PipelineId> blend = m_pipelines.add(GraphicsPipelineRequest{
+        .shader = m_desc.shader,
+        .options = options.options,
+        .vertexEntry = "vsBlend",
+        .colorFormat = m_desc.colorFormat,
+        .depthFormat = Rhi::RhiFormat::D32Float,
+        .depthTest = options.depthTest,
+        .depthWrite = false,
+        .cull = Rhi::CullMode::None,
+        .blend = options.blend == Rhi::BlendMode::Additive ? Rhi::BlendMode::Additive : Rhi::BlendMode::Alpha,
+        .fill = options.fill,
+        .name = std::format("{}: blended instances", options.name)});
+    if (!blend)
+    {
+        return Unexpected<Error>{blend.error()};
+    }
+    out.blend = *blend;
+    return out;
+}
+
+void GpuScene::addOverlayPass(RenderGraph& graph, std::string name, const DrawPipelines& pipelines, GraphResource color,
+                              Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot)
+{
+    Rhi::IRhiDevice& device = m_device.device();
+    Shader::PushConstants push{};
+    push.frameBuffer = device.bindlessIndex(m_frameBuffers[frameSlot]);
+    push.instanceBuffer = device.bindlessIndex(m_instanceBuffer);
+    push.userData = device.bindlessIndex(m_meshBuffer);
+    graph.addPass(
+        {.name = std::move(name),
+         .accesses = {{m_depthResource, Rhi::ResourceState::DepthTarget},
+                      {m_countResource, Rhi::ResourceState::IndirectArgs},
+                      {m_drawResource, Rhi::ResourceState::IndirectArgs},
+                      {color, Rhi::ResourceState::ColorTarget}},
+         .record = [this, pipelines, push, colorTexture, depth, blended = m_blendDraws](Rhi::IRhiCommandList& list)
+         {
+             list.beginRendering(Rhi::RenderTargets{.color = colorTexture, .depth = depth});
+             const std::uint64_t listBytes = std::uint64_t{m_desc.instanceCapacity} * sizeof(Shader::IndirectDraw);
+             for (std::uint32_t drawList = 0; drawList < MEOW2_DRAW_LIST_COUNT; ++drawList)
+             {
+                 list.setPipeline(m_pipelines.get(pipelines.lists[drawList]));
+                 list.setPushConstants(push);
+                 list.drawIndirectCount(m_drawBuffer, m_countBuffer, m_desc.instanceCapacity, drawList * listBytes,
+                                        drawList * sizeof(std::uint32_t));
+             }
+             list.setPipeline(m_pipelines.get(pipelines.blend));
+             for (const auto& [instance, indexCount] : blended)
+             {
+                 Shader::PushConstants draw = push;
+                 draw.instance = instance;
+                 list.setPushConstants(draw);
+                 list.draw(indexCount);
+             }
+             list.endRendering();
+         }});
+}
+
 void GpuScene::endFrame(const RenderGraph& graph)
+
 {
     // Their copies are recorded; the device keeps them until the GPU has run them (deferred destruction).
     for (const Rhi::BufferHandle buffer : m_spentStaging)
