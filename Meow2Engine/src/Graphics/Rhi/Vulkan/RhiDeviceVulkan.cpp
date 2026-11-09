@@ -107,6 +107,7 @@ VulkanGpuFacts readGpuFacts(VkPhysicalDevice gpu, const VkPhysicalDeviceProperti
     facts.synchronization2 = features.v13.synchronization2 != VK_FALSE;
     facts.demoteToHelperInvocation = features.v13.shaderDemoteToHelperInvocation != VK_FALSE;
     facts.textureCompressionBc = features.core.features.textureCompressionBC != VK_FALSE;
+    facts.fillModeNonSolid = features.core.features.fillModeNonSolid != VK_FALSE;
     facts.storageImageWithoutFormat = features.core.features.shaderStorageImageWriteWithoutFormat != VK_FALSE;
     facts.timelineSemaphore = features.v12.timelineSemaphore != VK_FALSE;
     facts.bufferDeviceAddress = features.v12.bufferDeviceAddress != VK_FALSE;
@@ -382,6 +383,7 @@ Result<void> RhiDeviceVulkan::createDevice(const RhiDeviceDesc& desc)
     features.core.features.shaderInt64 = VK_TRUE;
     features.core.features.samplerAnisotropy = VK_TRUE;
     features.core.features.textureCompressionBC = VK_TRUE; // cooked textures are BC7 and BC5
+    features.core.features.fillModeNonSolid = VK_TRUE;     // wireframe debug views
     features.core.features.fragmentStoresAndAtomics = VK_TRUE;
     features.core.features.vertexPipelineStoresAndAtomics = VK_TRUE;
     features.core.features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;

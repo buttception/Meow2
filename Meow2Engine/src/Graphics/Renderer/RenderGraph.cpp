@@ -12,15 +12,15 @@
 
 namespace Meow2::Renderer
 {
-GraphResource RenderGraph::import(Rhi::BufferHandle buffer, Rhi::ResourceState state)
+GraphResource RenderGraph::import(Rhi::BufferHandle buffer, Rhi::ResourceState state, std::string name)
 {
-    m_resources.push_back({.handle = buffer, .state = state});
+    m_resources.push_back({.handle = buffer, .state = state, .initial = state, .name = std::move(name)});
     return {.index = static_cast<std::uint32_t>(m_resources.size() - 1)};
 }
 
-GraphResource RenderGraph::import(Rhi::TextureHandle texture, Rhi::ResourceState state)
+GraphResource RenderGraph::import(Rhi::TextureHandle texture, Rhi::ResourceState state, std::string name)
 {
-    m_resources.push_back({.handle = texture, .state = state});
+    m_resources.push_back({.handle = texture, .state = state, .initial = state, .name = std::move(name)});
     return {.index = static_cast<std::uint32_t>(m_resources.size() - 1)};
 }
 
@@ -28,6 +28,32 @@ void RenderGraph::addPass(GraphPass pass)
 {
     m_passes.push_back(std::move(pass));
     m_compiled = false;
+}
+
+void RenderGraph::insertPassAfter(std::uint32_t after, GraphPass pass)
+{
+    MEOW2_ASSERT(after < m_passes.size(), "No pass at that position");
+    MEOW2_ASSERT(!m_compiled, "Passes are inserted before compile()");
+    m_passes.insert(m_passes.begin() + after + 1, std::move(pass));
+}
+
+const std::string& RenderGraph::resourceName(GraphResource resource) const
+{
+    MEOW2_ASSERT(resource.index < m_resources.size(), "This resource isn't in this graph");
+    return m_resources[resource.index].name;
+}
+
+std::optional<Rhi::TextureHandle> RenderGraph::resourceTexture(GraphResource resource) const
+{
+    MEOW2_ASSERT(resource.index < m_resources.size(), "This resource isn't in this graph");
+    const auto* texture = std::get_if<Rhi::TextureHandle>(&m_resources[resource.index].handle);
+    return texture != nullptr ? std::optional{*texture} : std::nullopt;
+}
+
+Rhi::ResourceState RenderGraph::initialState(GraphResource resource) const
+{
+    MEOW2_ASSERT(resource.index < m_resources.size(), "This resource isn't in this graph");
+    return m_resources[resource.index].initial;
 }
 
 void RenderGraph::compile()

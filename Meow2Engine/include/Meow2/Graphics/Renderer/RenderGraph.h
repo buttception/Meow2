@@ -9,6 +9,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
+#include <span>
 #include <string>
 #include <variant>
 #include <vector>
@@ -20,6 +22,15 @@ struct GraphResource
 {
     std::uint32_t index = 0; ///< Position in the graph.
 };
+
+/// @brief Whether a pass in this state changes the resource (as opposed to only reading it).
+/// @param state The state a pass declared.
+/// @return True for targets, shader writes and copy targets.
+[[nodiscard]] constexpr bool isWriteState(Rhi::ResourceState state) noexcept
+{
+    return state == Rhi::ResourceState::ColorTarget || state == Rhi::ResourceState::DepthTarget ||
+           state == Rhi::ResourceState::ShaderWrite || state == Rhi::ResourceState::CopyTarget;
+}
 
 /// @brief What a pass does with a resource. Plain data.
 struct GraphAccess
@@ -68,18 +79,56 @@ public:
     /// @brief Adds a buffer.
     /// @param buffer The buffer.
     /// @param state  The state it's in now.
+    /// @param name   Shown by debugging tools (the Renderer's render-graph view); may be empty.
     /// @return Its ID in this graph.
-    [[nodiscard]] GraphResource import(Rhi::BufferHandle buffer, Rhi::ResourceState state);
+    [[nodiscard]] GraphResource import(Rhi::BufferHandle buffer, Rhi::ResourceState state, std::string name = {});
 
     /// @brief Adds a texture.
     /// @param texture The texture.
     /// @param state   The state it's in now.
+    /// @param name    Shown by debugging tools; may be empty.
     /// @return Its ID in this graph.
-    [[nodiscard]] GraphResource import(Rhi::TextureHandle texture, Rhi::ResourceState state);
+    [[nodiscard]] GraphResource import(Rhi::TextureHandle texture, Rhi::ResourceState state, std::string name = {});
 
     /// @brief Adds a pass, after the passes already added.
     /// @param pass The pass.
     void addPass(GraphPass pass);
+
+    /// @brief Adds a pass right after another one, before compile(): debugging tools use it to copy what a pass
+    ///        wrote, at that point of the frame.
+    /// @param after The position of the pass it follows.
+    /// @param pass  The pass.
+    /// @pre `after` is a pass of this graph and compile() hasn't run (asserted).
+    void insertPassAfter(std::uint32_t after, GraphPass pass);
+
+    /// @brief The passes, in the order they run.
+    /// @return Them; valid until the next addPass() or insertPassAfter().
+    [[nodiscard]] std::span<const GraphPass> passes() const
+    {
+        return m_passes;
+    }
+
+    /// @brief How many resources the graph has.
+    /// @return The count; resource indices are below it.
+    [[nodiscard]] std::uint32_t resourceCount() const
+    {
+        return static_cast<std::uint32_t>(m_resources.size());
+    }
+
+    /// @brief A resource's name, as given to import().
+    /// @param resource The resource.
+    /// @return The name; empty if none was given.
+    [[nodiscard]] const std::string& resourceName(GraphResource resource) const;
+
+    /// @brief A resource's texture.
+    /// @param resource The resource.
+    /// @return The texture, or std::nullopt for a buffer.
+    [[nodiscard]] std::optional<Rhi::TextureHandle> resourceTexture(GraphResource resource) const;
+
+    /// @brief A resource's state when it was imported, before the first pass.
+    /// @param resource The resource.
+    /// @return The state.
+    [[nodiscard]] Rhi::ResourceState initialState(GraphResource resource) const;
 
     /// @brief Decides the barriers and batches.
     /// @pre Each access names a resource of this graph (asserted).
@@ -115,6 +164,8 @@ private:
     {
         std::variant<Rhi::BufferHandle, Rhi::TextureHandle> handle; ///< The resource.
         Rhi::ResourceState state = Rhi::ResourceState::Undefined;   ///< Its state as compile() walks the passes.
+        Rhi::ResourceState initial = Rhi::ResourceState::Undefined; ///< Its state when imported.
+        std::string name;                                           ///< For debugging tools.
     };
 
     /// @brief Records one batch.

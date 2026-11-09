@@ -689,19 +689,21 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     pipelineDesc.pRootSignature = m_rootSignature.Get();
     pipelineDesc.VS = {.pShaderBytecode = desc.vertexCode.data(), .BytecodeLength = desc.vertexCode.size()};
     pipelineDesc.PS = {.pShaderBytecode = desc.pixelCode.data(), .BytecodeLength = desc.pixelCode.size()};
-    pipelineDesc.BlendState.RenderTarget[0] = {.BlendEnable = desc.blend == BlendMode::Alpha ? TRUE : FALSE,
+    const bool additive = desc.blend == BlendMode::Additive;
+    pipelineDesc.BlendState.RenderTarget[0] = {.BlendEnable = desc.blend != BlendMode::None ? TRUE : FALSE,
                                                .LogicOpEnable = FALSE,
-                                               .SrcBlend = D3D12_BLEND_SRC_ALPHA,
-                                               .DestBlend = D3D12_BLEND_INV_SRC_ALPHA,
+                                               .SrcBlend = additive ? D3D12_BLEND_ONE : D3D12_BLEND_SRC_ALPHA,
+                                               .DestBlend = additive ? D3D12_BLEND_ONE : D3D12_BLEND_INV_SRC_ALPHA,
                                                .BlendOp = D3D12_BLEND_OP_ADD,
                                                .SrcBlendAlpha = D3D12_BLEND_ONE,
-                                               .DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA,
+                                               .DestBlendAlpha = additive ? D3D12_BLEND_ONE : D3D12_BLEND_INV_SRC_ALPHA,
                                                .BlendOpAlpha = D3D12_BLEND_OP_ADD,
                                                .LogicOp = D3D12_LOGIC_OP_NOOP,
                                                .RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL};
     pipelineDesc.SampleMask = UINT_MAX;
     // Clockwise front faces, as on Vulkan (CullMode).
-    pipelineDesc.RasterizerState = {.FillMode = D3D12_FILL_MODE_SOLID,
+    pipelineDesc.RasterizerState = {.FillMode = desc.fill == FillMode::Wireframe ? D3D12_FILL_MODE_WIREFRAME
+                                                                                 : D3D12_FILL_MODE_SOLID,
                                     .CullMode = desc.cull == CullMode::Back    ? D3D12_CULL_MODE_BACK
                                                 : desc.cull == CullMode::Front ? D3D12_CULL_MODE_FRONT
                                                                                : D3D12_CULL_MODE_NONE,

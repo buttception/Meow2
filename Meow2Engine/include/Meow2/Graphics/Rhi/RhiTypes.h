@@ -204,8 +204,16 @@ enum class CullMode : std::uint8_t
 /// @brief How a graphics pipeline combines its output with what's in the target.
 enum class BlendMode : std::uint8_t
 {
-    None, ///< Overwrite.
-    Alpha ///< Straight alpha: `src × srcAlpha + dst × (1 − srcAlpha)`; alpha accumulates the same way. For UI.
+    None,    ///< Overwrite.
+    Alpha,   ///< Straight alpha: `src × srcAlpha + dst × (1 − srcAlpha)`; alpha accumulates the same way. For UI.
+    Additive ///< `src + dst`, alpha too: counting (overdraw views), light accumulation.
+};
+
+/// @brief How triangles are filled.
+enum class FillMode : std::uint8_t
+{
+    Solid,    ///< Filled.
+    Wireframe ///< Only their edges, one pixel wide: for debug views.
 };
 
 /// @brief A rectangle drawing is clipped to, in pixels from the target's top-left corner. Plain data.
@@ -230,6 +238,7 @@ struct GraphicsPipelineDesc
     bool depthWrite = true;                     ///< Whether drawing updates depth.
     CullMode cull = CullMode::None;             ///< Which triangles to skip.
     BlendMode blend = BlendMode::None;          ///< How output combines with the target.
+    FillMode fill = FillMode::Solid;            ///< Filled triangles, or only their edges.
     std::string name = "Pipeline";              ///< Shown in debugging tools.
 };
 

@@ -251,6 +251,7 @@ Looked into for M6's capture button; nothing added yet, because each needs an SD
 - Storage writes in vertex and pixel shaders; storage images written without a declared format
 - Multi-draw indirect, indirect draw count, 64-bit integers in shaders
 - BC texture compression (BC7, BC5)
+- Wireframe fill (`fillModeNonSolid`), for the debug views
 
 On D3D12:
 
