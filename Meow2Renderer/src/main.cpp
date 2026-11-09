@@ -763,10 +763,12 @@ int main(int argc, char** argv)
                     posedAnimation = -1;
                 }
 
-                // Mouse and keys drive the camera unless the UI is using them (a window under the cursor, a text box).
+                // The mouse drives the camera unless it's over the UI; keys do unless a text field is being typed in. (Not
+                // WantCaptureKeyboard: with keyboard navigation that's true whenever any window has focus, which stopped
+                // WASD after a click on a window.)
                 Meow2::RendererApp::CameraInput cameraInput{};
                 const bool uiWantsMouse = ui && showUi && ImGui::GetIO().WantCaptureMouse;
-                const bool uiWantsKeys = ui && showUi && ImGui::GetIO().WantCaptureKeyboard;
+                const bool uiWantsKeys = ui && showUi && ImGui::GetIO().WantTextInput;
                 if (!uiWantsMouse)
                 {
                     const Meow2::Input::Vec2 delta = input.mouseDelta();
