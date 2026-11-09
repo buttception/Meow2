@@ -2,7 +2,7 @@
 // three lists (MEOW2_DRAW_LIST_*). vsMain draws the lists, vsBlend the blended instances the CPU sorted, and psMain
 // shades both with metallic-roughness PBR. Indices and vertices are pulled from heap buffers: no vertex input at all.
 #include "Common.hlsli"
-#include "Atmosphere.hlsli" // c_pi, toneMapNeutral, the sky lookups
+#include "Atmosphere.hlsli" // c_pi, the sky lookups
 
 /// Signed distance from a plane, positive inside.
 float planeDistance(float4 plane, float3 position)
@@ -348,7 +348,8 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
     color += (diffuseColor * diffuseAmbient + environmentBrdf(f0, nDotV, roughness) * specularAmbient) * occlusion;
     color += emissive;
 
-    // Exposure and the tone curve, in linear light; the target's sRGB view encodes the result.
-    color = toneMapNeutral(color * frame.sunColor.w);
+    // Exposure, in linear light. The tone curve comes later, in its own pass (ToneMap.hlsl), so the scene's colour can
+    // be inspected and post-processed as it is.
+    color *= frame.sunColor.w;
     return float4(color, baseColor.a);
 }

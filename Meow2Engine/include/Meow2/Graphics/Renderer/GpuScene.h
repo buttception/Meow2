@@ -228,8 +228,10 @@ public:
     /// @param color     The colour target when `swapchain` is null.
     /// @param depth     The depth target, D32Float.
     /// @param clear     The colour to clear to.
-    void addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain* swapchain, Rhi::TextureHandle color,
-                   Rhi::TextureHandle depth, const Math::Color& clear);
+    /// @return The colour target in the graph, for passes after these (tone mapping, debugging); an unset resource
+    ///         when drawing to a swapchain.
+    GraphResource addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain* swapchain,
+                            Rhi::TextureHandle color, Rhi::TextureHandle depth, const Math::Color& clear);
 
     /// @brief Records the state of the graph's resources, once it's compiled. Call before the next addPasses().
     /// @param graph The graph.

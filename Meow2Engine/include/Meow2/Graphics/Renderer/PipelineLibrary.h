@@ -30,6 +30,7 @@ struct GraphicsPipelineRequest
     bool depthWrite = true;                               ///< Whether drawing updates depth.
     Rhi::CullMode cull = Rhi::CullMode::None;             ///< Which triangles to skip.
     Rhi::BlendMode blend = Rhi::BlendMode::None;          ///< How output combines with the target.
+    Rhi::FillMode fill = Rhi::FillMode::Solid;            ///< Filled triangles, or only their edges (debug views).
     std::string name = "Pipeline";                        ///< Shown in debugging tools.
 
     /// @brief Requests are equal when every field is.

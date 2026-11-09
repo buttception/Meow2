@@ -124,6 +124,7 @@ Result<Rhi::PipelineHandle> PipelineLibrary::build(const Entry& entry)
                                                           .depthWrite = request.depthWrite,
                                                           .cull = request.cull,
                                                           .blend = request.blend,
+                                                          .fill = request.fill,
                                                           .name = request.name});
 }
 

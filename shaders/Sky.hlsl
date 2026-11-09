@@ -383,6 +383,6 @@ float4 psSky(SkyVertex input) : SV_Target
         const float3 toSun = sampleTransmittance(sky.transmittanceLut, sky.linearSampler, viewHeight, sun.y);
         luminance += sky.sunIlluminance.rgb * toSun / (c_pi * angularRadius * angularRadius);
     }
-    // Exposure and the tone curve, as the scene's shading does.
-    return float4(toneMapNeutral(min(luminance * frame.sunColor.w, 60000.0)), 1.0);
+    // Exposure, as the scene's shading does; the tone curve is the Tone map pass's. Kept below half-float's limit.
+    return float4(min(luminance * frame.sunColor.w, 60000.0), 1.0);
 }
