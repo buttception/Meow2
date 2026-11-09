@@ -2,7 +2,7 @@
 /// @brief Linux/Android CrashHandler: not implemented yet, so it only records the path and says so in the log.
 ///
 /// Writing dumps on Linux/Android needs an out-of-process writer such as crashpad or breakpad (a signal handler
-/// can't safely do the work itself). That comes with the Platforms milestone (M12).
+/// can't safely do the work itself). That comes with the Platforms milestone (M13).
 
 #include "Meow2/Core/Crash/CrashHandler.h"
 

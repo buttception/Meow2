@@ -17,7 +17,7 @@ ViewportWidget::ViewportWidget(QWidget* parent)
     setAttribute(Qt::WA_NativeWindow);       // its own OS window, for the swapchain
     setAttribute(Qt::WA_PaintOnScreen);      // Qt doesn't paint it through the backing store...
     setAttribute(Qt::WA_NoSystemBackground); // ...nor clear it before the swapchain presents
-    setFocusPolicy(Qt::StrongFocus);         // keyboard input for the viewport camera (QtInputSource, M9)
+    setFocusPolicy(Qt::StrongFocus);         // keyboard input for the viewport camera (QtInputSource, M7)
     setMinimumSize(64, 64);
 }
 

@@ -2,7 +2,7 @@
 
 The rendering test bed and showcase: opens a glTF scene (or a grid of 100,000 cubes), draws it through the GPU-driven path on Vulkan or D3D12, and puts a Dear ImGui shell on top to pick scenes and read stats.
 
-- **Status:** 🟨 M6. ImGui shell, scene picker and stats (#172 / PR #173). Log console, debug-tool settings window and saved window layout come later in M6.
+- **Status:** 🟨 M6. ImGui shell, scene picker and stats (#172 / PR #173); log console, debug-tool settings, saved window layout, and orbit, fly and glTF cameras with animations (#188).
 
 ## Using it
 
@@ -16,6 +16,14 @@ build\windows-msvc-debug\bin\Meow2Renderer.exe
 | F10 | Switches between Vulkan and D3D12 ([Rhi](Rhi.md#switching-backends-while-running)) |
 | F11 | Captures a frame in RenderDoc (`rhi.renderDoc = true`, or launched from RenderDoc) |
 
+**Camera** (Camera window, or `renderer.camera`): keys and the mouse move it unless the UI has them (a window under the cursor, a text field).
+
+| Mode | Controls |
+|---|---|
+| Orbit | Left-drag turns around the scene's centre, middle-drag pans, the wheel zooms; SPIN turns it slowly by itself |
+| Fly (noclip) | W/A/S/D moves, Q/E goes down/up, right-drag looks around, Shift is 4× faster, the wheel sets the speed (also a slider). Starts where the camera was |
+| Scene camera | Looks through one of the glTF file's cameras (listed by name), perspective or orthographic |
+
 ### Windows
 
 - **Stats:** frame time and FPS with a graph of the last 240 frames, the backend and GPU, the swapchain size, GPU memory against the OS budget, validation errors (shown only when there are some), the open scene's entities, instances, meshes, materials and textures and how long it took to open. **Memory** lists CPU memory (Debug and RelWithDebInfo) and GPU memory per `MemTag`. Buttons do the same as F10 and F11.
@@ -26,6 +34,11 @@ build\windows-msvc-debug\bin\Meow2Renderer.exe
   - **Any file** opens a `.gltf` or `.glb` by path.
 
   The new scene is opened before the old one goes, so a file that fails to open leaves the current scene on screen, with the error in the window.
+- **Console:** every line the app logs, coloured by level (debug grey, info white, warnings red, errors bright red), in Consolas. Toggles per level, a text filter (message or logger name, any case), CLEAR, COPY (the shown lines, as the log file has them) and FOLLOW (keeps the newest line in view unless you scroll up). Up to 2000 lines; older ones are dropped, and the window says how many.
+- **Settings:** the debug tools and start-up options below, as checkboxes and the start backend. A change is saved to `Meow2Renderer.toml` at once; the window marks what applies on restart (validation, vsync, RenderDoc, the sky, the backend) or with the next scene (texture compression).
+- **Camera:** the mode, the file's cameras, and an animation player: pick one of the file's animations to play it on the scene (PLAY/PAUSE, LOOP, a time slider). A glTF camera moved by the animation follows it; animated meshes move too. "(none)" puts the scene back at rest.
+
+Window positions, sizes and docking are kept in the config (`renderer.uiLayout`, ImGui's own text) and restored at the next start.
 
 ### Settings
 
@@ -35,6 +48,10 @@ build\windows-msvc-debug\bin\Meow2Renderer.exe
 | `renderer.sky` | true | Hillaire's sky behind the scene and image-based lighting from it; false for the flat ambient light ([Rendering](Rendering.md#sky-and-image-based-lighting)) |
 | `renderer.sunElevation`, `renderer.sunDirection` | 35, 30 | The starting sun, in degrees: above the horizon, and around +Y from +Z towards +X. The Stats window's SUN sliders change it, with intensity and exposure |
 | `renderer.compressTextures` | true (false in Debug) | Cook glTF textures to BC7 and BC5; cooked textures are kept in `cache/textures` next to the exe, so only a model's first load compresses ([Rendering](Rendering.md#cooked-textures-bc7-bc5-and-the-cache)) |
+| `rhi.validation`, `rhi.vsync`, `rhi.renderDoc`, `rhi.renderDocOpenWindow`, `rhi.backend` | on except Release, true, false, true, vulkan | The debug tools, also in the Settings window ([Rhi](Rhi.md)) |
+| `renderer.camera` | orbit | How each scene starts: `orbit`, `fly` or `scene` (a glTF camera) |
+| `renderer.sceneCamera`, `renderer.animation` | 0, -1 | Which of the file's cameras `scene` uses, and which animation plays (-1 none): fixed viewpoints for checks and captures |
+| `renderer.uiLayout` | empty | ImGui's window layout, written by the app |
 | `renderer.scene` | empty | Scene to open at start: a sample name or a `.gltf`/`.glb` path; empty for the cube grid |
 | `renderer.sampleAssets` | `<repo>/assets/gltf-sample-assets` | Where the samples are |
 | `renderer.instances` | 100000 | Cubes in the cube grid |
@@ -54,6 +71,9 @@ Settings given with `--set` are saved to `Meow2Renderer.toml` like the rest ([Co
 | `SceneView.*` | One open scene: its `Scene`, transform hierarchy, `GpuScene` and camera target. Opening another makes a new view |
 | `ImGuiLayer.*` | Dear ImGui on the engine: input, textures, drawing |
 | `RendererUi.*` | The Stats and Scenes windows, the sample list, frame times |
+| `ConsoleWindow.*` | The Console window over the engine's `Log::ConsoleBuffer` ([Logging](Logging.md#in-app-console)) |
+| `SettingsWindow.*` | The Settings window, and the table of settings with their defaults: `main.cpp` reads the same table, so the app and the window never disagree |
+| `CameraControls.*` | Orbit and fly cameras, glTF camera poses and lenses, the Camera window |
 
 Dear ImGui (v1.93.0-docking, a submodule) is built as `meow2_imgui` only with the Renderer: the engine and Player never see it. Its memory is counted under `MemTag::ImGui`.
 
@@ -77,8 +97,16 @@ ImGui's own backends aren't used. They'd bring SDL into the app and a separate V
 
 `SceneView::openModel()` imports the file ([Gltf](Gltf.md)), creates a `GpuScene` sized for its primitives, uploads it, makes the entities and frames the camera with its bounds. The `PipelineLibrary` gives every scene the same pipelines (culling, three draw lists, blended): adding a request it already has returns the existing pipeline.
 
-The camera circles the scene's bounding sphere, starting in front of it (on +Z: glTF models face +Z); its near plane follows the scene's size (1 % of the radius, between 1 mm and 10 cm), so small models aren't clipped.
+### Cameras
+
+A stopgap until the editor's camera rigs (M7). Each new scene fits the cameras to it: the orbit circles its bounding sphere from +Z (glTF models face +Z, so the first view is the front), and the fly speed is half its radius per second. The near plane follows the scene's size (1 % of the radius, between 1 mm and 10 cm), so small models aren't clipped; depth is reversed and infinite, so there's no far plane.
+
+The maths is in plain functions over plain structs (`updateOrbit`, `updateFly`, …) fed a `CameraInput` built from the `InputSystem`, so tests drive them without a window. Yaw and pitch are kept, not a quaternion: the camera never rolls, and pitch stops just short of straight up or down, where yaw would have no meaning.
+
+**glTF cameras** look along their node's −Z with +X right. The importer mirrors X ([Gltf](Gltf.md#right-handed-to-left-handed)), so in the engine the node's −Z is still the view direction and its −X is right: `sceneCameraTransform` adds a half turn about the node's Y, which makes it an engine camera (+Z forward, +X right). The aspect ratio is the window's, not the file's; `zfar` is ignored for perspective cameras (infinite depth).
+
+**Animations** are posed on the `Scene`: each frame an animation is chosen, every node's `LocalTransform` is set from `Assets::animatedTransform` (its rest transform where nothing animates it), the hierarchy updates, and the instances are gathered again. That's a few microseconds for sample scenes; a real animation system (blending, skinning, only the animated nodes) is M12's.
 
 ## Tests
 
-`RendererApp.*` (`Meow2Renderer/tests/`): key mapping, the sample list (on a fake samples folder), model-name checks for the fetch command, frame times. The ImGui pass itself is checked by hand and by the RHI tests of its pieces: `RhiGpu*.RhiStatesTest.*` (scissor, alpha blending).
+`RendererApp.*` (`Meow2Renderer/tests/`): key mapping, the sample list (on a fake samples folder), model-name checks for the fetch command, frame times; the console's filter and its copy of the buffer (`ConsoleWindow.*`); settings written and saved, and what needs a restart (`SettingsWindow.*`); the layout's round trip through ImGui and the TOML file (`ImGuiLayout.*`); orbit, fly and glTF cameras (`CameraControls.*`). The ImGui pass itself is checked by hand and by the RHI tests of its pieces: `RhiGpu*.RhiStatesTest.*` (scissor, alpha blending).

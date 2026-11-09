@@ -72,6 +72,23 @@ private:
 - **There's no global logger.** Code that needs to log takes a `Logger&` in its constructor.
 - `MEOW2_LOG_FATAL(log, ...)` never returns. It writes the line, flushes every sink, breaks into the debugger if one is attached, then aborts. The crash handler, later in M1, adds a `.dmp` next to the log.
 
+## In-app console
+
+An app that shows its log on screen (Meow2Renderer's Console window, later the editor's console dock) gives its `LogSystem` a `ConsoleBuffer`:
+
+```cpp
+Meow2::Log::ConsoleBuffer consoleLines{2000};   // declared first: every logger writes into it
+Meow2::Log::LogSystem logSystem{{.appName = "Renderer", .directory = logDirectory, .consoleBuffer = &consoleLines}};
+...
+std::vector<Meow2::Log::LogLine> lines;
+const std::uint64_t missed = consoleLines.linesSince(next, lines);   // the UI, once a frame
+```
+
+- It's a **ring** of the last N lines. Each line has a sequence number; a reader keeps the next one it hasn't seen and asks for what came since, and is told how many it missed if it fell more than N lines behind.
+- **All its memory is taken in the constructor**: one fixed slot per line (about 1 KB: time, level, a 31-byte logger name, a 1000-byte message). `add()` copies into a slot and never allocates, so logging stays cheap on every thread. It also keeps the leak check honest: the buffer has to exist before the check (which needs a logger), so lines it allocated during the run would otherwise be reported as leaks at exit.
+- A longer message is cut on a UTF-8 character boundary and ends in `…`; the log file keeps it whole.
+- The sink that fills it (`ConsoleRingSink`, in `LogSystem.cpp`) formats only the time; level, logger name and text stay separate fields, so a console can colour and filter them.
+
 ## Asserts in the log
 
 `ScopedAssertLogging` (from `Meow2/Core/Log/AssertLogging.h`) installs an assert handler that writes the failure to the log as an `error` and flushes it, before the usual stderr output and break/abort (see [Asserts](Asserts.md)):
@@ -99,10 +116,11 @@ Its destructor restores the previous handler.
 - `Core.Logger.*`: line format, level names, minimum level, shared sinks, braces in messages, debug compiled out of Release, and `fatal` (death test, then the file is checked).
 - `Core.LogSystem.*`: folder creation and file name, falling back to the console when the folder is unusable, `--log-dir` parsing, the default folder.
 - `Core.AssertLogging.*`: a failed assert ends up in the log (death test), and the previous handler is restored.
+- `Core.ConsoleBuffer.*`: the newest lines kept in order, reading only new lines and counting missed ones, many writers with a reader at once (TSan), long messages cut on a character boundary; `Core.LogSystem.WritesToTheConsoleBuffer`.
 
 ## Not yet
 
-- The in-app console window (ImGui in Meow2Renderer, a Qt dock in Meow2Editor) gets its ring-buffer sink with those apps (M6/M9).
+- The editor's console dock (M7) on the same `ConsoleBuffer`.
 - The runtime level from `config.toml` comes with the Config feature.
 - Release builds are GUI-subsystem executables (no console window) since #61.
 

@@ -77,7 +77,7 @@ The last command does the same check as the release workflow. Run it from a plai
 
 ## Not yet
 
-- Linux and Android packages (M12).
+- Linux and Android packages (M13).
 - An installer (MSI) or code signing.
 
 See also: techstack.md §21, [Building](Building.md), [CI](CI.md).

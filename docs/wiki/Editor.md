@@ -1,12 +1,12 @@
 # Editor
 
-Meow2Editor is a **Qt** application. Right now it is a main window with a native viewport. The RHI will render into that viewport (M5), and the docks, editor commands and the MCP server come with M9 (techstack.md §20). Like the Player and Renderer, it remembers its window size, position, maximized state and fullscreen mode in its [config file](Config.md).
+Meow2Editor is a **Qt** application. Right now it is a main window with a native viewport. The RHI will render into that viewport (M5), and the docks, editor commands and the MCP server come with M7 (techstack.md §20). Like the Player and Renderer, it remembers its window size, position, maximized state and fullscreen mode in its [config file](Config.md).
 
 - Code:
   - `Meow2Editor/src/`: `EditorMainWindow`, `ViewportWidget`, `WindowPlacement`, `main.cpp`;
   - built as the `Meow2EditorCore` library plus the exe, so the tests use the same code.
 - Requirements: Qt ≥ 6.8 (Widgets), tested with 6.12.0. Installing Qt and pointing CMake at it is on the [Building → Qt](Building.md#qt) page.
-- Status: 🟨 M9. Main window and window settings are done (#58).
+- Status: 🟨 M7. Main window and window settings are done (#58).
 
 ## Settings
 

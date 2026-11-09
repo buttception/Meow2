@@ -19,7 +19,7 @@ namespace Meow2::Rhi
 namespace
 {
 // Slots of each heap. One million descriptors would cost tens of MB before anything uses them; these are enough for
-// M7's sample scenes and can grow with the first scene that needs it.
+// M6's sample scenes and can grow with the first scene that needs it.
 constexpr std::uint32_t c_resourceHeapSize = 1U << 16U;
 constexpr std::uint32_t c_samplerHeapSize = 256;
 

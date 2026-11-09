@@ -78,7 +78,7 @@ Engine code is grouped by **subsystem**, then **module**, then (in `src/` only) 
 | `Math` | files directly in `Math/` | — |
 | `Graphics` | `Rhi`, `Shader`, `Renderer` | `Vulkan`, `D3D12` (Rhi), `Dxc` (Shader) |
 | `Assets` | files directly in `Assets/` (asset core), `Shader`, `Texture`, `Gltf` | — |
-| `Physics` | files directly in `Physics/` | `Jolt` (later `PhysX`, `Box3D`) |
+| `Physics` | files directly in `Physics/` | one per library (`Box3D`, `Jolt`, `PhysX`; §14) |
 | `GameUi` | files directly in `GameUi/` | — |
 | `Packaging` | files directly in `Packaging/` | — |
 
@@ -108,7 +108,7 @@ Examples:
 | `MEOW2_BUILD_PLAYER` | ON | |
 | `MEOW2_BUILD_TESTS` | ON | |
 | `MEOW2_GPU_TESTS` | OFF | Tests needing a GPU (labels `gpu`, `visual`) |
-| `MEOW2_PHYSICS_BACKEND` | `Jolt` | `Jolt` now; `PhysX`, `Box3D` reserved |
+| `MEOW2_PHYSICS_BACKEND` | **⚠ OPEN** (M8) | The physics library: Box3D, Jolt or PhysX, decided in M8; `None` builds without physics |
 | `MEOW2_SIMD` | `AVX2` | x64 instruction set for the whole build: `AVX2` (+ FMA3, F16C) or `SSE4.2`; every app checks the CPU at startup (§10) |
 | `MEOW2_SHADER_TOOLS` | ON | Downloads the pinned DXC (`MEOW2_DXC_DIR` uses an unpacked release instead); off, shaders can't be compiled, only loaded |
 
@@ -147,7 +147,7 @@ ctest --preset windows-msvc-debug -L unit
 | Shader | `ShaderCompiler` | DXC (HLSL → DXIL / SPIR-V) | Interface leaves room for a custom shader language (§12) |
 | Renderer | `Renderer`, render graph | on RHI only | |
 | Assets | `AssetManager`, `importGltf`, `decodeImage` | asset core and shader assets (M4, §13a); glTF **2.0** importer, `.gltf` and `.glb`, through **cgltf**; PNG/JPEG through **stb_image**; textures cooked to BC7/BC5 `.m2texture` through **DirectXTex** | §13, §13a |
-| Physics | `PhysicsWorld`, `RigidBody`, `Shape`, `PhysicsDebugDraw` | **Jolt** | PhysX / Box3D selectable at build time later (§14) |
+| Physics | `PhysicsWorld`, `RigidBody`, `Shape`, `PhysicsDebugDraw` | **⚠ OPEN**: Box3D, Jolt or PhysX | selected at build time, or `None` (§14) |
 | GameUI | `UiContext`, widgets | in-house, drawn via Renderer | Used by `Meow2Player` |
 | Packaging | `GamePackager` | in-house | Editor export |
 
@@ -175,7 +175,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | SDL3 release-3.4.18 | window, input, gamepad | zlib | submodule; static, audio/camera/GPU/render subsystems off; only included under `src/Platform/**/Sdl/`. Linux needs X11/Wayland dev packages to build it ([Building](docs/wiki/Building.md#linux-packages)) |
 | DirectXMath may2026 | math | MIT | submodule; header-only, own INTERFACE target (`DirectXMath::DirectXMath`, linked PUBLIC: the `Meow2/Math` public-header exception); a `sal.h` shim (`Meow2Engine/shims/`) on its include path off Windows |
 | spdlog v1.17.0 | logging (bundled fmt; static library, no default logger, wchar file names on Windows) | MIT | submodule |
-| JoltPhysics | physics | MIT | submodule |
+| Physics library | physics | — | **⚠ OPEN** (M8, §14): Box3D, Jolt or PhysX, a submodule once chosen (needs approval) |
 | Dear ImGui v1.93.0-docking | Meow2Renderer UI | MIT | submodule (owner request, 2026-11-07); built as `meow2_imgui` only with the Renderer, never in the engine or Player; memory under `MemTag::ImGui`; its own backends aren't used: input comes from engine events and it draws through the RHI (`shaders/ImGui.hlsl`). `IMGUI_DISABLE_OBSOLETE_FUNCTIONS` |
 | Vulkan-Headers, volk vulkan-sdk-1.4.363.0 | Vulkan headers + loader-less function loading | Apache-2.0 / MIT | submodule; volk static, own target, X11 and Wayland types declared by volk (no X headers needed) |
 | VulkanMemoryAllocator v3.5.0 | VK memory | MIT | submodule; implementation in its own library, outside the engine's warnings |
@@ -261,7 +261,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
 - **Sinks:**
   - **File:** one file per run, `Meow2<App>_<yyyy-mm-dd_hh-mm-ss>.log`, in the log folder, rotating by size. All configs.
   - **Console (stdout, colour):** Debug and RelWithDebInfo only. Release executables are built with the Windows GUI subsystem, so there's no console window.
-  - **In-app console:** thread-safe ring buffer (`ConsoleRingSink`) designed in M1, shown as an ImGui window in Meow2Renderer (M6) and a Qt dock in Meow2Editor (M9). Qt widgets are updated only on the GUI thread (queued connection).
+  - **In-app console:** the composition root owns a `Log::ConsoleBuffer` (a thread-safe ring of the last lines, all its memory taken up front so logging never allocates), filled by a `ConsoleRingSink`; shown as an ImGui window in Meow2Renderer (M6) and a Qt dock in Meow2Editor (M7). Qt widgets are updated only on the GUI thread (queued connection).
   - Android `logcat` sink later.
 - **Log folder:** `logs/` **next to the executable** by default. A `--log-dir <path>` command-line option (or `log.dir` in the config) overrides it. When the executable is launched from the Visual Studio solution, CMake sets the debugger's command arguments (`VS_DEBUGGER_COMMAND_ARGUMENTS`) to `--log-dir <repo>/logs`, so runs from the IDE log into the repo's `logs/` folder (git-ignored). Run directly, the same exe logs next to itself.
 - Loggers are thread-safe (`_mt` sinks). The crash handler flushes all loggers.
@@ -335,7 +335,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
   5. A switch that fails (no device, or an owner can't restore) goes back to the old backend, so the app keeps running.
   - Rule this implies: nothing above the RHI may cache backend-native handles or pointers. Only engine handles, which are re-bound after the swap.
   - It costs a hitch of seconds, not a seamless switch. That is fine for comparing backends in Meow2Renderer.
-- **Bindless and GPU-driven** (owner decision 2026-11-06): one global descriptor heap and one fixed binding layout (Vulkan: set 0, binding 0 the sampler heap, binding 1 the mutable resource heap, passed to DXC explicitly); shaders get indices through push constants and index `ResourceDescriptorHeap`. On Vulkan DXC emulates that with descriptor indexing and `VK_EXT_mutable_descriptor_type`; on D3D12 it needs SM 6.6. Drawing is indirect with a count buffer, vertices are pulled from buffers, culling runs in compute. Older GPUs and Android need a check before M12.
+- **Bindless and GPU-driven** (owner decision 2026-11-06): one global descriptor heap and one fixed binding layout (Vulkan: set 0, binding 0 the sampler heap, binding 1 the mutable resource heap, passed to DXC explicitly); shaders get indices through push constants and index `ResourceDescriptorHeap`. On Vulkan DXC emulates that with descriptor indexing and `VK_EXT_mutable_descriptor_type`; on D3D12 it needs SM 6.6. Drawing is indirect with a count buffer, vertices are pulled from buffers, culling runs in compute. Older GPUs and Android need a check before M13.
 - **Pipeline cache** and up-front pipeline creation: the driver compiles DXIL/SPIR-V to machine code for the exact GPU when a pipeline is created, so that result is cached on disk, once per GPU and driver version.
 - Resources are referenced by handles owned by the device (32-bit index + generation). **GPU resources don't get UUIDs** (§24): they exist only while the program runs, are recreated on every hot swap and are looked up every frame, so a 128-bit key would cost hashing for nothing. A resource may record the `AssetId` it was loaded from, for debugging and Tracy names.
 - **D3D12** (M5): one root signature (the push constants as root constants at b0, heaps indexed directly), **enhanced barriers** (the same stages, accesses and layouts as Vulkan's synchronization2, so `ResourceState` maps one to one), and buffer ↔ texture copies with tightly packed rows. A GPU without them is refused with a message, as on Vulkan. Shaders that write a buffer use a second heap slot (`bindlessStorageIndex`), because D3D12 keeps read and write views apart.
@@ -369,8 +369,9 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 
 ## 14. Physics
 
-- **Jolt** first. `PhysicsWorld` etc. are designed around concepts shared by Jolt, PhysX and Box3D (bodies, shapes, layers/filters, queries, character controller), so other backends can be swapped in.
-- Engine-side types only in the interface (no `JPH::` types); conversion happens in `src/Physics/Jolt/`.
+- **Modular** (owner decision 2026-11-09): `PhysicsWorld` etc. are designed around concepts shared by Box3D, Jolt and PhysX (bodies, shapes, layers/filters, queries, character controller); the backend is chosen at build time (§3) and can be `None`, which builds the engine without physics. Shared contract tests run on every backend.
+- **⚠ OPEN** (M8): which backend comes first (the owner is considering Box3D; Jolt was the earlier plan; PhysX later), and whether 2D games get a 2D library (Box2D) or a 3D world locked to a plane, decided by measuring both.
+- Engine-side types only in the interface; each library's types stay in its `src/Physics/<Backend>/` folder.
 
 ## 15. Game export
 
@@ -526,7 +527,7 @@ Requirement: **anything a user can do in the editor, an AI agent can do through 
 - File access through commands is limited to the open project folder.
 - Threading (§19): requests arrive on a network thread and are executed on the editor's main thread (Qt queued invocation); the HTTP thread never touches editor state.
 - **Headless mode** (`Meow2Editor --headless --mcp`): no window, off-screen viewport. Lets agents and CI drive the editor on a machine without a desktop (e.g. Linux CI, an agent's cloud workspace).
-- Libraries (**⚠ OPEN**, decided in M9 with owner permission): JSON (nlohmann/json, MIT) and a small HTTP server (cpp-httplib, MIT). Qt's own `QHttpServer` is avoided because it's GPL/commercial-licensed, not LGPL.
+- Libraries (**⚠ OPEN**, decided in M7 with owner permission): JSON (nlohmann/json, MIT) and a small HTTP server (cpp-httplib, MIT). Qt's own `QHttpServer` is avoided because it's GPL/commercial-licensed, not LGPL.
 
 **Testing:** every command has unit tests (execute + undo round-trip). An integration test starts the headless editor, lists tools, calls commands over MCP and checks the resulting scene.
 
@@ -743,3 +744,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-07 — §4: Dear ImGui v1.93.0-docking added (owner request) for Meow2Renderer; drawn through the RHI, fed by engine input.
 - 2026-11-08 — §4: Barlow Semi Condensed bundled as the UI font (owner-approved); Consolas used from the system on Windows.
 - 2026-11-09 — §3/§4: DirectXTex may2026 added (owner-approved) for BC7 and BC5 texture cooking; BC formats need `textureCompressionBC` on Vulkan.
+- 2026-11-09 — Roadmap renumbered (milestones.md, owner decision): Editor M7, Physics M8, Scripting M9, Advanced rendering M12, Platforms M13. §14: physics is modular (build-time backend or `None`), the first library is open (Box3D considered); §7: the in-app console buffer implemented.

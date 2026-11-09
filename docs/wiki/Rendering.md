@@ -158,7 +158,7 @@ The PBR shader then uses `skyIrradiance(normal) / π` for diffuse ambient light,
 ## Not yet
 
 - Aerial perspective, clouds, a night sky; punctual lights from `KHR_lights_punctual`.
-- Cooking at import time (with M6 PR 2's asset files) rather than on first load; BC6H for HDR images.
+- Cooking at import time (with M7's asset files) rather than on first load; BC6H for HDR images.
 - Rotated texture transforms don't rotate the tangent frame, so a rotated normal map is lit slightly wrong (rare in practice).
 - Exact MikkTSpace tangents (needs a library, with approval).
 - Shadows.

@@ -42,7 +42,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Input (keys, mouse, gamepads, events, SDL sources) | [Input](Input.md) | ✅ M2 |
 | File system (virtual paths, mounts) | [FileSystem](FileSystem.md) | ✅ M2 |
 | Window (SDL3, settings in the config) | [Window](Window.md) | ✅ M2 |
-| Editor (Qt main window, viewport) | [Editor](Editor.md) | 🟨 M9 (main window only) |
+| Editor (Qt main window, viewport) | [Editor](Editor.md) | 🟨 M7 (main window only) |
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |
 | Events (`EventBus`) | [Events](Events.md) | ✅ M1 |
 | IDs (128-bit, kind tag, lock-free generator) | [Ids](Ids.md) | ✅ M2 |
@@ -68,7 +68,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 
 ## Roadmap
 
-M0 (foundation), **M1 (core runtime, `v0.2.x`)**, **M2 (platform & scene foundation, `v0.3.0`)**, **M3 (math, `v0.4.0`)**, **M4 (shaders and assets, `v0.5.0`)** and **M5 (the RHI, `v0.6.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers, release zips, the game loop, window and input events, IDs, the scene with command buffers, and the virtual file system, and the math: transforms and their hierarchy, camera and reversed-Z projections, bounding volumes and culling, rays and picking, random numbers, colours, easing and splines, and vertex packing ([Math](Math.md)), [shaders](Shaders.md) and [assets](Assets.md), and the [RHI](Rhi.md): Vulkan and D3D12, bindless and GPU-driven, switchable while running. The Qt editor window (M9) is in too. Next up is **M6**: Meow2Renderer as a showcase, with glTF scenes. The full roadmap is in [milestones.md](../../milestones.md).
+M0 (foundation), **M1 (core runtime, `v0.2.x`)**, **M2 (platform & scene foundation, `v0.3.0`)**, **M3 (math, `v0.4.0`)**, **M4 (shaders and assets, `v0.5.0`)** and **M5 (the RHI, `v0.6.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers, release zips, the game loop, window and input events, IDs, the scene with command buffers, and the virtual file system, and the math: transforms and their hierarchy, camera and reversed-Z projections, bounding volumes and culling, rays and picking, random numbers, colours, easing and splines, and vertex packing ([Math](Math.md)), [shaders](Shaders.md) and [assets](Assets.md), and the [RHI](Rhi.md): Vulkan and D3D12, bindless and GPU-driven, switchable while running. The Qt editor window (M7) is in too. Next up is **M6**: Meow2Renderer as a showcase, with glTF scenes. The full roadmap is in [milestones.md](../../milestones.md).
 
 ## API reference
 
