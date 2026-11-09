@@ -287,11 +287,13 @@ else()
     target_compile_options(meow2_directxtex PRIVATE -include "${PROJECT_SOURCE_DIR}/Meow2Engine/shims/sal.h")
 endif()
 if(MEOW2_SANITIZER STREQUAL "address")
-    # DirectXTex's BC7 encoder (BC6HBC7.cpp, ComputeError) reads its byte-aligned LDRColorA through DirectXMath's
-    # 4-byte-aligned XMUBYTE4, which UBSan reports as a misaligned access. x64 and arm64 load unaligned words
-    # without faulting, so it's harmless there; it's in a library we don't edit, so only that one check is turned off,
-    # and only for this library. Every other sanitizer check still runs on it, and the engine keeps them all.
-    target_compile_options(meow2_directxtex PRIVATE -fno-sanitize=alignment)
+    # UBSan finds undefined behaviour inside DirectXTex's BC7 encoder (BC6HBC7.cpp), in code we don't edit:
+    # - ComputeError reads its byte-aligned LDRColorA through DirectXMath's 4-byte-aligned XMUBYTE4 (misaligned load);
+    # - Quantize shifts by 7 - uPrec, which is -1 for 8-bit precision (a negative shift).
+    # Both give the right result on x64 and arm64 (unaligned loads are allowed; the shift count is masked), and the
+    # tests check the encoded colours. UBSan stops at the first one it meets, so it's off for this library only;
+    # AddressSanitizer still checks it for out-of-bounds and use-after-free, and the engine keeps every check.
+    target_compile_options(meow2_directxtex PRIVATE -fno-sanitize=undefined)
 endif()
 set_target_properties(meow2_directxtex PROPERTIES FOLDER "External")
 add_library(DirectXTex::DirectXTex ALIAS meow2_directxtex)
