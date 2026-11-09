@@ -119,11 +119,15 @@ TEST(ScenePicker, ListsSuggestedSamplesThenOtherDownloads)
     ASSERT_NE(duck, nullptr);
     EXPECT_TRUE(duck->downloaded);
     EXPECT_EQ(duck->group, "First light");
+    EXPECT_TRUE(duck->hasGltf);
+    EXPECT_FALSE(duck->hasGlb) << "only the .gltf version is on disk";
     const SampleEntry* helmet = findEntry(samples, "DamagedHelmet");
     ASSERT_NE(helmet, nullptr);
     EXPECT_FALSE(helmet->downloaded);
     EXPECT_EQ(samples.back().name, "Fox") << "a downloaded model that isn't suggested comes last";
     EXPECT_EQ(samples.back().group, "Downloaded");
+    EXPECT_TRUE(samples.back().hasGlb);
+    EXPECT_FALSE(samples.back().hasGltf) << "Fox has only its .glb";
 }
 
 TEST(ScenePicker, FindsGltfBeforeGlb)

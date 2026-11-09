@@ -109,8 +109,11 @@ std::vector<SampleEntry> listSamples(const std::filesystem::path& sampleRoot)
     for (const Suggested& suggested : c_suggested)
     {
         const std::string name{suggested.name};
-        samples.push_back(
-            {.name = name, .group = std::string{suggested.group}, .downloaded = !findSample(sampleRoot, name).empty()});
+        samples.push_back({.name = name,
+                           .group = std::string{suggested.group},
+                           .downloaded = !findSample(sampleRoot, name).empty(),
+                           .hasGltf = !findSampleFile(sampleRoot, name, false).empty(),
+                           .hasGlb = !findSampleFile(sampleRoot, name, true).empty()});
         listed.insert(name);
     }
     // Every other model the sparse checkout has downloaded.
@@ -127,7 +130,10 @@ std::vector<SampleEntry> listSamples(const std::filesystem::path& sampleRoot)
     std::ranges::sort(others);
     for (std::string& name : others)
     {
-        samples.push_back({.name = std::move(name), .group = "Downloaded", .downloaded = true});
+        const bool gltf = !findSampleFile(sampleRoot, name, false).empty();
+        const bool glb = !findSampleFile(sampleRoot, name, true).empty();
+        samples.push_back(
+            {.name = std::move(name), .group = "Downloaded", .downloaded = true, .hasGltf = gltf, .hasGlb = glb});
     }
     return samples;
 }
@@ -315,7 +321,7 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
 {
     std::optional<SceneRequest> request;
 
-    // A finished fetch: refresh the list, and open the model if that's what the user asked for.
+    // A finished fetch: refresh the list, so the model's .gltf and .glb buttons appear. Nothing opens by itself.
     if (!m_fetching.empty() && m_fetchJob.done())
     {
         const int code = m_fetchResult->load();
@@ -323,17 +329,12 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
         {
             MEOW2_LOG_INFO(m_log, "Fetched {}", m_fetching);
             m_samples = listSamples(m_sampleRoot);
-            if (m_openAfterFetch == m_fetching)
-            {
-                request = SceneRequest{.file = findSample(m_sampleRoot, m_fetching)};
-            }
         }
         else
         {
             MEOW2_LOG_ERROR(m_log, "Fetching {} failed (exit code {}); see the console", m_fetching, code);
         }
         m_fetching.clear();
-        m_openAfterFetch.clear();
     }
 
     // Top right, so it never covers the stats window on the left.
@@ -360,7 +361,8 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
         ImGui::PopStyleColor();
     }
 
-    // The sample list, by group. A grey name isn't downloaded yet: opening it fetches it first.
+    // The sample list, by group. A grey name isn't downloaded yet (FETCH below). A downloaded one has a button per
+    // version beside it: .GLTF (JSON with separate buffers and images) or .GLB (one binary file).
     if (ImGui::BeginListBox("##samples", ImVec2{-1.0F, ImGui::GetTextLineHeightWithSpacing() * 14.0F}))
     {
         std::string_view group;
@@ -385,7 +387,11 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
             {
                 label += "  (open)";
             }
-            if (ImGui::Selectable(label.c_str(), m_selected == i, ImGuiSelectableFlags_AllowDoubleClick))
+            // Room for the two buttons on the right of a downloaded sample's row.
+            const float buttons = sample.downloaded ? 110.0F * scale : 0.0F;
+            ImGui::PushID(static_cast<int>(i));
+            if (ImGui::Selectable(label.c_str(), m_selected == i, ImGuiSelectableFlags_AllowDoubleClick,
+                                  ImVec2{std::max(ImGui::GetContentRegionAvail().x - buttons, 1.0F), 0.0F}))
             {
                 m_selected = i;
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && sample.downloaded)
@@ -397,6 +403,23 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
             {
                 ImGui::PopStyleColor();
             }
+            else
+            {
+                const auto versionButton = [&](const char* text, bool present, bool binary)
+                {
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled(!present);
+                    if (ImGui::SmallButton(text))
+                    {
+                        m_selected = i;
+                        request = SceneRequest{.file = findSampleFile(m_sampleRoot, sample.name, binary)};
+                    }
+                    ImGui::EndDisabled();
+                };
+                versionButton(".GLTF", sample.hasGltf, false);
+                versionButton(".GLB", sample.hasGlb, true);
+            }
+            ImGui::PopID();
         }
         ImGui::EndListBox();
     }
@@ -404,24 +427,16 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
     if (m_selected < m_samples.size())
     {
         const SampleEntry& selected = m_samples[m_selected];
-        if (selected.downloaded)
-        {
-            if (ImGui::Button("OPEN"))
-            {
-                request = SceneRequest{.file = findSample(m_sampleRoot, selected.name)};
-            }
-        }
-        else
+        if (!selected.downloaded)
         {
             ImGui::BeginDisabled(!m_fetching.empty());
-            if (ImGui::Button("FETCH AND OPEN"))
+            if (ImGui::Button("FETCH"))
             {
-                m_openAfterFetch = selected.name;
                 startFetch(selected.name);
             }
             ImGui::EndDisabled();
+            ImGui::SameLine();
         }
-        ImGui::SameLine();
         if (ImGui::Button("CUBE GRID"))
         {
             request = SceneRequest{};

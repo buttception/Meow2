@@ -29,6 +29,8 @@ struct SampleEntry
     std::string name{};      ///< The model's folder name, e.g. `DamagedHelmet`.
     std::string group{};     ///< What it tests ("First light", "PBR", …), or "Downloaded" for others.
     bool downloaded = false; ///< Whether its glTF file is on disk.
+    bool hasGltf = false;    ///< `glTF/<name>.gltf` is on disk (with its buffers and images).
+    bool hasGlb = false;     ///< `glTF-Binary/<name>.glb` is on disk.
 };
 
 /// @brief The suggested M6 samples in their groups, then every other downloaded model in alphabetical order.
@@ -159,7 +161,6 @@ private:
     std::size_t m_selected = 0;
     std::array<char, 1024> m_path{};
     std::string m_fetching;                          ///< The model being fetched; empty when idle.
-    std::string m_openAfterFetch;                    ///< Opens this model when its fetch succeeds.
     std::shared_ptr<std::atomic<int>> m_fetchResult; ///< The fetch's exit code; -1 while it runs.
     Jobs::Job m_fetchJob; ///< Last: waited for first, before the members its job uses go away.
 };
