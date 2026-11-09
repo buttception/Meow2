@@ -75,6 +75,11 @@ TEST(CookedTexture, RoundTripsThroughAFile)
     std::vector<std::byte> truncated = file;
     truncated.pop_back();
     EXPECT_EQ(decodeM2Texture(truncated).error().code, ErrorCode::ParseError);
+
+    // Each level consistent with itself, but the second isn't half the first: refused, not uploaded.
+    CookedTexture notAChain = *cooked;
+    notAChain.mips[1] = notAChain.mips[0];
+    EXPECT_EQ(decodeM2Texture(encodeM2Texture(notAChain)).error().code, ErrorCode::ParseError);
 }
 
 TEST(CookedTexture, Bc7KeepsTheColour)

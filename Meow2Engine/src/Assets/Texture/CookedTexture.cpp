@@ -252,8 +252,14 @@ Result<CookedTexture> decodeM2Texture(std::span<const std::byte> bytes)
     {
         CookedMip mip{};
         std::uint64_t size = 0;
-        if (!reader.read(mip.width) || !reader.read(mip.height) || !reader.read(size) || mip.width == 0 ||
-            mip.height == 0 || size != levelBytes(texture.format, mip.width, mip.height))
+        // Every level must be the size the GPU gives that level of the top one: the upload copies by the texture's
+        // level sizes, so a file that says otherwise would be read past its data.
+        const bool readOk = reader.read(mip.width) && reader.read(mip.height) && reader.read(size);
+        const bool chainOk = i == 0
+                                 ? mip.width != 0 && mip.height != 0 && mipCount <= mipLevelCount(mip.width, mip.height)
+                                 : mip.width == std::max(texture.mips[0].width >> i, 1U) &&
+                                       mip.height == std::max(texture.mips[0].height >> i, 1U);
+        if (!readOk || !chainOk || size != levelBytes(texture.format, mip.width, mip.height))
         {
             return fail(ErrorCode::ParseError, std::format("Bad .m2texture level {}", i));
         }
