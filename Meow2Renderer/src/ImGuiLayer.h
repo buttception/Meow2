@@ -19,6 +19,8 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 struct ImGuiContext;
@@ -83,6 +85,17 @@ public:
     /// @param contentScale     How much larger UI should be drawn, in window coordinates: the display's scale (1.25 at
     ///                          125 %) over `framebufferScale`. Text and widgets are scaled by it.
     void newFrame(float deltaSeconds, float width, float height, float framebufferScale, float contentScale);
+
+    /// @brief Restores a window layout saved by takeLayoutChange() (ImGui's `.ini` text: positions, sizes, docking).
+    ///
+    /// The layout is kept in the app's TOML config rather than an `imgui.ini` next to the exe, so all of an app's
+    /// settings are in one file. Call it before the first newFrame().
+    /// @param layout The text; empty does nothing.
+    void loadLayout(std::string_view layout);
+
+    /// @brief The layout to save, when ImGui says it changed (a few seconds after a window moved), else nothing.
+    /// @return ImGui's `.ini` text, or std::nullopt when nothing changed since the last call.
+    [[nodiscard]] std::optional<std::string> takeLayoutChange();
 
     /// @brief Ends the ImGui frame and adds its pass (and any texture uploads) to the graph, drawing on top of the
     ///        swapchain's contents.

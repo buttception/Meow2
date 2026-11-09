@@ -29,6 +29,8 @@
 
 namespace Meow2::Log
 {
+class ConsoleBuffer;
+
 /// @brief `true` when a LogSystem writes to the console by default: Debug and RelWithDebInfo.
 inline constexpr bool c_consoleLoggingByDefault = MEOW2_CONFIG_DEBUG || MEOW2_CONFIG_RELWITHDEBINFO;
 
@@ -53,6 +55,10 @@ struct LogSystemDesc
 
     /// @brief Lowest level written. `debug` messages need both this and MEOW2_LOG_DEBUG_ENABLED.
     LogLevel minimumLevel = c_debugLoggingEnabled ? LogLevel::Debug : LogLevel::Info;
+
+    /// @brief Also keeps the lines in this buffer, for an in-app console; null for none. Must outlive the LogSystem
+    ///        and every Logger it creates.
+    ConsoleBuffer* consoleBuffer = nullptr;
 };
 
 /// @brief Owns the log sinks and creates the Logger channels that share them.

@@ -2,12 +2,16 @@
 
 # Everything but main(), so the tests can use the same code: the ImGui shell, its windows and the open scene.
 add_library(Meow2RendererCore STATIC
+    src/ConsoleWindow.cpp
+    src/ConsoleWindow.h
     src/ImGuiLayer.cpp
     src/ImGuiLayer.h
     src/RendererUi.cpp
     src/RendererUi.h
     src/SceneView.cpp
     src/SceneView.h
+    src/SettingsWindow.cpp
+    src/SettingsWindow.h
     src/UiTheme.cpp
     src/UiTheme.h)
 target_include_directories(Meow2RendererCore PUBLIC src)

@@ -4,4 +4,5 @@ meow2_add_test_suite(
     MODULE    RendererApp
     SOURCES
         RendererUiTests.cpp
+        ShellWindowsTests.cpp
     LIBRARIES Meow2RendererCore)
