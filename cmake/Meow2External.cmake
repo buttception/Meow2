@@ -281,6 +281,10 @@ else()
     target_include_directories(meow2_directxtex SYSTEM PUBLIC
         "${meow2DirectXHeadersDir}/include" "${meow2DirectXHeadersDir}/include/wsl/stubs")
     target_compile_definitions(meow2_directxtex PUBLIC USING_DIRECTX_HEADERS)
+    # DirectXTex's sources include DirectX-Headers' d3d12.h before anything includes sal.h, and the WSL stubs only
+    # define some of its annotations; on Windows the SDK's headers bring sal.h in first. So our shim (all the
+    # annotations these libraries use, as nothing) is included ahead of every DirectXTex source.
+    target_compile_options(meow2_directxtex PRIVATE -include "${PROJECT_SOURCE_DIR}/Meow2Engine/shims/sal.h")
 endif()
 set_target_properties(meow2_directxtex PROPERTIES FOLDER "External")
 add_library(DirectXTex::DirectXTex ALIAS meow2_directxtex)
