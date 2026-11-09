@@ -2,6 +2,8 @@
 
 # Everything but main(), so the tests can use the same code: the ImGui shell, its windows and the open scene.
 add_library(Meow2RendererCore STATIC
+    src/CameraControls.cpp
+    src/CameraControls.h
     src/ConsoleWindow.cpp
     src/ConsoleWindow.h
     src/ImGuiLayer.cpp

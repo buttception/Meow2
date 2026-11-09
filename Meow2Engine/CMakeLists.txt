@@ -9,6 +9,7 @@ configure_file(src/Core/Version.h.in "${meow2GeneratedDir}/Meow2/Core/Version.h"
 target_sources(Meow2Engine
     PRIVATE
         src/Assets/AssetManager.cpp
+        src/Assets/Gltf/GltfAnimation.cpp
         src/Assets/Gltf/GltfImporter.cpp
         src/Assets/LibraryMemory.h
         src/Assets/Shader/ShaderAsset.cpp

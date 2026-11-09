@@ -109,18 +109,77 @@ struct ImportedNode
     Math::Transform local{};  ///< Relative to the parent, left-handed.
     std::int32_t parent = -1; ///< Index into ImportedModel::nodes, always lower than this node's; -1 for a root.
     std::int32_t mesh = -1;   ///< Index into ImportedModel::meshes, or -1.
+    std::int32_t camera = -1; ///< Index into ImportedModel::cameras, or -1.
+};
+
+/// @brief A camera from the file. Like in glTF, it looks along its node's −Z; a viewer turns it to the engine's +Z.
+///        Plain data.
+struct ImportedCamera
+{
+    std::string name{};       ///< From the file; may be empty.
+    bool perspective = true;  ///< Perspective, or orthographic.
+    float verticalFov = 0.8F; ///< Perspective: radians.
+    float halfHeight = 1.0F;  ///< Orthographic: half the visible height (glTF's `ymag`).
+    float nearZ = 0.1F;       ///< Near plane.
+    float farZ = 0.0F;        ///< Far plane; 0 for none (perspective without `zfar`). The renderer's depth is infinite.
+};
+
+/// @brief What an animation channel moves.
+enum class AnimationPath : std::uint8_t
+{
+    Translation, ///< The node's position; values are (x, y, z, 0).
+    Rotation,    ///< The node's rotation; values are quaternions (x, y, z, w).
+    Scale        ///< The node's scale; values are (x, y, z, 0).
+};
+
+/// @brief How an animation channel interpolates between keyframes.
+enum class AnimationInterpolation : std::uint8_t
+{
+    Step,       ///< Holds each keyframe until the next.
+    Linear,     ///< Straight lines; spherical (slerp) for rotations.
+    CubicSpline ///< Hermite curves; values hold three entries per keyframe: in-tangent, value, out-tangent.
+};
+
+/// @brief One animated property of one node. Values are converted to left-handed space, like node transforms. Plain
+///        data.
+struct ImportedChannel
+{
+    std::int32_t node = -1;                                                ///< Index into ImportedModel::nodes.
+    AnimationPath path = AnimationPath::Translation;                       ///< What it moves.
+    AnimationInterpolation interpolation = AnimationInterpolation::Linear; ///< How.
+    std::vector<float> times{};                                            ///< Keyframe times in seconds, increasing.
+    std::vector<Math::Vec4> values{}; ///< One per keyframe (three for CubicSpline), see AnimationPath.
+};
+
+/// @brief A glTF animation: channels that move nodes over time. Morph-target weights aren't imported. Plain data.
+struct ImportedAnimation
+{
+    std::string name{};                      ///< From the file; may be empty.
+    std::vector<ImportedChannel> channels{}; ///< At least one.
+    float duration = 0.0F;                   ///< The last keyframe's time, in seconds.
 };
 
 /// @brief Everything imported from one glTF file. Plain data.
 struct ImportedModel
 {
-    std::vector<ImportedMesh> meshes{};        ///< Every mesh with at least one triangle primitive.
-    std::vector<ImportedMaterial> materials{}; ///< Every material.
-    std::vector<Image> images{};               ///< Decoded images, RGBA8.
-    std::vector<ImportedSampler> samplers{};   ///< The file's samplers.
-    std::vector<ImportedNode> nodes{};         ///< The default scene's nodes, parents before children.
-    std::vector<std::string> warnings{};       ///< What was skipped (points and lines, unknown extensions, …).
+    std::vector<ImportedMesh> meshes{};          ///< Every mesh with at least one triangle primitive.
+    std::vector<ImportedMaterial> materials{};   ///< Every material.
+    std::vector<Image> images{};                 ///< Decoded images, RGBA8.
+    std::vector<ImportedSampler> samplers{};     ///< The file's samplers.
+    std::vector<ImportedNode> nodes{};           ///< The default scene's nodes, parents before children.
+    std::vector<ImportedCamera> cameras{};       ///< Cameras used by those nodes.
+    std::vector<ImportedAnimation> animations{}; ///< Animations of those nodes (translation, rotation, scale).
+    std::vector<std::string> warnings{};         ///< What was skipped (points and lines, unknown extensions, …).
 };
+
+/// @brief A node's local transform at a time in an animation: its rest transform with the animated parts replaced.
+/// @param animation The animation.
+/// @param node      Index into ImportedModel::nodes.
+/// @param rest      The node's local transform without the animation (ImportedNode::local).
+/// @param seconds   The time; clamped to the keyframes (before the first: the first; after the last: the last).
+/// @return The transform.
+[[nodiscard]] Math::Transform animatedTransform(const ImportedAnimation& animation, std::int32_t node,
+                                                const Math::Transform& rest, float seconds);
 
 /// @brief Imports a glTF 2.0 file, `.gltf` with its buffers and images or a single `.glb`.
 ///

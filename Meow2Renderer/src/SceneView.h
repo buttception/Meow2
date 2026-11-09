@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "CameraControls.h"
+
 #include <Meow2/Core/Id/Uuid.h>
 #include <Meow2/Core/Id/UuidGenerator.h>
 #include <Meow2/Core/Jobs/JobSystem.h>
@@ -114,6 +116,31 @@ public:
         return m_world->entityCount();
     }
 
+    /// @brief The glTF file's cameras.
+    /// @return One entry per camera node; empty for the cube grid.
+    [[nodiscard]] const std::vector<SceneCameraEntry>& cameras() const
+    {
+        return m_cameras;
+    }
+
+    /// @brief The glTF file's animations.
+    /// @return Them; empty for the cube grid.
+    [[nodiscard]] const std::vector<Assets::ImportedAnimation>& animations() const
+    {
+        return m_animations;
+    }
+
+    /// @brief Poses the scene: every animated node at a time in an animation, or every node at rest. Updates the world
+    ///        transforms and what the GPU draws.
+    /// @param animation Index into animations(), or -1 for the rest pose.
+    /// @param seconds   The time in the animation.
+    void pose(int animation, float seconds);
+
+    /// @brief A node's world matrix, after the last pose().
+    /// @param node Index into the model's nodes.
+    /// @return Its WorldTransform; the identity for an unknown node.
+    [[nodiscard]] Math::Mat4 nodeWorld(std::int32_t node) const;
+
     /// @brief How long importing took.
     /// @return Milliseconds; 0 for the cube grid.
     [[nodiscard]] double importMilliseconds() const
@@ -131,5 +158,9 @@ private:
     Math::Vec3 m_center{0.0F, 0.0F, 0.0F};
     float m_radius = 1.0F;
     double m_importMilliseconds = 0.0;
+    std::vector<entt::entity> m_nodeEntities;            ///< One per model node, in order.
+    std::vector<Math::Transform> m_restTransforms;       ///< Each node's local transform without animation.
+    std::vector<SceneCameraEntry> m_cameras;             ///< The file's cameras.
+    std::vector<Assets::ImportedAnimation> m_animations; ///< The file's animations.
 };
 } // namespace Meow2::RendererApp

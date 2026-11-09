@@ -88,7 +88,21 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
     {
         return Unexpected<Error>{meshIds.error()};
     }
-    static_cast<void>(Renderer::instantiateModel(*view->m_world, *view->m_hierarchy, *model, *meshIds));
+    view->m_nodeEntities = Renderer::instantiateModel(*view->m_world, *view->m_hierarchy, *model, *meshIds);
+    for (std::size_t i = 0; i < model->nodes.size(); ++i)
+    {
+        const Assets::ImportedNode& node = model->nodes[i];
+        view->m_restTransforms.push_back(node.local);
+        if (node.camera >= 0)
+        {
+            const Assets::ImportedCamera& camera = model->cameras[static_cast<std::size_t>(node.camera)];
+            std::string name = !camera.name.empty() ? camera.name : node.name;
+            view->m_cameras.push_back({.name = name.empty() ? std::format("Camera {}", view->m_cameras.size()) : name,
+                                       .node = static_cast<std::int32_t>(i),
+                                       .lens = camera});
+        }
+    }
+    view->m_animations = std::move(model->animations);
     view->m_hierarchy->update();
     std::vector<Shader::InstanceData> instances;
     if (const std::optional<Math::Aabb> bounds = Renderer::gatherInstances(*view->m_world, view->m_meshes, instances))
@@ -104,6 +118,34 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
                    model->nodes.size(), model->meshes.size(), model->materials.size(), model->images.size(),
                    view->m_importMilliseconds);
     return view;
+}
+
+void SceneView::pose(int animation, float seconds)
+{
+    const bool animated = animation >= 0 && static_cast<std::size_t>(animation) < m_animations.size();
+    for (std::size_t i = 0; i < m_nodeEntities.size(); ++i)
+    {
+        const Math::Transform local =
+            animated ? Assets::animatedTransform(m_animations[static_cast<std::size_t>(animation)],
+                                                 static_cast<std::int32_t>(i), m_restTransforms[i], seconds)
+                     : m_restTransforms[i];
+        m_hierarchy->setLocal(m_nodeEntities[i], local);
+    }
+    m_hierarchy->update();
+    std::vector<Shader::InstanceData> instances;
+    static_cast<void>(Renderer::gatherInstances(*m_world, m_meshes, instances));
+    m_gpu->setInstances(instances);
+}
+
+Math::Mat4 SceneView::nodeWorld(std::int32_t node) const
+{
+    if (node < 0 || static_cast<std::size_t>(node) >= m_nodeEntities.size())
+    {
+        return Math::toMat4(Math::Transform{});
+    }
+    const auto* world =
+        m_world->registry().try_get<Scene::WorldTransform>(m_nodeEntities[static_cast<std::size_t>(node)]);
+    return world != nullptr ? world->matrix : Math::toMat4(Math::Transform{});
 }
 
 Result<std::unique_ptr<SceneView>> SceneView::cubeGrid(const SceneViewDeps& deps, std::uint32_t count)

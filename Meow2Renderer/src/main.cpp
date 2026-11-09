@@ -473,6 +473,27 @@ int main(int argc, char** argv)
     Meow2::RendererApp::ScenesWindow scenesWindow{sampleRoot, jobs, appLog};
     Meow2::RendererApp::ConsoleWindow consoleWindow{consoleLines};
     Meow2::RendererApp::SettingsWindow settingsWindow{config};
+    // The Camera window's cameras (CameraControls.h), fitted to each scene when it opens.
+    Meow2::RendererApp::OrbitCamera orbit;
+    Meow2::RendererApp::FlyCamera fly;
+    // How each scene starts: renderer.camera (orbit, fly, scene), renderer.sceneCamera (which of the file's cameras)
+    // and renderer.animation (which of its animations plays; -1 none). Fixed viewpoints for tests and captures.
+    Meow2::RendererApp::CameraWindowState startCamera;
+    if (const std::string mode = config.getString("renderer.camera", "orbit"); mode == "fly")
+    {
+        startCamera.mode = Meow2::RendererApp::CameraMode::Fly;
+    }
+    else if (mode == "scene")
+    {
+        startCamera.mode = Meow2::RendererApp::CameraMode::SceneCamera;
+    }
+    startCamera.sceneCamera =
+        static_cast<int>(std::clamp<std::int64_t>(config.getInt("renderer.sceneCamera", 0), 0, 1000));
+    startCamera.animation =
+        static_cast<int>(std::clamp<std::int64_t>(config.getInt("renderer.animation", -1), -1, 1000));
+    Meow2::RendererApp::CameraWindowState cameraState = startCamera;
+    const Meow2::RendererApp::SceneView* cameraScene = nullptr; // the scene they were last fitted to
+    int posedAnimation = -1;                                    // the animation the scene is posed in; -1: rest
     Meow2::RendererApp::FrameTimes frameTimes;
     std::optional<Meow2::RendererApp::SceneRequest> pendingScene;
     bool showUi = true;
@@ -510,8 +531,9 @@ int main(int argc, char** argv)
     };
     const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &view, &viewDeps, &ui, &sky, &sun, &jobs,
                               &depthTexture, &makeDepth, &renderDoc, &clock, &pendingSwap, &pendingScene, &sceneError,
-                              &scenesWindow, &consoleWindow, &settingsWindow, &config, &frameTimes, &showUi,
-                              &sampleRoot, &switchScene, captureFrame, swapAtFrame, switchSceneAtFrame,
+                              &scenesWindow, &consoleWindow, &settingsWindow, &config, &orbit, &fly, &cameraState,
+                              &startCamera, &cameraScene, &posedAnimation, &input, &frameTimes, &showUi, &sampleRoot,
+                              &switchScene, captureFrame, swapAtFrame, switchSceneAtFrame,
                               cubeCount = static_cast<std::uint32_t>(
                                   std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000))]
     {
@@ -642,6 +664,11 @@ int main(int argc, char** argv)
                 }
                 consoleWindow.draw(ui->fonts());
                 settingsWindow.draw(ui->fonts());
+                if (view)
+                {
+                    Meow2::RendererApp::drawCameraWindow(cameraState, view->cameras(), view->animations(), orbit, fly,
+                                                         ui->fonts());
+                }
                 for (const std::string_view key : settingsWindow.takeNextSceneChanges())
                 {
                     if (key == Meow2::RendererApp::c_compressTexturesSetting.key && viewDeps)
@@ -664,21 +691,102 @@ int main(int argc, char** argv)
             Meow2::Renderer::RenderGraph graph;
             if (view)
             {
-                // The camera circles the scene, looking at its centre, far enough to see all of it. It starts on +Z:
-                // glTF models face +Z, towards the viewer, so the first view is the front.
-                const Meow2::Math::Vec3& center = view->center();
-                const auto angle = static_cast<float>(clock.totalSeconds()) * 0.2F;
-                const float distance = view->radius() * 1.7F;
-                Meow2::Math::Transform camera;
-                camera.position =
-                    Meow2::Math::WorldPosition{center.x + std::sin(angle) * distance, center.y + distance * 0.25F,
-                                               center.z + std::cos(angle) * distance};
-                camera.rotation = Meow2::Math::lookRotation(Meow2::Math::Vec3{
-                    center.x - camera.position.x, center.y - camera.position.y, center.z - camera.position.z});
+                // A new scene: the orbit circles its centre from +Z (glTF models face +Z, so the first view is the
+                // front), far enough to see all of it; flying starts there too, at a speed that suits its size.
+                if (cameraScene != view.get())
+                {
+                    cameraScene = view.get();
+                    orbit = {};
+                    orbit.target = view->center();
+                    orbit.distance = view->radius() * 1.7F;
+                    fly = {};
+                    fly.speed = std::max(view->radius() * 0.5F, 0.01F);
+                    cameraState = startCamera;
+                    posedAnimation = -1;
+                }
+                const float frameSeconds = clock.deltaSecondsFloat();
+                // The animation player: the scene is posed every frame one is chosen (the slider can move it while
+                // paused), and put back at rest once none is.
+                const std::vector<Meow2::Assets::ImportedAnimation>& animations = view->animations();
+                if (cameraState.animation >= 0 && static_cast<std::size_t>(cameraState.animation) < animations.size())
+                {
+                    const float duration = animations[static_cast<std::size_t>(cameraState.animation)].duration;
+                    if (cameraState.playing)
+                    {
+                        cameraState.animationTime += frameSeconds;
+                        if (cameraState.animationTime > duration)
+                        {
+                            cameraState.animationTime = cameraState.loop && duration > 0.0F
+                                                            ? std::fmod(cameraState.animationTime, duration)
+                                                            : duration;
+                        }
+                    }
+                    view->pose(cameraState.animation, cameraState.animationTime);
+                    posedAnimation = cameraState.animation;
+                }
+                else if (posedAnimation >= 0)
+                {
+                    view->pose(-1, 0.0F);
+                    posedAnimation = -1;
+                }
+
+                // Mouse and keys drive the camera unless the UI is using them (a window under the cursor, a text box).
+                Meow2::RendererApp::CameraInput cameraInput{};
+                const bool uiWantsMouse = ui && showUi && ImGui::GetIO().WantCaptureMouse;
+                const bool uiWantsKeys = ui && showUi && ImGui::GetIO().WantCaptureKeyboard;
+                if (!uiWantsMouse)
+                {
+                    const Meow2::Input::Vec2 delta = input.mouseDelta();
+                    cameraInput.mouseDelta = {delta.x, delta.y};
+                    cameraInput.wheel = input.wheelDelta().y;
+                    cameraInput.leftDrag = input.isDown(Meow2::Input::MouseButton::Left);
+                    cameraInput.middleDrag = input.isDown(Meow2::Input::MouseButton::Middle);
+                    cameraInput.rightDrag = input.isDown(Meow2::Input::MouseButton::Right);
+                }
+                if (!uiWantsKeys)
+                {
+                    const auto axis = [&input](Meow2::Input::Key plus, Meow2::Input::Key minus)
+                    {
+                        return (input.isDown(plus) ? 1.0F : 0.0F) - (input.isDown(minus) ? 1.0F : 0.0F);
+                    };
+                    cameraInput.move = {axis(Meow2::Input::Key::D, Meow2::Input::Key::A),
+                                        axis(Meow2::Input::Key::E, Meow2::Input::Key::Q),
+                                        axis(Meow2::Input::Key::W, Meow2::Input::Key::S)};
+                    cameraInput.fast = input.isDown(Meow2::Input::Key::LeftShift);
+                }
+
                 const float aspect = static_cast<float>(swapchain->width()) / static_cast<float>(swapchain->height());
                 // The near plane follows the scene's size, so small models aren't clipped and big ones keep precision.
                 Meow2::Math::CameraLens lens{};
                 lens.nearZ = std::clamp(view->radius() * 0.01F, 0.001F, 0.1F);
+                Meow2::Math::Transform camera;
+                const std::vector<Meow2::RendererApp::SceneCameraEntry>& sceneCameras = view->cameras();
+                if (cameraState.mode == Meow2::RendererApp::CameraMode::SceneCamera && !sceneCameras.empty())
+                {
+                    const Meow2::RendererApp::SceneCameraEntry& entry = sceneCameras[static_cast<std::size_t>(
+                        std::clamp(cameraState.sceneCamera, 0, static_cast<int>(sceneCameras.size()) - 1))];
+                    camera = Meow2::RendererApp::sceneCameraTransform(view->nodeWorld(entry.node));
+                    lens = Meow2::RendererApp::sceneCameraLens(entry.lens, view->radius());
+                }
+                else if (cameraState.mode == Meow2::RendererApp::CameraMode::Fly)
+                {
+                    Meow2::RendererApp::updateFly(fly, cameraInput, frameSeconds);
+                    camera = Meow2::RendererApp::flyTransform(fly);
+                }
+                else
+                {
+                    Meow2::RendererApp::updateOrbit(orbit, cameraInput, frameSeconds);
+                    camera = Meow2::RendererApp::orbitTransform(orbit);
+                }
+                if (cameraState.mode != Meow2::RendererApp::CameraMode::Fly)
+                {
+                    // Flying starts from wherever the camera is, so switching to FLY doesn't jump.
+                    const Meow2::Math::Vec3 forward =
+                        Meow2::Math::rotate(camera.rotation, Meow2::Math::Vec3{0.0F, 0.0F, 1.0F});
+                    fly.position = camera.position;
+                    fly.yaw = std::atan2(forward.x, forward.z);
+                    fly.pitch = std::asin(std::clamp(forward.y, -1.0F, 1.0F));
+                }
                 const Meow2::Math::CameraMatrices matrices = Meow2::Math::cameraMatrices(camera, lens, aspect);
                 Meow2::Shader::FrameConstants frame{};
                 frame.view = matrices.view;

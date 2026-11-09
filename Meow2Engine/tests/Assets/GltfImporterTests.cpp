@@ -401,6 +401,96 @@ TEST_F(GltfImporterTest, ReadsTangentsColoursAndSamplers)
     EXPECT_TRUE(material.doubleSided);
 }
 
+TEST_F(GltfImporterTest, ReadsCamerasAndAnimations)
+{
+    // Keyframes at 0 and 1 s; the rig moves from the origin to (2, 3, 4); the eye turns 90° about Y at once (STEP).
+    const std::array<float, 2> times{0.0F, 1.0F};
+    const std::array<float, 6> translations{0.0F, 0.0F, 0.0F, 2.0F, 3.0F, 4.0F};
+    const std::array<float, 8> rotations{0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.70710678F, 0.0F, 0.70710678F};
+    std::vector<std::byte> buffer = bytesOf<float>(times);
+    for (const std::vector<std::byte>& part : {bytesOf<float>(translations), bytesOf<float>(rotations)})
+    {
+        buffer.insert(buffer.end(), part.begin(), part.end());
+    }
+    write("cameras.gltf", std::format(R"({{
+  "asset": {{"version": "2.0"}},
+  "buffers": [{{"byteLength": 64, "uri": "{}"}}],
+  "bufferViews": [{{"buffer": 0, "byteOffset": 0, "byteLength": 8}},
+                  {{"buffer": 0, "byteOffset": 8, "byteLength": 24}},
+                  {{"buffer": 0, "byteOffset": 32, "byteLength": 32}}],
+  "accessors": [{{"bufferView": 0, "componentType": 5126, "count": 2, "type": "SCALAR", "min": [0], "max": [1]}},
+                {{"bufferView": 1, "componentType": 5126, "count": 2, "type": "VEC3"}},
+                {{"bufferView": 2, "componentType": 5126, "count": 2, "type": "VEC4"}}],
+  "cameras": [{{"name": "Lens", "type": "perspective", "perspective": {{"yfov": 0.5, "znear": 0.05}}}},
+              {{"type": "orthographic", "orthographic": {{"xmag": 2, "ymag": 3, "znear": 0.1, "zfar": 50}}}}],
+  "nodes": [{{"name": "Rig", "children": [1]}}, {{"name": "Eye", "camera": 0}}, {{"name": "Top", "camera": 1}}],
+  "animations": [{{"name": "Dolly",
+                   "channels": [{{"sampler": 0, "target": {{"node": 0, "path": "translation"}}}},
+                                {{"sampler": 1, "target": {{"node": 1, "path": "rotation"}}}}],
+                   "samplers": [{{"input": 0, "output": 1}},
+                                {{"input": 0, "output": 2, "interpolation": "STEP"}}]}}],
+  "scenes": [{{"nodes": [0, 2]}}],
+  "scene": 0
+}})",
+                                      dataUri(buffer)));
+
+    const Result<ImportedModel> model = import("cameras.gltf");
+
+    ASSERT_TRUE(model) << model.error().message;
+    ASSERT_EQ(model->nodes.size(), 3U);
+    ASSERT_EQ(model->cameras.size(), 2U);
+    EXPECT_EQ(model->nodes[1].camera, 0);
+    EXPECT_EQ(model->nodes[2].camera, 1);
+    EXPECT_EQ(model->nodes[0].camera, -1);
+    EXPECT_EQ(model->cameras[0].name, "Lens");
+    EXPECT_TRUE(model->cameras[0].perspective);
+    EXPECT_FLOAT_EQ(model->cameras[0].verticalFov, 0.5F);
+    EXPECT_FLOAT_EQ(model->cameras[0].nearZ, 0.05F);
+    EXPECT_FLOAT_EQ(model->cameras[0].farZ, 0.0F) << "no zfar: infinite";
+    EXPECT_FALSE(model->cameras[1].perspective);
+    EXPECT_FLOAT_EQ(model->cameras[1].halfHeight, 3.0F);
+    EXPECT_FLOAT_EQ(model->cameras[1].farZ, 50.0F);
+
+    ASSERT_EQ(model->animations.size(), 1U);
+    const ImportedAnimation& dolly = model->animations[0];
+    EXPECT_EQ(dolly.name, "Dolly");
+    EXPECT_FLOAT_EQ(dolly.duration, 1.0F);
+    ASSERT_EQ(dolly.channels.size(), 2U);
+
+    // Halfway: linear translation, mirrored in X like every position.
+    const Math::Transform rig = animatedTransform(dolly, 0, model->nodes[0].local, 0.5F);
+    EXPECT_NEAR(rig.position.x, -1.0F, 1e-5F);
+    EXPECT_NEAR(rig.position.y, 1.5F, 1e-5F);
+    EXPECT_NEAR(rig.position.z, 2.0F, 1e-5F);
+    // STEP holds the first rotation until the second keyframe, which is mirrored too (y negated).
+    EXPECT_NEAR(animatedTransform(dolly, 1, model->nodes[1].local, 0.5F).rotation.w, 1.0F, 1e-5F);
+    const Math::Transform turned = animatedTransform(dolly, 1, model->nodes[1].local, 1.0F);
+    EXPECT_NEAR(turned.rotation.y, -0.70710678F, 1e-5F);
+    EXPECT_NEAR(turned.rotation.w, 0.70710678F, 1e-5F);
+    // A node the animation doesn't move keeps its rest transform; times past the end hold the last keyframe.
+    EXPECT_NEAR(animatedTransform(dolly, 2, model->nodes[2].local, 0.5F).position.x, 0.0F, 1e-6F);
+    EXPECT_NEAR(animatedTransform(dolly, 0, model->nodes[0].local, 5.0F).position.x, -2.0F, 1e-5F);
+}
+
+TEST(GltfAnimation, CubicSplineFollowsItsTangents)
+{
+    // One channel from 0 to 1 over 2 s with zero tangents: a smoothstep, so halfway is exactly 0.5 and a quarter in
+    // is 0.15625 (3t² - 2t³ at t = 0.25), not the linear 0.25.
+    ImportedAnimation animation;
+    ImportedChannel channel;
+    channel.node = 0;
+    channel.path = AnimationPath::Translation;
+    channel.interpolation = AnimationInterpolation::CubicSpline;
+    channel.times = {0.0F, 2.0F};
+    channel.values = {{0.0F, 0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F},
+                      {0.0F, 0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F}};
+    animation.channels.push_back(channel);
+    animation.duration = 2.0F;
+
+    EXPECT_NEAR(animatedTransform(animation, 0, {}, 1.0F).position.x, 0.5F, 1e-6F);
+    EXPECT_NEAR(animatedTransform(animation, 0, {}, 0.5F).position.x, 0.15625F, 1e-6F);
+}
+
 TEST_F(GltfImporterTest, ReadsTextureTransforms)
 {
     std::string json = attributeJson(dataUri(attributeBuffer()), flatNormalUri(), R"(, "TEXCOORD_0": 5)");
