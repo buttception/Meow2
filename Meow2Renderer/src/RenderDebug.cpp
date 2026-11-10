@@ -72,7 +72,8 @@ bool RenderDebug::prepare(Renderer::GpuScene& scene)
 {
     if (m_scene.scene != &scene)
     {
-        m_scene = ScenePipelines{.scene = &scene};
+        m_scene = ScenePipelines{};
+        m_scene.scene = &scene;
     }
     if (m_scene.failed)
     {
