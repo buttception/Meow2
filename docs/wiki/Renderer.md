@@ -2,7 +2,7 @@
 
 The rendering test bed and showcase: opens a glTF scene (or a grid of 100,000 cubes), draws it through the GPU-driven path on Vulkan or D3D12, and puts a Dear ImGui shell on top to pick scenes and read stats.
 
-- **Status:** 🟨 M6. ImGui shell, scene picker and stats (#172 / PR #173); log console, debug-tool settings, saved window layout, and orbit, fly and glTF cameras with animations (#188).
+- **Status:** 🟨 M6. ImGui shell, scene picker and stats (#172 / PR #173); log console, debug-tool settings, saved window layout, and orbit, fly and glTF cameras with animations (#188); rendering debug views, the live render graph and frame capture (#190).
 
 ## Using it
 
@@ -14,6 +14,7 @@ build\windows-msvc-debug\bin\Meow2Renderer.exe
 |---|---|
 | F1 | Shows or hides the UI |
 | F10 | Switches between Vulkan and D3D12 ([Rhi](Rhi.md#switching-backends-while-running)) |
+| F9 | Captures a frame in the engine's own frame capture, in memory (the Frame capture window) |
 | F11 | Captures a frame in RenderDoc (`rhi.renderDoc = true`, or launched from RenderDoc) |
 
 **Camera** (Camera window, or `renderer.camera`): keys and the mouse move it unless the UI has them (a window under the cursor, a text field).
@@ -28,8 +29,8 @@ build\windows-msvc-debug\bin\Meow2Renderer.exe
 
 - **Stats:** frame time and FPS with a graph of the last 240 frames, the backend and GPU, the swapchain size, GPU memory against the OS budget, validation errors (shown only when there are some), the open scene's entities, instances, meshes, materials and textures and how long it took to open. **Memory** lists CPU memory (Debug and RelWithDebInfo) and GPU memory per `MemTag`. Buttons do the same as F10 and F11.
 - **Scenes:** the 25 suggested Khronos samples in their groups, then every other model you've downloaded. Grey ones aren't downloaded yet:
-  - **Open** (or a double click) opens a downloaded one;
-  - **Fetch and open** runs `cmake -P cmake/FetchGltfSample.cmake <Name>` on a job thread, then opens it (progress in the console);
+  - **.GLTF** and **.GLB** beside a downloaded one open that version (each is greyed out when the model has no such version); a double click opens the default one (`.gltf` first);
+  - **Fetch** runs `cmake -P cmake/FetchGltfSample.cmake <Name>` on a job thread and only downloads (progress in the console); the buttons appear once it's done;
   - **Cube grid** goes back to the cubes;
   - **Any file** opens a `.gltf` or `.glb` by path.
 
@@ -39,6 +40,14 @@ build\windows-msvc-debug\bin\Meow2Renderer.exe
 - **Camera:** the mode, the file's cameras, and an animation player: pick one of the file's animations to play it on the scene (PLAY/PAUSE, LOOP, a time slider). A glTF camera moved by the animation follows it; animated meshes move too. "(none)" puts the scene back at rest.
 
 Window positions, sizes and docking are kept in the config (`renderer.uiLayout`, ImGui's own text) and restored at the next start.
+
+- **Debug:** what the scene shows instead of its shading (below), the wireframe (off, over the scene, or only the wireframe with hidden lines removed) and FREEZE culling (keeps culling with the frustum from that moment: fly out and see what was culled).
+- **Render graph:** this frame's passes as a flow from left to right: a pass goes one column after the latest pass whose output it uses, so independent work (the sky's tables, the culling) stands side by side. Links run from the pass that wrote a resource to the passes that use it; the selected pass's links are red, with the resource's name. **Click a pass** to watch its outputs live in the **Pass** window (a tab per texture it writes, with channel toggles and a value range; depth shows its raw reversed-Z value between the range's ends). Click it again to stop.
+- **Frame capture** (F9, or CAPTURE FRAME): one frame kept in memory, every pass and every texture as each pass left it. Click a pass to list its inputs (with the pass each came from) and outputs, and click one to see it full size with the same controls. Nothing is saved to disk: RenderDoc (F11) is the tool for keeping captures.
+
+Every window but the console is a tab of one panel on the left, the console is along the bottom, and the middle stays clear for the scene; drag tabs anywhere, and the layout is kept.
+
+**Debug views** (the Debug window's VIEW): triangles, instances and materials in their own colours, overdraw as a heat map (layers per pixel: blue 1, green 2, yellow 4, red 8, white 16+), depth, the mesh's and the shading normal, tangents, UVs, mip level (red 0 … magenta 5+), base colour, metallic, roughness, occlusion, emissive, alpha, and lighting only (a white surface), diffuse only and specular only.
 
 ### Settings
 
@@ -51,7 +60,9 @@ Window positions, sizes and docking are kept in the config (`renderer.uiLayout`,
 | `rhi.validation`, `rhi.vsync`, `rhi.renderDoc`, `rhi.renderDocOpenWindow`, `rhi.backend` | on except Release, true, false, true, vulkan | The debug tools, also in the Settings window ([Rhi](Rhi.md)) |
 | `renderer.camera` | orbit | How each scene starts: `orbit`, `fly` or `scene` (a glTF camera) |
 | `renderer.sceneCamera`, `renderer.animation` | 0, -1 | Which of the file's cameras `scene` uses, and which animation plays (-1 none): fixed viewpoints for checks and captures |
-| `renderer.uiLayout` | empty | ImGui's window layout, written by the app |
+| `renderer.uiLayout` | empty | ImGui's window layout, written by the app; delete it to get the default tabs back |
+| `renderer.debugView`, `renderer.wireframe` | -1, off | A debug view to start in (a `MEOW2_DEBUG_VIEW_*` number, -1 shaded) and the wireframe (`off`, `overlay`, `only`): for checks without the mouse |
+| `renderer.watchPass`, `renderer.captureAtFrame` | empty, 0 | A pass to watch from the start (its name), and a frame to capture once: for checks without the mouse |
 | `renderer.scene` | empty | Scene to open at start: a sample name or a `.gltf`/`.glb` path; empty for the cube grid |
 | `renderer.sampleAssets` | `<repo>/assets/gltf-sample-assets` | Where the samples are |
 | `renderer.instances` | 100000 | Cubes in the cube grid |
@@ -74,6 +85,8 @@ Settings given with `--set` are saved to `Meow2Renderer.toml` like the rest ([Co
 | `ConsoleWindow.*` | The Console window over the engine's `Log::ConsoleBuffer` ([Logging](Logging.md#in-app-console)) |
 | `SettingsWindow.*` | The Settings window, and the table of settings with their defaults: `main.cpp` reads the same table, so the app and the window never disagree |
 | `CameraControls.*` | Orbit and fly cameras, glTF camera poses and lenses, the Camera window |
+| `RenderDebug.*` | The Debug window: debug views, wireframe, frozen culling, the debug present pass |
+| `FrameInspector.*` | The Render graph, Pass and Frame capture windows: the flow, the live pass view, captures |
 
 Dear ImGui (v1.93.0-docking, a submodule) is built as `meow2_imgui` only with the Renderer: the engine and Player never see it. Its memory is counted under `MemTag::ImGui`.
 
@@ -97,6 +110,15 @@ ImGui's own backends aren't used. They'd bring SDL into the app and a separate V
 
 `SceneView::openModel()` imports the file ([Gltf](Gltf.md)), creates a `GpuScene` sized for its primitives, uploads it, makes the entities and frames the camera with its bounds. The `PipelineLibrary` gives every scene the same pipelines (culling, three draw lists, blended): adding a request it already has returns the existing pipeline.
 
+### Frame and debugging
+
+The scene is drawn in linear light into a 16-bit floating-point texture, `Scene colour`, as **Opaque**, **Sky** and **Blended** passes; a **Tone map** pass writes the swapchain, and the UI draws on top. So every step's output is a texture of the graph, which the inspector can show ([Rendering](Rendering.md#the-frame)).
+
+- **Debug views** are a separate variant of the scene's shader (`DEBUG_VIEW = 1` in `GpuDriven.hlsl.meta`), picked with `GpuScene::makeDrawPipelines()` and `setPipelineOverride()`; the frame constants say which view. The game's shader (`DEBUG_VIEW = 0`) has none of it, and Meow2Player never builds the variant. A **debug present** pass (`ToneMap.hlsl`'s `DEBUG_OUTPUT = 1`) shows the colours without the tone curve, or turns the overdraw count into the heat map. Overdraw adds 1/16 a layer with additive pipelines and no depth test.
+- **The wireframe** is the scene's culled lists drawn again with line-fill pipelines (`DEBUG_VIEW = 2`) by `GpuScene::addOverlayPass()`, depth-tested so hidden edges stay hidden. "Only" draws the surfaces black first (they still write depth).
+- **Watching a pass:** before the graph compiles, `FrameInspector` finds the pass by name (indices change between frames), and `RenderGraph::insertPassAfter()` puts a small pass right after it that draws each texture it wrote into a displayable RGBA8 sRGB image (`DebugTexture.hlsl`'s `psDisplay`: the value range, the channels). The graph adds the barriers: the texture is read, then made a target again for the next pass that writes it. ImGui shows the image through `ImGuiLayer::engineTexture()`, an ID resolved to a heap index only when the UI is drawn, and the UI pass declares the image as a read.
+- **A capture** copies, after every pass that writes a texture, that texture as it is (`psCopy` into RGBA16F, or R32F for depth), so the range and channels can still change afterwards. A backend switch ends the capture: its textures belonged to the old device.
+
 ### Cameras
 
 A stopgap until the editor's camera rigs (M7). Each new scene fits the cameras to it: the orbit circles its bounding sphere from +Z (glTF models face +Z, so the first view is the front), and the fly speed is half its radius per second. The near plane follows the scene's size (1 % of the radius, between 1 mm and 10 cm), so small models aren't clipped; depth is reversed and infinite, so there's no far plane.
@@ -109,4 +131,4 @@ The maths is in plain functions over plain structs (`updateOrbit`, `updateFly`, 
 
 ## Tests
 
-`RendererApp.*` (`Meow2Renderer/tests/`): key mapping, the sample list (on a fake samples folder), model-name checks for the fetch command, frame times; the console's filter and its copy of the buffer (`ConsoleWindow.*`); settings written and saved, and what needs a restart (`SettingsWindow.*`); the layout's round trip through ImGui and the TOML file (`ImGuiLayout.*`); orbit, fly and glTF cameras (`CameraControls.*`). The ImGui pass itself is checked by hand and by the RHI tests of its pieces: `RhiGpu*.RhiStatesTest.*` (scissor, alpha blending).
+`RendererApp.*` (`Meow2Renderer/tests/`): key mapping, the sample list (on a fake samples folder), model-name checks for the fetch command, frame times; the console's filter and its copy of the buffer (`ConsoleWindow.*`); settings written and saved, and what needs a restart (`SettingsWindow.*`); the layout's round trip through ImGui and the TOML file (`ImGuiLayout.*`); orbit, fly and glTF cameras (`CameraControls.*`); the flow: where a pass's input comes from, and the columns (`FrameInspector.*`). The ImGui pass itself is checked by hand and by the RHI tests of its pieces: `RhiGpu*.RhiStatesTest.*` (scissor, alpha blending).

@@ -284,6 +284,7 @@ PDBs are kept for every build, so crash dumps can be symbolicated. Release zips 
 - **Dockable windows (future):**
   - Meow2Renderer: Dear ImGui docking branch + multi-viewports (tool windows can be dragged out into real OS windows; ImGui has an SDL3 platform backend for this).
   - Meow2Editor: Qt `QDockWidget`s. The viewport is a Qt widget, and the RHI renders into its native handle. **The editor never creates SDL windows**: Qt owns them.
+- **Window sizes are logical units** (owner decision 2026-11-10): the size at 100 % display scaling, the same in every app; a new window takes 80 % of its display, and one too big for its display is shrunk to fit. The drawable area always has the full pixel resolution. A separate render-resolution setting comes when something needs exact pixels.
 - Meow2Player and Meow2Renderer: one SDL3 window, fullscreen/windowed. Window events (resize, close, focus, DPI) are published on the `EventBus` (§22).
 
 ### Input
@@ -340,7 +341,7 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 - Resources are referenced by handles owned by the device (32-bit index + generation). **GPU resources don't get UUIDs** (§24): they exist only while the program runs, are recreated on every hot swap and are looked up every frame, so a 128-bit key would cost hashing for nothing. A resource may record the `AssetId` it was loaded from, for debugging and Tracy names.
 - **D3D12** (M5): one root signature (the push constants as root constants at b0, heaps indexed directly), **enhanced barriers** (the same stages, accesses and layouts as Vulkan's synchronization2, so `ResourceState` maps one to one), and buffer ↔ texture copies with tightly packed rows. A GPU without them is refused with a message, as on Vulkan. Shaders that write a buffer use a second heap slot (`bindlessStorageIndex`), because D3D12 keeps read and write views apart.
 - Debug: validation layers / D3D12 debug layer, object names, validation messages routed to the `RHI` logger.
-- **Debug tools** (owner decision 2026-11-07): RenderDoc is the baseline on both backends, with in-app capture and pass markers. PIX is for D3D12 (timing, and ray tracing later). NVIDIA Nsight Graphics is for deep GPU profiling and ray tracing. Markers go through one RHI call, so all three show the same pass names.
+- **Debug tools** (owner decision 2026-11-07): RenderDoc is the baseline on both backends, with in-app capture and pass markers. PIX is for D3D12 (timing, and ray tracing later). NVIDIA Nsight Graphics is for deep GPU profiling and ray tracing. Markers go through one RHI call, so all three show the same pass names. Meow2Renderer also has its own in-memory frame capture and live pass view (F9, the Render graph window), built on the render graph; they and the debug views (a separate shader variant) stay out of games.
 
 ## 12. Shaders
 
@@ -745,3 +746,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-08 — §4: Barlow Semi Condensed bundled as the UI font (owner-approved); Consolas used from the system on Windows.
 - 2026-11-09 — §3/§4: DirectXTex may2026 added (owner-approved) for BC7 and BC5 texture cooking; BC formats need `textureCompressionBC` on Vulkan.
 - 2026-11-09 — Roadmap renumbered (milestones.md, owner decision): Editor M7, Physics M8, Scripting M9, Advanced rendering M12, Platforms M13. §14: physics is modular (build-time backend or `None`), the first library is open (Box3D considered); §7: the in-app console buffer implemented.
+- 2026-11-10 — §9: window sizes in logical units, 80 % default; §11: the Renderer's own frame capture and debug views (not in games); the scene is drawn in HDR with a tone-map pass.

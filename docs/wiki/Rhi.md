@@ -272,6 +272,10 @@ Renderer saves the pipeline cache of each backend it used to `cache/vulkan-pipel
 
 With SDL's `offscreen` driver there's no window to draw to, so Renderer creates no device. That's how smoke tests run on machines with no GPU.
 
+### Pipeline states for debugging
+
+`GraphicsPipelineDesc` has `fill` (`FillMode::Wireframe` draws only edges), `blend = BlendMode::Additive` (counting, light accumulation) and `depthTest` (false passes every pixel; depth stays bound, the compare becomes ALWAYS, so the pipeline still matches a pass with a depth target). D3D12's pipeline library is keyed by these states too: before, two pipelines with the same shaders but different fill or blending could load each other from the cache. `IRhiDevice::textureInfo()` reports a texture's size, mip levels and format.
+
 ## Tests
 
 `Rhi.*` need no GPU. `RhiGpu.*` (Vulkan) and `RhiGpuD3D12.*` need a GPU and a desktop, so they're built only with `-DMEOW2_GPU_TESTS=ON`. CI doesn't run them yet. Both are built from the same sources (`tests/Graphics/Rhi/RhiTestBackend.h` picks the backend), so every behaviour is checked on both APIs.

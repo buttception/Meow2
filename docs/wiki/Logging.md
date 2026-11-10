@@ -105,6 +105,7 @@ Its destructor restores the previous handler.
 - Messages are formatted with `std::format` in the engine, then handed to spdlog as plain text, so `{}` inside a message is never re-interpreted.
 - On Windows, file names are passed as `wchar_t` (`SPDLOG_WCHAR_FILENAMES`), so log folders with non-ASCII characters work.
 - `warn` and above trigger an immediate flush (`flush_on`), so the last lines before a crash are on disk.
+- With the console sink on, a Windows console is switched to UTF-8 output (`SetConsoleOutputCP`): log lines are UTF-8, and its old code page showed `→` as `ΓåÆ`. The log file was always right.
 
 ## Thread safety
 

@@ -211,6 +211,8 @@ Planned as four PRs (PR 2, scene files, moved to M7). glTF is an import source, 
 | 4 | Theme (owner request): pure black with a red accent in Renderer and Editor, Barlow Semi Condensed and Consolas, app icons (cat; E and R badges), asset icons | §2 | ✅ | #178 / PR #179 |
 | 4 | Log console (the engine's `ConsoleBuffer`, in Consolas), settings window for debug tools saved to the TOML config, saved window layout | §7, §11 | ✅ | #188 / PR #189 |
 | 4 | Cameras until the editor's rigs (owner request): orbit, fly (noclip), the file's glTF cameras; glTF node animations played on the scene, so animated cameras work | §10 | ✅ | #188 / PR #189 |
+| 4 | Rendering debug tools (owner request): the scene in HDR with a tone-map pass and separate opaque/sky/blended passes; a live render-graph view with a pass view; in-memory frame capture (F9); debug views, wireframe, overdraw, frozen culling; windows docked as tabs. Only in Renderer (and later the editor), never in games | §11 | ✅ | #190 / PR #191 |
+| 4 | Window sizes in logical units (follow display scaling), first-run size 80 % of the display (owner decision 2026-11-10) | §9 | ✅ | #190 / PR #191 |
 | 5 Verification, meshlets and close | **meshoptimizer** (submodule, owner-approved 2026-11-09): vertex cache and overdraw optimisation at import | §4 | ⬜ | |
 | 5 | **Meshlets** (owner request, pulled forward from M12): clusters from meshoptimizer, culled per cluster, drawn with mesh shaders where the GPU has them; the indirect path stays for the rest; tested on a glTF sample scene | §11 | ⬜ | |
 | 5 | Golden-image tests per backend (label `visual`), from fixed glTF cameras; new goldens only with the owner's sign-off | §13 | ⬜ | |
@@ -312,3 +314,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-07 — Owner request: Meow2Renderer's ImGui shell, scene picker and stats (M6 PR 4) ahead of scene files.
 - 2026-11-07 — M6 rewritten as a feature table: M7 merged in, stopping at PBR (owner decision); scene files, PBR, the ImGui shell and golden images planned as PRs 2–5; new M13 Advanced rendering takes animation, compression, material extensions and meshlets.
 - 2026-11-09 — Owner decisions: scene files move from M6 to M7; M7 is the Editor (was M9), M8 Physics (modular, backend open), M9 Scripting (new), M12 Advanced rendering and M13 Platforms swapped; meshoptimizer approved and meshlets pulled into M6 PR 5; issue-based tracking from M7; M6 PR 4 gains the stopgap cameras.
+- 2026-11-10 — M6 PR 4 gains the rendering debug tools and logical window sizes (#190, owner requests).
