@@ -15,3 +15,8 @@ stage = "pixel"
 [[entry]]
 name = "vsBlend"
 stage = "vertex"
+
+# 0: the game's shader. 1: debug views (FrameConstants::debugView picks one); 2: the wireframe overlay. Only Meow2Renderer and
+# the editor build 1 and 2.
+[options]
+DEBUG_VIEW = [0, 1, 2]

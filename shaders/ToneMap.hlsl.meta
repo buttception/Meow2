@@ -1,0 +1,13 @@
+id = "01a1b5e2-3c17-8000-80a4-7b19d2e6c058"
+
+[[entry]]
+name = "vsMain"
+stage = "vertex"
+
+[[entry]]
+name = "psMain"
+stage = "pixel"
+
+# 1: Meow2Renderer's debug present (debug-view colours as they are, or an overdraw heat map); games use 0.
+[options]
+DEBUG_OUTPUT = [0, 1]

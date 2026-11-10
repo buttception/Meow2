@@ -36,6 +36,12 @@ Each texture slot names its own sampler (`-1`: linear, repeating, mipmapped).
 
 ## How it works
 
+### The frame
+
+The scene isn't drawn into the swapchain any more but into **Scene colour**, an RGBA16F texture in linear light with the exposure applied, in three passes: **Opaque** (the three indirect lists, clearing colour and depth), **Sky** (behind everything, where depth is still far) and **Blended** (sorted, over both). **Tone map** (`ToneMapPass`, `ToneMap.hlsl`) then applies the Khronos PBR Neutral curve while writing the swapchain, whose sRGB view encodes the result.
+
+Why: every step's output is now a texture of the render graph, which the Renderer's inspector can show ([Renderer](Renderer.md#frame-and-debugging)), and post-processing (bloom, exposure control) has an HDR image to work on. It costs one full-screen pass.
+
 ### Shading
 
 `psMain` in `shaders/GpuDriven.hlsl` is the standard real-time PBR model, the one glTF's specification describes:

@@ -90,7 +90,8 @@ TEST_F(WindowTest, CreatesWithDesc)
 
 TEST_F(WindowTest, RejectsBadSize)
 {
-    const Meow2::Result<Window> window = Window::create(*m_platform, m_log, {.width = 0, .height = 600});
+    // 0 means the default share of the display; a negative size is invalid.
+    const Meow2::Result<Window> window = Window::create(*m_platform, m_log, {.width = -5, .height = 600});
     ASSERT_FALSE(window.has_value());
     EXPECT_EQ(window.error().code, Meow2::ErrorCode::InvalidArgument);
 }
@@ -178,7 +179,19 @@ TEST_F(WindowTest, PlatformCanBeRecreated)
     ASSERT_TRUE(again.has_value()) << std::format("{}", again.error());
     m_platform.emplace(std::move(*again));
     const Window window = createWindow({.hidden = true});
-    EXPECT_EQ(window.bounds().width, 1920) << "the default size, 1080p";
+    // No size: 80 % of the display's usable area (SDL's offscreen display is 1024 x 768, scale 1).
+    EXPECT_EQ(window.bounds().width, static_cast<std::int32_t>(1024 * Meow2::Platform::c_defaultScreenShare));
+    EXPECT_EQ(window.bounds().height, static_cast<std::int32_t>(768 * Meow2::Platform::c_defaultScreenShare));
+    EXPECT_FLOAT_EQ(window.unitsPerLogical(), 1.0F);
+}
+
+TEST_F(WindowTest, TooBigShrinksToTheDisplay)
+{
+    // 4000 x 2250 logical units on a 1024 x 768 display: shrunk to its usable area less room for the frame, 16:9 kept.
+    const Window window = createWindow({.width = 4000, .height = 2250, .hidden = true});
+    EXPECT_LE(window.bounds().width, 1024 - 16);
+    EXPECT_LE(window.bounds().height, 768 - 48);
+    EXPECT_NEAR(static_cast<double>(window.bounds().width) / window.bounds().height, 16.0 / 9.0, 0.02);
 }
 
 TEST_F(WindowTest, SdlMemoryIsTracked)

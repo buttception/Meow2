@@ -201,11 +201,28 @@ enum class CullMode : std::uint8_t
     Front ///< Skip triangles facing the viewer: for meshes mirrored by a negative scale, whose winding is reversed.
 };
 
+/// @brief What a texture is, as the device reports it (IRhiDevice::textureInfo()). Plain data.
+struct TextureInfo
+{
+    std::uint32_t width = 0;               ///< Width in pixels.
+    std::uint32_t height = 0;              ///< Height in pixels.
+    std::uint32_t mipLevels = 1;           ///< Mip levels.
+    RhiFormat format = RhiFormat::Unknown; ///< Its format.
+};
+
 /// @brief How a graphics pipeline combines its output with what's in the target.
 enum class BlendMode : std::uint8_t
 {
-    None, ///< Overwrite.
-    Alpha ///< Straight alpha: `src × srcAlpha + dst × (1 − srcAlpha)`; alpha accumulates the same way. For UI.
+    None,    ///< Overwrite.
+    Alpha,   ///< Straight alpha: `src × srcAlpha + dst × (1 − srcAlpha)`; alpha accumulates the same way. For UI.
+    Additive ///< `src + dst`, alpha too: counting (overdraw views), light accumulation.
+};
+
+/// @brief How triangles are filled.
+enum class FillMode : std::uint8_t
+{
+    Solid,    ///< Filled.
+    Wireframe ///< Only their edges, one pixel wide: for debug views.
 };
 
 /// @brief A rectangle drawing is clipped to, in pixels from the target's top-left corner. Plain data.
@@ -227,10 +244,12 @@ struct GraphicsPipelineDesc
     std::string pixelEntry = "psMain";          ///< Its entry point.
     RhiFormat colorFormat = RhiFormat::Unknown; ///< Format of the colour target.
     RhiFormat depthFormat = RhiFormat::Unknown; ///< Format of the depth target; Unknown for none.
-    bool depthWrite = true;                     ///< Whether drawing updates depth.
-    CullMode cull = CullMode::None;             ///< Which triangles to skip.
-    BlendMode blend = BlendMode::None;          ///< How output combines with the target.
-    std::string name = "Pipeline";              ///< Shown in debugging tools.
+    bool depthTest = true;             ///< Whether depth is tested; false passes every pixel (depth stays bound).
+    bool depthWrite = true;            ///< Whether drawing updates depth.
+    CullMode cull = CullMode::None;    ///< Which triangles to skip.
+    BlendMode blend = BlendMode::None; ///< How output combines with the target.
+    FillMode fill = FillMode::Solid;   ///< Filled triangles, or only their edges.
+    std::string name = "Pipeline";     ///< Shown in debugging tools.
 };
 
 /// @brief What to create a compute pipeline with. Plain data. The bytecode is only read during the call.

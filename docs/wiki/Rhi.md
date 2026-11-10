@@ -251,6 +251,7 @@ Looked into for M6's capture button; nothing added yet, because each needs an SD
 - Storage writes in vertex and pixel shaders; storage images written without a declared format
 - Multi-draw indirect, indirect draw count, 64-bit integers in shaders
 - BC texture compression (BC7, BC5)
+- Wireframe fill (`fillModeNonSolid`), for the debug views
 
 On D3D12:
 
@@ -270,6 +271,10 @@ On D3D12:
 Renderer saves the pipeline cache of each backend it used to `cache/vulkan-pipelines.bin` and `cache/d3d12-pipelines.bin` next to the exe, and reads cooked shaders from `cooked/` next to it. Without them it just clears the window.
 
 With SDL's `offscreen` driver there's no window to draw to, so Renderer creates no device. That's how smoke tests run on machines with no GPU.
+
+### Pipeline states for debugging
+
+`GraphicsPipelineDesc` has `fill` (`FillMode::Wireframe` draws only edges), `blend = BlendMode::Additive` (counting, light accumulation) and `depthTest` (false passes every pixel; depth stays bound, the compare becomes ALWAYS, so the pipeline still matches a pass with a depth target). D3D12's pipeline library is keyed by these states too: before, two pipelines with the same shaders but different fill or blending could load each other from the cache. `IRhiDevice::textureInfo()` reports a texture's size, mip levels and format.
 
 ## Tests
 

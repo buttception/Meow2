@@ -37,12 +37,39 @@ bool isOnAnyDisplay(const WindowRect& rect)
     return isReachable(rect, bounds);
 }
 
-/// @brief The top-left corner that centres a `width`×`height` window on the primary display.
-std::pair<std::int32_t, std::int32_t> centredOnPrimary(std::int32_t width, std::int32_t height)
+/// @brief The display that contains `point`, or 0 if none does.
+///
+/// Not SDL_GetDisplayForPoint(): for a point on no display it returns the nearest one (so a saved position on an
+/// unplugged monitor would pick its neighbour), and its distance squared overflows an `int` for points far off
+/// (UBSan).
+SDL_DisplayID displayContaining(const SDL_Point& point)
 {
-    SDL_Rect display{0, 0, width, height};
-    SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &display); // keeps the fallback on failure
-    return {display.x + (display.w - width) / 2, display.y + (display.h - height) / 2};
+    int count = 0;
+    SDL_DisplayID* displays = SDL_GetDisplays(&count);
+    SDL_DisplayID found = 0;
+    for (int i = 0; displays != nullptr && i < count && found == 0; ++i)
+    {
+        SDL_Rect bounds;
+        if (SDL_GetDisplayBounds(displays[i], &bounds) && SDL_PointInRect(&point, &bounds))
+        {
+            found = displays[i];
+        }
+    }
+    SDL_free(displays);
+    return found;
+}
+
+/// @brief Desktop units per logical unit on a display: its scale where SDL measures windows in pixels (Windows, X11),
+///        1 where the system already scales window sizes (macOS's points, Wayland's logical coordinates).
+float desktopUnitsPerLogical(float displayScale)
+{
+    const char* driver = SDL_GetCurrentVideoDriver();
+    const std::string_view name = driver != nullptr ? std::string_view{driver} : std::string_view{};
+    if (name == "cocoa" || name == "wayland" || displayScale <= 0.0F)
+    {
+        return 1.0F;
+    }
+    return displayScale;
 }
 
 constexpr std::string_view toString(WindowMode mode)
@@ -150,15 +177,50 @@ Window::Window(Window&& other) noexcept = default;
 
 Result<Window> Window::create(Platform& platform, Log::Logger& log, const WindowDesc& desc)
 {
-    if (desc.width <= 0 || desc.height <= 0)
+    if (desc.width < 0 || desc.height < 0)
     {
         return fail(ErrorCode::InvalidArgument, std::format("window size {}x{}", desc.width, desc.height));
     }
 
-    // Where the window goes when windowed: the saved position if it's still on a display, else centred.
-    const auto [centredX, centredY] = centredOnPrimary(desc.width, desc.height);
-    WindowRect restored{desc.x.value_or(centredX), desc.y.value_or(centredY), desc.width, desc.height};
-    if ((desc.x || desc.y) && !isOnAnyDisplay(restored))
+    // The display it opens on: the one under the saved position if that's still on a display, else the primary.
+    const bool hasPosition = desc.x.has_value() || desc.y.has_value();
+    const SDL_Point corner{desc.x.value_or(0), desc.y.value_or(0)};
+    SDL_DisplayID display = hasPosition ? displayContaining(corner) : 0;
+    if (display == 0)
+    {
+        display = SDL_GetPrimaryDisplay();
+    }
+    SDL_Rect area{0, 0, 1920, 1080}; // kept if the query fails
+    SDL_GetDisplayUsableBounds(display, &area);
+    const float scale = desktopUnitsPerLogical(SDL_GetDisplayContentScale(display));
+
+    // The size: logical units times the display's scale, or a share of the display; shrunk to fit its usable area
+    // (minus room for the frame and title bar, which the size leaves out), keeping the shape.
+    std::int32_t width = static_cast<std::int32_t>(static_cast<float>(desc.width) * scale + 0.5F);
+    std::int32_t height = static_cast<std::int32_t>(static_cast<float>(desc.height) * scale + 0.5F);
+    if (desc.width == 0 || desc.height == 0)
+    {
+        width = static_cast<std::int32_t>(static_cast<float>(area.w) * c_defaultScreenShare);
+        height = static_cast<std::int32_t>(static_cast<float>(area.h) * c_defaultScreenShare);
+    }
+    const std::int32_t roomWidth = std::max(area.w - static_cast<std::int32_t>(16.0F * scale), 160);
+    const std::int32_t roomHeight = std::max(area.h - static_cast<std::int32_t>(48.0F * scale), 120);
+    if (width > roomWidth || height > roomHeight)
+    {
+        const float fit = std::min(static_cast<float>(roomWidth) / static_cast<float>(width),
+                                   static_cast<float>(roomHeight) / static_cast<float>(height));
+        MEOW2_LOG_INFO(log, "Window {}x{} doesn't fit the display ({}x{} usable); using {}x{}", width, height, area.w,
+                       area.h, static_cast<std::int32_t>(static_cast<float>(width) * fit),
+                       static_cast<std::int32_t>(static_cast<float>(height) * fit));
+        width = static_cast<std::int32_t>(static_cast<float>(width) * fit);
+        height = static_cast<std::int32_t>(static_cast<float>(height) * fit);
+    }
+
+    // Where it goes when windowed: the saved position if it's still on a display, else centred in the usable area.
+    const std::int32_t centredX = area.x + (area.w - width) / 2;
+    const std::int32_t centredY = area.y + (area.h - height) / 2;
+    WindowRect restored{desc.x.value_or(centredX), desc.y.value_or(centredY), width, height};
+    if (hasPosition && !isOnAnyDisplay(restored))
     {
         MEOW2_LOG_INFO(log, "Window position ({}, {}) is off every display; centring it", restored.x, restored.y);
         restored.x = centredX;
@@ -203,6 +265,12 @@ Result<Window> Window::create(Platform& platform, Log::Logger& log, const Window
 WindowId Window::id() const
 {
     return m_impl->id;
+}
+
+float Window::unitsPerLogical() const
+{
+    // The window's display now: it may have been moved to a monitor with another scale.
+    return desktopUnitsPerLogical(SDL_GetWindowDisplayScale(m_impl->window));
 }
 
 float Window::displayScale() const

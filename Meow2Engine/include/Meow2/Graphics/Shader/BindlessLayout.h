@@ -37,6 +37,7 @@ static_assert(offsetof(IndirectDraw, vertexCount) == 4, "Where the draw argument
 static_assert(sizeof(PackedVertex) == 24);
 static_assert(sizeof(MaterialData) == 272);
 static_assert(sizeof(UiDraw) == 32);
+static_assert(sizeof(DebugDisplay) == 32);
 static_assert(sizeof(MeshDraw) == 48);
 static_assert(sizeof(CullConstants) == 128);
 static_assert(sizeof(SkyConstants) == 160);

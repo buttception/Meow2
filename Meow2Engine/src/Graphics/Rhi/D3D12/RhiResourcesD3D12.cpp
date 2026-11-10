@@ -446,6 +446,7 @@ Result<TextureHandle> RhiDeviceD3D12::createTexture(const TextureDesc& desc)
     record.format = desc.format;
     record.width = desc.width;
     record.height = desc.height;
+    record.mipLevels = desc.mipLevels;
     record.depth = depth;
     record.renderTarget = desc.renderTarget;
     if (const HRESULT result = m_allocator->CreateResource3(&allocation, &resourceDesc, D3D12_BARRIER_LAYOUT_UNDEFINED,
@@ -578,6 +579,12 @@ std::uint32_t RhiDeviceD3D12::bindlessStorageIndex(TextureHandle texture, std::u
     return found != nullptr && mipLevel < c_maxMipLevels ? found->storageIndices[mipLevel] : c_invalidBindlessIndex;
 }
 
+TextureInfo RhiDeviceD3D12::textureInfo(TextureHandle texture)
+{
+    const TextureD3D12 record = this->texture(texture);
+    return {.width = record.width, .height = record.height, .mipLevels = record.mipLevels, .format = record.format};
+}
+
 TextureD3D12 RhiDeviceD3D12::texture(TextureHandle handle)
 {
     const std::shared_lock lock{m_resourceMutex};
@@ -689,19 +696,21 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     pipelineDesc.pRootSignature = m_rootSignature.Get();
     pipelineDesc.VS = {.pShaderBytecode = desc.vertexCode.data(), .BytecodeLength = desc.vertexCode.size()};
     pipelineDesc.PS = {.pShaderBytecode = desc.pixelCode.data(), .BytecodeLength = desc.pixelCode.size()};
-    pipelineDesc.BlendState.RenderTarget[0] = {.BlendEnable = desc.blend == BlendMode::Alpha ? TRUE : FALSE,
+    const bool additive = desc.blend == BlendMode::Additive;
+    pipelineDesc.BlendState.RenderTarget[0] = {.BlendEnable = desc.blend != BlendMode::None ? TRUE : FALSE,
                                                .LogicOpEnable = FALSE,
-                                               .SrcBlend = D3D12_BLEND_SRC_ALPHA,
-                                               .DestBlend = D3D12_BLEND_INV_SRC_ALPHA,
+                                               .SrcBlend = additive ? D3D12_BLEND_ONE : D3D12_BLEND_SRC_ALPHA,
+                                               .DestBlend = additive ? D3D12_BLEND_ONE : D3D12_BLEND_INV_SRC_ALPHA,
                                                .BlendOp = D3D12_BLEND_OP_ADD,
                                                .SrcBlendAlpha = D3D12_BLEND_ONE,
-                                               .DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA,
+                                               .DestBlendAlpha = additive ? D3D12_BLEND_ONE : D3D12_BLEND_INV_SRC_ALPHA,
                                                .BlendOpAlpha = D3D12_BLEND_OP_ADD,
                                                .LogicOp = D3D12_LOGIC_OP_NOOP,
                                                .RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL};
     pipelineDesc.SampleMask = UINT_MAX;
     // Clockwise front faces, as on Vulkan (CullMode).
-    pipelineDesc.RasterizerState = {.FillMode = D3D12_FILL_MODE_SOLID,
+    pipelineDesc.RasterizerState = {.FillMode = desc.fill == FillMode::Wireframe ? D3D12_FILL_MODE_WIREFRAME
+                                                                                 : D3D12_FILL_MODE_SOLID,
                                     .CullMode = desc.cull == CullMode::Back    ? D3D12_CULL_MODE_BACK
                                                 : desc.cull == CullMode::Front ? D3D12_CULL_MODE_FRONT
                                                                                : D3D12_CULL_MODE_NONE,
@@ -710,7 +719,8 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     pipelineDesc.DepthStencilState = {.DepthEnable = hasDepth ? TRUE : FALSE,
                                       .DepthWriteMask = hasDepth && desc.depthWrite ? D3D12_DEPTH_WRITE_MASK_ALL
                                                                                     : D3D12_DEPTH_WRITE_MASK_ZERO,
-                                      .DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL}; // reversed Z
+                                      .DepthFunc = desc.depthTest ? D3D12_COMPARISON_FUNC_GREATER_EQUAL // reversed Z
+                                                                  : D3D12_COMPARISON_FUNC_ALWAYS};
     pipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     pipelineDesc.NumRenderTargets = 1;
     pipelineDesc.RTVFormats[0] = d3d12Format(desc.colorFormat);
@@ -725,6 +735,14 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     key.addValue(pipelineDesc.RasterizerState.CullMode);
     key.addValue(pipelineDesc.DepthStencilState.DepthWriteMask);
     key.addValue(pipelineDesc.BlendState.RenderTarget[0].BlendEnable);
+    // Every state that differs between our pipelines must be in the key, or the library hands back another pipeline
+    // with the same shaders (a wireframe view would load the solid one).
+    key.addValue(pipelineDesc.RasterizerState.FillMode);
+    key.addValue(pipelineDesc.DepthStencilState.DepthEnable);
+    key.addValue(pipelineDesc.DepthStencilState.DepthFunc);
+    key.addValue(pipelineDesc.BlendState.RenderTarget[0].SrcBlend);
+    key.addValue(pipelineDesc.BlendState.RenderTarget[0].DestBlend);
+    key.addValue(pipelineDesc.BlendState.RenderTarget[0].DestBlendAlpha);
     const std::wstring name = key.name(L"g");
     Result<ID3D12PipelineState*> state = libraryPipeline(
         name, [&](ID3D12PipelineState** out)

@@ -636,8 +636,8 @@ void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& fr
     std::memcpy(m_device.device().mappedMemory(m_cullBuffers[frameSlot]).data(), &cull, sizeof(cull));
 }
 
-void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain* swapchain,
-                         Rhi::TextureHandle color, Rhi::TextureHandle depth, const Math::Color& clear)
+GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain* swapchain,
+                                  Rhi::TextureHandle color, Rhi::TextureHandle depth, const Math::Color& clear)
 {
     using Rhi::ResourceState;
     if (depth != m_lastDepth) // a new target, e.g. after a resize
@@ -645,9 +645,9 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
         m_lastDepth = depth;
         m_depthState = ResourceState::Undefined;
     }
-    m_drawResource = graph.import(m_drawBuffer, m_drawState);
-    m_countResource = graph.import(m_countBuffer, m_countState);
-    m_depthResource = graph.import(depth, m_depthState);
+    m_drawResource = graph.import(m_drawBuffer, m_drawState, "Draw commands");
+    m_countResource = graph.import(m_countBuffer, m_countState, "Draw counts");
+    m_depthResource = graph.import(depth, m_depthState, "Depth");
 
     // New textures are copied first. The copies run before every later pass, which see them as shader inputs.
     if (!m_pendingTextures.empty())
@@ -712,20 +712,84 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
          },
          .small = true});
 
-    std::vector<GraphAccess> drawAccesses{{m_countResource, ResourceState::IndirectArgs},
-                                          {m_drawResource, ResourceState::IndirectArgs},
-                                          {m_depthResource, ResourceState::DepthTarget}};
+    // Three passes, so debugging tools can show each step's output: everything opaque (clearing the targets), the
+    // sky behind it (where depth is still far), then what's blended over both. Each keeps what the one before drew.
     GraphResource colorResource{};
     if (swapchain == nullptr)
     {
-        colorResource = graph.import(color, ResourceState::Undefined);
-        drawAccesses.push_back({colorResource, ResourceState::ColorTarget});
+        colorResource = graph.import(color, ResourceState::Undefined, "Scene colour");
     }
+    const auto targets = [&](bool indirect)
+    {
+        std::vector<GraphAccess> accesses{{m_depthResource, ResourceState::DepthTarget}};
+        if (indirect)
+        {
+            accesses.push_back({m_countResource, ResourceState::IndirectArgs});
+            accesses.push_back({m_drawResource, ResourceState::IndirectArgs});
+        }
+        if (swapchain == nullptr)
+        {
+            accesses.push_back({colorResource, ResourceState::ColorTarget});
+        }
+        return accesses;
+    };
+    // Starts drawing into the targets: cleared for the first pass, kept for the others.
+    const auto begin = [swapchain, color, depth](Rhi::IRhiCommandList& list, std::optional<Math::Color> clearColor,
+                                                 std::optional<float> clearDepth)
+    {
+        if (swapchain != nullptr)
+        {
+            if (!clearColor)
+            {
+                list.barrier(*swapchain); // an earlier pass, maybe in another list, drew to this image
+            }
+            list.beginRendering(*swapchain, clearColor, depth, clearDepth);
+        }
+        else
+        {
+            list.beginRendering(
+                Rhi::RenderTargets{.color = color, .clearColor = clearColor, .depth = depth, .clearDepth = clearDepth});
+        }
+    };
     Rhi::IRhiDevice& device = m_device.device();
     Shader::PushConstants push{};
     push.frameBuffer = device.bindlessIndex(m_frameBuffers[frameSlot]);
     push.instanceBuffer = device.bindlessIndex(m_instanceBuffer);
     push.userData = device.bindlessIndex(m_meshBuffer);
+
+    graph.addPass({.name = "Opaque",
+                   .accesses = targets(true),
+                   .record = [this, begin, clear, push](Rhi::IRhiCommandList& list)
+                   {
+                       begin(list, clear, 0.0F);
+                       const std::uint64_t listBytes =
+                           std::uint64_t{m_desc.instanceCapacity} * sizeof(Shader::IndirectDraw);
+                       for (std::uint32_t drawList = 0; drawList < MEOW2_DRAW_LIST_COUNT; ++drawList)
+                       {
+                           list.setPipeline(
+                               m_pipelines.get(m_override ? m_override->lists[drawList] : *m_drawPipelines[drawList]));
+                           list.setPushConstants(push);
+                           list.drawIndirectCount(m_drawBuffer, m_countBuffer, m_desc.instanceCapacity,
+                                                  drawList * listBytes, drawList * sizeof(std::uint32_t));
+                       }
+                       list.endRendering();
+                   }});
+
+    if (m_sky != nullptr && m_skyPass)
+    {
+        graph.addPass({.name = "Sky",
+                       .accesses = targets(false),
+                       .record =
+                           [begin, frameSlot, push, sky = m_sky](Rhi::IRhiCommandList& list)
+                       {
+                           // Behind everything opaque: it only fills pixels whose depth is still far.
+                           begin(list, std::nullopt, std::nullopt);
+                           sky->drawSky(list, frameSlot, push.frameBuffer);
+                           list.endRendering();
+                       },
+                       .small = true});
+    }
+
     // Blended draws are recorded directly, one per instance, in this frame's order: {instance, index count}.
     std::vector<std::pair<std::uint32_t, std::uint32_t>> blended;
     blended.reserve(m_blendOrder.size());
@@ -741,38 +805,17 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
             blended.emplace_back(index, static_cast<std::uint32_t>(m_meshes[mesh].indices.size()));
         }
     }
-    graph.addPass({.name = "Draw instances",
-                   .accesses = std::move(drawAccesses),
-                   .record = [this, swapchain, color, depth, clear, push, frameSlot, sky = m_sky,
-                              blended = std::move(blended)](Rhi::IRhiCommandList& list)
-                   {
-                       if (swapchain != nullptr)
-                       {
-                           list.beginRendering(*swapchain, clear, depth, 0.0F);
-                       }
-                       else
-                       {
-                           list.beginRendering(Rhi::RenderTargets{
-                               .color = color, .clearColor = clear, .depth = depth, .clearDepth = 0.0F});
-                       }
-                       const std::uint64_t listBytes =
-                           std::uint64_t{m_desc.instanceCapacity} * sizeof(Shader::IndirectDraw);
-                       for (std::uint32_t drawList = 0; drawList < MEOW2_DRAW_LIST_COUNT; ++drawList)
-                       {
-                           list.setPipeline(m_pipelines.get(*m_drawPipelines[drawList]));
-                           list.setPushConstants(push);
-                           list.drawIndirectCount(m_drawBuffer, m_countBuffer, m_desc.instanceCapacity,
-                                                  drawList * listBytes, drawList * sizeof(std::uint32_t));
-                       }
-                       if (sky != nullptr)
-                       {
-                           // Behind everything opaque (it only fills untouched depth), before what's blended over it.
-                           sky->drawSky(list, frameSlot, push.frameBuffer);
-                       }
-                       if (!blended.empty())
+    m_blendDraws = blended; // for overlay passes this frame
+    if (!blended.empty())
+    {
+        graph.addPass({.name = "Blended",
+                       .accesses = targets(false),
+                       .record =
+                           [this, begin, push, blended = std::move(blended)](Rhi::IRhiCommandList& list)
                        {
                            // After everything opaque, so they mix with it; vsBlend reads the instance from g_push.
-                           list.setPipeline(m_pipelines.get(*m_blendPipeline));
+                           begin(list, std::nullopt, std::nullopt);
+                           list.setPipeline(m_pipelines.get(m_override ? m_override->blend : *m_blendPipeline));
                            for (const auto& [instance, indexCount] : blended)
                            {
                                Shader::PushConstants draw = push;
@@ -780,12 +823,98 @@ void GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiS
                                list.setPushConstants(draw);
                                list.draw(indexCount);
                            }
-                       }
-                       list.endRendering();
-                   }});
+                           list.endRendering();
+                       },
+                       .small = true});
+    }
+    return colorResource;
+}
+
+Result<DrawPipelines> GpuScene::makeDrawPipelines(const DrawPipelineOptions& options)
+{
+    // The same lists as the scene's own pipelines (see create()), with the variant and states asked for.
+    constexpr std::array<std::pair<Rhi::CullMode, const char*>, MEOW2_DRAW_LIST_COUNT> c_lists{
+        std::pair{Rhi::CullMode::Back, "instances"}, std::pair{Rhi::CullMode::Front, "mirrored instances"},
+        std::pair{Rhi::CullMode::None, "double-sided instances"}};
+    DrawPipelines out;
+    for (std::uint32_t list = 0; list < MEOW2_DRAW_LIST_COUNT; ++list)
+    {
+        Result<PipelineId> draw =
+            m_pipelines.add(GraphicsPipelineRequest{.shader = m_desc.shader,
+                                                    .options = options.options,
+                                                    .colorFormat = m_desc.colorFormat,
+                                                    .depthFormat = Rhi::RhiFormat::D32Float,
+                                                    .depthTest = options.depthTest,
+                                                    .depthWrite = options.depthWrite,
+                                                    .cull = c_lists[list].first,
+                                                    .blend = options.blend,
+                                                    .fill = options.fill,
+                                                    .name = std::format("{}: {}", options.name, c_lists[list].second)});
+        if (!draw)
+        {
+            return Unexpected<Error>{draw.error()};
+        }
+        out.lists[list] = *draw;
+    }
+    Result<PipelineId> blend = m_pipelines.add(GraphicsPipelineRequest{
+        .shader = m_desc.shader,
+        .options = options.options,
+        .vertexEntry = "vsBlend",
+        .colorFormat = m_desc.colorFormat,
+        .depthFormat = Rhi::RhiFormat::D32Float,
+        .depthTest = options.depthTest,
+        .depthWrite = false,
+        .cull = Rhi::CullMode::None,
+        .blend = options.blend == Rhi::BlendMode::Additive ? Rhi::BlendMode::Additive : Rhi::BlendMode::Alpha,
+        .fill = options.fill,
+        .name = std::format("{}: blended instances", options.name)});
+    if (!blend)
+    {
+        return Unexpected<Error>{blend.error()};
+    }
+    out.blend = *blend;
+    return out;
+}
+
+void GpuScene::addOverlayPass(RenderGraph& graph, std::string name, const DrawPipelines& pipelines, GraphResource color,
+                              Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot)
+{
+    Rhi::IRhiDevice& device = m_device.device();
+    Shader::PushConstants push{};
+    push.frameBuffer = device.bindlessIndex(m_frameBuffers[frameSlot]);
+    push.instanceBuffer = device.bindlessIndex(m_instanceBuffer);
+    push.userData = device.bindlessIndex(m_meshBuffer);
+    graph.addPass(
+        {.name = std::move(name),
+         .accesses = {{m_depthResource, Rhi::ResourceState::DepthTarget},
+                      {m_countResource, Rhi::ResourceState::IndirectArgs},
+                      {m_drawResource, Rhi::ResourceState::IndirectArgs},
+                      {color, Rhi::ResourceState::ColorTarget}},
+         .record = [this, pipelines, push, colorTexture, depth, blended = m_blendDraws](Rhi::IRhiCommandList& list)
+         {
+             list.beginRendering(Rhi::RenderTargets{.color = colorTexture, .depth = depth});
+             const std::uint64_t listBytes = std::uint64_t{m_desc.instanceCapacity} * sizeof(Shader::IndirectDraw);
+             for (std::uint32_t drawList = 0; drawList < MEOW2_DRAW_LIST_COUNT; ++drawList)
+             {
+                 list.setPipeline(m_pipelines.get(pipelines.lists[drawList]));
+                 list.setPushConstants(push);
+                 list.drawIndirectCount(m_drawBuffer, m_countBuffer, m_desc.instanceCapacity, drawList * listBytes,
+                                        drawList * sizeof(std::uint32_t));
+             }
+             list.setPipeline(m_pipelines.get(pipelines.blend));
+             for (const auto& [instance, indexCount] : blended)
+             {
+                 Shader::PushConstants draw = push;
+                 draw.instance = instance;
+                 list.setPushConstants(draw);
+                 list.draw(indexCount);
+             }
+             list.endRendering();
+         }});
 }
 
 void GpuScene::endFrame(const RenderGraph& graph)
+
 {
     // Their copies are recorded; the device keeps them until the GPU has run them (deferred destruction).
     for (const Rhi::BufferHandle buffer : m_spentStaging)

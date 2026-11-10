@@ -2,7 +2,7 @@
 // three lists (MEOW2_DRAW_LIST_*). vsMain draws the lists, vsBlend the blended instances the CPU sorted, and psMain
 // shades both with metallic-roughness PBR. Indices and vertices are pulled from heap buffers: no vertex input at all.
 #include "Common.hlsli"
-#include "Atmosphere.hlsli" // c_pi, toneMapNeutral, the sky lookups
+#include "Atmosphere.hlsli" // c_pi, the sky lookups
 
 /// Signed distance from a plane, positive inside.
 float planeDistance(float4 plane, float3 position)
@@ -79,6 +79,10 @@ struct VertexOutput
     float4 color : COLOR0;
     nointerpolation uint material : MATERIAL0;
     nointerpolation uint mirrored : MIRRORED0;
+#if DEBUG_VIEW == 1
+    nointerpolation uint instance : INSTANCE0; ///< For the instance view.
+    nointerpolation uint triangleIndex : TRIANGLE0; ///< For the triangle view: draws are non-indexed, so vertex / 3.
+#endif
 };
 
 /// The inverse of Math::packOctahedral.
@@ -136,6 +140,11 @@ VertexOutput shadeVertex(uint instanceIndex, uint vertexId)
                           stored.color >> 24) / 255.0;
     output.material = instance.material;
     output.mirrored = mirrored ? 1 : 0;
+#if DEBUG_VIEW == 1
+    output.instance = instanceIndex;
+    // Not SV_PrimitiveID: in a pixel shader it needs geometry-shader support on Vulkan, which many GPUs lack.
+    output.triangleIndex = vertexId / 3;
+#endif
     return output;
 }
 
@@ -226,8 +235,21 @@ float3 skyIrradiance(uint buffer, float3 n)
     return max(irradiance, 0.0);
 }
 
+#if DEBUG_VIEW == 1
+/// A colour from a number, so neighbouring numbers differ (triangles, instances, materials).
+float3 hashColor(uint value)
+{
+    const uint hash = (value + 1u) * 2654435761u;
+    return float3(hash & 255, (hash >> 8) & 255, (hash >> 16) & 255) / 255.0;
+}
+#endif
+
 float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
 {
+#if DEBUG_VIEW == 2
+    // The wireframe overlay (a line-fill pipeline): every edge in the bright accent, whatever the material.
+    return float4(1.0, 0.353, 0.4, 1.0);
+#endif
     const FrameConstants frame = frameConstants();
 
     float4 baseColor = input.color;
@@ -248,9 +270,22 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
         bitangentSign = -bitangentSign;
     }
 
+#if DEBUG_VIEW == 1
+    const float3 geometricNormal = normal;
+    float mipLevel = -1.0; // no base colour texture
+#endif
     if (input.material < frame.materialCount)
     {
         const MaterialData material = loadElement<MaterialData>(frame.materialBuffer, input.material);
+#if DEBUG_VIEW == 1
+        if (material.baseColorTexture != 0)
+        {
+            const Texture2D<float4> image = ResourceDescriptorHeap[NonUniformResourceIndex(material.baseColorTexture)];
+            mipLevel = image.CalculateLevelOfDetail(
+                heapSampler(NonUniformResourceIndex(material.baseColorSampler)),
+                transformUv(material.baseColorUv0, material.baseColorUv1, input.uv));
+        }
+#endif
         baseColor *= material.baseColorFactor *
                      sampleMaterial(material.baseColorTexture, material.baseColorSampler,
                                     transformUv(material.baseColorUv0, material.baseColorUv1, input.uv), float4(1, 1, 1, 1));
@@ -324,7 +359,8 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
         sun *= sampleTransmittance(frame.transmittanceLut, frame.environmentSampler,
                                    viewHeightFromAltitude(frame.groundColor.w), light.y);
     }
-    float3 color = (diffuse + specular) * sun * nDotL;
+    const float3 sunDiffuse = diffuse * sun * nDotL;
+    const float3 sunSpecular = specular * sun * nDotL;
 
     // Ambient light from the surroundings. With a sky: image-based lighting, the split-sum approximation (Karis 2013)
     // - diffuse from the sky's spherical harmonics, specular from its environment map blurred for this roughness,
@@ -345,10 +381,84 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
         diffuseAmbient = lerp(frame.groundColor.rgb, frame.skyColor.rgb, normal.y * 0.5 + 0.5);
         specularAmbient = lerp(frame.groundColor.rgb, frame.skyColor.rgb, reflected.y * 0.5 + 0.5);
     }
-    color += (diffuseColor * diffuseAmbient + environmentBrdf(f0, nDotV, roughness) * specularAmbient) * occlusion;
-    color += emissive;
+    const float3 ambientDiffuse = diffuseColor * diffuseAmbient * occlusion;
+    const float3 ambientSpecular = environmentBrdf(f0, nDotV, roughness) * specularAmbient * occlusion;
+    float3 color = sunDiffuse + sunSpecular + ambientDiffuse + ambientSpecular + emissive;
 
-    // Exposure and the tone curve, in linear light; the target's sRGB view encodes the result.
-    color = toneMapNeutral(color * frame.sunColor.w);
+    // Exposure, in linear light. The tone curve comes later, in its own pass (ToneMap.hlsl), so the scene's colour can
+    // be inspected and post-processed as it is.
+    color *= frame.sunColor.w;
+#if DEBUG_VIEW == 1
+    // Debug views: one property instead of the shaded colour. Written as display values; the debug tone-map pass shows
+    // them without the tone curve. Lighting views keep the exposure, like the scene.
+    const float3 white = float3(1.0, 1.0, 1.0);
+    switch (frame.debugView)
+    {
+        case MEOW2_DEBUG_VIEW_TRIANGLES:
+            return float4(hashColor(input.triangleIndex) * (0.6 + 0.4 * saturate(dot(normal, view))), 1.0);
+        case MEOW2_DEBUG_VIEW_INSTANCES:
+            return float4(hashColor(input.instance), 1.0);
+        case MEOW2_DEBUG_VIEW_MATERIALS:
+            return float4(hashColor(input.material), 1.0);
+        case MEOW2_DEBUG_VIEW_OVERDRAW:
+            return float4(0.0625, 0.0625, 0.0625, 1.0); // 1/16 per layer, added up by the additive pipelines
+        case MEOW2_DEBUG_VIEW_DEPTH:
+        {
+            // Reversed infinite Z: depth = near / distance, and the projection's [3][2] is near.
+            const float nearZ = frame.projectionRow3.z;
+            const float distance = nearZ / max(input.position.z, 1e-7);
+            const float shade = 1.0 - saturate(log2(max(distance / nearZ, 1.0)) / 16.0);
+            return float4(shade, shade, shade, 1.0);
+        }
+        case MEOW2_DEBUG_VIEW_GEOMETRY_NORMAL:
+            return float4(geometricNormal * 0.5 + 0.5, 1.0);
+        case MEOW2_DEBUG_VIEW_SHADING_NORMAL:
+            return float4(normal * 0.5 + 0.5, 1.0);
+        case MEOW2_DEBUG_VIEW_TANGENT:
+            return float4(normalize(tangent) * 0.5 + 0.5, 1.0);
+        case MEOW2_DEBUG_VIEW_UV:
+            return float4(frac(input.uv), 0.0, 1.0);
+        case MEOW2_DEBUG_VIEW_MIP_LEVEL:
+        {
+            if (mipLevel < 0.0)
+            {
+                return float4(0.25, 0.25, 0.25, 1.0); // no texture
+            }
+            const float3 colors[6] = {float3(1, 0, 0), float3(1, 1, 0), float3(0, 1, 0), float3(0, 1, 1), float3(0, 0, 1),
+                                      float3(1, 0, 1)};
+            const uint level = min(uint(mipLevel), 4u);
+            return float4(lerp(colors[level], colors[level + 1], frac(mipLevel)), 1.0);
+        }
+        case MEOW2_DEBUG_VIEW_BASE_COLOR:
+            return float4(baseColor.rgb, 1.0);
+        case MEOW2_DEBUG_VIEW_METALLIC:
+            return float4(white * metallic, 1.0);
+        case MEOW2_DEBUG_VIEW_ROUGHNESS:
+            return float4(white * roughness, 1.0);
+        case MEOW2_DEBUG_VIEW_OCCLUSION:
+            return float4(white * occlusion, 1.0);
+        case MEOW2_DEBUG_VIEW_EMISSIVE:
+            return float4(emissive, 1.0);
+        case MEOW2_DEBUG_VIEW_ALPHA:
+            return float4(white * baseColor.a, 1.0);
+        case MEOW2_DEBUG_VIEW_LIGHTING:
+        {
+            // A white dielectric under the same light: diffuse plus a 4 % specular.
+            const float3 whiteFresnel = fresnelSchlick(float3(0.04, 0.04, 0.04), vDotH);
+            const float3 lit = ((1.0 - whiteFresnel) / c_pi + whiteFresnel * distributionGgx(nDotH, alpha) *
+                                                                  visibilitySmithGgx(nDotL, nDotV, alpha)) * sun * nDotL +
+                               diffuseAmbient * occlusion;
+            return float4(lit * frame.sunColor.w, 1.0);
+        }
+        case MEOW2_DEBUG_VIEW_DIFFUSE:
+            return float4((sunDiffuse + ambientDiffuse) * frame.sunColor.w, 1.0);
+        case MEOW2_DEBUG_VIEW_SPECULAR:
+            return float4((sunSpecular + ambientSpecular) * frame.sunColor.w, 1.0);
+        case MEOW2_DEBUG_VIEW_BLACK:
+            return float4(0.0, 0.0, 0.0, 1.0);
+        default:
+            break;
+    }
+#endif
     return float4(color, baseColor.a);
 }

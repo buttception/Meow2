@@ -341,8 +341,15 @@ void ImGuiLayer::releaseGpu(Rhi::IRhiDevice& device)
     }
 }
 
+std::uint64_t ImGuiLayer::engineTexture(Rhi::TextureHandle texture)
+{
+    m_engineTextures.push_back(texture);
+    return c_engineTextureBit | (m_engineTextures.size() - 1);
+}
+
 void ImGuiLayer::newFrame(float deltaSeconds, float width, float height, float framebufferScale, float contentScale)
 {
+    m_engineTextures.clear();
     // Sizes and fonts follow the display's scale, so the UI is as big on a 125 % screen as Windows' own windows. The
     // style is rebuilt from the defaults rather than scaled again, which would compound.
     if (contentScale > 0.0F && contentScale != m_contentScale)
@@ -512,7 +519,22 @@ bool ImGuiLayer::ensureBuffer(Rhi::IRhiDevice& device, Rhi::BufferHandle& buffer
     return true;
 }
 
-void ImGuiLayer::addPasses(Renderer::RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain& swapchain)
+namespace
+{
+/// @brief The UI pass's reads of engine textures.
+std::vector<Renderer::GraphAccess> readAccesses(std::span<const Renderer::GraphResource> reads)
+{
+    std::vector<Renderer::GraphAccess> accesses;
+    for (const Renderer::GraphResource resource : reads)
+    {
+        accesses.push_back({resource, Rhi::ResourceState::ShaderRead});
+    }
+    return accesses;
+}
+} // namespace
+
+void ImGuiLayer::addPasses(Renderer::RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain& swapchain,
+                           std::span<const Renderer::GraphResource> reads)
 {
     ImGui::Render();
     Rhi::IRhiDevice& device = m_deps.device.device();
@@ -608,12 +630,16 @@ void ImGuiLayer::addPasses(Renderer::RenderGraph& graph, std::uint32_t frameSlot
             const ImTextureID id = command.GetTexID();
             const auto slot = static_cast<std::size_t>(id) - 1;
             const bool textured = id != ImTextureID_Invalid && slot < m_textures.size() && m_textures[slot].used;
+            const auto engineSlot = static_cast<std::size_t>(id & ~c_engineTextureBit);
+            const bool engine = (id & c_engineTextureBit) != 0 && engineSlot < m_engineTextures.size();
             Shader::UiDraw draw{};
             draw.scaleTranslate = scaleTranslate;
             draw.vertexBuffer = vertexBuffer;
             draw.indexBuffer = indexBuffer;
             draw.vertexOffset = vertexBase + command.VtxOffset;
-            draw.texture = textured ? device.bindlessIndex(m_textures[slot].texture) : Rhi::c_invalidBindlessIndex;
+            draw.texture = engine     ? device.bindlessIndex(m_engineTextures[engineSlot])
+                           : textured ? device.bindlessIndex(m_textures[slot].texture)
+                                      : Rhi::c_invalidBindlessIndex;
             const auto record = static_cast<std::uint32_t>(commands.size());
             std::memcpy(draws + std::size_t{record} * sizeof(draw), &draw, sizeof(draw));
             commands.push_back({.scissor = {.x = static_cast<std::int32_t>(left),
@@ -636,7 +662,7 @@ void ImGuiLayer::addPasses(Renderer::RenderGraph& graph, std::uint32_t frameSlot
     const std::uint32_t drawBuffer = device.bindlessIndex(frame.draws);
     graph.addPass(
         {.name = "ImGui",
-         .accesses = {},
+         .accesses = readAccesses(reads),
          .record = [pipeline, drawBuffer, &swapchain, commands = std::move(commands)](Rhi::IRhiCommandList& list)
          {
              // The scene drew to this image in another list: order those writes before ours.
@@ -675,6 +701,11 @@ std::optional<std::string> ImGuiLayer::takeLayoutChange()
         return std::nullopt;
     }
     io.WantSaveIniSettings = false;
+    return currentLayout();
+}
+
+std::string ImGuiLayer::currentLayout() const
+{
     std::size_t size = 0;
     const char* text = ImGui::SaveIniSettingsToMemory(&size);
     return std::string{text, size};

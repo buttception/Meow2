@@ -22,6 +22,7 @@ target_sources(Meow2Engine
         src/Core/Assert.cpp
         src/Core/CommandLine.cpp
         src/Core/CommandLine.h
+        src/Core/Console.h
         src/Core/Config/Config.cpp
         src/Core/Events/EventBus.cpp
         src/Core/Id/Uuid.cpp
@@ -54,6 +55,7 @@ target_sources(Meow2Engine
         src/Graphics/Renderer/RenderGraph.cpp
         src/Graphics/Renderer/SceneModel.cpp
         src/Graphics/Renderer/SkyAtmosphere.cpp
+        src/Graphics/Renderer/ToneMapPass.cpp
         src/Graphics/Rhi/RenderDocCapture.cpp
         src/Graphics/Rhi/RhiDevice.cpp
         src/Math/SplinePath.cpp
@@ -124,6 +126,7 @@ target_sources(Meow2Engine
             include/Meow2/Graphics/Renderer/RenderGraph.h
             include/Meow2/Graphics/Renderer/SceneModel.h
             include/Meow2/Graphics/Renderer/SkyAtmosphere.h
+            include/Meow2/Graphics/Renderer/ToneMapPass.h
             include/Meow2/Graphics/Rhi/IRhiCommandList.h
             include/Meow2/Graphics/Rhi/IRhiDevice.h
             include/Meow2/Graphics/Rhi/IRhiSwapchain.h
@@ -165,6 +168,7 @@ target_sources(Meow2Engine
 if(WIN32)
     target_sources(Meow2Engine PRIVATE
         src/Core/Crash/Win32/CrashHandlerWin32.cpp
+        src/Core/Win32/ConsoleWin32.cpp
         src/Core/Win32/DebuggerWin32.cpp
         src/Core/Win32/ProcessWin32.cpp
         src/Core/Win32/SharedLibraryWin32.cpp)
@@ -172,6 +176,7 @@ if(WIN32)
 else()
     target_sources(Meow2Engine PRIVATE
         src/Core/Crash/Linux/CrashHandlerLinux.cpp
+        src/Core/Linux/ConsoleLinux.cpp
         src/Core/Linux/DebuggerLinux.cpp
         src/Core/Linux/ProcessLinux.cpp
         src/Core/Linux/SharedLibraryLinux.cpp)

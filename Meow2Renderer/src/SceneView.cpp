@@ -31,6 +31,14 @@ std::filesystem::path findSample(const std::filesystem::path& sampleRoot, const 
     return {};
 }
 
+std::filesystem::path findSampleFile(const std::filesystem::path& sampleRoot, const std::string& name, bool binary)
+{
+    std::error_code error;
+    const std::filesystem::path file = binary ? sampleRoot / "Models" / name / "glTF-Binary" / (name + ".glb")
+                                              : sampleRoot / "Models" / name / "glTF" / (name + ".gltf");
+    return std::filesystem::exists(file, error) ? file : std::filesystem::path{};
+}
+
 SceneView::SceneView(const SceneViewDeps& deps, std::string name)
     : m_deps(deps)
     , m_name(std::move(name))

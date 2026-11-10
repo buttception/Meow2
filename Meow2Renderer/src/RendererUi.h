@@ -29,6 +29,8 @@ struct SampleEntry
     std::string name{};      ///< The model's folder name, e.g. `DamagedHelmet`.
     std::string group{};     ///< What it tests ("First light", "PBR", …), or "Downloaded" for others.
     bool downloaded = false; ///< Whether its glTF file is on disk.
+    bool hasGltf = false;    ///< `glTF/<name>.gltf` is on disk (with its buffers and images).
+    bool hasGlb = false;     ///< `glTF-Binary/<name>.glb` is on disk.
 };
 
 /// @brief The suggested M6 samples in their groups, then every other downloaded model in alphabetical order.
@@ -122,6 +124,14 @@ struct SunControls
 /// @return The buttons pressed this frame.
 StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts = {}, SunControls* sun = nullptr);
 
+/// @brief The window docking: a dock space over the whole window whose middle stays clear (the scene shows, and the
+///        mouse reaches the camera), with the default layout on first use: every window but the console as tabs of one
+///        panel on the left, the console along the bottom.
+///
+/// The default is built only when the saved layout (renderer.uiLayout) has no dock space yet; after that, windows stay
+/// where the user dragged them. Call it every frame after ImGuiLayer::newFrame(), before the windows.
+void dockWindows();
+
 /// @brief The scene picker: Khronos samples (fetching ones that aren't downloaded) and any file by path.
 /// @par Thread safety
 /// Not thread-safe; use on the main thread. A fetch runs on a job and only touches the atomic status.
@@ -159,7 +169,6 @@ private:
     std::size_t m_selected = 0;
     std::array<char, 1024> m_path{};
     std::string m_fetching;                          ///< The model being fetched; empty when idle.
-    std::string m_openAfterFetch;                    ///< Opens this model when its fetch succeeds.
     std::shared_ptr<std::atomic<int>> m_fetchResult; ///< The fetch's exit code; -1 while it runs.
     Jobs::Job m_fetchJob; ///< Last: waited for first, before the members its job uses go away.
 };

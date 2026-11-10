@@ -5,6 +5,7 @@
 
 #include <Meow2/Platform/Window/WindowConfig.h>
 
+#include <algorithm>
 #include <QGuiApplication>
 #include <QScreen>
 #include <vector>
@@ -42,11 +43,36 @@ void showWithDesc(QWidget& window, const Platform::WindowDesc& desc, Log::Logger
     {
         MEOW2_LOG_INFO(log, "Window position ({}, {}) is off every screen; centring it", rect.x(), rect.y());
     }
-    if (!reachable)
+    const QScreen* screen = reachable ? QGuiApplication::screenAt(rect.center()) : nullptr;
+    if (screen == nullptr)
     {
-        if (const QScreen* primary = QGuiApplication::primaryScreen())
+        screen = QGuiApplication::primaryScreen();
+    }
+    if (screen != nullptr)
+    {
+        // Qt sizes are device-independent: at 125 % or 150 % display scaling the 1920 x 1080 default is 2400 x 1350
+        // or 2880 x 1620 real pixels, bigger than the screen. Shrink to the screen's work area (keeping the shape),
+        // with room for the title bar and frame, which setGeometry() leaves out.
+        const QRect area = screen->availableGeometry();
+        if (desc.width == 0 || desc.height == 0)
         {
-            rect.moveCenter(primary->availableGeometry().center());
+            // No size saved yet: a share of the screen, so the first window suits any display and scaling.
+            rect.setSize(QSize{static_cast<int>(static_cast<float>(area.width()) * Platform::c_defaultScreenShare),
+                               static_cast<int>(static_cast<float>(area.height()) * Platform::c_defaultScreenShare)});
+        }
+        const QSize room{std::max(area.width() - 16, 320), std::max(area.height() - 48, 240)};
+        if (rect.width() > room.width() || rect.height() > room.height())
+        {
+            const double fit = std::min(static_cast<double>(room.width()) / rect.width(),
+                                        static_cast<double>(room.height()) / rect.height());
+            rect.setSize(QSize{static_cast<int>(rect.width() * fit), static_cast<int>(rect.height() * fit)});
+            MEOW2_LOG_INFO(log, "Window {}x{} doesn't fit the screen ({}x{} usable); using {}x{}", desc.width,
+                           desc.height, area.width(), area.height(), rect.width(), rect.height());
+        }
+        if (!reachable || !area.contains(rect))
+        {
+            rect.moveCenter(area.center());
+            rect.moveTop(std::max(rect.top(), area.top() + 32)); // keep the title bar on screen
         }
     }
     window.setGeometry(rect);

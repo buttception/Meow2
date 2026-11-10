@@ -35,7 +35,7 @@ struct FrameConstants
     float4 viewport;         ///< xy: size in pixels; zw: 1 / size.
     uint materialBuffer;     ///< Heap index of the MaterialData array; set by GpuScene.
     uint materialCount;      ///< Materials in it. An instance with a higher index gets a colour from its index.
-    uint padding0;           ///< Pads to 16 bytes.
+    uint debugView;          ///< MEOW2_DEBUG_VIEW_*: what the DEBUG_VIEW = VIEW variant shows; ignored by the others.
     uint padding1;           ///< Pads to 16 bytes.
     float4 sunDirection;     ///< xyz: unit direction towards the sun; w: its intensity.
     float4 sunColor;         ///< rgb: the sun's linear colour; w: exposure (scales the final colour).
@@ -111,6 +111,20 @@ struct SkyConstants
     uint padding1;                 ///< Pads to 16 bytes.
 };
 
+/// How Meow2Renderer's texture inspector shows a texture (shaders/DebugTexture.hlsl): a value range mapped to 0..1, and
+/// which channels show. Read from a buffer by index.
+struct DebugDisplay
+{
+    uint source;     ///< Heap index of the texture to show.
+    uint sampler;    ///< Sampler heap index (point, so texels stay sharp when magnified).
+    uint channels;   ///< Bits 0..3: R, G, B, A shown. One bit alone shows that channel as grey.
+    uint isDepth;    ///< 1: a depth texture (one channel, reversed Z); the range applies to its raw value.
+    float rangeMin;  ///< The value shown as black.
+    float rangeMax;  ///< The value shown as white.
+    uint padding0;   ///< Pads to 16 bytes.
+    uint padding1;   ///< Pads to 16 bytes.
+};
+
 /// One Dear ImGui draw command (Meow2Renderer's UI), read by shaders/ImGui.hlsl.
 struct UiDraw
 {
@@ -125,6 +139,30 @@ struct UiDraw
 #define MEOW2_MATERIAL_ALPHA_MASK 1u    ///< Discard pixels whose alpha is below the cutoff.
 #define MEOW2_MATERIAL_DOUBLE_SIDED 2u  ///< Draw back faces too, lit from their own side.
 #define MEOW2_MATERIAL_BLEND 4u         ///< Blended over what's behind, after everything opaque.
+
+/// FrameConstants::debugView: what a debugging tool shows instead of the shaded scene (GpuDriven.hlsl's DEBUG_VIEW = VIEW
+/// variant; the game variant has none of this).
+#define MEOW2_DEBUG_VIEW_TRIANGLES 0u       ///< A colour per triangle.
+#define MEOW2_DEBUG_VIEW_INSTANCES 1u       ///< A colour per instance.
+#define MEOW2_DEBUG_VIEW_MATERIALS 2u       ///< A colour per material.
+#define MEOW2_DEBUG_VIEW_OVERDRAW 3u        ///< 1/16 per layer, added up (additive pipelines, no depth test): fits 8 bits too.
+#define MEOW2_DEBUG_VIEW_DEPTH 4u           ///< Distance from the camera, logarithmic grey: white near, black far.
+#define MEOW2_DEBUG_VIEW_GEOMETRY_NORMAL 5u ///< The mesh's normal, world space, as colour (x, y, z → r, g, b).
+#define MEOW2_DEBUG_VIEW_SHADING_NORMAL 6u  ///< The normal after the normal map.
+#define MEOW2_DEBUG_VIEW_TANGENT 7u         ///< The tangent, as colour.
+#define MEOW2_DEBUG_VIEW_UV 8u              ///< UV set 0, its fraction (repeats show as stripes).
+#define MEOW2_DEBUG_VIEW_MIP_LEVEL 9u       ///< The base colour texture's mip level: 0 red, 1 yellow, 2 green, 3 cyan, 4 blue, 5+ magenta.
+#define MEOW2_DEBUG_VIEW_BASE_COLOR 10u     ///< Base colour (texture × factor × vertex colour).
+#define MEOW2_DEBUG_VIEW_METALLIC 11u       ///< Metallic, as grey.
+#define MEOW2_DEBUG_VIEW_ROUGHNESS 12u      ///< Roughness, as grey.
+#define MEOW2_DEBUG_VIEW_OCCLUSION 13u      ///< Ambient occlusion, as grey.
+#define MEOW2_DEBUG_VIEW_EMISSIVE 14u       ///< Emissive.
+#define MEOW2_DEBUG_VIEW_ALPHA 15u          ///< Alpha, as grey.
+#define MEOW2_DEBUG_VIEW_LIGHTING 16u       ///< Lighting on a white, non-metallic surface.
+#define MEOW2_DEBUG_VIEW_DIFFUSE 17u        ///< Diffuse light only (sun and ambient).
+#define MEOW2_DEBUG_VIEW_SPECULAR 18u       ///< Specular light only (sun and reflections).
+#define MEOW2_DEBUG_VIEW_BLACK 19u          ///< Black, depth written: the base of a hidden-line wireframe.
+#define MEOW2_DEBUG_VIEW_COUNT 20u          ///< How many.
 
 /// One metallic-roughness material, in a buffer shaders read by index. Linear colours. A texture index of 0 means no
 /// texture (white, or a flat normal); each texture has its own sampler.

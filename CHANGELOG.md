@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Meow2Renderer can show what each step of the frame does: a Render graph window with the frame's passes as a flow (click one to watch the textures it writes, live, in a small window), F9 to capture a whole frame in memory and browse every texture as each pass left it, and a Debug window with 19 views (triangles, overdraw heat map, depth, normals, UVs, mip levels, each material channel, lighting only, …), wireframe on top or alone, and frozen culling (#191).
 - Meow2Renderer: a Console window with every log line (filters by level and text, copy, follow), a Settings window for the debug tools and start-up options that saves to the config at once, and window positions kept between runs (#189).
 - Meow2Renderer: orbit and fly (noclip) cameras, the glTF file's own cameras, and its animations played on the scene, so animated cameras and objects move; `renderer.camera`, `renderer.sceneCamera` and `renderer.animation` pick them at start (#189).
 - glTF textures are compressed to BC7 (colour, data) and BC5 (normal maps) with DirectXTex: a quarter of the GPU memory. Cooked textures are saved as `.m2texture` files in a cache, so only a model's first load compresses; `renderer.compressTextures` turns it off. Texture transforms (`KHR_texture_transform`: offset, rotation, scale) are drawn (#185).
@@ -20,6 +21,10 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - glTF 2.0 import: `.gltf` and `.glb` files open in Meow2Renderer (`--set renderer.scene=Duck`, or a path) with their node tree, meshes and base colour textures, converted to the engine's left-handed space, on Vulkan and D3D12. `cmake -P cmake/FetchGltfSample.cmake <Model>` downloads Khronos sample models on demand (#170).
 
 ### Changed
+- The scene is drawn in high dynamic range and tone mapped in its own pass, before the UI; opaque surfaces, the sky and transparent ones are separate passes (#191).
+- Window sizes follow display scaling in every app (the size at 100 %), and a new window takes 80 % of the screen instead of 1920 × 1080; a window too big for its screen is shrunk to fit (#191).
+- Meow2Renderer: Fetch only downloads a sample; .GLTF and .GLB buttons beside each downloaded one open that version. Every window but the console is a tab of one panel on the left (#191).
+- Vulkan GPUs need wireframe fill (`fillModeNonSolid`), which every desktop GPU has (#191).
 - Roadmap: M7 is now the Editor (with scene files, moved out of M6), M8 Physics, M9 Scripting (new), M12 Advanced rendering and M13 Platforms; meshlets move into M6 (#189).
 - Meow2Renderer's UI text is smaller, and its figures in Consolas no longer look larger than the labels (#181).
 - Meow2Renderer's camera starts in front of a glTF model (on +Z, which glTF models face) instead of behind it, and the default sun lights the front (#177).
@@ -29,6 +34,10 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - Every app opens at 1920 x 1080 (1080p) by default instead of 1280 x 720; a size saved in the app's config still wins (#176).
 
 ### Fixed
+- The console window showed some characters wrongly on Windows (`→` as `ΓåÆ`); it now uses UTF-8 (#191).
+- Meow2Renderer: the fly camera's keys stopped working after clicking any window (#191).
+- Meow2Editor opened bigger than the screen at 125 % or 150 % display scaling (#191).
+- Direct3D 12: two pipelines that differed only in fill mode, depth test or blending could load each other from the pipeline cache (#191).
 - Builds no longer fail when a server hiccups while configure downloads DXC or the Agility SDK: downloads are retried, and can be kept in a cache folder (`MEOW2_DOWNLOAD_CACHE`), which the Windows CI runner uses (#184).
 - Specular highlights and the order of transparent objects in Meow2Renderer used the scene origin instead of the camera's position (#181).
 - Meow2Renderer: the mouse lines up with the ImGui buttons on a scaled display (125 %, 150 %), and the UI is drawn at the display's scale (#176).

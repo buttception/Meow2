@@ -17,7 +17,7 @@ In `Meow2<App>.toml` (see [Config](Config.md)):
 
 ```toml
 [window]
-width = 1600          # size when windowed, in desktop units (160..16384)
+width = 1600          # size when windowed, in logical units (160..16384); 0 = 80 % of the display
 height = 900
 x = 200               # left/top edge; centred when missing or off every display
 y = 120
@@ -28,7 +28,10 @@ mode = "windowed"     # or "fullscreen" (borderless, desktop resolution)
 videoDriver = ""      # empty = the OS default; "offscreen" = no visible window (tests, CI)
 ```
 
-- **Default size:** 1920 x 1080 (1080p) in every app, centred. A saved `width`/`height` wins, so delete them (or the file) to get the default again.
+- **Logical units** (owner decision 2026-11-10): sizes are what the window would be at 100 % display scaling, so a window looks the same size on a 125 % laptop and a 200 % monitor, as every desktop app does, and a saved size means the same after moving to another screen. Positions are in the desktop's own coordinates. The drawable area always has the display's full pixel resolution (`pixelWidth()`), so nothing is drawn blurry.
+  - SDL measures windows in pixels on Windows and X11, so the size is multiplied by the display's scale (1.5 at 150 %) when the window is made, and divided by it when saved (`Window::unitsPerLogical()`). On macOS and Wayland the system already scales window sizes, so the factor is 1. Qt (the editor) works in logical units itself.
+- **Default size:** 80 % of the usable area of the display the window opens on (`c_defaultScreenShare`), centred: it fits any screen and scaling. The size it gets is saved at exit, so delete `width`/`height` (or the file) to get the default again.
+- **Too big for the display** (a size saved on a bigger screen, or a large size at a high scale): shrunk to the display's usable area, less room for the title bar and frame, keeping its shape; the log says so.
 - **At exit** the app writes the window's state back, but only the keys that changed.
 - **Maximized or fullscreen:** the saved size is still the *normal* size, so restoring the window goes back to it.
 - **Monitor unplugged:** a saved position that's no longer on any display falls back to centred.

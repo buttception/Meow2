@@ -170,3 +170,12 @@ TEST_F(WindowConfigTest, StoresPlainState)
     EXPECT_TRUE(m_config.getBool("window.maximized", false));
     EXPECT_EQ(m_config.getString("window.mode", ""), "windowed");
 }
+
+TEST_F(WindowConfigTest, ZeroSizeMeansAShareOfTheDisplay)
+{
+    set({"window.width=0", "window.height=0"});
+    const WindowDesc desc = Meow2::Platform::windowDescFromConfig(m_config, {.width = 1280, .height = 720}, m_log);
+    EXPECT_EQ(desc.width, 0) << "0 is the default share of the display, not an invalid size";
+    EXPECT_EQ(desc.height, 0);
+    EXPECT_EQ(logText().find("outside"), std::string::npos) << "no warning";
+}

@@ -121,9 +121,11 @@ Result<Rhi::PipelineHandle> PipelineLibrary::build(const Entry& entry)
                                                           .pixelEntry = request.pixelEntry,
                                                           .colorFormat = request.colorFormat,
                                                           .depthFormat = request.depthFormat,
+                                                          .depthTest = request.depthTest,
                                                           .depthWrite = request.depthWrite,
                                                           .cull = request.cull,
                                                           .blend = request.blend,
+                                                          .fill = request.fill,
                                                           .name = request.name});
 }
 

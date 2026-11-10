@@ -32,14 +32,14 @@ protected:
 
 TEST_F(WindowPlacementTest, AppliesDesc)
 {
-    Meow2::Editor::showWithDesc(m_window, {.title = "Editor", .width = 800, .height = 600, .x = 40, .y = 50}, m_log);
+    Meow2::Editor::showWithDesc(m_window, {.title = "Editor", .width = 600, .height = 400, .x = 40, .y = 50}, m_log);
     EXPECT_EQ(m_window.windowTitle().toStdString(), "Editor");
     EXPECT_TRUE(m_window.isVisible());
     const Meow2::Platform::WindowRect bounds = Meow2::Editor::restoredBounds(m_window);
     EXPECT_EQ(bounds.x, 40);
     EXPECT_EQ(bounds.y, 50);
-    EXPECT_EQ(bounds.width, 800);
-    EXPECT_EQ(bounds.height, 600);
+    EXPECT_EQ(bounds.width, 600);
+    EXPECT_EQ(bounds.height, 400);
     EXPECT_FALSE(m_window.isMaximized());
 }
 
@@ -81,4 +81,17 @@ TEST_F(WindowPlacementTest, HiddenStaysHidden)
     Meow2::Editor::showWithDesc(m_window, {.width = 400, .height = 300, .hidden = true}, m_log);
     EXPECT_FALSE(m_window.isVisible());
     EXPECT_EQ(Meow2::Editor::restoredBounds(m_window).width, 400);
+}
+
+TEST_F(WindowPlacementTest, TooBigShrinksToTheScreen)
+{
+    // A size in Qt's device-independent pixels can be bigger than the screen (1920 x 1080 at 150 % scaling).
+    const QRect screen = QGuiApplication::primaryScreen()->availableGeometry();
+    Meow2::Editor::showWithDesc(m_window, {.width = screen.width() * 3, .height = screen.width() * 3 * 9 / 16}, m_log);
+    const Meow2::Platform::WindowRect bounds = Meow2::Editor::restoredBounds(m_window);
+    EXPECT_LE(bounds.width, screen.width());
+    EXPECT_LE(bounds.height, screen.height());
+    EXPECT_NEAR(static_cast<double>(bounds.width) / bounds.height, 16.0 / 9.0, 0.02) << "the shape is kept";
+    EXPECT_TRUE(screen.contains(QRect(bounds.x, bounds.y, bounds.width, bounds.height)));
+    EXPECT_NE(logText().find("doesn't fit the screen"), std::string::npos);
 }

@@ -20,6 +20,10 @@ constexpr std::string_view c_fullscreenName = "fullscreen";
 std::int32_t readSize(const Config::Config& config, std::string_view key, std::int32_t defaultValue, Log::Logger& log)
 {
     const std::int64_t value = config.getInt(key, defaultValue);
+    if (value == 0)
+    {
+        return 0; // the default share of the display
+    }
     if (value < c_minConfigWindowSize || value > c_maxConfigWindowSize)
     {
         MEOW2_LOG_WARN(log, "Config: {} = {} is outside {}..{}; using {}", key, value, c_minConfigWindowSize,
@@ -76,7 +80,12 @@ WindowDesc windowDescFromConfig(const Config::Config& config, const WindowDesc& 
 
 void storeWindowState(Config::Config& config, const Window& window)
 {
-    storeWindowState(config, window.restoredBounds(), window.maximized(), window.mode());
+    // Sizes are saved in logical units (the size at 100 % scaling), positions in desktop coordinates.
+    WindowRect restored = window.restoredBounds();
+    const float scale = window.unitsPerLogical();
+    restored.width = static_cast<std::int32_t>(static_cast<float>(restored.width) / scale + 0.5F);
+    restored.height = static_cast<std::int32_t>(static_cast<float>(restored.height) / scale + 0.5F);
+    storeWindowState(config, restored, window.maximized(), window.mode());
 }
 
 void storeWindowState(Config::Config& config, const WindowRect& restored, bool maximized, WindowMode mode)

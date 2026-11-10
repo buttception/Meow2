@@ -390,6 +390,7 @@ Result<TextureHandle> RhiDeviceVulkan::createTexture(const TextureDesc& desc)
     const bool depth = desc.format == RhiFormat::D32Float;
     TextureVulkan record;
     record.format = vulkanFormat(desc.format);
+    record.rhiFormat = desc.format;
     record.extent = {desc.width, desc.height};
     record.mipLevels = desc.mipLevels;
     record.depth = depth;
@@ -553,6 +554,15 @@ std::uint32_t RhiDeviceVulkan::bindlessStorageIndex(TextureHandle texture, std::
     return found != nullptr && mipLevel < c_maxMipLevels ? found->storageIndices[mipLevel] : c_invalidBindlessIndex;
 }
 
+TextureInfo RhiDeviceVulkan::textureInfo(TextureHandle texture)
+{
+    const TextureVulkan record = this->texture(texture);
+    return {.width = record.extent.width,
+            .height = record.extent.height,
+            .mipLevels = record.mipLevels,
+            .format = record.rhiFormat};
+}
+
 TextureVulkan RhiDeviceVulkan::texture(TextureHandle handle)
 {
     const std::shared_lock lock{m_resourceMutex};
@@ -689,7 +699,7 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
     // Clockwise, as in D3D: the flipped viewport keeps screen positions the same on both backends.
     const VkPipelineRasterizationStateCreateInfo rasterization{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .polygonMode = VK_POLYGON_MODE_FILL,
+        .polygonMode = desc.fill == FillMode::Wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL,
         .cullMode = static_cast<VkCullModeFlags>(desc.cull == CullMode::Back    ? VK_CULL_MODE_BACK_BIT
                                                  : desc.cull == CullMode::Front ? VK_CULL_MODE_FRONT_BIT
                                                                                 : VK_CULL_MODE_NONE),
@@ -703,15 +713,19 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
         .depthTestEnable = hasDepth ? VK_TRUE : VK_FALSE,
         .depthWriteEnable = hasDepth && desc.depthWrite ? VK_TRUE : VK_FALSE,
-        .depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL}; // reversed Z
-    const bool alphaBlend = desc.blend == BlendMode::Alpha;
+        // Reversed Z. "No depth test" passes everything rather than switching depth off, so the pipeline still matches
+        // a pass that has a depth target (D3D12 warns about the mismatch otherwise).
+        .depthCompareOp = desc.depthTest ? VK_COMPARE_OP_GREATER_OR_EQUAL : VK_COMPARE_OP_ALWAYS};
+    // Not `!= BlendMode::None`: on Linux the Vulkan Xlib headers pull in X11, which defines a `None` macro.
+    const bool additive = desc.blend == BlendMode::Additive;
+    const bool blending = additive || desc.blend == BlendMode::Alpha;
     const VkPipelineColorBlendAttachmentState blendAttachment{
-        .blendEnable = alphaBlend ? VK_TRUE : VK_FALSE,
-        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
-        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .blendEnable = blending ? VK_TRUE : VK_FALSE,
+        .srcColorBlendFactor = additive ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_SRC_ALPHA,
+        .dstColorBlendFactor = additive ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .colorBlendOp = VK_BLEND_OP_ADD,
         .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .dstAlphaBlendFactor = additive ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .alphaBlendOp = VK_BLEND_OP_ADD,
         .colorWriteMask =
             VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT};

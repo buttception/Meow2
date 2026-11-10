@@ -48,6 +48,14 @@ struct SceneViewDeps
 /// @return Its `glTF/<name>.gltf`, or `glTF-Binary/<name>.glb` if only that exists; empty if neither does.
 [[nodiscard]] std::filesystem::path findSample(const std::filesystem::path& sampleRoot, const std::string& name);
 
+/// @brief One version of a Khronos sample.
+/// @param sampleRoot `assets/gltf-sample-assets`.
+/// @param name       The model's folder name.
+/// @param binary     True for `glTF-Binary/<name>.glb`, false for `glTF/<name>.gltf`.
+/// @return The file, or empty if that version isn't downloaded (or the model has none).
+[[nodiscard]] std::filesystem::path findSampleFile(const std::filesystem::path& sampleRoot, const std::string& name,
+                                                   bool binary);
+
 /// @brief One scene open in Meow2Renderer: a glTF model, or the grid of cubes.
 ///
 /// Owns the `Scene` of entities, its transform hierarchy and the GpuScene that draws them. Opening another scene makes

@@ -4,7 +4,9 @@
 ///        a grid of cubes through the GPU-driven path, and shows an ImGui shell to pick scenes and read stats.
 
 #include "ConsoleWindow.h"
+#include "FrameInspector.h"
 #include "ImGuiLayer.h"
+#include "RenderDebug.h"
 #include "RendererUi.h"
 #include "SceneView.h"
 #include "SettingsWindow.h"
@@ -33,6 +35,7 @@
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
 #include <Meow2/Graphics/Renderer/SkyAtmosphere.h>
+#include <Meow2/Graphics/Renderer/ToneMapPass.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 #include <Meow2/Graphics/Rhi/RenderDocCapture.h>
 #include <Meow2/Math/Camera.h>
@@ -211,6 +214,9 @@ int main(int argc, char** argv)
     std::unique_ptr<Meow2::Renderer::RenderDevice> renderDevice;
     std::unique_ptr<Meow2::Rhi::IRhiSwapchain> swapchain; // destroyed first: declared after the device
     Meow2::Rhi::TextureHandle depthTexture;
+    // The scene in linear light (RGBA16F), before the Tone map pass writes the swapchain; resized with the window.
+    Meow2::Rhi::TextureHandle sceneColor;
+    constexpr Meow2::Rhi::RhiFormat c_sceneFormat = Meow2::Rhi::RhiFormat::Rgba16Float;
     // Cooked shaders are next to the exe. Pipelines compiled by the driver are saved there too, in cache/, so a second
     // run skips that work. Absent files only mean a slower start.
     Meow2::FileSystem::FileSystem files{engineLog};
@@ -285,6 +291,9 @@ int main(int argc, char** argv)
     std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
     // The sky (renderer.sky): lights every scene and is drawn behind it. Scenes refer to it: declared before them.
     std::unique_ptr<Meow2::Renderer::SkyAtmosphere> sky;
+    std::unique_ptr<Meow2::Renderer::ToneMapPass> toneMap;         // the scene's HDR colour into the swapchain
+    std::unique_ptr<Meow2::RendererApp::RenderDebug> renderDebug;  // debug views, wireframes, frozen culling
+    std::unique_ptr<Meow2::RendererApp::FrameInspector> inspector; // render-graph view, pass view, frame capture
     // The starting sun: renderer.sunElevation and renderer.sunDirection, in degrees (the Stats window's sliders).
     Meow2::RendererApp::SunControls sun;
     sun.elevationDegrees =
@@ -349,10 +358,12 @@ int main(int argc, char** argv)
         const Meow2::Rhi::RhiFormat colorFormat = swapchain->format();
         windowUser = renderDevice->addUser(
             "Window",
-            [&swapchain, &depthTexture](Meow2::Rhi::IRhiDevice& device)
+            [&swapchain, &depthTexture, &sceneColor](Meow2::Rhi::IRhiDevice& device)
             {
                 device.destroy(depthTexture);
                 depthTexture = {}; // made again by the first frame on the new device
+                device.destroy(sceneColor);
+                sceneColor = {};
                 swapchain.reset();
             },
             [&makeSwapchain, &swapchain, colorFormat](Meow2::Rhi::IRhiDevice& device) -> Meow2::Result<void>
@@ -384,7 +395,7 @@ int main(int argc, char** argv)
             Meow2::Result<std::unique_ptr<Meow2::Renderer::SkyAtmosphere>> made =
                 Meow2::Renderer::SkyAtmosphere::create(
                     *renderDevice, *pipelines,
-                    {.shader = assetId("01a1b5e2-3c16-8000-80a4-7b19d2e6c057"), .colorFormat = colorFormat});
+                    {.shader = assetId("01a1b5e2-3c16-8000-80a4-7b19d2e6c057"), .colorFormat = c_sceneFormat});
             if (made)
             {
                 sky = std::move(*made);
@@ -393,6 +404,33 @@ int main(int argc, char** argv)
             {
                 MEOW2_LOG_WARN(appLog, "No sky, flat ambient light instead: {}", made.error());
             }
+        }
+        if (Meow2::Result<std::unique_ptr<Meow2::Renderer::ToneMapPass>> made = Meow2::Renderer::ToneMapPass::create(
+                *pipelines, assetId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058"), colorFormat);
+            made)
+        {
+            toneMap = std::move(*made);
+            inspector = std::make_unique<Meow2::RendererApp::FrameInspector>(
+                *renderDevice, *pipelines, assetId("01a1b5e2-3c18-8000-80a4-7b19d2e6c059"), appLog);
+            inspector->watch(config.getString("renderer.watchPass", "")); // for checks without the mouse
+            renderDebug = std::make_unique<Meow2::RendererApp::RenderDebug>(
+                *pipelines, assetId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058"), colorFormat, appLog);
+            // renderer.debugView (a MEOW2_DEBUG_VIEW_* number, -1 shaded) and renderer.wireframe (off, overlay, only):
+            // how the views start, for checks and captures without the mouse.
+            renderDebug->state().view = static_cast<int>(
+                std::clamp<std::int64_t>(config.getInt("renderer.debugView", -1), -1, MEOW2_DEBUG_VIEW_COUNT - 1));
+            if (const std::string wireframe = config.getString("renderer.wireframe", "off"); wireframe == "overlay")
+            {
+                renderDebug->state().wireframe = Meow2::RendererApp::WireframeMode::Overlay;
+            }
+            else if (wireframe == "only")
+            {
+                renderDebug->state().wireframe = Meow2::RendererApp::WireframeMode::Only;
+            }
+        }
+        else
+        {
+            MEOW2_LOG_ERROR(appLog, "No tone mapping, the scene won't show: {}", made.error());
         }
         // renderer.compressTextures: BC7 and BC5, on by default except in Debug, where the unoptimised encoder would
         // take minutes over a large model's first load. Cooked textures are cached either way.
@@ -406,7 +444,7 @@ int main(int argc, char** argv)
                                               .jobs = jobs,
                                               .log = appLog,
                                               .shader = assetId("01a1b5e2-3c12-8000-80a4-7b19d2e6c053"),
-                                              .colorFormat = colorFormat,
+                                              .colorFormat = c_sceneFormat,
                                               .sky = sky.get(),
                                               .textures = {.compress = compressTextures,
                                                            .cache = files.isMounted("cache") ? &textureCache : nullptr,
@@ -454,8 +492,12 @@ int main(int argc, char** argv)
     // F10 switches between Vulkan and D3D12 at the next frame boundary. rhi.swapAtFrame switches once with no keyboard.
     std::optional<Meow2::Rhi::RhiBackend> pendingSwap;
     const Meow2::Events::Subscription onSwapKey = events.subscribe<Meow2::Input::KeyPressed>(
-        [&pendingSwap, &renderDevice](const Meow2::Input::KeyPressed& e)
+        [&pendingSwap, &renderDevice, &inspector](const Meow2::Input::KeyPressed& e)
         {
+            if (e.key == Meow2::Input::Key::F9 && !e.repeat && inspector)
+            {
+                inspector->requestCapture(); // the engine's frame capture (F11 is RenderDoc's)
+            }
             if (e.key == Meow2::Input::Key::F10 && !e.repeat && renderDevice)
             {
                 pendingSwap = renderDevice->backend() == Meow2::Rhi::RhiBackend::Vulkan
@@ -464,6 +506,8 @@ int main(int argc, char** argv)
             }
         });
     const std::int64_t swapAtFrame = config.getInt("rhi.swapAtFrame", 0);
+    // renderer.captureAtFrame: the engine's frame capture (F9) once at that frame, for checks without the keyboard.
+    const std::int64_t captureAtFrame = config.getInt("renderer.captureAtFrame", 0);
     // renderer.switchSceneAtFrame opens renderer.switchScene (a sample name) once at that frame, like picking it in the
     // Scenes window: for checks with no mouse.
     const std::int64_t switchSceneAtFrame = config.getInt("renderer.switchSceneAtFrame", 0);
@@ -507,7 +551,9 @@ int main(int argc, char** argv)
         });
 
     // One frame of drawing. Returns false if the GPU stopped working.
-    const auto makeDepth = [&renderDevice, &depthTexture, &appLog](std::uint32_t width, std::uint32_t height)
+    // The scene's targets, depth and HDR colour, at the window's size.
+    const auto makeDepth =
+        [&renderDevice, &depthTexture, &sceneColor, &appLog](std::uint32_t width, std::uint32_t height)
     {
         Meow2::Rhi::IRhiDevice& device = renderDevice->device();
         if (depthTexture.isSet())
@@ -515,6 +561,19 @@ int main(int argc, char** argv)
             device.destroy(depthTexture);
             depthTexture = {};
         }
+        if (sceneColor.isSet())
+        {
+            device.destroy(sceneColor);
+            sceneColor = {};
+        }
+        Meow2::Result<Meow2::Rhi::TextureHandle> color = device.createTexture(
+            {.width = width, .height = height, .format = c_sceneFormat, .renderTarget = true, .name = "Scene colour"});
+        if (!color)
+        {
+            MEOW2_LOG_ERROR(appLog, "Can't create the scene's colour target: {}", color.error());
+            return false;
+        }
+        sceneColor = *color;
         Meow2::Result<Meow2::Rhi::TextureHandle> depth =
             device.createTexture({.width = width,
                                   .height = height,
@@ -530,13 +589,18 @@ int main(int argc, char** argv)
         return true;
     };
     const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &view, &viewDeps, &ui, &sky, &sun, &jobs,
-                              &depthTexture, &makeDepth, &renderDoc, &clock, &pendingSwap, &pendingScene, &sceneError,
-                              &scenesWindow, &consoleWindow, &settingsWindow, &config, &orbit, &fly, &cameraState,
-                              &startCamera, &cameraScene, &posedAnimation, &input, &frameTimes, &showUi, &sampleRoot,
-                              &switchScene, captureFrame, swapAtFrame, switchSceneAtFrame,
+                              &depthTexture, &sceneColor, &toneMap, &renderDebug, &inspector, &makeDepth, &renderDoc,
+                              &clock, &pendingSwap, &pendingScene, &sceneError, &scenesWindow, &consoleWindow,
+                              &settingsWindow, &config, &orbit, &fly, &cameraState, &startCamera, &cameraScene,
+                              &posedAnimation, &input, &frameTimes, &showUi, &sampleRoot, &switchScene, captureFrame,
+                              captureAtFrame, swapAtFrame, switchSceneAtFrame,
                               cubeCount = static_cast<std::uint32_t>(
                                   std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000))]
     {
+        if (captureAtFrame > 0 && inspector && static_cast<std::int64_t>(clock.frameCount()) == captureAtFrame)
+        {
+            inspector->requestCapture();
+        }
         if (swapAtFrame > 0 && static_cast<std::int64_t>(clock.frameCount()) == swapAtFrame)
         {
             pendingSwap = renderDevice->backend() == Meow2::Rhi::RhiBackend::Vulkan ? Meow2::Rhi::RhiBackend::D3D12
@@ -627,6 +691,7 @@ int main(int argc, char** argv)
                          pixelsPerUnit, window->displayScale() / pixelsPerUnit);
             if (showUi)
             {
+                Meow2::RendererApp::dockWindows(); // before the windows, so they land in their docks
                 Meow2::RendererApp::StatsInfo stats{
                     .backend = renderDevice->backend() == Meow2::Rhi::RhiBackend::D3D12 ? "D3D12" : "Vulkan",
                     .gpu = device.adapter().name,
@@ -668,6 +733,14 @@ int main(int argc, char** argv)
                 {
                     Meow2::RendererApp::drawCameraWindow(cameraState, view->cameras(), view->animations(), orbit, fly,
                                                          ui->fonts());
+                }
+                if (renderDebug)
+                {
+                    renderDebug->drawWindow(ui->fonts());
+                }
+                if (inspector)
+                {
+                    inspector->drawWindows(*ui, ui->fonts());
                 }
                 for (const std::string_view key : settingsWindow.takeNextSceneChanges())
                 {
@@ -730,10 +803,12 @@ int main(int argc, char** argv)
                     posedAnimation = -1;
                 }
 
-                // Mouse and keys drive the camera unless the UI is using them (a window under the cursor, a text box).
+                // The mouse drives the camera unless it's over the UI; keys do unless a text field is being typed in.
+                // (Not WantCaptureKeyboard: with keyboard navigation that's true whenever any window has focus, which
+                // stopped WASD after a click on a window.)
                 Meow2::RendererApp::CameraInput cameraInput{};
                 const bool uiWantsMouse = ui && showUi && ImGui::GetIO().WantCaptureMouse;
-                const bool uiWantsKeys = ui && showUi && ImGui::GetIO().WantCaptureKeyboard;
+                const bool uiWantsKeys = ui && showUi && ImGui::GetIO().WantTextInput;
                 if (!uiWantsMouse)
                 {
                     const Meow2::Input::Vec2 delta = input.mouseDelta();
@@ -807,8 +882,25 @@ int main(int argc, char** argv)
                                  matrices.viewProjection);
                     sky->addPasses(graph, device.frameSlot());
                 }
-                view->gpu().setView(device.frameSlot(), frame, Meow2::Math::frustumFromCamera(matrices));
-                view->gpu().addPasses(graph, device.frameSlot(), swapchain.get(), {}, depthTexture, c_clear);
+                Meow2::Math::Frustum frustum = Meow2::Math::frustumFromCamera(matrices);
+                Meow2::Math::Color clear = c_clear;
+                if (renderDebug)
+                {
+                    renderDebug->apply(view->gpu(), frame); // the view mode, its pipelines, the sky pass
+                    frustum = renderDebug->cullingFrustum(frustum);
+                    clear = renderDebug->clearColor(c_clear);
+                }
+                view->gpu().setView(device.frameSlot(), frame, frustum);
+                const Meow2::Renderer::GraphResource hdr =
+                    view->gpu().addPasses(graph, device.frameSlot(), nullptr, sceneColor, depthTexture, clear);
+                if (renderDebug)
+                {
+                    renderDebug->addOverlays(graph, view->gpu(), hdr, sceneColor, depthTexture, device.frameSlot());
+                }
+                if (!(renderDebug && renderDebug->addPresent(graph, hdr, sceneColor, *swapchain, device)) && toneMap)
+                {
+                    toneMap->addPass(graph, hdr, sceneColor, *swapchain, device);
+                }
             }
             else
             {
@@ -823,9 +915,18 @@ int main(int argc, char** argv)
                                },
                                .small = true});
             }
+            if (inspector)
+            {
+                inspector->beginFrame(graph, device.frameSlot()); // its textures, the capture viewer
+            }
             if (ui)
             {
-                ui->addPasses(graph, device.frameSlot(), *swapchain);
+                ui->addPasses(graph, device.frameSlot(), *swapchain,
+                              inspector ? inspector->uiReads() : std::span<const Meow2::Renderer::GraphResource>{});
+            }
+            if (inspector)
+            {
+                inspector->afterPasses(graph, device.frameSlot()); // the watched pass's view, a capture
             }
             graph.compile();
             Meow2::Result<std::vector<Meow2::Rhi::IRhiCommandList*>> recorded = graph.execute(device, jobs);
@@ -840,6 +941,10 @@ int main(int argc, char** argv)
             if (ui)
             {
                 ui->endFrame();
+            }
+            if (inspector)
+            {
+                inspector->endFrame(graph);
             }
             if (!recorded)
             {
@@ -896,6 +1001,11 @@ int main(int argc, char** argv)
     MEOW2_LOG_INFO(appLog, "Ran {} frames ({} fixed steps) in {:.2f} s", clock.frameCount(), loop.fixedStepCount(),
                    clock.totalSeconds());
 
+    if (ui)
+    {
+        config.setString(Meow2::RendererApp::c_uiLayoutKey,
+                         ui->currentLayout()); // also a change made just before quitting
+    }
     if (renderDevice && renderDevice->hasDevice())
     {
         renderDevice->device().waitIdle();
@@ -904,6 +1014,7 @@ int main(int argc, char** argv)
         pipelines.reset();
         windowUser.reset();
         renderDevice->device().destroy(depthTexture);
+        renderDevice->device().destroy(sceneColor);
         swapchain.reset();
         // Every backend this run used, and the files of the others as they were. Empty when there's nothing (e.g. under
         // RenderDoc on D3D12): the file from the last normal run is kept.

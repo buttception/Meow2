@@ -25,6 +25,25 @@
 
 namespace Meow2::Renderer
 {
+/// @brief How to build a variant set of a GpuScene's draw pipelines (makeDrawPipelines()). Plain data.
+struct DrawPipelineOptions
+{
+    std::vector<Assets::ShaderOptionChoice> options{}; ///< The shader variant, e.g. a debug view.
+    Rhi::FillMode fill = Rhi::FillMode::Solid;         ///< Filled, or only edges.
+    Rhi::BlendMode blend = Rhi::BlendMode::None; ///< How the draw lists combine with the target (blended surfaces keep
+                                                 ///< alpha blending unless this is Additive).
+    bool depthTest = true;                       ///< Whether depth is tested.
+    bool depthWrite = true;                      ///< Whether the draw lists write depth.
+    std::string name = "Variant";                ///< Prefix of the pipelines' names.
+};
+
+/// @brief A GpuScene's draw pipelines: one per draw list and one for blended surfaces. Plain data.
+struct DrawPipelines
+{
+    std::array<PipelineId, MEOW2_DRAW_LIST_COUNT> lists{}; ///< One per MEOW2_DRAW_LIST_*.
+    PipelineId blend{};                                    ///< For blended surfaces.
+};
+
 /// @brief What to create a GpuScene with. Plain data.
 struct GpuSceneDesc
 {
@@ -204,6 +223,14 @@ public:
         m_sky = sky;
     }
 
+    /// @brief Whether the sky is drawn behind the scene (it still lights it). Debugging views turn it off, so their
+    ///        background is plain and an overdraw count isn't raised by it.
+    /// @param draw True to draw it (the default).
+    void setSkyPass(bool draw)
+    {
+        m_skyPass = draw;
+    }
+
     /// @brief Adds a material, and keeps a copy for the next device.
     /// @param material Its parameters.
     /// @return Its index, for Shader::InstanceData::material, or an error when the scene has too many.
@@ -221,6 +248,33 @@ public:
     /// @param frustum   What's visible, camera relative like the instances.
     void setView(std::uint32_t frameSlot, const Shader::FrameConstants& frame, const Math::Frustum& frustum);
 
+    /// @brief Builds a set of the scene's draw pipelines from another variant of its shader, or with other states.
+    ///
+    /// The pipelines live in the PipelineLibrary, so they survive backend switches and shader reloads. Debugging tools
+    /// use it for view modes and wireframes; an editor could use it for selection outlines.
+    /// @param options The variant and states.
+    /// @return The pipelines, or the error from building one.
+    [[nodiscard]] Result<DrawPipelines> makeDrawPipelines(const DrawPipelineOptions& options);
+
+    /// @brief Draws with other pipelines instead of the scene's own, until cleared.
+    /// @param pipelines From makeDrawPipelines(); std::nullopt for the scene's own.
+    void setPipelineOverride(std::optional<DrawPipelines> pipelines)
+    {
+        m_override = pipelines;
+    }
+
+    /// @brief Adds a pass that draws this frame's culled instances again with other pipelines, over what's in the
+    ///        targets (e.g. a wireframe on top of the shaded scene). Blended surfaces are drawn too.
+    /// @param graph     The frame's graph, after addPasses().
+    /// @param name      The pass's name.
+    /// @param pipelines From makeDrawPipelines().
+    /// @param color     The colour target in the graph (addPasses()' result).
+    /// @param colorTexture The same texture.
+    /// @param depth     The depth target given to addPasses().
+    /// @param frameSlot IRhiDevice::frameSlot().
+    void addOverlayPass(RenderGraph& graph, std::string name, const DrawPipelines& pipelines, GraphResource color,
+                        Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot);
+
     /// @brief Adds the culling and drawing passes.
     /// @param graph     The frame's graph.
     /// @param frameSlot IRhiDevice::frameSlot().
@@ -228,8 +282,10 @@ public:
     /// @param color     The colour target when `swapchain` is null.
     /// @param depth     The depth target, D32Float.
     /// @param clear     The colour to clear to.
-    void addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain* swapchain, Rhi::TextureHandle color,
-                   Rhi::TextureHandle depth, const Math::Color& clear);
+    /// @return The colour target in the graph, for passes after these (tone mapping, debugging); an unset resource
+    ///         when drawing to a swapchain.
+    GraphResource addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain* swapchain,
+                            Rhi::TextureHandle color, Rhi::TextureHandle depth, const Math::Color& clear);
 
     /// @brief Records the state of the graph's resources, once it's compiled. Call before the next addPasses().
     /// @param graph The graph.
@@ -310,6 +366,9 @@ private:
     std::optional<PipelineId> m_cullPipeline;
     std::array<std::optional<PipelineId>, MEOW2_DRAW_LIST_COUNT> m_drawPipelines{}; ///< One per draw list.
     std::optional<PipelineId> m_blendPipeline;
+    std::optional<DrawPipelines> m_override; ///< Used instead of the pipelines above when set.
+    std::vector<std::pair<std::uint32_t, std::uint32_t>>
+        m_blendDraws; ///< This frame's blended draws: instance, indices.
     Rhi::BufferHandle m_instanceBuffer;
     Rhi::BufferHandle m_meshBuffer;
     Rhi::BufferHandle m_drawBuffer;
@@ -344,6 +403,7 @@ private:
     std::vector<std::uint32_t> m_blendOrder; ///< This frame's back-to-front order of m_blended.
     SceneLighting m_lighting{};
     const SkyAtmosphere* m_sky = nullptr; ///< Optional: lights the scene and is drawn behind it.
+    bool m_skyPass = true;                ///< Whether the sky's pass is added (setSkyPass()).
     Rhi::BufferHandle m_materialBuffer;
     Rhi::ResourceState m_drawState = Rhi::ResourceState::Undefined;
     Rhi::ResourceState m_countState = Rhi::ResourceState::Undefined;

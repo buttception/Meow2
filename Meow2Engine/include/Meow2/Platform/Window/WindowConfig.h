@@ -24,10 +24,11 @@
 
 namespace Meow2::Platform
 {
-/// @brief Smallest accepted window width or height from the config, in desktop units.
+/// @brief Smallest accepted window width or height from the config, in logical units (0 is accepted too: the default
+///        share of the display, c_defaultScreenShare).
 inline constexpr std::int32_t c_minConfigWindowSize = 160;
 
-/// @brief Largest accepted window width or height from the config, in desktop units.
+/// @brief Largest accepted window width or height from the config, in logical units.
 inline constexpr std::int32_t c_maxConfigWindowSize = 16384;
 
 /// @brief Builds a WindowDesc from the `window.*` keys, with the app's defaults for missing or invalid values.
