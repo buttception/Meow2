@@ -401,7 +401,7 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
         case MEOW2_DEBUG_VIEW_MATERIALS:
             return float4(hashColor(input.material), 1.0);
         case MEOW2_DEBUG_VIEW_OVERDRAW:
-            return float4(1.0, 1.0, 1.0, 1.0); // added up per layer by the additive pipelines
+            return float4(0.0625, 0.0625, 0.0625, 1.0); // 1/16 per layer, added up by the additive pipelines
         case MEOW2_DEBUG_VIEW_DEPTH:
         {
             // Reversed infinite Z: depth = near / distance, and the projection's [3][2] is near.

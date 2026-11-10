@@ -145,7 +145,7 @@ struct UiDraw
 #define MEOW2_DEBUG_VIEW_TRIANGLES 0u       ///< A colour per triangle.
 #define MEOW2_DEBUG_VIEW_INSTANCES 1u       ///< A colour per instance.
 #define MEOW2_DEBUG_VIEW_MATERIALS 2u       ///< A colour per material.
-#define MEOW2_DEBUG_VIEW_OVERDRAW 3u        ///< 1 per layer, added up (additive pipelines, no depth test).
+#define MEOW2_DEBUG_VIEW_OVERDRAW 3u        ///< 1/16 per layer, added up (additive pipelines, no depth test): fits 8 bits too.
 #define MEOW2_DEBUG_VIEW_DEPTH 4u           ///< Distance from the camera, logarithmic grey: white near, black far.
 #define MEOW2_DEBUG_VIEW_GEOMETRY_NORMAL 5u ///< The mesh's normal, world space, as colour (x, y, z → r, g, b).
 #define MEOW2_DEBUG_VIEW_SHADING_NORMAL 6u  ///< The normal after the normal map.

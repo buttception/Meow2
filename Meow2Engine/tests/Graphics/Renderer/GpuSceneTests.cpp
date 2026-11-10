@@ -138,9 +138,12 @@ protected:
     /// @brief A camera at the origin looking down +Z.
     void setCamera(std::uint32_t slot, Math::Frustum& frustum)
     {
-        const Math::CameraMatrices matrices = Math::cameraMatrices(Math::Transform{}, Math::CameraLens{}, 1.0F);
-        frustum = Math::frustumFromCamera(matrices);
+        Math::Transform camera;
+        camera.rotation = m_cameraRotation;
+        const Math::CameraMatrices matrices = Math::cameraMatrices(camera, Math::CameraLens{}, 1.0F);
+        frustum = m_cullFrustum.value_or(Math::frustumFromCamera(matrices)); // a frozen one, or the camera's
         Shader::FrameConstants frame{};
+        frame.debugView = m_debugView;
         frame.view = matrices.view;
         frame.projection = matrices.projection;
         frame.viewProjection = matrices.viewProjection;
@@ -168,8 +171,13 @@ protected:
         {
             m_sky->addPasses(sceneGraph, m_render->device().frameSlot());
         }
-        const Math::Color clear{.a = 1.0F};
-        m_scene->addPasses(sceneGraph, m_render->device().frameSlot(), nullptr, m_target->texture(), m_depth, clear);
+        const GraphResource colour = m_scene->addPasses(sceneGraph, m_render->device().frameSlot(), nullptr,
+                                                        m_target->texture(), m_depth, m_clear);
+        if (m_overlay)
+        {
+            m_scene->addOverlayPass(sceneGraph, "Overlay", *m_overlay, colour, m_target->texture(), m_depth,
+                                    m_render->device().frameSlot());
+        }
         sceneGraph.compile();
         Result<std::vector<Rhi::IRhiCommandList*>> lists = sceneGraph.execute(m_render->device(), m_jobs);
         EXPECT_TRUE(lists) << lists.error().message;
@@ -206,6 +214,11 @@ protected:
         return pixel;
     }
 
+    std::uint32_t m_debugView = 0;              ///< FrameConstants::debugView, for the DEBUG_VIEW = 1 pipelines.
+    std::optional<Math::Frustum> m_cullFrustum; ///< Culls with this instead of the camera's (frozen culling).
+    Math::Quat m_cameraRotation{};              ///< The camera at the origin; identity looks down +Z.
+    std::optional<DrawPipelines> m_overlay;     ///< Drawn over the scene after its passes.
+    Math::Color m_clear{.a = 1.0F};             ///< The colour the scene clears to.
     Log::LogSystem m_logSystem;
     Log::Logger m_log;
     Events::EventBus m_events{Memory::globalTracker()};
@@ -540,5 +553,146 @@ TEST_F(GpuSceneTest, SmoothMetalReflectsTheSky)
     EXPECT_GT(ground[0], sky[0] + 10) << "the two reflections differ: " << values;
     const auto corner = pixelAt(0, 0);
     EXPECT_GT(corner[0] + corner[1] + corner[2], 0) << "the sky is drawn behind the scene";
+}
+
+namespace
+{
+/// @brief The pixel a point of the plane z = 3 lands on, for the test camera (origin, +Z, 60° vertical, square).
+std::pair<std::uint32_t, std::uint32_t> pixelFor(float x, float y)
+{
+    const float perUnit = 1.0F / (3.0F * std::tan(Math::toRadians(30.0F))); // NDC per world unit at z = 3
+    const auto toPixel = [](float ndc)
+    {
+        return static_cast<std::uint32_t>((ndc + 1.0F) * 0.5F * c_size);
+    };
+    return {toPixel(x * perUnit), toPixel(-y * perUnit)};
+}
+
+int channel(const std::array<std::uint8_t, 4>& pixel, std::size_t c)
+{
+    return pixel[c];
+}
+} // namespace
+
+TEST_F(GpuSceneTest, DebugViewsShowTheirChannel)
+{
+    makeScene(4);
+    const Result<std::uint32_t> quad = m_scene->addMesh(makeQuad());
+    ASSERT_TRUE(quad);
+    const Result<std::uint32_t> material =
+        m_scene->addMaterial({.baseColorFactor = {0.2F, 0.6F, 0.9F, 1.0F}, .metallic = 0.3F, .roughness = 0.7F});
+    ASSERT_TRUE(material);
+    const Result<DrawPipelines> views = m_scene->makeDrawPipelines({.options = {{"DEBUG_VIEW", "1"}}, .name = "Views"});
+    ASSERT_TRUE(views) << views.error().message;
+    m_scene->setPipelineOverride(*views);
+    const std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *material)};
+    m_scene->setInstances(instances);
+    Math::Frustum frustum{};
+    const auto [x, y] = pixelFor(0.4F, 0.3F); // inside the quad, off its diagonal
+
+    // The target is linear RGBA8: a value v reads back as v × 255.
+    const auto expectView = [&](std::uint32_t view, std::array<int, 3> expected, const char* name)
+    {
+        m_debugView = view;
+        EXPECT_EQ(runFrame(frustum), 1U);
+        const std::array<std::uint8_t, 4> pixel = pixelAt(x, y);
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            EXPECT_NEAR(channel(pixel, c), expected[c], 3) << name << ", channel " << c;
+        }
+    };
+    expectView(MEOW2_DEBUG_VIEW_BASE_COLOR, {51, 153, 230}, "base colour");
+    expectView(MEOW2_DEBUG_VIEW_METALLIC, {77, 77, 77}, "metallic");
+    expectView(MEOW2_DEBUG_VIEW_ROUGHNESS, {179, 179, 179}, "roughness");
+    expectView(MEOW2_DEBUG_VIEW_GEOMETRY_NORMAL, {128, 128, 0}, "normal (0, 0, -1), towards the camera");
+    // Depth: 1 - log2(distance / near) / 16 at distance 3 (the plane) with the default near plane of 0.1.
+    const int shade = static_cast<int>((1.0F - std::log2(3.0F / 0.1F) / 16.0F) * 255.0F + 0.5F);
+    expectView(MEOW2_DEBUG_VIEW_DEPTH, {shade, shade, shade}, "depth");
+}
+
+TEST_F(GpuSceneTest, WireframeDrawsOnlyEdges)
+{
+    makeScene(4);
+    const Result<std::uint32_t> quad = m_scene->addMesh(makeQuad());
+    ASSERT_TRUE(quad);
+    const Result<std::uint32_t> material = m_scene->addMaterial({.metallic = 0.0F});
+    ASSERT_TRUE(material);
+    // Wireframe only: black surfaces (they still write depth), then the edges over them.
+    const Result<DrawPipelines> views = m_scene->makeDrawPipelines({.options = {{"DEBUG_VIEW", "1"}}, .name = "Views"});
+    const Result<DrawPipelines> wire = m_scene->makeDrawPipelines(
+        {.options = {{"DEBUG_VIEW", "2"}}, .fill = Rhi::FillMode::Wireframe, .depthWrite = false, .name = "Wire"});
+    ASSERT_TRUE(views && wire);
+    m_scene->setPipelineOverride(*views);
+    m_debugView = MEOW2_DEBUG_VIEW_BLACK;
+    m_overlay = *wire;
+    m_clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+    const std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *material)};
+    m_scene->setInstances(instances);
+    Math::Frustum frustum{};
+    EXPECT_EQ(runFrame(frustum), 1U);
+
+    // The edge colour is the bright accent (1, 0.353, 0.4).
+    const auto isEdge = [](const std::array<std::uint8_t, 4>& pixel)
+    {
+        return pixel[0] > 200 && pixel[1] < 130;
+    };
+    const auto [insideX, insideY] = pixelFor(0.5F, -0.5F); // inside, away from every edge and the diagonal
+    const std::array<std::uint8_t, 4> inside = pixelAt(insideX, insideY);
+    EXPECT_FALSE(isEdge(inside)) << "a face's inside stays black";
+    EXPECT_LT(channel(inside, 0) + channel(inside, 1) + channel(inside, 2), 10);
+    // Across the middle row: the left and right edges and the diagonal.
+    int edges = 0;
+    for (std::uint32_t column = 0; column < c_size; ++column)
+    {
+        edges += isEdge(pixelAt(column, c_size / 2)) ? 1 : 0;
+    }
+    EXPECT_GE(edges, 3) << "left edge, diagonal, right edge";
+    EXPECT_LE(edges, 9) << "edges are lines, not filled";
+}
+
+TEST_F(GpuSceneTest, OverdrawCountsLayers)
+{
+    makeScene(4);
+    const Result<std::uint32_t> quad = m_scene->addMesh(makeQuad());
+    ASSERT_TRUE(quad);
+    const Result<DrawPipelines> overdraw = m_scene->makeDrawPipelines({.options = {{"DEBUG_VIEW", "1"}},
+                                                                       .blend = Rhi::BlendMode::Additive,
+                                                                       .depthTest = false,
+                                                                       .depthWrite = false,
+                                                                       .name = "Overdraw"});
+    ASSERT_TRUE(overdraw) << overdraw.error().message;
+    m_scene->setPipelineOverride(*overdraw);
+    m_debugView = MEOW2_DEBUG_VIEW_OVERDRAW;
+    m_clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+    // Two quads side by side, overlapping between x = -0.5 and 1.
+    const std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, 0),
+                                                      instanceOf(at({0.5F, 0.0F, 3.0F}), *quad, 0)};
+    m_scene->setInstances(instances);
+    Math::Frustum frustum{};
+    EXPECT_EQ(runFrame(frustum), 2U);
+
+    // 1/16 per layer: 16 for one, 32 for two (of 255).
+    const auto valueAt = [&](float x)
+    {
+        const auto [px, py] = pixelFor(x, 0.4F);
+        return channel(pixelAt(px, py), 0);
+    };
+    EXPECT_NEAR(valueAt(-0.75F), 16, 2) << "only the first quad";
+    EXPECT_NEAR(valueAt(0.25F), 32, 2) << "both";
+    EXPECT_NEAR(valueAt(1.25F), 16, 2) << "only the second quad";
+}
+
+TEST_F(GpuSceneTest, FrozenCullingKeepsTheOldFrustum)
+{
+    makeScene(4);
+    const std::vector<Shader::InstanceData> instances{instanceAt({0.0F, 0.0F, 3.0F})};
+    m_scene->setInstances(instances);
+    Math::Frustum frustum{};
+    m_cameraRotation = Math::fromAxisAngle(Math::Vec3{0.0F, 1.0F, 0.0F}, Math::c_pi); // looking down -Z, away from it
+    EXPECT_EQ(runFrame(frustum), 0U) << "behind the camera: culled";
+
+    // Frozen while the camera looked down +Z: the cube is still in that frustum, so it's still drawn.
+    m_cullFrustum = Math::frustumFromCamera(Math::cameraMatrices(Math::Transform{}, Math::CameraLens{}, 1.0F));
+    EXPECT_EQ(runFrame(frustum), 1U);
 }
 } // namespace Meow2::Renderer

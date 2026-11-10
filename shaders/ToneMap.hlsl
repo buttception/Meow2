@@ -39,7 +39,7 @@ float4 psMain(VertexOutput input) : SV_Target
     const Texture2D<float4> hdr = ResourceDescriptorHeap[g_push.instance];
     const float3 color = hdr.Load(int3(input.position.xy, 0)).rgb;
 #if DEBUG_OUTPUT
-    return float4(g_push.userData == 1 ? heat(color.r) : saturate(color), 1.0);
+    return float4(g_push.userData == 1 ? heat(color.r * 16.0) : saturate(color), 1.0); // overdraw adds 1/16 a layer
 #else
     return float4(toneMapNeutral(max(color, 0.0)), 1.0);
 #endif
