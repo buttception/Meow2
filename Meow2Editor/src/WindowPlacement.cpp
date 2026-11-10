@@ -54,6 +54,12 @@ void showWithDesc(QWidget& window, const Platform::WindowDesc& desc, Log::Logger
         // or 2880 x 1620 real pixels, bigger than the screen. Shrink to the screen's work area (keeping the shape),
         // with room for the title bar and frame, which setGeometry() leaves out.
         const QRect area = screen->availableGeometry();
+        if (desc.width == 0 || desc.height == 0)
+        {
+            // No size saved yet: a share of the screen, so the first window suits any display and scaling.
+            rect.setSize(QSize{static_cast<int>(static_cast<float>(area.width()) * Platform::c_defaultScreenShare),
+                               static_cast<int>(static_cast<float>(area.height()) * Platform::c_defaultScreenShare)});
+        }
         const QSize room{std::max(area.width() - 16, 320), std::max(area.height() - 48, 240)};
         if (rect.width() > room.width() || rect.height() > room.height())
         {

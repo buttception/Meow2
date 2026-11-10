@@ -43,12 +43,21 @@ struct WindowRect
     friend bool operator==(const WindowRect&, const WindowRect&) = default;
 };
 
+/// @brief The share of a display's usable area a window gets when its size isn't set (WindowDesc::width 0).
+inline constexpr float c_defaultScreenShare = 0.8F;
+
 /// @brief How a window is created. Plain data; usually filled from the config (windowDescFromConfig()).
+///
+/// Sizes are **logical units**: the size at 100 % display scaling, so a window looks the same on a 125 % laptop and a
+/// 200 % monitor, like every other desktop app (owner decision 2026-11-10). A window bigger than its display's usable
+/// area is shrunk to fit, keeping its shape. Positions are in the desktop's own coordinates. The drawable area always
+/// has the display's full pixel resolution (pixelWidth()).
 struct WindowDesc
 {
-    std::string title = "Meow2";     ///< Text in the title bar and taskbar (UTF-8).
-    std::int32_t width = 1920;       ///< Client-area width when windowed, in desktop coordinates (1080p by default).
-    std::int32_t height = 1080;      ///< Client-area height when windowed, in desktop coordinates.
+    std::string title = "Meow2"; ///< Text in the title bar and taskbar (UTF-8).
+    std::int32_t width =
+        0; ///< Client-area width when windowed, in logical units; 0: c_defaultScreenShare of the display.
+    std::int32_t height = 0;         ///< Client-area height when windowed, in logical units; 0: like width.
     std::optional<std::int32_t> x{}; ///< Left edge; centred on the primary display if unset or off every display.
     std::optional<std::int32_t> y{}; ///< Top edge; centred on the primary display if unset or off every display.
     bool maximized = false;          ///< Open maximized (windowed mode); width/height are the size when restored.
@@ -140,6 +149,12 @@ public:
     /// @brief Position and size the last time the window was windowed and not maximized or minimized.
     /// @return The bounds to save and to restore to.
     [[nodiscard]] WindowRect restoredBounds() const;
+
+    /// @brief How many desktop units make one logical unit on the window's display: the display scale where the
+    ///        platform measures windows in pixels (Windows, X11: 1.5 at 150 %), 1 where it already measures them in
+    ///        scaled points (macOS, Wayland).
+    /// @return The factor; bounds() divided by it gives logical units, as WindowDesc and the config use.
+    [[nodiscard]] float unitsPerLogical() const;
 
     /// @brief Width of the drawable area in pixels (bounds().width × the display scale).
     /// @return Width in pixels; this is the swapchain width.
