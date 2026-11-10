@@ -716,9 +716,11 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
         // Reversed Z. "No depth test" passes everything rather than switching depth off, so the pipeline still matches
         // a pass that has a depth target (D3D12 warns about the mismatch otherwise).
         .depthCompareOp = desc.depthTest ? VK_COMPARE_OP_GREATER_OR_EQUAL : VK_COMPARE_OP_ALWAYS};
+    // Not `!= BlendMode::None`: on Linux the Vulkan Xlib headers pull in X11, which defines a `None` macro.
     const bool additive = desc.blend == BlendMode::Additive;
+    const bool blending = additive || desc.blend == BlendMode::Alpha;
     const VkPipelineColorBlendAttachmentState blendAttachment{
-        .blendEnable = desc.blend != BlendMode::None ? VK_TRUE : VK_FALSE,
+        .blendEnable = blending ? VK_TRUE : VK_FALSE,
         .srcColorBlendFactor = additive ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_SRC_ALPHA,
         .dstColorBlendFactor = additive ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .colorBlendOp = VK_BLEND_OP_ADD,
