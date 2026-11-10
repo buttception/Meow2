@@ -37,7 +37,28 @@ bool isOnAnyDisplay(const WindowRect& rect)
     return isReachable(rect, bounds);
 }
 
-/// @brief The top-left corner that centres a `width`×`height` window on the primary display.
+/// @brief The display that contains `point`, or 0 if none does.
+///
+/// Not SDL_GetDisplayForPoint(): for a point on no display it returns the nearest one (so a saved position on an
+/// unplugged monitor would pick its neighbour), and its distance squared overflows an `int` for points far off
+/// (UBSan).
+SDL_DisplayID displayContaining(const SDL_Point& point)
+{
+    int count = 0;
+    SDL_DisplayID* displays = SDL_GetDisplays(&count);
+    SDL_DisplayID found = 0;
+    for (int i = 0; displays != nullptr && i < count && found == 0; ++i)
+    {
+        SDL_Rect bounds;
+        if (SDL_GetDisplayBounds(displays[i], &bounds) && SDL_PointInRect(&point, &bounds))
+        {
+            found = displays[i];
+        }
+    }
+    SDL_free(displays);
+    return found;
+}
+
 /// @brief Desktop units per logical unit on a display: its scale where SDL measures windows in pixels (Windows, X11),
 ///        1 where the system already scales window sizes (macOS's points, Wayland's logical coordinates).
 float desktopUnitsPerLogical(float displayScale)
@@ -164,7 +185,7 @@ Result<Window> Window::create(Platform& platform, Log::Logger& log, const Window
     // The display it opens on: the one under the saved position if that's still on a display, else the primary.
     const bool hasPosition = desc.x.has_value() || desc.y.has_value();
     const SDL_Point corner{desc.x.value_or(0), desc.y.value_or(0)};
-    SDL_DisplayID display = hasPosition ? SDL_GetDisplayForPoint(&corner) : 0;
+    SDL_DisplayID display = hasPosition ? displayContaining(corner) : 0;
     if (display == 0)
     {
         display = SDL_GetPrimaryDisplay();
