@@ -7,6 +7,7 @@
 
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/Logger.h>
+#include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Rhi/RhiTypes.h>
 #include <Meow2/Math/Types.h>
 
@@ -91,6 +92,8 @@ struct StatsInfo
     std::uint32_t meshes = 0;           ///< GPU meshes.
     std::uint32_t materials = 0;        ///< Materials.
     std::uint32_t textures = 0;         ///< Textures.
+    std::string_view drawPath{};        ///< "meshlets" or "indirect": how the scene is drawn.
+    Renderer::MeshletStats meshlets{};  ///< What the meshlet path drew, when it's the path.
     double importMilliseconds = 0.0;    ///< How long opening the scene took.
     Rhi::GpuMemoryStats gpuMemory{};    ///< GPU memory.
     std::uint64_t validationErrors = 0; ///< From the API's validation layer.

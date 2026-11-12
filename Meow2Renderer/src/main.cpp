@@ -708,6 +708,11 @@ int main(int argc, char** argv)
                     stats.meshes = view->gpu().meshCount();
                     stats.materials = view->gpu().materialCount();
                     stats.textures = view->gpu().textureCount();
+                    stats.drawPath = view->gpu().usesMeshlets() ? "meshlets" : "indirect";
+                    if (view->gpu().usesMeshlets())
+                    {
+                        stats.meshlets = view->gpu().meshletStats();
+                    }
                     stats.importMilliseconds = view->importMilliseconds();
                 }
                 const Meow2::RendererApp::StatsActions actions =
@@ -870,6 +875,8 @@ int main(int argc, char** argv)
                 frame.cameraPosition = {camera.position.x, camera.position.y, camera.position.z, 0.0F};
                 // The sun from the Stats window's sliders, the same for the sky and the shading.
                 const Meow2::Math::Vec3 sunDirection = Meow2::RendererApp::sunDirection(sun);
+                view->gpu().setMeshlets(
+                    Meow2::RendererApp::readSetting(config, Meow2::RendererApp::c_meshletsSetting)); // read each frame
                 view->gpu().setLighting(
                     {.sunDirection = sunDirection, .sunIntensity = sun.intensity, .exposure = sun.exposure});
                 if (sky)
@@ -1000,6 +1007,13 @@ int main(int argc, char** argv)
     std::printf("Ran %llu frames\n", static_cast<unsigned long long>(clock.frameCount()));
     MEOW2_LOG_INFO(appLog, "Ran {} frames ({} fixed steps) in {:.2f} s", clock.frameCount(), loop.fixedStepCount(),
                    clock.totalSeconds());
+    if (view && view->gpu().meshletStats().valid)
+    {
+        // What the last frames drew through the meshlet path, for runs without the UI.
+        const Meow2::Renderer::MeshletStats meshlets = view->gpu().meshletStats();
+        MEOW2_LOG_INFO(appLog, "Meshlets drawn: {} of {}, triangles {} of {}", meshlets.meshletsDrawn,
+                       meshlets.meshlets, meshlets.trianglesDrawn, meshlets.triangles);
+    }
 
     if (ui)
     {

@@ -102,7 +102,7 @@ void SettingsWindow::draw(const UiFonts& fonts)
         ImGui::PopID();
         ImGui::SetItemTooltip("%.*s\n(%.*s)", static_cast<int>(setting.help.size()), setting.help.data(),
                               static_cast<int>(setting.key.size()), setting.key.data());
-        const bool changed = value != m_atStart[i];
+        const bool changed = value != m_atStart[i] && setting.effect != SettingEffect::Now;
         if (changed)
         {
             ImGui::SameLine();

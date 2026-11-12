@@ -12,9 +12,10 @@ namespace Meow2::RendererApp
 {
 namespace
 {
-constexpr std::array<DebugViewEntry, 20> c_views{{
+constexpr std::array<DebugViewEntry, 21> c_views{{
     {-1, "Shaded", "Scene"},
     {MEOW2_DEBUG_VIEW_TRIANGLES, "Triangles", "Geometry"},
+    {MEOW2_DEBUG_VIEW_MESHLETS, "Meshlets", "Geometry"},
     {MEOW2_DEBUG_VIEW_INSTANCES, "Instances", "Geometry"},
     {MEOW2_DEBUG_VIEW_MATERIALS, "Materials", "Geometry"},
     {MEOW2_DEBUG_VIEW_OVERDRAW, "Overdraw", "Geometry"},
@@ -151,6 +152,13 @@ void RenderDebug::apply(Renderer::GpuScene& scene, Shader::FrameConstants& frame
     {
         override = m_scene.view;
         frame.debugView = static_cast<std::uint32_t>(m_state.view);
+        if (m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_TRIANGLES))
+        {
+            // A colour per triangle needs a per-triangle value in the pixel shader. Mesh shaders share vertices
+            // between triangles, and DXC can't mark a per-primitive input for Vulkan, so this view draws through
+            // the indirect path (same triangles, same culling of instances).
+            override->hasMeshLists = false;
+        }
     }
     else if (ready && m_state.wireframe == WireframeMode::Only)
     {
@@ -249,6 +257,15 @@ void RenderDebug::drawWindow(const UiFonts& fonts)
     else if (m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_MIP_LEVEL))
     {
         ImGui::TextColored(UiColors::c_textDim, "Mip 0 red, 1 yellow, 2 green, 3 cyan,\n4 blue, 5+ magenta.");
+    }
+    else if (m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_MESHLETS))
+    {
+        ImGui::TextColored(UiColors::c_textDim, "A colour per meshlet. Grey: drawn by the\nindirect path (MESHLETS off "
+                                                "in Settings,\nor no mesh shaders).");
+    }
+    else if (m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_TRIANGLES))
+    {
+        ImGui::TextColored(UiColors::c_textDim, "Drawn through the indirect path.");
     }
     ImGui::SeparatorText("WIREFRAME");
     int wireframe = static_cast<int>(m_state.wireframe);
