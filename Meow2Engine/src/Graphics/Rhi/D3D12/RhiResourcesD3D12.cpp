@@ -7,6 +7,8 @@
 #include "Meow2/Core/Memory/MemTag.h"
 #include "Meow2/Graphics/Shader/BindlessLayout.h"
 
+#include <d3dx12_pipeline_state_stream.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -188,6 +190,24 @@ Result<void> RhiDeviceD3D12::createBindless(const RhiDeviceDesc& desc)
         return fail(ErrorCode::Unknown, std::format("CreateCommandSignature: {}", hresultName(result)));
     }
     m_drawSignature->SetName(L"Indirect draw signature");
+
+    // dispatchMeshIndirect(): x, y and z of one DispatchMesh. No root constant: the meshlet path's shaders find their
+    // work in buffers.
+    if (m_adapter.meshShaders)
+    {
+        const D3D12_INDIRECT_ARGUMENT_DESC meshArgument{.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH};
+        const D3D12_COMMAND_SIGNATURE_DESC meshDesc{.ByteStride = sizeof(D3D12_DISPATCH_MESH_ARGUMENTS),
+                                                    .NumArgumentDescs = 1,
+                                                    .pArgumentDescs = &meshArgument,
+                                                    .NodeMask = 0};
+        // No root signature: the signature changes no root arguments.
+        if (const HRESULT result = m_device->CreateCommandSignature(&meshDesc, nullptr, IID_PPV_ARGS(&m_meshSignature));
+            FAILED(result))
+        {
+            return fail(ErrorCode::Unknown, std::format("CreateCommandSignature (mesh): {}", hresultName(result)));
+        }
+        m_meshSignature->SetName(L"Indirect mesh dispatch signature");
+    }
 
     // RenderDoc doesn't support pipeline libraries: it hands back a stand-in whose saved data the next normal run
     // can't read. So there's no pipeline cache while it's in the process, and the one on disk is left alone.
@@ -727,8 +747,16 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     pipelineDesc.DSVFormat = hasDepth ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_UNKNOWN;
     pipelineDesc.SampleDesc = {.Count = 1, .Quality = 0};
 
+    const bool meshPipeline = !desc.meshCode.empty();
+    if (meshPipeline && !m_adapter.meshShaders)
+    {
+        return fail(ErrorCode::Unsupported, std::format("Pipeline '{}': this GPU has no mesh shaders", desc.name));
+    }
+
     PipelineKey key;
     key.add(desc.vertexCode);
+    key.add(desc.taskCode);
+    key.add(desc.meshCode);
     key.add(desc.pixelCode);
     key.addValue(pipelineDesc.RTVFormats[0]);
     key.addValue(pipelineDesc.DSVFormat);
@@ -743,12 +771,42 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     key.addValue(pipelineDesc.BlendState.RenderTarget[0].SrcBlend);
     key.addValue(pipelineDesc.BlendState.RenderTarget[0].DestBlend);
     key.addValue(pipelineDesc.BlendState.RenderTarget[0].DestBlendAlpha);
-    const std::wstring name = key.name(L"g");
-    Result<ID3D12PipelineState*> state = libraryPipeline(
-        name, [&](ID3D12PipelineState** out)
-        { return m_device->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(out)); },
-        [&](ID3D12PipelineState** out)
-        { return m_pipelineLibrary->LoadGraphicsPipeline(name.c_str(), &pipelineDesc, IID_PPV_ARGS(out)); });
+    const std::wstring name = key.name(meshPipeline ? L"m" : L"g");
+    Result<ID3D12PipelineState*> state = Unexpected<Error>{Error{}};
+    if (meshPipeline)
+    {
+        // Mesh pipelines have no D3D12_GRAPHICS_PIPELINE_STATE_DESC: they're described as a stream of subobjects, the
+        // same states as above with task and mesh shaders in place of the vertex shader.
+        D3DX12_MESH_SHADER_PIPELINE_STATE_DESC meshDesc{};
+        meshDesc.pRootSignature = m_rootSignature.Get();
+        meshDesc.AS = {.pShaderBytecode = desc.taskCode.data(), .BytecodeLength = desc.taskCode.size()};
+        meshDesc.MS = {.pShaderBytecode = desc.meshCode.data(), .BytecodeLength = desc.meshCode.size()};
+        meshDesc.PS = pipelineDesc.PS;
+        meshDesc.BlendState = pipelineDesc.BlendState;
+        meshDesc.SampleMask = pipelineDesc.SampleMask;
+        meshDesc.RasterizerState = pipelineDesc.RasterizerState;
+        meshDesc.DepthStencilState = pipelineDesc.DepthStencilState;
+        meshDesc.PrimitiveTopologyType = pipelineDesc.PrimitiveTopologyType;
+        meshDesc.NumRenderTargets = pipelineDesc.NumRenderTargets;
+        meshDesc.RTVFormats[0] = pipelineDesc.RTVFormats[0];
+        meshDesc.DSVFormat = pipelineDesc.DSVFormat;
+        meshDesc.SampleDesc = pipelineDesc.SampleDesc;
+        CD3DX12_PIPELINE_MESH_STATE_STREAM stream{meshDesc};
+        const D3D12_PIPELINE_STATE_STREAM_DESC streamDesc{.SizeInBytes = sizeof(stream),
+                                                          .pPipelineStateSubobjectStream = &stream};
+        state = libraryPipeline(
+            name, [&](ID3D12PipelineState** out)
+            { return m_device->CreatePipelineState(&streamDesc, IID_PPV_ARGS(out)); }, [&](ID3D12PipelineState** out)
+            { return m_pipelineLibrary->LoadPipeline(name.c_str(), &streamDesc, IID_PPV_ARGS(out)); });
+    }
+    else
+    {
+        state = libraryPipeline(
+            name, [&](ID3D12PipelineState** out)
+            { return m_device->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(out)); },
+            [&](ID3D12PipelineState** out)
+            { return m_pipelineLibrary->LoadGraphicsPipeline(name.c_str(), &pipelineDesc, IID_PPV_ARGS(out)); });
+    }
     if (!state)
     {
         return fail(ErrorCode::InvalidArgument, std::format("Pipeline '{}': {}", desc.name, state.error().message));

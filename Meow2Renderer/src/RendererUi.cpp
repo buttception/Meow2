@@ -235,6 +235,17 @@ StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts, SunCon
     ImGui::Text("%.*s", static_cast<int>(info.scene.size()), info.scene.data());
     ImGui::Text("Entities %zu, instances %u", info.entities, info.instances);
     ImGui::Text("Meshes %u, materials %u, textures %u", info.meshes, info.materials, info.textures);
+    if (!info.drawPath.empty())
+    {
+        ImGui::Text("Drawn: %.*s", static_cast<int>(info.drawPath.size()), info.drawPath.data());
+    }
+    if (info.meshlets.valid)
+    {
+        // Out of every opaque instance's meshlets: what's left after culling instances, then meshlets.
+        ImGui::Text("Meshlets %u of %u", info.meshlets.meshletsDrawn, info.meshlets.meshlets);
+        ImGui::Text("Triangles %u of %llu", info.meshlets.trianglesDrawn,
+                    static_cast<unsigned long long>(info.meshlets.triangles));
+    }
     if (info.importMilliseconds > 0.0)
     {
         ImGui::Text("Opened in %.0f ms", info.importMilliseconds);

@@ -410,22 +410,24 @@ Result<void> RhiDeviceVulkan::createDevice(const RhiDeviceDesc& desc)
     {
         extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     }
-    // Device fault reports, where the driver has them: what the GPU was doing when it was lost (techstack.md §8).
-    VkPhysicalDeviceFaultFeaturesEXT fault{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT};
+    // Optional extensions, used where the driver has them.
+    std::uint32_t extensionCount = 0;
+    vkEnumerateDeviceExtensionProperties(m_physicalDevice, nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> available(extensionCount);
+    vkEnumerateDeviceExtensionProperties(m_physicalDevice, nullptr, &extensionCount, available.data());
+    const auto hasExtension = [&available](std::string_view name)
     {
-        std::uint32_t count = 0;
-        vkEnumerateDeviceExtensionProperties(m_physicalDevice, nullptr, &count, nullptr);
-        std::vector<VkExtensionProperties> available(count);
-        vkEnumerateDeviceExtensionProperties(m_physicalDevice, nullptr, &count, available.data());
-        const bool hasFault = std::ranges::any_of(
-            available, [](const VkExtensionProperties& extension)
-            { return std::string_view{extension.extensionName} == VK_EXT_DEVICE_FAULT_EXTENSION_NAME; });
-        if (hasFault)
-        {
-            VkPhysicalDeviceFeatures2 query{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &fault};
-            vkGetPhysicalDeviceFeatures2(m_physicalDevice, &query);
-        }
-        m_deviceFault = hasFault && fault.deviceFault != VK_FALSE;
+        return std::ranges::any_of(available, [name](const VkExtensionProperties& extension)
+                                   { return std::string_view{extension.extensionName} == name; });
+    };
+
+    // Device fault reports: what the GPU was doing when it was lost (techstack.md §8).
+    VkPhysicalDeviceFaultFeaturesEXT fault{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT};
+    if (hasExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME))
+    {
+        VkPhysicalDeviceFeatures2 query{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &fault};
+        vkGetPhysicalDeviceFeatures2(m_physicalDevice, &query);
+        m_deviceFault = fault.deviceFault != VK_FALSE;
     }
     if (m_deviceFault)
     {
@@ -435,6 +437,29 @@ Result<void> RhiDeviceVulkan::createDevice(const RhiDeviceDesc& desc)
                  .deviceFault = VK_TRUE};
         features.core.pNext = &fault;
     }
+
+    // Task and mesh shaders, for the meshlet path (techstack.md §11). Both stages or neither: the engine's mesh
+    // pipelines cull clusters in a task shader. The spec's minimum limits (256 vertices and primitives per mesh group,
+    // 128 threads, 2^22 groups per dispatch) cover what the engine asks for, so only the features are checked.
+    VkPhysicalDeviceMeshShaderFeaturesEXT meshShader{.sType =
+                                                         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
+    if (hasExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
+    {
+        VkPhysicalDeviceFeatures2 query{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &meshShader};
+        vkGetPhysicalDeviceFeatures2(m_physicalDevice, &query);
+        m_adapter.meshShaders = meshShader.taskShader != VK_FALSE && meshShader.meshShader != VK_FALSE;
+    }
+    if (m_adapter.meshShaders)
+    {
+        extensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
+        meshShader = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
+                      .pNext = features.core.pNext,
+                      .taskShader = VK_TRUE,
+                      .meshShader = VK_TRUE};
+        features.core.pNext = &meshShader;
+    }
+    MEOW2_LOG_INFO(m_log, "Mesh shaders: {}",
+                   m_adapter.meshShaders ? "yes" : "no (scenes draw through the indirect path)");
 
     const float priority = 1.0F;
     const VkDeviceQueueCreateInfo queue{.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,

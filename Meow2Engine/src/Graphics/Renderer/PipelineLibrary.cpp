@@ -105,18 +105,33 @@ Result<Rhi::PipelineHandle> PipelineLibrary::build(const Entry& entry)
     }
 
     const GraphicsPipelineRequest& request = entry.graphics;
-    Result<std::span<const std::byte>> vertex = shader->bytecode(*key, request.vertexEntry, target);
-    if (!vertex)
+    // The stages it has: vertex + pixel, or (task +) mesh + pixel. An empty entry stays empty bytecode.
+    const auto code = [&](const std::string& entryPoint) -> Result<std::span<const std::byte>>
     {
-        return Unexpected<Error>{vertex.error()};
-    }
-    Result<std::span<const std::byte>> pixel = shader->bytecode(*key, request.pixelEntry, target);
-    if (!pixel)
+        if (entryPoint.empty())
+        {
+            return std::span<const std::byte>{};
+        }
+        return shader->bytecode(*key, entryPoint, target);
+    };
+    const bool mesh = !request.meshEntry.empty();
+    Result<std::span<const std::byte>> vertex = code(mesh ? std::string{} : request.vertexEntry);
+    Result<std::span<const std::byte>> task = code(mesh ? request.taskEntry : std::string{});
+    Result<std::span<const std::byte>> meshCode = code(request.meshEntry);
+    Result<std::span<const std::byte>> pixel = code(request.pixelEntry);
+    for (const Result<std::span<const std::byte>>* stage : {&vertex, &task, &meshCode, &pixel})
     {
-        return Unexpected<Error>{pixel.error()};
+        if (!*stage)
+        {
+            return Unexpected<Error>{stage->error()};
+        }
     }
     return m_deps.device.device().createGraphicsPipeline({.vertexCode = *vertex,
                                                           .vertexEntry = request.vertexEntry,
+                                                          .taskCode = *task,
+                                                          .taskEntry = request.taskEntry,
+                                                          .meshCode = *meshCode,
+                                                          .meshEntry = request.meshEntry,
                                                           .pixelCode = *pixel,
                                                           .pixelEntry = request.pixelEntry,
                                                           .colorFormat = request.colorFormat,

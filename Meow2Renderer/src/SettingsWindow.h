@@ -18,6 +18,7 @@ namespace Meow2::RendererApp
 /// @brief When a changed setting takes effect.
 enum class SettingEffect
 {
+    Now,       ///< At once: it's read every frame.
     NextScene, ///< When the next scene opens.
     Restart    ///< When Meow2Renderer starts again (it's read while the device or window is made).
 };
@@ -63,10 +64,17 @@ inline constexpr BoolSetting c_skySetting{"renderer.sky", "SKY",
                                           "off for a flat ambient light.",
                                           true, SettingEffect::Restart};
 
+/// @brief `renderer.meshlets`: the meshlet path (mesh shaders, culling per cluster) where the GPU has mesh shaders.
+inline constexpr BoolSetting c_meshletsSetting{"renderer.meshlets", "MESHLETS",
+                                               "Draw through mesh shaders, culling each cluster of up to 124 "
+                                               "triangles, where the GPU has them; off for one indirect draw per "
+                                               "object.",
+                                               true, SettingEffect::Now};
+
 /// @brief Every setting the window shows, in its order.
-inline constexpr std::array<BoolSetting, 6> c_boolSettings{c_validationSetting,       c_vsyncSetting,
-                                                           c_renderDocSetting,        c_renderDocWindowSetting,
-                                                           c_compressTexturesSetting, c_skySetting};
+inline constexpr std::array<BoolSetting, 7> c_boolSettings{
+    c_validationSetting,       c_vsyncSetting, c_renderDocSetting, c_renderDocWindowSetting,
+    c_compressTexturesSetting, c_skySetting,   c_meshletsSetting};
 
 /// @brief Where ImGui's window layout is kept in the config (ImGuiLayer::loadLayout(), takeLayoutChange()).
 inline constexpr std::string_view c_uiLayoutKey = "renderer.uiLayout";

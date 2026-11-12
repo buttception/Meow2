@@ -18,12 +18,15 @@
 
 namespace Meow2::Renderer
 {
-/// @brief A graphics pipeline to build from a shader asset. Plain data.
+/// @brief A graphics pipeline to build from a shader asset. Plain data. With `meshEntry` set it's a mesh pipeline
+///        (Rhi::GraphicsPipelineDesc), and `vertexEntry` is ignored.
 struct GraphicsPipelineRequest
 {
     AssetId shader{};                                     ///< The shader.
     std::vector<Assets::ShaderOptionChoice> options{};    ///< The variant; unset options use their default.
     std::string vertexEntry = "vsMain";                   ///< Vertex entry point.
+    std::string taskEntry{};                              ///< Task (amplification) entry point; empty for none.
+    std::string meshEntry{};                              ///< Mesh entry point; empty for a vertex pipeline.
     std::string pixelEntry = "psMain";                    ///< Pixel entry point.
     Rhi::RhiFormat colorFormat = Rhi::RhiFormat::Unknown; ///< Format of the colour target.
     Rhi::RhiFormat depthFormat = Rhi::RhiFormat::Unknown; ///< Format of the depth target; Unknown for none.

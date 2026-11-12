@@ -1,0 +1,21 @@
+id = "01a1b5e2-3c19-8000-80a4-7b19d2e6c05a"
+
+[[entry]]
+name = "msMain"
+stage = "mesh"
+
+[[entry]]
+name = "asMain"
+stage = "amplification"
+
+[[entry]]
+name = "msFromTask"
+stage = "mesh"
+
+[[entry]]
+name = "csArgs"
+stage = "compute"
+
+[[entry]]
+name = "psMain"
+stage = "pixel"

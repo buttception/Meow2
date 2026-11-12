@@ -331,7 +331,14 @@ Result<void> RhiDeviceD3D12::pickAdapter()
                                                facts.shaderModel & 0xFU),
                      .discrete = architecture.UMA == FALSE,
                      .software = false};
+        // Mesh shaders are optional (the meshlet path); the shader model they need (6.5) is below the required 6.6.
+        D3D12_FEATURE_DATA_D3D12_OPTIONS7 options7{};
+        m_adapter.meshShaders =
+            SUCCEEDED(m_device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &options7, sizeof(options7))) &&
+            options7.MeshShaderTier >= D3D12_MESH_SHADER_TIER_1;
         MEOW2_LOG_INFO(m_log, "GPU: {} (D3D12, {})", m_adapter.name, m_adapter.apiVersion);
+        MEOW2_LOG_INFO(m_log, "Mesh shaders: {}",
+                       m_adapter.meshShaders ? "yes" : "no (scenes draw through the indirect path)");
         return {};
     }
     return fail(ErrorCode::Unsupported, !any ? std::string{"No D3D12 GPU was found"}

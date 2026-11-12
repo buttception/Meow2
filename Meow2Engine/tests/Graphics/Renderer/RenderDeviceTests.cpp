@@ -38,7 +38,7 @@ constexpr std::uint32_t c_recordingThreads = 4;
 /// @brief What one frame produced.
 struct FrameResult
 {
-    std::uint32_t drawCount = 0;     ///< Instances that survived culling.
+    std::uint32_t drawCount = 0;     ///< Instances that survived culling; meshlets drawn on the meshlet path.
     std::vector<std::byte> pixels{}; ///< RGBA8, top row first.
 };
 
@@ -94,6 +94,7 @@ protected:
                              {.shader = *shader, .instanceCapacity = 8, .colorFormat = OffscreenTarget::format()});
         ASSERT_TRUE(scene) << scene.error().message;
         m_scene = std::move(*scene);
+        m_scene->setMeshlets(m_meshlets);
         // The camera looks along +Z from the origin, so the sun is put behind it, lighting what it sees.
         m_scene->setLighting({.sunDirection = {0.4F, 0.8F, -0.6F}});
         ASSERT_TRUE(m_scene->addMesh(makeCube()));
@@ -162,6 +163,7 @@ protected:
     FrameResult drawFrame()
     {
         Rhi::IRhiDevice& device = m_render->device(); // fetched per frame: it changes with every switch
+        const bool meshlets = m_scene->usesMeshlets();
         Result<Rhi::BufferHandle> readback =
             device.createBuffer({.size = sizeof(std::uint32_t), .memory = Rhi::RhiMemory::Readback});
         EXPECT_TRUE(readback);
@@ -186,8 +188,17 @@ protected:
         EXPECT_TRUE(last);
         lists->push_back(*last);
         Rhi::IRhiCommandList& tail = **last;
-        tail.barrier(m_scene->countBuffer(), Rhi::ResourceState::IndirectArgs, Rhi::ResourceState::CopySource);
-        tail.copyBuffer(m_scene->countBuffer(), *readback, sizeof(std::uint32_t));
+        if (meshlets)
+        {
+            // Left in CopySource by the scene's own readback pass.
+            tail.copyBuffer(m_scene->meshletCountBuffer(), *readback, sizeof(std::uint32_t),
+                            MEOW2_TASK_COUNT_MESHLETS * sizeof(std::uint32_t));
+        }
+        else
+        {
+            tail.barrier(m_scene->countBuffer(), Rhi::ResourceState::IndirectArgs, Rhi::ResourceState::CopySource);
+            tail.copyBuffer(m_scene->countBuffer(), *readback, sizeof(std::uint32_t));
+        }
         tail.barrier(*readback, Rhi::ResourceState::CopyTarget, Rhi::ResourceState::HostRead);
         tail.barrier(m_target->texture(), Rhi::ResourceState::ColorTarget, Rhi::ResourceState::CopySource);
         m_target->copyToCpu(tail);
@@ -221,6 +232,7 @@ protected:
         return count;
     }
 
+    bool m_meshlets = false; ///< The meshlet path; off by default, since most tests check the indirect draw counts.
     Log::LogSystem m_logSystem;
     Log::Logger m_log;
     Events::EventBus m_events{Memory::globalTracker()};
@@ -373,4 +385,26 @@ TEST_F(RenderDeviceTest, SwapsToVulkanAndBack)
     EXPECT_EQ(differentPixels(d3d12.pixels, again.pixels), 0U);
 }
 #endif
+} // namespace Meow2::Renderer
+
+namespace Meow2::Renderer
+{
+TEST_F(RenderDeviceTest, MeshletsSurviveBackendSwitch)
+{
+    m_meshlets = true;
+    makeScene();
+    if (!m_scene->meshletsAvailable())
+    {
+        GTEST_SKIP() << "this GPU has no mesh shaders";
+    }
+    const FrameResult before = drawFrame();
+    ASSERT_GT(before.drawCount, 0U) << "meshlets of the two cubes in front";
+    EXPECT_EQ(m_render->device().validationErrorCount(), 0U);
+
+    ASSERT_TRUE(m_render->swapTo(Rhi::c_testBackend));
+    ASSERT_TRUE(m_scene->usesMeshlets()) << "the meshlet buffers and pipelines came back";
+    const FrameResult after = drawFrame();
+    EXPECT_EQ(after.drawCount, before.drawCount);
+    EXPECT_EQ(differentPixels(before.pixels, after.pixels), 0U);
+}
 } // namespace Meow2::Renderer

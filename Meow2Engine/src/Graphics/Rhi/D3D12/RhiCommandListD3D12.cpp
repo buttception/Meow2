@@ -220,6 +220,21 @@ void RhiCommandListD3D12::dispatch(std::uint32_t x, std::uint32_t y, std::uint32
     m_list->Dispatch(x, y, z);
 }
 
+void RhiCommandListD3D12::dispatchMesh(std::uint32_t x, std::uint32_t y, std::uint32_t z)
+{
+    MEOW2_ASSERT(m_rendering, "dispatchMesh() outside beginRendering()");
+    MEOW2_ASSERT(m_device.adapter().meshShaders, "dispatchMesh() on a GPU without mesh shaders");
+    m_list->DispatchMesh(x, y, z);
+}
+
+void RhiCommandListD3D12::dispatchMeshIndirect(BufferHandle arguments, std::uint64_t offset)
+{
+    MEOW2_ASSERT(m_rendering, "dispatchMeshIndirect() outside beginRendering()");
+    MEOW2_ASSERT(m_device.adapter().meshShaders, "dispatchMeshIndirect() on a GPU without mesh shaders");
+    MEOW2_ASSERT(offset % 4 == 0, "Indirect arguments are 4-byte aligned");
+    m_list->ExecuteIndirect(m_device.meshSignature(), 1, m_device.buffer(arguments).resource, offset, nullptr, 0);
+}
+
 void RhiCommandListD3D12::barrier(BufferHandle buffer, ResourceState from, ResourceState to)
 {
     MEOW2_ASSERT(!m_rendering, "Barriers go between passes");

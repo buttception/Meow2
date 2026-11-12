@@ -166,6 +166,26 @@ There's no vertex input. The vertex shader takes `SV_VertexID`, reads the index 
 
 **Matrices in shared structs:** DXC reads a `float4x4` from a raw buffer by column, whatever `-Zpr` and `row_major` say. So `Meow2Shared.hlsli` stores matrices as four `float4` rows with `MEOW2_MATRIX`, and shaders rebuild them with `MEOW2_ROWS`.
 
+### Mesh shaders
+
+A **mesh shader** replaces the vertex stage and the fixed input assembler: a compute-like group of threads reads whatever it wants and writes out vertices and triangles directly (`SetMeshOutputCounts()`, then the `vertices` and `indices` arrays). An optional **task shader** (D3D12: amplification shader) runs first, and each of its groups decides how many mesh groups to launch (`DispatchMesh()`), passing them a payload. The engine uses them for meshlets ([Rendering → The meshlet path](Rendering.md#the-meshlet-path)).
+
+They're **optional**: `RhiAdapterInfo::meshShaders` says whether this device has them (Vulkan's `VK_EXT_mesh_shader` with its task and mesh features, D3D12's mesh shader tier 1), and the log says so at start. A GPU without them still qualifies; the renderer draws through the indirect path.
+
+```cpp
+const Rhi::GraphicsPipelineDesc desc{.taskCode = task, .meshCode = mesh, .pixelCode = pixel,
+                                     .colorFormat = Rhi::RhiFormat::Rgba16Float, .name = "Meshlets"};
+list.setPipeline(*device->createGraphicsPipeline(desc));
+list.dispatchMesh(groups);                  // or: groups the GPU wrote
+list.dispatchMeshIndirect(arguments, offset); // three uints, x, y, z, in IndirectArgs
+```
+
+- A pipeline with `meshCode` is a mesh pipeline: no vertex shader, no vertex input or assembly state. `taskCode` may be empty. The other states (cull, fill, blend, depth) are the same as a vertex pipeline's. `PipelineLibrary` builds one from `GraphicsPipelineRequest::taskEntry` and `meshEntry`.
+- **Vulkan:** stages `TASK` and `MESH` in the pipeline; `vkCmdDrawMeshTasksEXT` and `vkCmdDrawMeshTasksIndirectEXT`. Shader read and write barriers name the task and mesh stages only when the extension is on (naming them otherwise is a validation error). DXC emits the standard `SPV_EXT_mesh_shader`.
+- **D3D12:** a mesh pipeline has no `D3D12_GRAPHICS_PIPELINE_STATE_DESC`; it's a stream of subobjects (`CD3DX12_PIPELINE_MESH_STATE_STREAM` from DirectX-Headers), created with `CreatePipelineState()` and stored in the pipeline library with `LoadPipeline()`. Indirect dispatches go through a command signature with one `DISPATCH_MESH` argument. The `ALL_SHADING` barrier sync already covers the new stages.
+- **Limits** the engine stays within (the minimums both APIs promise): 65535 groups per dimension and 2^22 in all per dispatch, 128 threads per mesh group, 256 vertices and primitives out.
+- **Per-primitive values** (a colour per triangle) can't reach a Vulkan pixel shader from HLSL yet: DXC doesn't mark the pixel shader's input `PerPrimitiveEXT`. Per-vertex values work; flat (`nointerpolation`) ones are enough for a value per meshlet.
+
 ### D3D12
 
 `createRhiDevice({.backend = RhiBackend::D3D12})` gives the same `IRhiDevice` on Direct3D 12, Windows only. Code above the RHI doesn't change; `PipelineLibrary` picks the DXIL from the cooked shaders instead of the SPIR-V.
@@ -252,12 +272,14 @@ Looked into for M6's capture button; nothing added yet, because each needs an SD
 - Multi-draw indirect, indirect draw count, 64-bit integers in shaders
 - BC texture compression (BC7, BC5)
 - Wireframe fill (`fillModeNonSolid`), for the debug views
+- Optional: `VK_EXT_mesh_shader` (task and mesh shaders), for the meshlet path
 
 On D3D12:
 
 - Feature level 12_0, Shader Model 6.6, resource binding tier 3
 - Enhanced barriers, and buffer ↔ texture copies with unrestricted row pitch (both need a driver from the last few years)
 - The Agility SDK runtime in `D3D12/` next to the exe; without it the requirements check says so
+- Optional: mesh shader tier 1, for the meshlet path
 
 ## Settings
 
@@ -283,6 +305,8 @@ With SDL's `offscreen` driver there's no window to draw to, so Renderer creates 
 ```bash
 cmake --preset windows-msvc-debug -DMEOW2_GPU_TESTS=ON
 ```
+
+`MeshShaderTest.DrawsATriangle` and `MeshShaderTest.DispatchesFromABuffer` draw columns from mesh groups launched directly, and from task groups whose count a compute shader wrote (`shaders/RhiMesh.hlsl`); they're skipped on GPUs without mesh shaders.
 
 `RenderDeviceTest.*` draws a scene, switches, and requires the same image after; in the D3D12 suite it also goes to Vulkan and back, allowing 1 % of pixels to differ by 2 levels between the two APIs.
 

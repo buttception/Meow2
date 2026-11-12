@@ -50,6 +50,7 @@ target_sources(Meow2Engine
         src/Graphics/Renderer/FramePacket.cpp
         src/Graphics/Renderer/FrameResources.cpp
         src/Graphics/Renderer/GpuScene.cpp
+        src/Graphics/Renderer/MeshProcessing.cpp
         src/Graphics/Renderer/PipelineLibrary.cpp
         src/Graphics/Renderer/RenderDevice.cpp
         src/Graphics/Renderer/RenderGraph.cpp
@@ -121,6 +122,7 @@ target_sources(Meow2Engine
             include/Meow2/Graphics/Renderer/FramePacket.h
             include/Meow2/Graphics/Renderer/FrameResources.h
             include/Meow2/Graphics/Renderer/GpuScene.h
+            include/Meow2/Graphics/Renderer/MeshProcessing.h
             include/Meow2/Graphics/Renderer/PipelineLibrary.h
             include/Meow2/Graphics/Renderer/RenderDevice.h
             include/Meow2/Graphics/Renderer/RenderGraph.h
@@ -280,6 +282,7 @@ target_link_libraries(Meow2Engine
         SDL3::SDL3-static
         meow2_cgltf
         meow2_directxtex
+        meow2_meshoptimizer
         meow2_stb_image
         enkiTS
         Tracy::TracyClient

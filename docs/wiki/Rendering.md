@@ -2,7 +2,7 @@
 
 How `Renderer::GpuScene` draws a scene: glTF's metallic-roughness materials, lit by one sun and a physically based sky (image-based lighting), on Vulkan and D3D12 alike. The buffers, culling and indirect drawing underneath are in [Rhi → GPU-driven drawing](Rhi.md#gpu-driven-drawing); how glTF files get here is in [Gltf](Gltf.md).
 
-- **Status:** 🟨 M6. PBR, normal maps, mipmaps, samplers, double-sided, mirrored and blended surfaces (#174); Hillaire's sky and image-based lighting from it (#180); cooked `.m2texture` files with BC7 and BC5 (DirectXTex), a texture cache, and texture transforms (#183).
+- **Status:** 🟨 M6. PBR, normal maps, mipmaps, samplers, double-sided, mirrored and blended surfaces (#174); Hillaire's sky and image-based lighting from it (#180); cooked `.m2texture` files with BC7 and BC5 (DirectXTex), a texture cache, and texture transforms (#183); meshes optimised at import and drawn as meshlets through mesh shaders (#192).
 
 ## Using it
 
@@ -41,6 +41,56 @@ Each texture slot names its own sampler (`-1`: linear, repeating, mipmapped).
 The scene isn't drawn into the swapchain any more but into **Scene colour**, an RGBA16F texture in linear light with the exposure applied, in three passes: **Opaque** (the three indirect lists, clearing colour and depth), **Sky** (behind everything, where depth is still far) and **Blended** (sorted, over both). **Tone map** (`ToneMapPass`, `ToneMap.hlsl`) then applies the Khronos PBR Neutral curve while writing the swapchain, whose sRGB view encodes the result.
 
 Why: every step's output is now a texture of the render graph, which the Renderer's inspector can show ([Renderer](Renderer.md#frame-and-debugging)), and post-processing (bloom, exposure control) has an HDR image to work on. It costs one full-screen pass.
+
+### Meshes for the GPU: optimisation and meshlets
+
+`MeshProcessing.h` runs a mesh through [meshoptimizer](https://github.com/zeux/meshoptimizer) between import and upload:
+
+```cpp
+#include <Meow2/Graphics/Renderer/MeshProcessing.h>
+
+MeshData mesh = makeMesh(arrays, bounds);
+optimizeMesh(mesh);   // same triangles, an order the GPU's caches like
+buildMeshlets(mesh);  // clusters of ≤ 64 vertices and ≤ 124 triangles, with bounds
+scene.addMesh(mesh);  // builds the meshlets itself if they're missing
+```
+
+**`optimizeMesh()`** keeps every triangle and its winding, and changes only the order:
+
+1. **Merge identical vertices.** glTF files often repeat a vertex once per triangle around it. Merged, the GPU sees that it's the same vertex and can reuse its result.
+2. **Vertex cache order.** A GPU keeps the last few vertex shader results; a triangle whose corners were just shaded costs almost nothing. Triangles are reordered so neighbours come together (ACMR, vertices shaded per triangle, falls from up to 3 to well under 1 on a regular grid).
+3. **Overdraw order.** Within what the cache order allows (at most 5 % worse), triangles likely to be in front come first, so the depth test rejects more of what's behind before it's shaded.
+4. **Vertex fetch order.** Vertices are renumbered by first use, so reading them walks memory forwards.
+
+It runs once per primitive when a glTF model is uploaded (`uploadModel()`), at import rather than per frame or per backend switch.
+
+**A meshlet** is a small cluster of neighbouring triangles: at most 64 vertices and 124 triangles (sizes that suit NVIDIA's and AMD's hardware). Each has a **bounding sphere** and a **normal cone**: the average direction its triangles face, and how far they spread. The clusterizer favours tight cones over full clusters a little (weight 0.25), so more clusters can be culled for facing away. Triangles are stored per meshlet as three 8-bit indices into its own vertex list, one `uint` each.
+
+### The meshlet path
+
+On a GPU with mesh shaders (`RhiAdapterInfo::meshShaders`), `GpuScene` draws the three opaque lists through task and mesh shaders instead of indirect draws. Both paths draw the same image; the meshlet path draws less of what can't be seen.
+
+| Pass | Indirect path | Meshlet path |
+|---|---|---|
+| Cull instances (`csCull`) | frustum test per instance; one `IndirectDraw` per survivor | the same test; one `TaskItem` (an instance and up to 32 of its meshlets) per 32 meshlets of each survivor |
+| Task arguments (`csTaskArgs`) | — | each list's item count → the group counts of one mesh dispatch |
+| Opaque | `drawIndirectCount()` per list; `vsMain` shades every vertex of the mesh | `dispatchMeshIndirect()` per list: `asMain` (one group per item, one thread per meshlet) culls each meshlet; `msMain` (one group per survivor) shades its vertices and emits its triangles |
+
+**Cluster culling** in the task shader:
+
+- **Frustum:** the meshlet's sphere against the six planes, as for instances. A big mesh that's half in view draws only its meshlets that are.
+- **Normal cone** (back faces): if the direction from the camera to the cluster lies inside the cone of directions from which every triangle in it faces away, none can be seen. This is meshoptimizer's test: `dot(centre − camera, axis) ≥ cutoff · |centre − camera| + radius`. It's skipped for double-sided materials, for clusters whose normals spread too far (cutoff 1), for instances scaled differently along their axes (the spread would change), and for orthographic views, which have no camera point. The camera point is where the frustum's side planes meet, so frozen culling freezes it too.
+- The survivors are packed in their original order, not by an atomic, so the same frame draws the same way every time.
+
+The task shader counts meshlets and triangles drawn; `GpuScene::meshletStats()` reads them back a frame or two later without waiting. With the default view of the whole model, DragonAttenuation draws 2178 of its 2315 meshlets and Sponza 3112 of 3474. Looking at a part of a scene, much more is culled.
+
+**Why task shaders, not a second compute pass:** culling meshlets in compute would need a list of survivors in memory, a pass to count them and an indirect dispatch, with a barrier between each. The task shader culls and launches the mesh groups directly, and the survivors' list stays on chip (the payload).
+
+**Why a list of 32-meshlet items, not one task dispatch per instance:** an indirect dispatch per instance would need the instance index in the shader. Vulkan's mesh dispatches have no "first instance", and DXC doesn't expose the draw index to task shaders, so each API would need its own trick. A flat list of items is the same on both, and every task group has a full set of work.
+
+**Limits:** a dispatch may have 2^22 groups in all and 65535 per dimension. Past 65535 items, the dispatch goes 2D, 32768 wide; the lists hold at most 2^22 items each.
+
+**What stays on the indirect path:** blended surfaces (drawn sorted, one draw each), GPUs without mesh shaders, the `MESHLETS` setting off, and the triangle debug view: a colour per triangle needs a per-triangle value in the pixel shader, mesh shaders share vertices between triangles, and DXC can't mark a pixel shader input per-primitive for Vulkan.
 
 ### Shading
 
@@ -168,6 +218,7 @@ The PBR shader then uses `skyIrradiance(normal) / π` for diffuse ambient light,
 - Rotated texture transforms don't rotate the tangent frame, so a rotated normal map is lit slightly wrong (rare in practice).
 - Exact MikkTSpace tangents (needs a library, with approval).
 - Shadows.
+- Occlusion culling of meshlets against a depth pyramid (HZB, M12); levels of detail; meshlets cooked into files with the mesh at import (M7) rather than built on load.
 
 ## Tests
 
@@ -187,5 +238,13 @@ The PBR shader then uses `skyIrradiance(normal) / π` for diffuse ambient light,
 | `RhiGpu*.RhiDrawTest.SamplesBlockCompressedMips` | BC7 levels uploaded from one buffer, sampled at the right distance, a sub-block level included |
 | `RhiGpu*.GpuSceneTest.TextureTransformMovesTheTexture` | an offset of half the texture shows its other half |
 | `Assets.Image.MipChainHalvesToOnePixel`, `Assets.Image.SrgbMipsAverageInLinearLight` | the chain's sizes, and colour averaging in linear light |
+| `Renderer.MeshProcessing.OptimizeKeepsTriangles` | a scrambled grid keeps the same triangles, each wound the same way; repeated vertices are merged |
+| `Renderer.MeshProcessing.OptimizeImprovesVertexCache` | vertices shaded per triangle fall by more than a quarter, below 1 |
+| `Renderer.MeshProcessing.MeshletsCoverEveryTriangleOnce` | every triangle is in exactly one meshlet, wound the same way |
+| `Renderer.MeshProcessing.MeshletsRespectLimits` | ≤ 64 vertices and ≤ 124 triangles each; the sphere holds them; a flat grid's cone faces its way |
+| `RhiGpu*.GpuSceneTest.MeshletPathMatchesIndirect` | spheres (one turned, one mirrored), a double-sided quad from behind and a cube: the same image through both paths |
+| `RhiGpu*.GpuSceneTest.MeshletCullingSkipsHiddenClusters` | a grid mostly outside the view draws under half its meshlets; a sphere's far side is culled by the cones; a double-sided sphere isn't; the image matches the indirect path each time |
+| `RhiGpu*.GpuSceneTest.MeshletViewColoursClusters` | the Meshlets view gives neighbouring clusters different colours, and is grey on the indirect path |
+| `RhiGpu*.RenderDeviceTest.MeshletsSurviveBackendSwitch` | the meshlet path draws the same meshlets and image after the device is re-created |
 
-By hand, on both backends: MetalRoughSpheres, NormalTangentTest, NegativeScaleTest, AlphaBlendModeTest, TextureSettingsTest and DamagedHelmet, against their reference screenshots. Golden-image tests follow in M6 PR 5.
+By hand, on both backends: MetalRoughSpheres, NormalTangentTest, NegativeScaleTest, AlphaBlendModeTest, TextureSettingsTest and DamagedHelmet, against their reference screenshots. DragonAttenuation and Sponza through both paths, a backend switch and the Meshlets view, validation clean. Golden-image tests follow in M6 PR 5.

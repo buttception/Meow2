@@ -20,13 +20,16 @@ struct VulkanState
 };
 
 /// @brief Translates a state.
-/// @param state The state.
+/// @param state       The state.
+/// @param meshShaders Whether task and mesh shaders are enabled, so shader states include their stages.
 /// @return Its Vulkan stages, access and layout.
-VulkanState vulkanState(ResourceState state)
+VulkanState vulkanState(ResourceState state, bool meshShaders)
 {
-    constexpr VkPipelineStageFlags2 c_shaders = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-                                                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
-                                                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    // Task and mesh stages only when the extension is enabled: naming them otherwise is a validation error.
+    const VkPipelineStageFlags2 c_shaders =
+        VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
+        (meshShaders ? VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT : 0);
     switch (state)
     {
         case ResourceState::Undefined:
@@ -247,11 +250,28 @@ void RhiCommandListVulkan::dispatch(std::uint32_t x, std::uint32_t y, std::uint3
     vkCmdDispatch(m_commandBuffer, x, y, z);
 }
 
+void RhiCommandListVulkan::dispatchMesh(std::uint32_t x, std::uint32_t y, std::uint32_t z)
+{
+    MEOW2_ASSERT(m_rendering, "dispatchMesh() outside beginRendering()");
+    MEOW2_ASSERT(m_device.adapter().meshShaders, "dispatchMesh() on a GPU without mesh shaders");
+    vkCmdDrawMeshTasksEXT(m_commandBuffer, x, y, z);
+}
+
+void RhiCommandListVulkan::dispatchMeshIndirect(BufferHandle arguments, std::uint64_t offset)
+{
+    MEOW2_ASSERT(m_rendering, "dispatchMeshIndirect() outside beginRendering()");
+    MEOW2_ASSERT(m_device.adapter().meshShaders, "dispatchMeshIndirect() on a GPU without mesh shaders");
+    MEOW2_ASSERT(offset % 4 == 0, "Indirect arguments are 4-byte aligned");
+    // One VkDrawMeshTasksIndirectCommandEXT: x, y, z. The stride doesn't matter for a single draw.
+    vkCmdDrawMeshTasksIndirectEXT(m_commandBuffer, m_device.buffer(arguments).buffer, offset, 1,
+                                  sizeof(VkDrawMeshTasksIndirectCommandEXT));
+}
+
 void RhiCommandListVulkan::barrier(BufferHandle buffer, ResourceState from, ResourceState to)
 {
     MEOW2_ASSERT(!m_rendering, "Barriers go between passes");
-    const VulkanState source = vulkanState(from);
-    const VulkanState target = vulkanState(to);
+    const VulkanState source = vulkanState(from, m_device.adapter().meshShaders);
+    const VulkanState target = vulkanState(to, m_device.adapter().meshShaders);
     const VkBufferMemoryBarrier2 barrier{.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
                                          .srcStageMask = source.stages,
                                          .srcAccessMask = source.access,
@@ -271,8 +291,8 @@ void RhiCommandListVulkan::barrier(TextureHandle texture, ResourceState from, Re
 {
     MEOW2_ASSERT(!m_rendering, "Barriers go between passes");
     const TextureVulkan image = m_device.texture(texture);
-    const VulkanState source = vulkanState(from);
-    const VulkanState target = vulkanState(to);
+    const VulkanState source = vulkanState(from, m_device.adapter().meshShaders);
+    const VulkanState target = vulkanState(to, m_device.adapter().meshShaders);
     const VkImageMemoryBarrier2 barrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .srcStageMask = source.stages,

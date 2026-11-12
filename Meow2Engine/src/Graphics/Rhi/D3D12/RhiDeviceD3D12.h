@@ -180,6 +180,8 @@ public:
     void drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws, std::uint64_t drawOffset,
                            std::uint64_t countOffset) override;
     void dispatch(std::uint32_t x, std::uint32_t y, std::uint32_t z) override;
+    void dispatchMesh(std::uint32_t x, std::uint32_t y, std::uint32_t z) override;
+    void dispatchMeshIndirect(BufferHandle arguments, std::uint64_t offset) override;
     void fillBuffer(BufferHandle buffer, std::uint32_t value) override;
     void barrier(BufferHandle buffer, ResourceState from, ResourceState to) override;
     void barrier(TextureHandle texture, ResourceState from, ResourceState to) override;
@@ -330,6 +332,13 @@ public:
     [[nodiscard]] ID3D12CommandSignature* drawSignature() const
     {
         return m_drawSignature.Get();
+    }
+
+    /// @brief The command signature of dispatchMeshIndirect(): one DispatchMesh's group counts.
+    /// @return The pointer, owned by the device; null without mesh shaders.
+    [[nodiscard]] ID3D12CommandSignature* meshSignature() const
+    {
+        return m_meshSignature.Get();
     }
 
     /// @brief The RTV heap, which swapchains also take slots from.
@@ -544,6 +553,7 @@ private:
     DescriptorHeapD3D12 m_dsvHeap;
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12CommandSignature> m_drawSignature;
+    ComPtr<ID3D12CommandSignature> m_meshSignature; ///< Only with mesh shaders.
     /// @brief Identifies the GPU and driver a saved pipeline library came from, ahead of its bytes. Plain data.
     struct LibraryHeader
     {

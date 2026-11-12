@@ -34,14 +34,28 @@ struct DrawPipelineOptions
                                                  ///< alpha blending unless this is Additive).
     bool depthTest = true;                       ///< Whether depth is tested.
     bool depthWrite = true;                      ///< Whether the draw lists write depth.
-    std::string name = "Variant";                ///< Prefix of the pipelines' names.
+    bool meshlets = true; ///< Also build the meshlet path's pipelines, where the GPU has mesh shaders. False keeps
+                          ///< frames drawn with this set on the indirect path.
+    std::string name = "Variant"; ///< Prefix of the pipelines' names.
 };
 
-/// @brief A GpuScene's draw pipelines: one per draw list and one for blended surfaces. Plain data.
+/// @brief A GpuScene's draw pipelines: one per draw list for each path, and one for blended surfaces. Plain data.
 struct DrawPipelines
 {
-    std::array<PipelineId, MEOW2_DRAW_LIST_COUNT> lists{}; ///< One per MEOW2_DRAW_LIST_*.
-    PipelineId blend{};                                    ///< For blended surfaces.
+    std::array<PipelineId, MEOW2_DRAW_LIST_COUNT> lists{};     ///< Indirect path: one per MEOW2_DRAW_LIST_*.
+    PipelineId blend{};                                        ///< For blended surfaces (both paths).
+    std::array<PipelineId, MEOW2_DRAW_LIST_COUNT> meshLists{}; ///< Meshlet path: one per MEOW2_DRAW_LIST_*.
+    bool hasMeshLists = false;                                 ///< Whether `meshLists` were built.
+};
+
+/// @brief What the meshlet path drew, for statistics. Plain data.
+struct MeshletStats
+{
+    std::uint32_t meshlets = 0;       ///< Meshlets of every opaque instance (before any culling).
+    std::uint64_t triangles = 0;      ///< Their triangles.
+    std::uint32_t meshletsDrawn = 0;  ///< Meshlets left after culling instances and then meshlets, a few frames ago.
+    std::uint32_t trianglesDrawn = 0; ///< Their triangles.
+    bool valid = false;               ///< False until a meshlet-path frame has come back from the GPU.
 };
 
 /// @brief What to create a GpuScene with. Plain data.
@@ -53,12 +67,17 @@ struct GpuSceneDesc
 };
 
 /// @brief A mesh ready to upload: quantised positions, octahedral normals and tangents, half-float UVs, RGBA8 colours,
-///        32-bit indices. Plain data.
+///        32-bit indices, and its meshlets. Plain data.
+/// @see MeshProcessing.h: optimizeMesh() and buildMeshlets().
 struct MeshData
 {
-    std::vector<Shader::PackedVertex> vertices; ///< Made by makeMesh() or packVertex().
-    std::vector<std::uint32_t> indices;         ///< Three per triangle; clockwise faces the viewer.
-    Math::Aabb bounds{};                        ///< The box the positions are quantised in.
+    std::vector<Shader::PackedVertex> vertices{};  ///< Made by makeMesh() or packVertex().
+    std::vector<std::uint32_t> indices{};          ///< Three per triangle; clockwise faces the viewer.
+    Math::Aabb bounds{};                           ///< The box the positions are quantised in.
+    std::vector<Shader::Meshlet> meshlets{};       ///< From buildMeshlets(); GpuScene::addMesh() builds them if empty.
+    std::vector<std::uint32_t> meshletVertices{};  ///< Each meshlet's vertices: indices into `vertices`.
+    std::vector<std::uint32_t> meshletTriangles{}; ///< Each meshlet's triangles: three 8-bit indices into its
+                                                   ///< vertices, low byte first.
 };
 
 /// @brief One vertex before packing. Plain data.
@@ -142,14 +161,18 @@ struct SceneLighting
 };
 
 /// @brief The GPU-driven path: one compute pass culls every instance and sorts the survivors into draw lists, and one
-///        indirect call per list draws them with metallic-roughness PBR.
+///        GPU-driven call per list draws them with metallic-roughness PBR.
 ///
 /// There's no per-object work on the CPU for opaque and alpha-masked surfaces, so the cost of a frame doesn't grow with
 /// the instance count. Instances and meshes live in buffers the shaders read by heap index, and vertices are pulled by
-/// the vertex shader.
+/// the vertex or mesh shader.
 ///
 /// - **Draw lists** (MEOW2_DRAW_LIST_*): back faces culled (most meshes), mirrored instances (negative scale reverses
 ///   the winding, so front faces are culled instead), and double-sided materials (nothing culled).
+/// - **Two paths** for the lists. The *indirect path* draws each surviving instance whole (an indirect draw each). The
+///   *meshlet path*, on GPUs with mesh shaders, culls each instance's meshlets too: a task shader tests 32 at a time
+///   against the frustum and by their normal cones, and a mesh shader draws the ones left. It's on by default where it
+///   can run (setMeshlets()); both draw the same image.
 /// - **Blended materials** are left out of the lists. They're drawn after them, one direct draw per instance, sorted
 ///   back to front on the CPU, without writing depth.
 /// - **Light:** one sun and a sky/ground ambient (SceneLighting), then exposure and a tone curve.
@@ -182,9 +205,42 @@ public:
     GpuScene& operator=(const GpuScene&) = delete; ///< Not copyable: owns buffers.
 
     /// @brief Uploads a mesh, and keeps a copy for the next device.
-    /// @param mesh The mesh.
+    /// @param mesh The mesh. Without meshlets, buildMeshlets() makes them (optimizeMesh() is the caller's choice: it
+    ///             reorders the triangles).
     /// @return Its index, for Shader::InstanceData::mesh, or an error.
     [[nodiscard]] Result<std::uint32_t> addMesh(const MeshData& mesh);
+
+    /// @brief Chooses the meshlet path or the indirect path for the next frames.
+    /// @param on True for the meshlet path where the GPU has mesh shaders (the default); false for the indirect path.
+    void setMeshlets(bool on)
+    {
+        m_meshletsWanted = on;
+    }
+
+    /// @brief Whether the meshlet path can run: the GPU has mesh shaders and its pipelines are built.
+    /// @return True if setMeshlets(true) draws with meshlets.
+    [[nodiscard]] bool meshletsAvailable() const;
+
+    /// @brief Whether the next frame draws with meshlets: asked for, available, and the pipeline override (if any) has
+    ///        meshlet pipelines.
+    /// @return True for the meshlet path.
+    [[nodiscard]] bool usesMeshlets() const;
+
+    /// @brief What the meshlet path drew. The GPU's counts arrive a few frames late (they're read back without
+    ///        waiting).
+    /// @return The counts.
+    [[nodiscard]] MeshletStats meshletStats() const
+    {
+        return m_meshletStats;
+    }
+
+    /// @brief Where the meshlet path's counters land, for tests: MEOW2_TASK_COUNT_SIZE `uint`s, laid out as
+    ///        MEOW2_TASK_COUNT_*.
+    /// @return The buffer; changes when the backend does.
+    [[nodiscard]] Rhi::BufferHandle meshletCountBuffer() const
+    {
+        return m_taskCountBuffer;
+    }
 
     /// @brief Uploads a texture at the start of the next frame, and keeps a copy for the next device.
     ///
@@ -267,7 +323,8 @@ public:
     ///        targets (e.g. a wireframe on top of the shaded scene). Blended surfaces are drawn too.
     /// @param graph     The frame's graph, after addPasses().
     /// @param name      The pass's name.
-    /// @param pipelines From makeDrawPipelines().
+    /// @param pipelines From makeDrawPipelines(). On a meshlet-path frame they need meshlet pipelines
+    ///                  (DrawPipelineOptions::meshlets), or only the blended surfaces are drawn again.
     /// @param color     The colour target in the graph (addPasses()' result).
     /// @param colorTexture The same texture.
     /// @param depth     The depth target given to addPasses().
@@ -355,17 +412,55 @@ private:
 
     /// @brief Uploads one mesh and writes its record.
     /// @param device The device.
-    /// @param mesh   The mesh.
+    /// @param mesh   The mesh, with its meshlets.
     /// @param index  Its place in the mesh buffer.
     /// @return An error from creating its buffers.
     [[nodiscard]] Result<void> uploadMesh(Rhi::IRhiDevice& device, const MeshData& mesh, std::uint32_t index);
+
+    /// @brief Makes the TaskItem lists big enough for the instances' meshlets: TaskItems per list, the most any
+    ///        frame can write.
+    /// @param device The device.
+    /// @return An error from creating the buffer.
+    [[nodiscard]] Result<void> sizeTaskBuffer(Rhi::IRhiDevice& device);
+
+    /// @brief Adds the meshlet path's mesh pipelines for a variant.
+    /// @param options The variant and states.
+    /// @param out     [in,out] Gets the pipelines, and `hasMeshLists`.
+    /// @return An error from building one.
+    [[nodiscard]] Result<void> addMeshPipelines(const DrawPipelineOptions& options, DrawPipelines& out);
+
+    /// @brief Records the draws of the three lists, inside beginRendering(): one mesh dispatch per list on the meshlet
+    ///        path (`pipelines.hasMeshLists`), one indirect draw call per list on the other.
+    /// @param list      The command list.
+    /// @param pipelines Which pipelines.
+    /// @param push      The push constants; on the meshlet path `instance` is replaced by the list.
+    void recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipelines,
+                     const Shader::PushConstants& push) const;
+
+    /// @brief Copies the meshlet counts read back for a frame slot into m_meshletStats, if that slot's frame used the
+    ///        meshlet path. The GPU has finished the slot's last frame when it's being recorded again.
+    /// @param device    The device.
+    /// @param frameSlot The slot.
+    void readMeshletStats(Rhi::IRhiDevice& device, std::uint32_t frameSlot);
 
     RenderDevice& m_device;
     PipelineLibrary& m_pipelines;
     GpuSceneDesc m_desc;
     std::optional<PipelineId> m_cullPipeline;
+    std::optional<PipelineId> m_taskArgsPipeline; ///< csTaskArgs; only with mesh shaders.
     std::array<std::optional<PipelineId>, MEOW2_DRAW_LIST_COUNT> m_drawPipelines{}; ///< One per draw list.
     std::optional<PipelineId> m_blendPipeline;
+    std::array<std::optional<PipelineId>, MEOW2_DRAW_LIST_COUNT>
+        m_meshPipelines{};            ///< Meshlet path; mesh shaders only.
+    bool m_meshletsWanted = true;     ///< setMeshlets().
+    bool m_frameUsesMeshlets = false; ///< The path the last addPasses() chose, for overlay passes.
+    std::array<bool, Rhi::c_maxFramesInFlight> m_slotReadsBack{}; ///< A slot's last frame copied meshlet counts.
+    MeshletStats m_meshletStats{};
+    std::uint32_t m_taskCapacity = 1;    ///< TaskItems each list has room for.
+    Rhi::BufferHandle m_taskBuffer;      ///< TaskItem lists, one per draw list.
+    Rhi::BufferHandle m_taskCountBuffer; ///< MEOW2_TASK_COUNT_* counters.
+    Rhi::BufferHandle m_taskArgsBuffer;  ///< Mesh dispatch group counts, 16 bytes per draw list.
+    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_countReadback{}; ///< The counters, for the CPU.
     std::optional<DrawPipelines> m_override; ///< Used instead of the pipelines above when set.
     std::vector<std::pair<std::uint32_t, std::uint32_t>>
         m_blendDraws; ///< This frame's blended draws: instance, indices.
@@ -408,10 +503,16 @@ private:
     Rhi::ResourceState m_drawState = Rhi::ResourceState::Undefined;
     Rhi::ResourceState m_countState = Rhi::ResourceState::Undefined;
     Rhi::ResourceState m_depthState = Rhi::ResourceState::Undefined;
+    Rhi::ResourceState m_taskState = Rhi::ResourceState::Undefined;
+    Rhi::ResourceState m_taskCountState = Rhi::ResourceState::Undefined;
+    Rhi::ResourceState m_taskArgsState = Rhi::ResourceState::Undefined;
     Rhi::TextureHandle m_lastDepth;
     GraphResource m_drawResource;
     GraphResource m_countResource;
     GraphResource m_depthResource;
+    GraphResource m_taskResource;
+    GraphResource m_taskCountResource;
+    GraphResource m_taskArgsResource;
     DeviceUser m_deviceUser; ///< Last: stops its callbacks before the members they use go away.
 };
 } // namespace Meow2::Renderer

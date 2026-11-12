@@ -1,6 +1,12 @@
-// The GPU-driven path. csCull tests every instance against the frustum and writes a draw for each survivor into one of
-// three lists (MEOW2_DRAW_LIST_*). vsMain draws the lists, vsBlend the blended instances the CPU sorted, and psMain
-// shades both with metallic-roughness PBR. Indices and vertices are pulled from heap buffers: no vertex input at all.
+// The GPU-driven path. csCull tests every instance against the frustum and sorts each survivor into one of three lists
+// (MEOW2_DRAW_LIST_*). psMain shades every path with metallic-roughness PBR. Indices and vertices are pulled from heap
+// buffers: no vertex input at all.
+//
+// - Indirect path: the lists hold one IndirectDraw per instance, which vsMain draws; vsBlend draws the blended
+//   instances the CPU sorted.
+// - Meshlet path (GPUs with mesh shaders): the lists hold TaskItems, up to 32 meshlets of an instance each. csTaskArgs
+//   turns their counts into mesh dispatches; asMain culls each meshlet against the frustum and by its normal cone, and
+//   msMain draws the ones left.
 #include "Common.hlsli"
 #include "Atmosphere.hlsli" // c_pi, the sky lookups
 
@@ -8,6 +14,32 @@
 float planeDistance(float4 plane, float3 position)
 {
     return dot(plane.xyz, position) + plane.w;
+}
+
+/// Whether a sphere is at least partly inside the frustum.
+bool sphereInFrustum(CullConstants cull, float3 center, float radius)
+{
+    return planeDistance(cull.plane0, center) >= -radius && planeDistance(cull.plane1, center) >= -radius &&
+           planeDistance(cull.plane2, center) >= -radius && planeDistance(cull.plane3, center) >= -radius &&
+           planeDistance(cull.plane4, center) >= -radius && planeDistance(cull.plane5, center) >= -radius;
+}
+
+/// How much an instance's world matrix scales each local axis: the lengths of its first three rows.
+float3 axisScales(InstanceData instance)
+{
+    return float3(length(instance.worldRow0.xyz), length(instance.worldRow1.xyz), length(instance.worldRow2.xyz));
+}
+
+/// A local normal in world space: through the inverse transpose, written as the cofactor rows cross(b, c),
+/// cross(c, a), cross(a, b) of the rows a, b, c (only the determinant's sign matters before normalising). For a
+/// mirrored instance the sign keeps it pointing out of the surface. Not normalised.
+float3 worldNormal(InstanceData instance, float3 normal)
+{
+    const float3 a = instance.worldRow0.xyz;
+    const float3 b = instance.worldRow1.xyz;
+    const float3 c = instance.worldRow2.xyz;
+    const float side = (instance.flags & MEOW2_INSTANCE_MIRRORED) != 0 ? -1.0 : 1.0;
+    return side * (normal.x * cross(b, c) + normal.y * cross(c, a) + normal.z * cross(a, b));
 }
 
 [numthreads(64, 1, 1)]
@@ -22,13 +54,9 @@ void csCull(uint3 id : SV_DispatchThreadID)
     const MeshDraw mesh = loadElement<MeshDraw>(cull.meshBuffer, instance.mesh);
 
     const float3 center = mul(float4(mesh.boundsCenter.xyz, 1.0), MEOW2_ROWS(instance, world)).xyz;
-    const float scale = sqrt(max(max(dot(instance.worldRow0.xyz, instance.worldRow0.xyz),
-                                     dot(instance.worldRow1.xyz, instance.worldRow1.xyz)),
-                                 dot(instance.worldRow2.xyz, instance.worldRow2.xyz)));
-    const float radius = mesh.boundsCenter.w * scale;
-    if (planeDistance(cull.plane0, center) < -radius || planeDistance(cull.plane1, center) < -radius ||
-        planeDistance(cull.plane2, center) < -radius || planeDistance(cull.plane3, center) < -radius ||
-        planeDistance(cull.plane4, center) < -radius || planeDistance(cull.plane5, center) < -radius)
+    const float3 scales = axisScales(instance);
+    const float radius = mesh.boundsCenter.w * max(scales.x, max(scales.y, scales.z));
+    if (!sphereInFrustum(cull, center, radius))
     {
         return;
     }
@@ -46,6 +74,34 @@ void csCull(uint3 id : SV_DispatchThreadID)
         {
             drawList = MEOW2_DRAW_LIST_DOUBLE_SIDED;
         }
+    }
+
+    if (cull.meshlets != 0)
+    {
+        // Meshlet path: one TaskItem per 32 meshlets, in consecutive slots taken with one atomic add.
+        const uint items = (mesh.meshletCount + MEOW2_TASK_MESHLETS - 1) / MEOW2_TASK_MESHLETS;
+        if (items == 0)
+        {
+            return;
+        }
+        RWByteAddressBuffer counts = ResourceDescriptorHeap[cull.taskCounts];
+        uint first = 0;
+        counts.InterlockedAdd((MEOW2_TASK_COUNT_ITEMS + drawList) * 4, items, first);
+        if (first + items > cull.taskCapacity)
+        {
+            return; // can't happen while the capacity counts every instance's items; csTaskArgs clamps the count
+        }
+        RWByteAddressBuffer tasks = ResourceDescriptorHeap[cull.taskBuffer];
+        for (uint k = 0; k < items; ++k)
+        {
+            TaskItem item;
+            item.instance = id.x;
+            item.firstMeshlet = k * MEOW2_TASK_MESHLETS;
+            item.meshletCount = min(MEOW2_TASK_MESHLETS, mesh.meshletCount - item.firstMeshlet);
+            item.padding0 = 0;
+            tasks.Store<TaskItem>((drawList * cull.taskCapacity + first + k) * sizeof(TaskItem), item);
+        }
+        return;
     }
 
     RWByteAddressBuffer count = ResourceDescriptorHeap[cull.countBuffer];
@@ -69,6 +125,25 @@ void csCull(uint3 id : SV_DispatchThreadID)
     draws.Store<IndirectDraw>((drawList * cull.drawCapacity + slot) * sizeof(IndirectDraw), draw);
 }
 
+/// The meshlet path's dispatches: one task group per TaskItem of each list. Above 65535 groups the dispatch goes 2D,
+/// MEOW2_TASK_GROUPS_X wide, which keeps it under the 2^22 groups a dispatch may have in all.
+[numthreads(4, 1, 1)]
+void csTaskArgs(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= MEOW2_DRAW_LIST_COUNT)
+    {
+        return;
+    }
+    const CullConstants cull = loadElement<CullConstants>(g_push.userData, 0);
+    RWByteAddressBuffer counts = ResourceDescriptorHeap[cull.taskCounts];
+    const uint items = min(min(counts.Load((MEOW2_TASK_COUNT_ITEMS + id.x) * 4), cull.taskCapacity),
+                           MEOW2_TASK_GROUPS_X * 128);
+    const uint3 groups = items <= 65535 ? uint3(items, 1, 1)
+                                        : uint3(MEOW2_TASK_GROUPS_X, (items + MEOW2_TASK_GROUPS_X - 1) / MEOW2_TASK_GROUPS_X, 1);
+    RWByteAddressBuffer arguments = ResourceDescriptorHeap[cull.taskArguments];
+    arguments.Store4(id.x * 16, uint4(groups, 0));
+}
+
 struct VertexOutput
 {
     float4 position : SV_Position;
@@ -82,8 +157,14 @@ struct VertexOutput
 #if DEBUG_VIEW == 1
     nointerpolation uint instance : INSTANCE0; ///< For the instance view.
     nointerpolation uint triangleIndex : TRIANGLE0; ///< For the triangle view: draws are non-indexed, so vertex / 3.
+    nointerpolation uint meshlet : MESHLET0; ///< For the meshlet view; c_noMeshlet on the indirect path.
 #endif
 };
+
+#if DEBUG_VIEW == 1
+/// VertexOutput::meshlet of a vertex the indirect path drew: it has no meshlets.
+static const uint c_noMeshlet = 0xFFFFFFFFu;
+#endif
 
 /// The inverse of Math::packOctahedral.
 float3 unpackOctahedral(uint encoded)
@@ -106,13 +187,10 @@ float3 unpackPosition(PackedVertex stored, MeshDraw mesh)
     return mesh.boundsCenter.xyz - mesh.boundsExtents.xyz + fraction * 2.0 * mesh.boundsExtents.xyz;
 }
 
-/// One vertex of an instance, for both entry points.
-VertexOutput shadeVertex(uint instanceIndex, uint vertexId)
+/// One vertex of an instance, by its index in the mesh's vertex buffer: for every path.
+VertexOutput shadeStoredVertex(uint instanceIndex, InstanceData instance, MeshDraw mesh, uint index)
 {
     const FrameConstants frame = frameConstants();
-    const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, instanceIndex);
-    const MeshDraw mesh = loadElement<MeshDraw>(g_push.userData, instance.mesh);
-    const uint index = loadElement<uint>(mesh.indexBuffer, mesh.firstIndex + vertexId);
     const PackedVertex stored = loadElement<PackedVertex>(mesh.vertexBuffer, index);
 
     VertexOutput output;
@@ -121,16 +199,10 @@ VertexOutput shadeVertex(uint instanceIndex, uint vertexId)
     output.position = mul(world, MEOW2_ROWS(frame, viewProjection));
     output.worldPosition = world.xyz;
 
-    // Normals go through the inverse transpose, so non-uniform scale doesn't tilt them. For rows a, b, c it's the rows
-    // cross(b, c), cross(c, a), cross(a, b) over the determinant; only the determinant's sign matters before normalising,
-    // and it keeps a mirrored normal pointing outwards.
-    const float3 a = instance.worldRow0.xyz;
-    const float3 b = instance.worldRow1.xyz;
-    const float3 c = instance.worldRow2.xyz;
+    // Normals go through the inverse transpose (worldNormal()), so non-uniform scale doesn't tilt them.
     const bool mirrored = (instance.flags & MEOW2_INSTANCE_MIRRORED) != 0;
     const float side = mirrored ? -1.0 : 1.0;
-    const float3 normal = unpackOctahedral(stored.normal);
-    output.normal = side * (normal.x * cross(b, c) + normal.y * cross(c, a) + normal.z * cross(a, b));
+    output.normal = worldNormal(instance, unpackOctahedral(stored.normal));
     // Tangents follow the surface like positions do. Mirroring flips the handedness of normal × tangent, so the
     // bitangent's sign flips with it.
     output.tangent.xyz = mul(float4(unpackOctahedral(stored.tangent), 0.0), worldMatrix).xyz;
@@ -142,6 +214,20 @@ VertexOutput shadeVertex(uint instanceIndex, uint vertexId)
     output.mirrored = mirrored ? 1 : 0;
 #if DEBUG_VIEW == 1
     output.instance = instanceIndex;
+    output.triangleIndex = 0;
+    output.meshlet = c_noMeshlet;
+#endif
+    return output;
+}
+
+/// One vertex of an instance on the indirect path: draws are non-indexed, so the index comes from the index buffer.
+VertexOutput shadeVertex(uint instanceIndex, uint vertexId)
+{
+    const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, instanceIndex);
+    const MeshDraw mesh = loadElement<MeshDraw>(g_push.userData, instance.mesh);
+    const uint index = loadElement<uint>(mesh.indexBuffer, mesh.firstIndex + vertexId);
+    VertexOutput output = shadeStoredVertex(instanceIndex, instance, mesh, index);
+#if DEBUG_VIEW == 1
     // Not SV_PrimitiveID: in a pixel shader it needs geometry-shader support on Vulkan, which many GPUs lack.
     output.triangleIndex = vertexId / 3;
 #endif
@@ -158,6 +244,133 @@ VertexOutput vsMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID
 VertexOutput vsBlend(uint vertexId : SV_VertexID)
 {
     return shadeVertex(g_push.instance, vertexId);
+}
+
+/// What a task group hands its mesh groups: the instance, and its meshlets that survived, one per mesh group.
+struct TaskPayload
+{
+    uint instance;
+    uint meshlets[MEOW2_TASK_MESHLETS];
+};
+
+groupshared TaskPayload s_payload;
+groupshared uint s_visible[MEOW2_TASK_MESHLETS];   ///< 1 for each thread whose meshlet survived.
+groupshared uint s_triangles[MEOW2_TASK_MESHLETS]; ///< Its triangles, for the statistics.
+
+/// Whether a meshlet can be seen: its sphere is in the frustum and, unless both sides are drawn, some of its triangles
+/// face the camera.
+///
+/// The cone test is meshoptimizer's: every triangle faces away when the direction from the camera to the sphere's
+/// centre lies within the cone's angle of its axis, with the radius as a margin. It needs a camera point (a perspective
+/// frustum) and a world matrix that keeps angles: under non-uniform scale or shear the normals' spread changes, so
+/// those instances skip it.
+bool meshletVisible(CullConstants cull, InstanceData instance, Meshlet meshlet, uint drawList)
+{
+    const float3 center = mul(float4(meshlet.sphere.xyz, 1.0), MEOW2_ROWS(instance, world)).xyz;
+    const float3 scales = axisScales(instance);
+    const float largest = max(scales.x, max(scales.y, scales.z));
+    const float radius = meshlet.sphere.w * largest;
+    if (!sphereInFrustum(cull, center, radius))
+    {
+        return false;
+    }
+    const float smallest = min(scales.x, min(scales.y, scales.z));
+    if (drawList == MEOW2_DRAW_LIST_DOUBLE_SIDED || cull.origin.w == 0.0 || meshlet.cone.w >= 1.0 ||
+        largest > smallest * 1.001)
+    {
+        return true;
+    }
+    const float3 axis = normalize(worldNormal(instance, meshlet.cone.xyz));
+    const float3 fromCamera = center - cull.origin.xyz;
+    return dot(fromCamera, axis) < meshlet.cone.w * length(fromCamera) + radius;
+}
+
+/// The meshlet path's task shader: one group per TaskItem, one thread per meshlet. The survivors are packed in their
+/// original order (not by an atomic, whose order changes between runs), so a frame draws the same way every time.
+/// g_push.instance is the draw list; g_push.userData the MeshDraw array.
+[numthreads(MEOW2_TASK_MESHLETS, 1, 1)]
+void asMain(uint3 groupId : SV_GroupID, uint thread : SV_GroupIndex)
+{
+    const FrameConstants frame = frameConstants();
+    const uint drawList = g_push.instance;
+    RWByteAddressBuffer counts = ResourceDescriptorHeap[frame.taskCounts];
+    const uint itemCount = min(counts.Load((MEOW2_TASK_COUNT_ITEMS + drawList) * 4), frame.taskCapacity);
+    const uint itemIndex = groupId.y * MEOW2_TASK_GROUPS_X + groupId.x; // 2D past 65535 groups (csTaskArgs)
+
+    bool visible = false;
+    uint meshletIndex = 0;
+    uint triangles = 0;
+    if (itemIndex < itemCount)
+    {
+        const TaskItem item = loadElement<TaskItem>(frame.taskBuffer, drawList * frame.taskCapacity + itemIndex);
+        if (thread == 0)
+        {
+            s_payload.instance = item.instance;
+        }
+        if (thread < item.meshletCount)
+        {
+            const CullConstants cull = loadElement<CullConstants>(frame.cullBuffer, 0);
+            const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, item.instance);
+            const MeshDraw mesh = loadElement<MeshDraw>(g_push.userData, instance.mesh);
+            meshletIndex = item.firstMeshlet + thread;
+            const Meshlet meshlet = loadElement<Meshlet>(mesh.meshletBuffer, meshletIndex);
+            visible = meshletVisible(cull, instance, meshlet, drawList);
+            triangles = meshlet.triangleCount;
+        }
+    }
+    s_visible[thread] = visible ? 1 : 0;
+    s_triangles[thread] = visible ? triangles : 0;
+    GroupMemoryBarrierWithGroupSync();
+
+    uint slot = 0;
+    uint survivors = 0;
+    uint drawnTriangles = 0;
+    for (uint k = 0; k < MEOW2_TASK_MESHLETS; ++k)
+    {
+        slot += k < thread ? s_visible[k] : 0;
+        survivors += s_visible[k];
+        drawnTriangles += s_triangles[k];
+    }
+    if (visible)
+    {
+        s_payload.meshlets[slot] = meshletIndex;
+    }
+    if (thread == 0 && survivors > 0)
+    {
+        counts.InterlockedAdd(MEOW2_TASK_COUNT_MESHLETS * 4, survivors);
+        counts.InterlockedAdd(MEOW2_TASK_COUNT_TRIANGLES * 4, drawnTriangles);
+    }
+    GroupMemoryBarrierWithGroupSync(); // every slot of the payload is written before it's handed on
+    DispatchMesh(survivors, 1, 1, s_payload);
+}
+
+/// The meshlet path's mesh shader: one group per meshlet, one thread per vertex and per triangle. Vertices are shaded
+/// as vsMain shades them.
+[outputtopology("triangle")]
+[numthreads(128, 1, 1)]
+void msMain(uint thread : SV_GroupThreadID, uint3 groupId : SV_GroupID, in payload TaskPayload payload,
+            out vertices VertexOutput outVertices[MEOW2_MESHLET_MAX_VERTICES],
+            out indices uint3 outTriangles[MEOW2_MESHLET_MAX_TRIANGLES])
+{
+    const uint meshletIndex = payload.meshlets[groupId.x];
+    const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, payload.instance);
+    const MeshDraw mesh = loadElement<MeshDraw>(g_push.userData, instance.mesh);
+    const Meshlet meshlet = loadElement<Meshlet>(mesh.meshletBuffer, meshletIndex);
+    SetMeshOutputCounts(meshlet.vertexCount, meshlet.triangleCount);
+    if (thread < meshlet.vertexCount)
+    {
+        const uint index = loadElement<uint>(mesh.meshletVertexBuffer, meshlet.firstVertex + thread);
+        VertexOutput output = shadeStoredVertex(payload.instance, instance, mesh, index);
+#if DEBUG_VIEW == 1
+        output.meshlet = meshletIndex;
+#endif
+        outVertices[thread] = output;
+    }
+    if (thread < meshlet.triangleCount)
+    {
+        const uint packed = loadElement<uint>(mesh.meshletTriangleBuffer, meshlet.firstTriangle + thread);
+        outTriangles[thread] = uint3(packed & 255, (packed >> 8) & 255, (packed >> 16) & 255);
+    }
 }
 
 /// A texture's UV after its KHR_texture_transform, stored as the two rows of a 2 × 3 matrix (MaterialData).
@@ -398,6 +611,14 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
             return float4(hashColor(input.triangleIndex) * (0.6 + 0.4 * saturate(dot(normal, view))), 1.0);
         case MEOW2_DEBUG_VIEW_INSTANCES:
             return float4(hashColor(input.instance), 1.0);
+        case MEOW2_DEBUG_VIEW_MESHLETS:
+            if (input.meshlet == c_noMeshlet)
+            {
+                return float4(0.25, 0.25, 0.25, 1.0); // drawn by the indirect path: no meshlets
+            }
+            // Mixed with the instance, so two copies of a mesh side by side don't look the same.
+            return float4(hashColor(input.meshlet ^ (input.instance * 7919u)) * (0.6 + 0.4 * saturate(dot(normal, view))),
+                          1.0);
         case MEOW2_DEBUG_VIEW_MATERIALS:
             return float4(hashColor(input.material), 1.0);
         case MEOW2_DEBUG_VIEW_OVERDRAW:
