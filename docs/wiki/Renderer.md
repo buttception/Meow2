@@ -2,7 +2,7 @@
 
 The rendering test bed and showcase: opens a glTF scene (or a grid of 100,000 cubes), draws it through the GPU-driven path on Vulkan or D3D12, and puts a Dear ImGui shell on top to pick scenes and read stats.
 
-- **Status:** 🟨 M6. ImGui shell, scene picker and stats (#172 / PR #173); log console, debug-tool settings, saved window layout, and orbit, fly and glTF cameras with animations (#188); rendering debug views, the live render graph and frame capture (#190).
+- **Status:** 🟨 M6. ImGui shell, scene picker and stats (#172 / PR #173); log console, debug-tool settings, saved window layout, and orbit, fly and glTF cameras with animations (#188); rendering debug views, the live render graph and frame capture (#190); the meshlet path, its setting, statistics and debug view (#192).
 
 ## Using it
 
@@ -47,7 +47,7 @@ Window positions, sizes and docking are kept in the config (`renderer.uiLayout`,
 
 Every window but the console is a tab of one panel on the left, the console is along the bottom, and the middle stays clear for the scene; drag tabs anywhere, and the layout is kept.
 
-**Debug views** (the Debug window's VIEW): triangles, instances and materials in their own colours, overdraw as a heat map (layers per pixel: blue 1, green 2, yellow 4, red 8, white 16+), depth, the mesh's and the shading normal, tangents, UVs, mip level (red 0 … magenta 5+), base colour, metallic, roughness, occlusion, emissive, alpha, and lighting only (a white surface), diffuse only and specular only.
+**Debug views** (the Debug window's VIEW): triangles, meshlets, instances and materials in their own colours, overdraw as a heat map (layers per pixel: blue 1, green 2, yellow 4, red 8, white 16+), depth, the mesh's and the shading normal, tangents, UVs, mip level (red 0 … magenta 5+), base colour, metallic, roughness, occlusion, emissive, alpha, and lighting only (a white surface), diffuse only and specular only.
 
 ### Settings
 
@@ -56,6 +56,7 @@ Every window but the console is a tab of one panel on the left, the console is a
 | `renderer.ui` | true | The ImGui shell |
 | `renderer.sky` | true | Hillaire's sky behind the scene and image-based lighting from it; false for the flat ambient light ([Rendering](Rendering.md#sky-and-image-based-lighting)) |
 | `renderer.sunElevation`, `renderer.sunDirection` | 35, 30 | The starting sun, in degrees: above the horizon, and around +Y from +Z towards +X. The Stats window's SUN sliders change it, with intensity and exposure |
+| `renderer.meshlets` | true | Draw through mesh shaders, culling each meshlet, where the GPU has them; false for the indirect path. Applies at once (the Settings window's MESHLETS). The Stats window says which path draws and, for meshlets, how many meshlets and triangles are left after culling ([Rendering](Rendering.md#the-meshlet-path)) |
 | `renderer.compressTextures` | true (false in Debug) | Cook glTF textures to BC7 and BC5; cooked textures are kept in `cache/textures` next to the exe, so only a model's first load compresses ([Rendering](Rendering.md#cooked-textures-bc7-bc5-and-the-cache)) |
 | `rhi.validation`, `rhi.vsync`, `rhi.renderDoc`, `rhi.renderDocOpenWindow`, `rhi.backend` | on except Release, true, false, true, vulkan | The debug tools, also in the Settings window ([Rhi](Rhi.md)) |
 | `renderer.camera` | orbit | How each scene starts: `orbit`, `fly` or `scene` (a glTF camera) |
@@ -115,6 +116,7 @@ ImGui's own backends aren't used. They'd bring SDL into the app and a separate V
 The scene is drawn in linear light into a 16-bit floating-point texture, `Scene colour`, as **Opaque**, **Sky** and **Blended** passes; a **Tone map** pass writes the swapchain, and the UI draws on top. So every step's output is a texture of the graph, which the inspector can show ([Rendering](Rendering.md#the-frame)).
 
 - **Debug views** are a separate variant of the scene's shader (`DEBUG_VIEW = 1` in `GpuDriven.hlsl.meta`), picked with `GpuScene::makeDrawPipelines()` and `setPipelineOverride()`; the frame constants say which view. The game's shader (`DEBUG_VIEW = 0`) has none of it, and Meow2Player never builds the variant. A **debug present** pass (`ToneMap.hlsl`'s `DEBUG_OUTPUT = 1`) shows the colours without the tone curve, or turns the overdraw count into the heat map. Overdraw adds 1/16 a layer with additive pipelines and no depth test.
+- **The Meshlets view** colours each meshlet (from the mesh shader, a flat per-vertex value: every vertex of a meshlet has the same one), grey where the indirect path drew. **The Triangles view** always draws through the indirect path, which gives each triangle its own vertices ([Rendering](Rendering.md#the-meshlet-path) says why).
 - **The wireframe** is the scene's culled lists drawn again with line-fill pipelines (`DEBUG_VIEW = 2`) by `GpuScene::addOverlayPass()`, depth-tested so hidden edges stay hidden. "Only" draws the surfaces black first (they still write depth).
 - **Watching a pass:** before the graph compiles, `FrameInspector` finds the pass by name (indices change between frames), and `RenderGraph::insertPassAfter()` puts a small pass right after it that draws each texture it wrote into a displayable RGBA8 sRGB image (`DebugTexture.hlsl`'s `psDisplay`: the value range, the channels). The graph adds the barriers: the texture is read, then made a target again for the next pass that writes it. ImGui shows the image through `ImGuiLayer::engineTexture()`, an ID resolved to a heap index only when the UI is drawn, and the UI pass declares the image as a read.
 - **A capture** copies, after every pass that writes a texture, that texture as it is (`psCopy` into RGBA16F, or R32F for depth), so the range and channels can still change afterwards. A backend switch ends the capture: its textures belonged to the old device.

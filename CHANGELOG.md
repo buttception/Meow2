@@ -9,6 +9,9 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- Meshlets: on GPUs with mesh shaders, scenes are drawn in small clusters of up to 124 triangles, and clusters outside the view or facing away are skipped before their vertices are shaded; other GPUs draw as before, and both give the same image. Meow2Renderer's Settings window turns it on and off (MESHLETS), its Stats window shows how many meshlets and triangles were drawn, and its Debug window has a Meshlets view (#193).
+- glTF meshes are reordered for the GPU when a model loads (meshoptimizer): repeated vertices merged, triangles ordered for the vertex cache and to reduce overdraw (#193).
+- RHI: mesh pipelines (task and mesh shaders) with direct and indirect dispatches, on Vulkan (`VK_EXT_mesh_shader`) and D3D12; optional, reported per GPU (#193).
 - Meow2Renderer can show what each step of the frame does: a Render graph window with the frame's passes as a flow (click one to watch the textures it writes, live, in a small window), F9 to capture a whole frame in memory and browse every texture as each pass left it, and a Debug window with 19 views (triangles, overdraw heat map, depth, normals, UVs, mip levels, each material channel, lighting only, …), wireframe on top or alone, and frozen culling (#191).
 - Meow2Renderer: a Console window with every log line (filters by level and text, copy, follow), a Settings window for the debug tools and start-up options that saves to the config at once, and window positions kept between runs (#189).
 - Meow2Renderer: orbit and fly (noclip) cameras, the glTF file's own cameras, and its animations played on the scene, so animated cameras and objects move; `renderer.camera`, `renderer.sceneCamera` and `renderer.animation` pick them at start (#189).
