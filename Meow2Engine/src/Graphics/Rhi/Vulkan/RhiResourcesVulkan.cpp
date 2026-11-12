@@ -11,8 +11,10 @@
 #include <format>
 #include <iterator>
 #include <mutex>
+#include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace Meow2::Rhi
 {
@@ -666,23 +668,55 @@ std::uint32_t RhiDeviceVulkan::bindlessIndex(SamplerHandle sampler)
 Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPipelineDesc& desc)
 {
     const Memory::MemTagScope tag{Memory::MemTag::Rhi};
-    const VkShaderModule vertex = makeModule(m_device, desc.vertexCode);
-    const VkShaderModule pixel = makeModule(m_device, desc.pixelCode);
-    if (vertex == VK_NULL_HANDLE || pixel == VK_NULL_HANDLE)
+    const bool meshPipeline = !desc.meshCode.empty();
+    if (meshPipeline && !m_adapter.meshShaders)
     {
-        vkDestroyShaderModule(m_device, vertex, nullptr);
-        vkDestroyShaderModule(m_device, pixel, nullptr);
-        return fail(ErrorCode::InvalidArgument, std::format("Pipeline '{}': bad shader bytecode", desc.name));
+        return fail(ErrorCode::Unsupported, std::format("Pipeline '{}': this GPU has no mesh shaders", desc.name));
     }
-    const std::array<VkPipelineShaderStageCreateInfo, 2> stages{
-        VkPipelineShaderStageCreateInfo{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                                        .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                                        .module = vertex,
-                                        .pName = desc.vertexEntry.c_str()},
-        VkPipelineShaderStageCreateInfo{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                                        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                                        .module = pixel,
-                                        .pName = desc.pixelEntry.c_str()}};
+    // A vertex pipeline: vertex + pixel. A mesh pipeline: (task +) mesh + pixel.
+    struct Stage
+    {
+        std::span<const std::byte> code;
+        VkShaderStageFlagBits stage;
+        const std::string* entry;
+    };
+    std::vector<Stage> wanted;
+    if (meshPipeline)
+    {
+        if (!desc.taskCode.empty())
+        {
+            wanted.push_back({desc.taskCode, VK_SHADER_STAGE_TASK_BIT_EXT, &desc.taskEntry});
+        }
+        wanted.push_back({desc.meshCode, VK_SHADER_STAGE_MESH_BIT_EXT, &desc.meshEntry});
+    }
+    else
+    {
+        wanted.push_back({desc.vertexCode, VK_SHADER_STAGE_VERTEX_BIT, &desc.vertexEntry});
+    }
+    wanted.push_back({desc.pixelCode, VK_SHADER_STAGE_FRAGMENT_BIT, &desc.pixelEntry});
+    std::vector<VkShaderModule> modules;
+    std::vector<VkPipelineShaderStageCreateInfo> stages;
+    const auto destroyModules = [&]
+    {
+        for (const VkShaderModule module : modules)
+        {
+            vkDestroyShaderModule(m_device, module, nullptr); // the pipeline holds its own compiled code
+        }
+    };
+    for (const Stage& stage : wanted)
+    {
+        const VkShaderModule module = makeModule(m_device, stage.code);
+        if (module == VK_NULL_HANDLE)
+        {
+            destroyModules();
+            return fail(ErrorCode::InvalidArgument, std::format("Pipeline '{}': bad shader bytecode", desc.name));
+        }
+        modules.push_back(module);
+        stages.push_back({.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                          .stage = stage.stage,
+                          .module = module,
+                          .pName = stage.entry->c_str()});
+    }
 
     const VkFormat colorFormat = vulkanFormat(desc.colorFormat);
     const VkPipelineRenderingCreateInfo rendering{.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
@@ -741,8 +775,9 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
                                             .pNext = &rendering,
                                             .stageCount = static_cast<std::uint32_t>(stages.size()),
                                             .pStages = stages.data(),
-                                            .pVertexInputState = &vertexInput,
-                                            .pInputAssemblyState = &assembly,
+                                            // Mesh shaders make their own primitives: no vertex input or assembly.
+                                            .pVertexInputState = meshPipeline ? nullptr : &vertexInput,
+                                            .pInputAssemblyState = meshPipeline ? nullptr : &assembly,
                                             .pViewportState = &viewport,
                                             .pRasterizationState = &rasterization,
                                             .pMultisampleState = &multisample,
@@ -752,8 +787,7 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
                                             .layout = m_pipelineLayout};
     PipelineVulkan record;
     const VkResult result = vkCreateGraphicsPipelines(m_device, m_pipelineCache, 1, &info, nullptr, &record.pipeline);
-    vkDestroyShaderModule(m_device, vertex, nullptr); // the pipeline holds its own compiled code
-    vkDestroyShaderModule(m_device, pixel, nullptr);
+    destroyModules();
     if (result != VK_SUCCESS)
     {
         return fail(ErrorCode::Unknown, std::format("Pipeline '{}': {}", desc.name, vulkanResultName(result)));

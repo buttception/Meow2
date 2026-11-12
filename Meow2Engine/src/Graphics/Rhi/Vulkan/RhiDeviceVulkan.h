@@ -151,6 +151,8 @@ public:
     void drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws, std::uint64_t drawOffset,
                            std::uint64_t countOffset) override;
     void dispatch(std::uint32_t x, std::uint32_t y, std::uint32_t z) override;
+    void dispatchMesh(std::uint32_t x, std::uint32_t y, std::uint32_t z) override;
+    void dispatchMeshIndirect(BufferHandle arguments, std::uint64_t offset) override;
     void fillBuffer(BufferHandle buffer, std::uint32_t value) override;
     void barrier(BufferHandle buffer, ResourceState from, ResourceState to) override;
     void barrier(TextureHandle texture, ResourceState from, ResourceState to) override;

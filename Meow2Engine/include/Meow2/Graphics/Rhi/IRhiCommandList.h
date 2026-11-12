@@ -100,6 +100,21 @@ public:
     virtual void drawIndirectCount(BufferHandle draws, BufferHandle count, std::uint32_t maxDraws,
                                    std::uint64_t drawOffset = 0, std::uint64_t countOffset = 0) = 0;
 
+    /// @brief Runs the current mesh pipeline: `x × y × z` task shader groups, or mesh shader groups without a task
+    ///        shader.
+    /// @param x Groups along X; at most 65535 per dimension, 4194304 (2^22) in all.
+    /// @param y Groups along Y.
+    /// @param z Groups along Z.
+    /// @pre RhiAdapterInfo::meshShaders; inside beginRendering().
+    virtual void dispatchMesh(std::uint32_t x, std::uint32_t y = 1, std::uint32_t z = 1) = 0;
+
+    /// @brief Runs the current mesh pipeline with group counts the GPU wrote: three `uint`s (x, y, z), with the same
+    ///        limits as dispatchMesh().
+    /// @param arguments The buffer; in ResourceState::IndirectArgs.
+    /// @param offset    Byte offset of x; a multiple of 4.
+    /// @pre RhiAdapterInfo::meshShaders; inside beginRendering().
+    virtual void dispatchMeshIndirect(BufferHandle arguments, std::uint64_t offset = 0) = 0;
+
     /// @brief Runs the current compute pipeline.
     /// @param x Thread groups along X.
     /// @param y Thread groups along Y.

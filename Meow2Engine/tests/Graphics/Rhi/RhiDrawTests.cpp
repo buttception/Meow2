@@ -922,4 +922,113 @@ TEST_F(PipelineLibraryTest, UnknownShaderIsAnError)
         .shader = m_ids.next<AssetId::c_kind>(), .colorFormat = RhiFormat::Rgba8Unorm});
     EXPECT_FALSE(id);
 }
+
+namespace
+{
+constexpr std::string_view c_meshShader = "01a1b5e2-3c19-8000-80a4-7b19d2e6c05a"; // RhiMesh.hlsl
+
+/// @brief Mesh pipelines from RhiMesh.hlsl, on GPUs that have mesh shaders.
+class MeshShaderTest : public RhiDrawTest
+{
+protected:
+    /// @brief A mesh pipeline: `meshEntry`, with `taskEntry` in front of it unless empty.
+    PipelineHandle makeMeshPipeline(std::string_view taskEntry, std::string_view meshEntry)
+    {
+        const std::vector<std::byte> task =
+            taskEntry.empty() ? std::vector<std::byte>{} : bytecode(c_meshShader, taskEntry);
+        const std::vector<std::byte> mesh = bytecode(c_meshShader, meshEntry);
+        const std::vector<std::byte> pixel = bytecode(c_meshShader, "psMain");
+        Result<PipelineHandle> pipeline = m_device->createGraphicsPipeline({.vertexEntry = {},
+                                                                            .taskCode = task,
+                                                                            .taskEntry = std::string{taskEntry},
+                                                                            .meshCode = mesh,
+                                                                            .meshEntry = std::string{meshEntry},
+                                                                            .pixelCode = pixel,
+                                                                            .colorFormat = RhiFormat::Rgba8Unorm,
+                                                                            .name = "Mesh"});
+        EXPECT_TRUE(pipeline) << pipeline.error().message;
+        return *pipeline;
+    }
+
+    /// @brief Which of the four columns are drawn (red), checked in the middle of each.
+    std::array<bool, 4> columns(BufferHandle readback)
+    {
+        std::array<bool, 4> drawn{};
+        for (std::uint32_t column = 0; column < 4; ++column)
+        {
+            drawn[column] = pixelAt(readback, column * c_targetSize / 4 + c_targetSize / 8, c_targetSize / 2).r == 255;
+        }
+        return drawn;
+    }
+};
+} // namespace
+
+TEST_F(MeshShaderTest, DrawsATriangle)
+{
+    if (!m_device->adapter().meshShaders)
+    {
+        GTEST_SKIP() << "this GPU has no mesh shaders";
+    }
+    const PipelineHandle pipeline = makeMeshPipeline({}, "msMain");
+    const TextureHandle target = makeTarget();
+    const BufferHandle readback = makeBuffer(sizeof(Pixel) * c_targetSize * c_targetSize, RhiMemory::Readback);
+    renderToReadback(target, readback,
+                     [&](IRhiCommandList& list)
+                     {
+                         list.setPipeline(pipeline);
+                         list.setPushConstants({.userData = 0xFF0000FFU}); // opaque red
+                         list.dispatchMesh(2);
+                     });
+
+    EXPECT_EQ(columns(readback), (std::array<bool, 4>{true, true, false, false})) << "two groups, two columns";
+
+    m_device->destroy(pipeline);
+    m_device->destroy(target);
+    m_device->destroy(readback);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
+
+TEST_F(MeshShaderTest, DispatchesFromABuffer)
+{
+    if (!m_device->adapter().meshShaders)
+    {
+        GTEST_SKIP() << "this GPU has no mesh shaders";
+    }
+    const PipelineHandle pipeline = makeMeshPipeline("asMain", "msFromTask");
+    const std::vector<std::byte> argsCode = bytecode(c_meshShader, "csArgs");
+    Result<PipelineHandle> args =
+        m_device->createComputePipeline({.code = argsCode, .entry = "csArgs", .name = "Args"});
+    ASSERT_TRUE(args) << args.error().message;
+    const TextureHandle target = makeTarget();
+    const BufferHandle arguments = makeBuffer(16, RhiMemory::GpuOnly);
+    const BufferHandle readback = makeBuffer(sizeof(Pixel) * c_targetSize * c_targetSize, RhiMemory::Readback);
+
+    runFrame(
+        [&](IRhiCommandList& list)
+        {
+            // The GPU writes (3, 1, 1): three task groups, each launching the mesh group of its column.
+            list.setPipeline(*args);
+            list.setPushConstants({.instance = m_device->bindlessStorageIndex(arguments)});
+            list.dispatch(1);
+            list.barrier(arguments, ResourceState::ShaderWrite, ResourceState::IndirectArgs);
+            list.barrier(target, ResourceState::Undefined, ResourceState::ColorTarget);
+            list.beginRendering(RenderTargets{.color = target, .clearColor = Math::Color{.a = 1.0F}});
+            list.setPipeline(pipeline);
+            list.setPushConstants({.userData = 0xFF0000FFU});
+            list.dispatchMeshIndirect(arguments);
+            list.endRendering();
+            list.barrier(target, ResourceState::ColorTarget, ResourceState::CopySource);
+            list.copyTextureToBuffer(target, readback);
+            list.barrier(readback, ResourceState::CopyTarget, ResourceState::HostRead);
+        });
+
+    EXPECT_EQ(columns(readback), (std::array<bool, 4>{true, true, true, false})) << "three groups from the buffer";
+
+    m_device->destroy(pipeline);
+    m_device->destroy(*args);
+    m_device->destroy(target);
+    m_device->destroy(arguments);
+    m_device->destroy(readback);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
 } // namespace Meow2::Rhi

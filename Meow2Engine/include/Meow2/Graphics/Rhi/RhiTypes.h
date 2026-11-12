@@ -236,10 +236,19 @@ struct ScissorRect
 
 /// @brief What to create a graphics pipeline with. Plain data. Depth uses GREATER_EQUAL, for reversed Z (techstack.md
 ///        §10). The bytecode is only read during the call.
+///
+/// Two kinds: a vertex pipeline (`vertexCode`), drawn with draw() and drawIndirectCount(), or a mesh pipeline
+/// (`meshCode`, optionally with `taskCode`), run with dispatchMesh() and dispatchMeshIndirect(). A mesh pipeline needs
+/// RhiAdapterInfo::meshShaders.
 struct GraphicsPipelineDesc
 {
-    std::span<const std::byte> vertexCode{};    ///< Vertex shader bytecode for this device's backend.
+    std::span<const std::byte> vertexCode{};    ///< Vertex shader bytecode for this device's backend; empty for a mesh
+                                                ///< pipeline.
     std::string vertexEntry = "vsMain";         ///< Its entry point.
+    std::span<const std::byte> taskCode{};      ///< Task (amplification) shader bytecode; optional in a mesh pipeline.
+    std::string taskEntry = "asMain";           ///< Its entry point.
+    std::span<const std::byte> meshCode{};      ///< Mesh shader bytecode; set for a mesh pipeline.
+    std::string meshEntry = "msMain";           ///< Its entry point.
     std::span<const std::byte> pixelCode{};     ///< Pixel shader bytecode.
     std::string pixelEntry = "psMain";          ///< Its entry point.
     RhiFormat colorFormat = RhiFormat::Unknown; ///< Format of the colour target.
@@ -271,9 +280,11 @@ struct GpuMemoryStats
 /// @brief The GPU a device runs on. Plain data.
 struct RhiAdapterInfo
 {
-    std::string name;       ///< Product name.
-    std::string apiVersion; ///< API version the driver supports, e.g. `1.3.280`.
-    bool discrete = false;  ///< A dedicated GPU rather than one built into the CPU.
-    bool software = false;  ///< Runs on the CPU, e.g. Mesa's lavapipe.
+    std::string name;         ///< Product name.
+    std::string apiVersion;   ///< API version the driver supports, e.g. `1.3.280`.
+    bool discrete = false;    ///< A dedicated GPU rather than one built into the CPU.
+    bool software = false;    ///< Runs on the CPU, e.g. Mesa's lavapipe.
+    bool meshShaders = false; ///< Task and mesh shaders work (Vulkan's VK_EXT_mesh_shader, D3D12's mesh shader tier
+                              ///< 1). Optional: without them, draw with vertex pipelines.
 };
 } // namespace Meow2::Rhi
