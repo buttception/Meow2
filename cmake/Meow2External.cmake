@@ -179,6 +179,22 @@ add_library(meow2_stb_image STATIC "${PROJECT_SOURCE_DIR}/Meow2Engine/src/Assets
 target_include_directories(meow2_stb_image SYSTEM PUBLIC "${PROJECT_SOURCE_DIR}/external/stb")
 set_target_properties(meow2_stb_image PROPERTIES FOLDER "External")
 
+# ---- meshoptimizer (mesh optimisation and meshlets; techstack.md §4, §11) ----------------------------
+# Built from its sources, without its CMake project (which adds install rules and options of its own), outside the
+# engine's warnings. Only the parts the engine calls: vertex cache, overdraw and fetch ordering, the index remap and
+# the clusterizer. Its memory goes through operator new, so the engine's global tracking counts it under the tag of a
+# MemTagScope around each call. Only src/Graphics/Renderer/ includes it.
+set(meow2MeshoptimizerDir "${PROJECT_SOURCE_DIR}/external/meshoptimizer")
+meow2_require_submodule(meshoptimizer "${meow2MeshoptimizerDir}")
+add_library(meow2_meshoptimizer STATIC
+    "${meow2MeshoptimizerDir}/src/allocator.cpp" "${meow2MeshoptimizerDir}/src/clusterizer.cpp"
+    "${meow2MeshoptimizerDir}/src/indexanalyzer.cpp" "${meow2MeshoptimizerDir}/src/indexgenerator.cpp"
+    "${meow2MeshoptimizerDir}/src/meshletutils.cpp"
+    "${meow2MeshoptimizerDir}/src/overdrawoptimizer.cpp" "${meow2MeshoptimizerDir}/src/vcacheoptimizer.cpp"
+    "${meow2MeshoptimizerDir}/src/vfetchoptimizer.cpp")
+target_include_directories(meow2_meshoptimizer SYSTEM PUBLIC "${meow2MeshoptimizerDir}/src")
+set_target_properties(meow2_meshoptimizer PROPERTIES FOLDER "External")
+
 # ---- Dear ImGui (Meow2Renderer's UI; techstack.md §2, §4) ------------------------------------------
 # Built only with the Renderer, which is its one user; never part of the engine or the player. Its own backends aren't
 # compiled: Meow2Renderer draws it through the RHI and feeds it engine input events.

@@ -36,7 +36,8 @@ struct FrameConstants
     uint materialBuffer;     ///< Heap index of the MaterialData array; set by GpuScene.
     uint materialCount;      ///< Materials in it. An instance with a higher index gets a colour from its index.
     uint debugView;          ///< MEOW2_DEBUG_VIEW_*: what the DEBUG_VIEW = VIEW variant shows; ignored by the others.
-    uint padding1;           ///< Pads to 16 bytes.
+    uint taskBuffer;         ///< Heap index of the TaskItem lists (meshlet path): one per MEOW2_DRAW_LIST_*, taskCapacity
+                             ///< each; set by GpuScene.
     float4 sunDirection;     ///< xyz: unit direction towards the sun; w: its intensity.
     float4 sunColor;         ///< rgb: the sun's linear colour; w: exposure (scales the final colour).
     float4 skyColor;         ///< rgb: ambient light from above, without a sky; w: unused.
@@ -46,9 +47,9 @@ struct FrameConstants
     uint irradianceBuffer;   ///< Heap index of the sky's diffuse light: 9 float4 spherical-harmonic coefficients.
     uint transmittanceLut;   ///< Heap index of the atmosphere's transmittance LUT, for the sun's colour.
     uint environmentSampler; ///< Sampler heap index: linear, clamped, mipmapped.
-    uint padding2;           ///< Pads to 16 bytes.
-    uint padding3;           ///< Pads to 16 bytes.
-    uint padding4;           ///< Pads to 16 bytes.
+    uint taskCounts;         ///< Writable heap index of the meshlet path's counters (MEOW2_TASK_COUNT_*).
+    uint taskCapacity;       ///< TaskItems each list has room for.
+    uint cullBuffer;         ///< Heap index of this frame's CullConstants: the task shader culls with its planes.
 };
 
 /// One drawn object, in a buffer the GPU reads and compute culling can edit.
@@ -162,7 +163,8 @@ struct UiDraw
 #define MEOW2_DEBUG_VIEW_DIFFUSE 17u        ///< Diffuse light only (sun and ambient).
 #define MEOW2_DEBUG_VIEW_SPECULAR 18u       ///< Specular light only (sun and reflections).
 #define MEOW2_DEBUG_VIEW_BLACK 19u          ///< Black, depth written: the base of a hidden-line wireframe.
-#define MEOW2_DEBUG_VIEW_COUNT 20u          ///< How many.
+#define MEOW2_DEBUG_VIEW_MESHLETS 20u       ///< A colour per meshlet (meshlet path); grey where the indirect path drew.
+#define MEOW2_DEBUG_VIEW_COUNT 21u          ///< How many.
 
 /// One metallic-roughness material, in a buffer shaders read by index. Linear colours. A texture index of 0 means no
 /// texture (white, or a flat normal); each texture has its own sampler.
@@ -204,13 +206,55 @@ struct MaterialData
 /// One mesh, in a buffer shaders read by index.
 struct MeshDraw
 {
-    uint vertexBuffer;    ///< Heap index of its PackedVertex array.
-    uint indexBuffer;     ///< Heap index of its uint indices.
-    uint firstIndex;      ///< Where its indices start.
-    uint indexCount;      ///< How many.
-    float4 boundsCenter;  ///< xyz: the centre of its box; w: the radius of a sphere around it.
-    float4 boundsExtents; ///< xyz: half the box's size; w: unused.
+    uint vertexBuffer;          ///< Heap index of its PackedVertex array.
+    uint indexBuffer;           ///< Heap index of its uint indices.
+    uint firstIndex;            ///< Where its indices start.
+    uint indexCount;            ///< How many.
+    float4 boundsCenter;        ///< xyz: the centre of its box; w: the radius of a sphere around it.
+    float4 boundsExtents;       ///< xyz: half the box's size; w: unused.
+    uint meshletBuffer;         ///< Heap index of its Meshlet array.
+    uint meshletVertexBuffer;   ///< Heap index of its meshlets' vertices: uint indices into vertexBuffer.
+    uint meshletTriangleBuffer; ///< Heap index of its meshlets' triangles: three 8-bit local vertex indices per uint.
+    uint meshletCount;          ///< Meshlets.
 };
+
+/// Most vertices and triangles in a meshlet (Renderer::buildMeshlets()). 64 and 124 suit both NVIDIA's and AMD's mesh
+/// shader hardware; the clusterizer wants the triangle limit to be a multiple of 4.
+#define MEOW2_MESHLET_MAX_VERTICES 64u
+#define MEOW2_MESHLET_MAX_TRIANGLES 124u
+/// Meshlets one task shader group culls: one TaskItem.
+#define MEOW2_TASK_MESHLETS 32u
+/// Task groups along X of a dispatch with more than 65535: 32768 × 128 is the 2^22 groups a dispatch may have in all.
+#define MEOW2_TASK_GROUPS_X 32768u
+
+/// One cluster of a mesh, culled as a whole by the task shader and drawn by one mesh shader group.
+struct Meshlet
+{
+    float4 sphere;      ///< xyz: the centre of a sphere around it, in the mesh's space; w: its radius.
+    float4 cone;        ///< xyz: the average direction its triangles face (unit, mesh space); w: meshoptimizer's
+                        ///< cutoff, the sine of half the normals' spread (0 for a flat cluster); 1 when they spread
+                        ///< too far to cull by.
+    uint firstVertex;   ///< Where its vertices start in MeshDraw::meshletVertexBuffer.
+    uint firstTriangle; ///< Where its triangles start in MeshDraw::meshletTriangleBuffer.
+    uint vertexCount;   ///< Vertices; at most MEOW2_MESHLET_MAX_VERTICES.
+    uint triangleCount; ///< Triangles; at most MEOW2_MESHLET_MAX_TRIANGLES.
+};
+
+/// Work for one task shader group (meshlet path): up to MEOW2_TASK_MESHLETS meshlets of one instance. Written by
+/// culling, one or more per surviving instance.
+struct TaskItem
+{
+    uint instance;     ///< Index in the InstanceData array.
+    uint firstMeshlet; ///< Its first meshlet.
+    uint meshletCount; ///< How many from there; at most MEOW2_TASK_MESHLETS.
+    uint padding0;     ///< Pads to 16 bytes.
+};
+
+/// The meshlet path's counters (FrameConstants::taskCounts), cleared every frame. Indices in uints.
+#define MEOW2_TASK_COUNT_ITEMS 0u      ///< First of MEOW2_DRAW_LIST_COUNT: TaskItems written per list.
+#define MEOW2_TASK_COUNT_MESHLETS 3u   ///< Meshlets drawn (left after cluster culling).
+#define MEOW2_TASK_COUNT_TRIANGLES 4u  ///< Their triangles.
+#define MEOW2_TASK_COUNT_SIZE 8u       ///< uints in the buffer.
 
 /// What the culling pass reads, once per frame.
 struct CullConstants
@@ -229,6 +273,16 @@ struct CullConstants
     uint materialBuffer; ///< Heap index of the MaterialData array, to pick each instance's list.
     uint materialCount;  ///< Materials in it.
     uint drawCapacity;   ///< Draws each list has room for.
+    float4 origin;       ///< xyz: where the frustum's sides meet (the camera), for cone culling; w: 1 if there's such a
+                         ///< point (perspective), 0 if not (orthographic: no cone culling).
+    uint meshlets;       ///< 1: write TaskItems for the meshlet path instead of IndirectDraws.
+    uint taskBuffer;     ///< Writable heap index of the TaskItem lists: one per MEOW2_DRAW_LIST_*, taskCapacity each.
+    uint taskCounts;     ///< Writable heap index of the meshlet path's counters (MEOW2_TASK_COUNT_*).
+    uint taskCapacity;   ///< TaskItems each list has room for.
+    uint taskArguments;  ///< Writable heap index of the mesh dispatches' group counts: x, y, z and a pad per list.
+    uint padding0;       ///< Pads to 16 bytes.
+    uint padding1;       ///< Pads to 16 bytes.
+    uint padding2;       ///< Pads to 16 bytes.
 };
 
 /// The indirect draw lists culling fills, one pipeline each. Blended instances aren't in any: they're drawn sorted.

@@ -100,11 +100,12 @@ meow2_add_test_suite(
         Platform/WindowTests.cpp
     LIBRARIES SDL3::SDL3-static)
 
-# The frame packet.
+# The frame packet, the render graph and mesh processing.
 meow2_add_test_suite(
     TARGET    Meow2EngineRendererTests
     MODULE    Renderer
-    SOURCES   Graphics/Renderer/FramePacketTests.cpp Graphics/Renderer/RenderGraphTests.cpp)
+    SOURCES   Graphics/Renderer/FramePacketTests.cpp Graphics/Renderer/MeshProcessingTests.cpp
+              Graphics/Renderer/RenderGraphTests.cpp)
 
 # RHI: handles and the requirements checks need no GPU, and read the backends' private headers.
 set(meow2RhiTestSources "")

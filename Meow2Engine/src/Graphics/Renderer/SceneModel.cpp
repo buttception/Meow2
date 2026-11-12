@@ -4,6 +4,7 @@
 #include "Meow2/Graphics/Renderer/SceneModel.h"
 
 #include "Meow2/Core/Assert.h"
+#include "Meow2/Graphics/Renderer/MeshProcessing.h"
 
 #include <DirectXMath.h>
 
@@ -142,13 +143,17 @@ Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::Imported
         std::vector<GpuSubmesh> parts;
         for (const Assets::ImportedPrimitive& primitive : mesh.primitives)
         {
-            Result<std::uint32_t> uploaded = scene.addMesh(makeMesh({.positions = primitive.positions,
-                                                                     .normals = primitive.normals,
-                                                                     .tangents = primitive.tangents,
-                                                                     .uvs = primitive.uvs,
-                                                                     .colors = primitive.colors,
-                                                                     .indices = primitive.indices},
-                                                                    primitive.bounds));
+            MeshData packed = makeMesh({.positions = primitive.positions,
+                                        .normals = primitive.normals,
+                                        .tangents = primitive.tangents,
+                                        .uvs = primitive.uvs,
+                                        .colors = primitive.colors,
+                                        .indices = primitive.indices},
+                                       primitive.bounds);
+            // Ordered for the GPU's caches and split into meshlets once, here, rather than on every backend switch.
+            optimizeMesh(packed);
+            buildMeshlets(packed);
+            Result<std::uint32_t> uploaded = scene.addMesh(packed);
             if (!uploaded)
             {
                 return Unexpected<Error>{uploaded.error()};
