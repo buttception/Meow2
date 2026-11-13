@@ -1,5 +1,6 @@
 /// @file
-/// @brief Image decoding through stb_image, and the memory hooks its implementation (StbImage.cpp) calls.
+/// @brief Image decoding through stb_image, PNG encoding through stb_image_write, and the memory hooks their
+///        implementations (StbImage.cpp, StbImageWrite.cpp) call.
 
 #include "Meow2/Assets/Texture/Image.h"
 
@@ -7,6 +8,7 @@
 #include "Meow2/Core/Memory/MemTag.h"
 
 #include <stb_image.h>
+#include <stb_image_write.h>
 
 #include <algorithm>
 #include <array>
@@ -60,6 +62,34 @@ Result<Image> decodeImage(std::span<const std::byte> encoded)
     std::memcpy(image.pixels.data(), pixels, image.pixels.size());
     stbi_image_free(pixels);
     return image;
+}
+
+Result<std::vector<std::byte>> encodePng(const Image& image)
+{
+    if (image.width == 0 || image.height == 0 || image.width > static_cast<std::uint32_t>(INT_MAX / 4) ||
+        image.height > static_cast<std::uint32_t>(INT_MAX) ||
+        image.pixels.size() != std::size_t{image.width} * image.height * 4)
+    {
+        return fail(ErrorCode::InvalidArgument,
+                    std::format("PNG: {}x{} with {} bytes of pixels", image.width, image.height, image.pixels.size()));
+    }
+    const Memory::MemTagScope tag{Memory::MemTag::Assets};
+    std::vector<std::byte> file;
+    // stb_image_write hands the file over in pieces; they're appended in order.
+    const auto append = [](void* context, void* data, int size)
+    {
+        auto* out = static_cast<std::vector<std::byte>*>(context);
+        const auto* bytes = static_cast<const std::byte*>(data);
+        out->insert(out->end(), bytes, bytes + size);
+    };
+    const int written =
+        stbi_write_png_to_func(append, &file, static_cast<int>(image.width), static_cast<int>(image.height), 4,
+                               image.pixels.data(), static_cast<int>(image.width * 4));
+    if (written == 0 || file.empty())
+    {
+        return fail(ErrorCode::Unknown, "PNG: encoding failed");
+    }
+    return file;
 }
 } // namespace Meow2::Assets
 

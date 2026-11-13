@@ -29,6 +29,15 @@ struct Image
 /// @note Thread-safe. Decoding memory is counted under MemTag::Assets.
 [[nodiscard]] Result<Image> decodeImage(std::span<const std::byte> encoded);
 
+/// @brief Encodes an image as a PNG file in memory (RGBA, 8 bits per channel), for screenshots and golden images.
+///
+/// Lossless, so decodeImage() gives back the same pixels. The colour values are written as they are: a PNG viewer
+/// shows them as sRGB.
+/// @param image The image; `pixels` holds width × height × 4 bytes.
+/// @return The file's bytes, or ErrorCode::InvalidArgument for an empty or inconsistent image.
+/// @note Thread-safe. Encoding memory is counted under MemTag::Assets.
+[[nodiscard]] Result<std::vector<std::byte>> encodePng(const Image& image);
+
 /// @brief The mip chain of an image: the image, then each level half the size of the one before (rounded down, at
 ///        least 1), down to 1 × 1.
 ///
