@@ -191,7 +191,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | enkiTS v1.12 | job system | zlib | submodule; static, C interface/examples off; only included by `src/Core/Jobs/Enkits/` |
 | Tracy v0.14.1 (client only) | CPU/GPU/memory profiler | BSD-3 | submodule; static, on demand, localhost only, no broadcast, its crash handler off; `TRACY_ENABLE` per configuration (Debug/RWDI). The **viewer is not in the repo**: download it from Tracy's GitHub releases, same version as the submodule |
 | **Not submodules** | | | |
-| stb_image v2.30 | PNG and JPEG decoding | MIT or public domain | one header, `external/stb/stb_image.h`, copied unchanged (owner-approved) like RenderDoc's; its implementation in its own library (`meow2_stb_image`), memory through the engine's hooks. Only included under `src/Assets/Texture/`. BC7 and other GPU formats come from the texture cooker later, not from it |
+| stb_image v2.30, stb_image_write v1.16 | PNG and JPEG decoding; PNG encoding (golden images, screenshots) | MIT or public domain | one header each, `external/stb/`, copied unchanged (owner-approved; stb_image_write 2026-11-13) like RenderDoc's; their implementations in their own library (`meow2_stb_image`), memory through the engine's hooks. Only included under `src/Assets/Texture/`. GPU formats (BC7, BC5) come from the texture cooker, not from them |
 | Barlow Semi Condensed (Regular, Medium) | UI font of Meow2Renderer and Meow2Editor | SIL Open Font License 1.1 | two TrueType files and the licence in `assets/fonts/BarlowSemiCondensed/`, from Google Fonts' repository (owner-approved 2026-11-08); copied next to each exe and into the release zip. Consolas, the monospace font, is Microsoft's and not shipped: it's loaded from the system on Windows ([Theme](docs/wiki/Theme.md)) |
 | RenderDoc in-app API v1.47 | frame capture from inside the app (§11) | MIT | one header, `external/renderdoc/renderdoc_app.h`, copied unchanged (owner-approved): RenderDoc's whole repository would be a large submodule for one file. Only included by `src/Graphics/Rhi/RenderDocCapture.cpp` |
 | Qt ≥ 6.8 (tested 6.12.0, MSVC 2022 64-bit kit) | Meow2Editor (Widgets) | LGPLv3 (link dynamically) | Qt online installer / Maintenance Tool on Windows, aqtinstall 3.3.0 in a plain step in Linux CI (only GitHub-owned actions are allowed); found through `CMAKE_PREFIX_PATH`; `windeployqt` copies the DLLs next to the exe after each build |
@@ -362,7 +362,8 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
   - on first use, does a blobless, sparse clone of the pinned commit into `assets/gltf-sample-assets/` (git-ignored);
   - then adds only `Models/<ModelName>/` to the sparse checkout, so only that model is downloaded.
 - Meow2Renderer has a scene browser listing the sample models, marking which are downloaded, and can open any local `.gltf` / `.glb`.
-- **Visual regression tests**: render a scene headlessly from a fixed camera, save PNG, and compare with an owner-approved golden image (per backend) using a tolerance (per-pixel threshold + % of pixels, or FLIP). CTest label `visual`. A new golden is only accepted after the owner has looked at it.
+- **Visual regression tests** (M6): render a scene headlessly from a fixed camera, save PNG, and compare with an owner-approved golden image (per backend) using a tolerance (per-pixel threshold + % of pixels, or FLIP). CTest label `visual`. A new golden is only accepted after the owner has looked at it.
+  - The 25 suggested samples, 512 × 512, in plain git under `tests/visual/goldens/` (owner decisions 2026-11-13); drawn as Meow2Renderer first shows them; a pixel differs past 8/255 in a channel, at most 0.1 % may. One golden per backend: the same GPU filters fine texture detail differently under each API. See [Testing](docs/wiki/Testing.md#golden-images).
 
 ## 13a. Assets (M4)
 
@@ -750,3 +751,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-09 — Roadmap renumbered (milestones.md, owner decision): Editor M7, Physics M8, Scripting M9, Advanced rendering M12, Platforms M13. §14: physics is modular (build-time backend or `None`), the first library is open (Box3D considered); §7: the in-app console buffer implemented.
 - 2026-11-10 — §9: window sizes in logical units, 80 % default; §11: the Renderer's own frame capture and debug views (not in games); the scene is drawn in HDR with a tone-map pass.
 - 2026-11-12 — §4/§11: meshoptimizer v1.3 added (owner-approved 2026-11-09); meshlets and the optional mesh-shader path.
+- 2026-11-13 — §4/§13: stb_image_write v1.16 added (owner-approved) for PNG encoding; golden-image tests implemented (512 × 512, plain git, one golden per backend). M6 done (0.7.0).

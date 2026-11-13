@@ -95,4 +95,36 @@ TEST(Image, SrgbMipsAverageInLinearLight)
     const std::vector<Image> data = makeMipChain(image, false);
     EXPECT_NEAR(channel(data[1], 0, 0, 0), 128, 1) << "data images are averaged as they are";
 }
+
+TEST(Image, PngRoundTrips)
+{
+    // A gradient with every channel different, alpha included, so a swapped or dropped channel shows.
+    Image image{.width = 7, .height = 5, .pixels = {}};
+    for (std::uint32_t y = 0; y < image.height; ++y)
+    {
+        for (std::uint32_t x = 0; x < image.width; ++x)
+        {
+            image.pixels.insert(image.pixels.end(),
+                                {static_cast<std::byte>(x * 30), static_cast<std::byte>(y * 50),
+                                 static_cast<std::byte>(x * y * 7), static_cast<std::byte>(255 - x * 10)});
+        }
+    }
+    const Result<std::vector<std::byte>> png = encodePng(image);
+    ASSERT_TRUE(png) << png.error().message;
+    ASSERT_GT(png->size(), 8U);
+    EXPECT_EQ(std::to_integer<int>((*png)[1]), 'P') << "the PNG signature";
+
+    const Result<Image> decoded = decodeImage(*png);
+    ASSERT_TRUE(decoded) << decoded.error().message;
+    EXPECT_EQ(decoded->width, image.width);
+    EXPECT_EQ(decoded->height, image.height);
+    EXPECT_EQ(decoded->pixels, image.pixels) << "lossless";
+}
+
+TEST(Image, PngRejectsBadImages)
+{
+    EXPECT_EQ(encodePng(Image{}).error().code, ErrorCode::InvalidArgument) << "empty";
+    const Image tooShort{.width = 2, .height = 2, .pixels = std::vector<std::byte>(12)};
+    EXPECT_EQ(encodePng(tooShort).error().code, ErrorCode::InvalidArgument) << "fewer bytes than 2 × 2 × 4";
+}
 } // namespace Meow2::Assets

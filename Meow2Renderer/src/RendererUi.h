@@ -115,6 +115,10 @@ struct SunControls
     float exposure = 1.0F;          ///< Scales the final colour before the tone curve.
 };
 
+/// @brief What the scene clears to where nothing is drawn: near black, the theme's base, so scenes sit on the same
+///        background as the UI. Golden images use it too.
+inline constexpr Math::Color c_sceneClearColor{0.004F, 0.004F, 0.005F, 1.0F};
+
 /// @brief The direction towards the sun for some controls.
 /// @param sun The controls.
 /// @return A unit vector, world space (+Y up, +Z forward).

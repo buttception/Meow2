@@ -175,7 +175,8 @@ if(MSVC)
 endif()
 set_target_properties(meow2_cgltf PROPERTIES FOLDER "External")
 
-add_library(meow2_stb_image STATIC "${PROJECT_SOURCE_DIR}/Meow2Engine/src/Assets/Texture/StbImage.cpp")
+add_library(meow2_stb_image STATIC "${PROJECT_SOURCE_DIR}/Meow2Engine/src/Assets/Texture/StbImage.cpp"
+    "${PROJECT_SOURCE_DIR}/Meow2Engine/src/Assets/Texture/StbImageWrite.cpp") # PNG writing too (golden images)
 target_include_directories(meow2_stb_image SYSTEM PUBLIC "${PROJECT_SOURCE_DIR}/external/stb")
 set_target_properties(meow2_stb_image PROPERTIES FOLDER "External")
 

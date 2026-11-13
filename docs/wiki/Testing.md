@@ -17,7 +17,8 @@ ctest --preset windows-msvc-debug --rerun-failed
 | `smoke` | Runs an executable (with optional `ARGS`) and checks it prints the expected text and exits with 0. Apps with a window run with `--set platform.videoDriver=offscreen --set app.quitAfterFrames=3`, so no desktop is needed | `meow2_add_smoke_test()` |
 | `integration` | Several modules together / CLI / build behaviour (e.g. `Build.Warnings.AreErrors`) | GoogleTest or `add_test()` |
 | `lint` | Source checks: `Format.Check`, `Lint.EditorConfig.TextFilesFollowRules`, `Docs.PublicApi.IsDocumented` | `add_test()` |
-| `gpu`, `visual`, `windows` | Need a GPU, golden images, or Windows | later milestones |
+| `gpu`, `windows` | Need a GPU (built with `-DMEOW2_GPU_TESTS=ON`), or Windows | GoogleTest, built once per backend (`RhiGpu.*`, `RhiGpuD3D12.*`) |
+| `visual` | Draw a scene and compare it with an approved golden image ([below](#golden-images)) | `Meow2RendererGoldenTests` |
 
 ## Test names
 
@@ -49,6 +50,22 @@ ctest --preset windows-msvc-debug --rerun-failed
    ```
 4. Build and run `ctest --preset … -R Core`.
 
+## Golden images
+
+`Visual.Samples/GoldenImageTest.MatchesGolden/<Scene>_<backend>` draws each of the 25 suggested Khronos samples ([milestones.md](../../milestones.md) M6) the way Meow2Renderer first shows it, on Vulkan and on D3D12, and compares it with an approved PNG in `tests/visual/goldens/<Scene>-<backend>.png` (512 × 512).
+
+```bash
+cmake --preset windows-msvc-debug -DMEOW2_GPU_TESTS=ON
+cmake -P cmake/FetchGltfSample.cmake Box DamagedHelmet Sponza   # or every name in the list
+ctest --preset windows-msvc-debug -L visual --output-on-failure
+```
+
+- **What's drawn:** the model through `SceneView` (the app's own import and upload, RGBA8 textures), the file's first camera if it has one, otherwise the orbit the Renderer opens with (`frameScene()`), except Sponza, an interior, which is seen down its hall (`c_fixedCameras`). The default sun, the sky and the tone curve, into an sRGB target; three frames, the last one kept.
+- **Passing:** a pixel differs when a colour channel is more than 8 of 255 away from the golden's; at most 0.1 % of the pixels may differ. That absorbs driver rounding, not a visible change.
+- **Each backend has its own golden.** The same GPU filters fine texture detail a little differently under each API (up to 2 % of pixels at text edges in TextureSettingsTest), so one image can't serve both.
+- **A failure** writes what was drawn and a difference image to `<build dir>/visual/` (`<Scene>-<backend>.png`, `-diff.png`: the difference ×4, red where it's over the limit). A missing golden writes the candidate there too.
+- **A sample that isn't downloaded is skipped**, with the fetch command in the message. CI has no GPU, so these run on the owner's PC.
+- **Updating goldens** (a rendering change that's meant): `MEOW2_UPDATE_GOLDENS=1 ctest -L visual` writes this run's images into `tests/visual/goldens/`. They go in a commit of their own, and only after the owner has looked at them ([AGENTS.md](../../AGENTS.md) §2.4); never to make a failing test pass.
 ## Sanitizers
 
 Two CI jobs run **every test** with compiler instrumentation that checks the program while it runs (techstack.md §19):

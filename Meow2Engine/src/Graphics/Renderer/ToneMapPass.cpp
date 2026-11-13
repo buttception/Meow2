@@ -51,4 +51,23 @@ void ToneMapPass::addPass(RenderGraph& graph, GraphResource hdr, Rhi::TextureHan
                    },
                    .small = true});
 }
+
+void ToneMapPass::addPass(RenderGraph& graph, GraphResource hdr, Rhi::TextureHandle texture, GraphResource target,
+                          Rhi::TextureHandle targetTexture, Rhi::IRhiDevice& device)
+{
+    Shader::PushConstants push{};
+    push.instance = device.bindlessIndex(texture);
+    graph.addPass({.name = "Tone map",
+                   .accesses = {{hdr, Rhi::ResourceState::ShaderRead}, {target, Rhi::ResourceState::ColorTarget}},
+                   .record =
+                       [this, push, targetTexture](Rhi::IRhiCommandList& list)
+                   {
+                       list.beginRendering(Rhi::RenderTargets{.color = targetTexture});
+                       list.setPipeline(m_pipelines.get(m_pipeline));
+                       list.setPushConstants(push);
+                       list.draw(3);
+                       list.endRendering();
+                   },
+                   .small = true});
+}
 } // namespace Meow2::Renderer

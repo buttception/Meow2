@@ -2,7 +2,7 @@
 
 How `Renderer::GpuScene` draws a scene: glTF's metallic-roughness materials, lit by one sun and a physically based sky (image-based lighting), on Vulkan and D3D12 alike. The buffers, culling and indirect drawing underneath are in [Rhi → GPU-driven drawing](Rhi.md#gpu-driven-drawing); how glTF files get here is in [Gltf](Gltf.md).
 
-- **Status:** 🟨 M6. PBR, normal maps, mipmaps, samplers, double-sided, mirrored and blended surfaces (#174); Hillaire's sky and image-based lighting from it (#180); cooked `.m2texture` files with BC7 and BC5 (DirectXTex), a texture cache, and texture transforms (#183); meshes optimised at import and drawn as meshlets through mesh shaders (#192).
+- **Status:** ✅ M6. PBR, normal maps, mipmaps, samplers, double-sided, mirrored and blended surfaces (#174); Hillaire's sky and image-based lighting from it (#180); cooked `.m2texture` files with BC7 and BC5 (DirectXTex), a texture cache, and texture transforms (#183); meshes optimised at import and drawn as meshlets through mesh shaders (#192); rotated texture transforms fixed and golden images of 25 samples (#194).
 
 ## Using it
 
@@ -175,6 +175,8 @@ A cooked texture is saved as a **`.m2texture`** file: `M2TX`, a version, the for
 
 `KHR_texture_transform` gives a texture slot an offset, a rotation and a scale, so a texture atlas or a tiled floor can reuse one image. The extension defines uv′ = T × R × S × (u, v, 1); `GpuScene` multiplies that out once per material into two rows of a 2 × 3 matrix per slot (`MaterialData::baseColorUv0/1`, …), so the shader does two dot products per sample. Without a transform the rows are the identity.
 
+The rotation's direction is the one Khronos' TextureTransformTest checks: rows (cos θ, sin θ) and (−sin θ, cos θ), times the scale. Until 0.7.0 the sign was the other way, which turned rotated textures backwards; its golden image now guards it.
+
 `addSampler()` returns an existing sampler when an identical one was added before; glTF files repeat the same few. glTF's mirrored repeat maps to `SamplerAddress::Mirror`.
 
 ### Sky and image-based lighting
@@ -247,4 +249,4 @@ The PBR shader then uses `skyIrradiance(normal) / π` for diffuse ambient light,
 | `RhiGpu*.GpuSceneTest.MeshletViewColoursClusters` | the Meshlets view gives neighbouring clusters different colours, and is grey on the indirect path |
 | `RhiGpu*.RenderDeviceTest.MeshletsSurviveBackendSwitch` | the meshlet path draws the same meshlets and image after the device is re-created |
 
-By hand, on both backends: MetalRoughSpheres, NormalTangentTest, NegativeScaleTest, AlphaBlendModeTest, TextureSettingsTest and DamagedHelmet, against their reference screenshots. DragonAttenuation and Sponza through both paths, a backend switch and the Meshlets view, validation clean. Golden-image tests follow in M6 PR 5.
+By hand, on both backends: MetalRoughSpheres, NormalTangentTest, NegativeScaleTest, AlphaBlendModeTest, TextureSettingsTest and DamagedHelmet, against their reference screenshots. DragonAttenuation and Sponza through both paths, a backend switch and the Meshlets view, validation clean. All 25 suggested samples have golden images on both backends ([Testing](Testing.md#golden-images)).

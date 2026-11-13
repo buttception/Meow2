@@ -48,6 +48,16 @@ public:
     void addPass(RenderGraph& graph, GraphResource hdr, Rhi::TextureHandle texture, Rhi::IRhiSwapchain& swapchain,
                  Rhi::IRhiDevice& device);
 
+    /// @brief Adds the pass: reads `hdr`, writes a texture (headless rendering: screenshots, golden images).
+    /// @param graph         The frame's graph, after every pass that writes `hdr`.
+    /// @param hdr           The scene's colour in the graph.
+    /// @param texture       The same texture (its heap index is read by the shader).
+    /// @param target        The texture to write, in the graph; in the format the pass was created for.
+    /// @param targetTexture The same texture; the same size as `texture`.
+    /// @param device        For the texture's heap index.
+    void addPass(RenderGraph& graph, GraphResource hdr, Rhi::TextureHandle texture, GraphResource target,
+                 Rhi::TextureHandle targetTexture, Rhi::IRhiDevice& device);
+
 private:
     PipelineLibrary& m_pipelines; ///< Holds the pipeline.
     PipelineId m_pipeline;        ///< The full-screen pass.

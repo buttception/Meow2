@@ -52,8 +52,11 @@ function(meow2_add_test_suite)
     # "Core.Version.MatchesProjectVersion" (AGENTS.md naming: <Module>.<Unit>.<Behaviour>).
     # PRE_TEST: the test list is read when ctest runs, not right after linking,
     # so a build never runs test binaries (matters for cross-compiling, e.g. Android).
+    # PROPERTIES is a list of name-value pairs, so a list of labels must keep its semicolons escaped: unescaped,
+    # "gpu;visual" would set LABELS to gpu and add a property named visual (only the first label stuck).
+    string(REPLACE ";" "\;" labels "${arg_LABELS}")
     gtest_discover_tests(${arg_TARGET}
         TEST_PREFIX "${arg_MODULE}."
         DISCOVERY_MODE PRE_TEST
-        PROPERTIES LABELS "${arg_LABELS}")
+        PROPERTIES LABELS "${labels}")
 endfunction()

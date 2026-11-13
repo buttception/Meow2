@@ -8,7 +8,11 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-11-13
+
 ### Added
+- Golden-image tests: the 25 suggested Khronos samples are drawn as Meow2Renderer first shows them, on Vulkan and Direct3D 12, and compared with approved images, so a change that alters how a scene looks fails a test. A failure saves what was drawn and a difference image; `MEOW2_UPDATE_GOLDENS=1` writes new candidates for review (#195).
+- PNG writing (stb_image_write), for golden images and later screenshots (#195).
 - Meshlets: on GPUs with mesh shaders, scenes are drawn in small clusters of up to 124 triangles, and clusters outside the view or facing away are skipped before their vertices are shaded; other GPUs draw as before, and both give the same image. Meow2Renderer's Settings window turns it on and off (MESHLETS), its Stats window shows how many meshlets and triangles were drawn, and its Debug window has a Meshlets view (#193).
 - glTF meshes are reordered for the GPU when a model loads (meshoptimizer): repeated vertices merged, triangles ordered for the vertex cache and to reduce overdraw (#193).
 - RHI: mesh pipelines (task and mesh shaders) with direct and indirect dispatches, on Vulkan (`VK_EXT_mesh_shader`) and D3D12; optional, reported per GPU (#193).
@@ -37,6 +41,9 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - Every app opens at 1920 x 1080 (1080p) by default instead of 1280 x 720; a size saved in the app's config still wins (#176).
 
 ### Fixed
+- `ctest -L` found nothing for a test suite's second label (`visual`, `windows`): only the first label was kept (#195).
+- Rotated texture transforms (`KHR_texture_transform`) turned the texture the wrong way; Khronos' TextureTransformTest now passes (#195).
+- Meow2Renderer framed models only a few millimetres across from too far away (MetalRoughSpheresNoTextures) (#195).
 - The console window showed some characters wrongly on Windows (`→` as `ΓåÆ`); it now uses UTF-8 (#191).
 - Meow2Renderer: the fly camera's keys stopped working after clicking any window (#191).
 - Meow2Editor opened bigger than the screen at 125 % or 150 % display scaling (#191).

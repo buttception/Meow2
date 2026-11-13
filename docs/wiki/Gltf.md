@@ -2,7 +2,7 @@
 
 `#include <Meow2/Assets/Gltf/GltfImporter.h>`: reads a glTF 2.0 file (`.gltf` with its buffers and images, or one `.glb`) into meshes, materials, images and a node tree on the CPU, in the engine's left-handed space. `#include <Meow2/Graphics/Renderer/SceneModel.h>` puts the result in a `Scene` and on the GPU.
 
-- **Status:** 🟨 M6 PR 1 (#169 / PR #170): import, base colour textures and a simple lit draw on both backends. PBR, scene files and golden-image tests come with the rest of M6.
+- **Status:** ✅ M6. Import, textures and a lit draw on both backends (#169 / PR #170); PBR and the rest in [Rendering](Rendering.md); every suggested sample checked by golden images (#194). Scene files are M7.
 - **Libraries:** [cgltf](https://github.com/jkuhlmann/cgltf) v1.15 (submodule) parses the file. [stb_image](https://github.com/nothings/stb) v2.30 (one header, copied into `external/stb/`) decodes PNG and JPEG. Both are compiled in their own libraries, outside the engine's warnings, and allocate through the engine's hooks under `MemTag::Assets`.
 
 ## Seeing a sample
