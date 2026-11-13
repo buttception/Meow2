@@ -610,13 +610,14 @@ void GpuScene::writeMaterial(Rhi::IRhiDevice& device, std::uint32_t index)
         samplerIndex = hasSampler ? device.bindlessIndex(m_samplers[static_cast<std::size_t>(texture.sampler)].sampler)
                                   : Rhi::c_defaultSamplerIndex;
     };
-    // KHR_texture_transform as two rows of translation × rotation × scale (the extension's GLSL, written out).
+    // KHR_texture_transform as two rows of translation × rotation × scale. The rotation's sign is the one Khronos'
+    // TextureTransformTest sample checks (its arrows point at the green markers): rows (cos, sin) and (-sin, cos).
     const auto uvRows = [](const MaterialTexture& texture, Shader::float4& row0, Shader::float4& row1)
     {
         const float c = std::cos(texture.uvRotation);
         const float s = std::sin(texture.uvRotation);
-        row0 = {c * texture.uvScale.x, -s * texture.uvScale.y, texture.uvOffset.x, 0.0F};
-        row1 = {s * texture.uvScale.x, c * texture.uvScale.y, texture.uvOffset.y, 0.0F};
+        row0 = {c * texture.uvScale.x, s * texture.uvScale.y, texture.uvOffset.x, 0.0F};
+        row1 = {-s * texture.uvScale.x, c * texture.uvScale.y, texture.uvOffset.y, 0.0F};
     };
     Shader::MaterialData data{};
     data.baseColorFactor = {material.baseColorFactor.r, material.baseColorFactor.g, material.baseColorFactor.b,
