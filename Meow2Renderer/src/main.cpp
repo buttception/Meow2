@@ -674,8 +674,8 @@ int main(int argc, char** argv)
             MEOW2_LOG_ERROR(appLog, "Can't start a frame: {}", list.error());
             return false;
         }
-        // Near black, the theme's base, so scenes sit on the same background as the UI.
-        constexpr Meow2::Math::Color c_clear{.r = 0.004F, .g = 0.004F, .b = 0.005F};
+
+        constexpr Meow2::Math::Color c_clear = Meow2::RendererApp::c_sceneClearColor;
         frameTimes.add(static_cast<float>(clock.deltaSeconds() * 1000.0));
 
         // The UI's windows, built before drawing; what they ask for happens next frame.
@@ -774,11 +774,9 @@ int main(int argc, char** argv)
                 if (cameraScene != view.get())
                 {
                     cameraScene = view.get();
-                    orbit = {};
-                    orbit.target = view->center();
-                    orbit.distance = view->radius() * 1.7F;
+                    orbit = Meow2::RendererApp::frameScene(view->center(), view->radius());
                     fly = {};
-                    fly.speed = std::max(view->radius() * 0.5F, 0.01F);
+                    fly.speed = std::max(view->radius() * 0.5F, 1e-4F);
                     cameraState = startCamera;
                     posedAnimation = -1;
                 }
@@ -836,9 +834,7 @@ int main(int argc, char** argv)
                 }
 
                 const float aspect = static_cast<float>(swapchain->width()) / static_cast<float>(swapchain->height());
-                // The near plane follows the scene's size, so small models aren't clipped and big ones keep precision.
-                Meow2::Math::CameraLens lens{};
-                lens.nearZ = std::clamp(view->radius() * 0.01F, 0.001F, 0.1F);
+                Meow2::Math::CameraLens lens = Meow2::RendererApp::sceneLens(view->radius());
                 Meow2::Math::Transform camera;
                 const std::vector<Meow2::RendererApp::SceneCameraEntry>& sceneCameras = view->cameras();
                 if (cameraState.mode == Meow2::RendererApp::CameraMode::SceneCamera && !sceneCameras.empty())

@@ -102,4 +102,23 @@ TEST(CameraControls, SceneCameraLooksAlongItsNodesMinusZ)
     EXPECT_FLOAT_EQ(lens.orthographicHeight, 6.0F);
     EXPECT_GT(lens.farZ, lens.nearZ) << "an orthographic camera without zfar still gets a far plane";
 }
+
+TEST(CameraControls, FrameSceneLooksAtTheCentre)
+{
+    const Math::Vec3 center{1.0F, 2.0F, 3.0F};
+    constexpr float c_radius = 2.0F;
+    const Math::Transform camera = orbitTransform(frameScene(center, c_radius));
+
+    // From the front (+Z side, a little above), aimed at the centre.
+    EXPECT_GT(camera.position.z, center.z);
+    EXPECT_GT(camera.position.y, center.y);
+    const Math::Vec3 toCentre{center.x - camera.position.x, center.y - camera.position.y, center.z - camera.position.z};
+    const float distance = std::sqrt(toCentre.x * toCentre.x + toCentre.y * toCentre.y + toCentre.z * toCentre.z);
+    expectNear(forwardOf(camera), {toCentre.x / distance, toCentre.y / distance, toCentre.z / distance});
+
+    // 1.7 radii away: the bounding sphere is larger than most models, so this shows a model whole and fills the view.
+    EXPECT_NEAR(distance, c_radius * 1.7F, 1e-4F);
+    const Math::CameraLens lens = sceneLens(c_radius);
+    EXPECT_LT(lens.nearZ, distance - c_radius) << "nothing of it is clipped by the near plane";
+}
 } // namespace Meow2::RendererApp

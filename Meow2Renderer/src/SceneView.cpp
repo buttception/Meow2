@@ -117,7 +117,9 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
     {
         view->m_center = bounds->center;
         const Math::Vec3& e = bounds->extents;
-        view->m_radius = std::max(std::sqrt(e.x * e.x + e.y * e.y + e.z * e.z), 0.01F);
+        // A floor only against an empty or flat-point model: some samples are millimetres across (MetalRoughSpheres-
+        // NoTextures is 7 mm), and a larger floor would frame them from too far away.
+        view->m_radius = std::max(std::sqrt(e.x * e.x + e.y * e.y + e.z * e.z), 1e-5F);
     }
     view->m_gpu->setInstances(instances);
     view->m_importMilliseconds =

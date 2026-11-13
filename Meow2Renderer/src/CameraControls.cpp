@@ -78,6 +78,21 @@ Math::Transform orbitTransform(const OrbitCamera& camera)
     return transform;
 }
 
+OrbitCamera frameScene(const Math::Vec3& center, float radius)
+{
+    OrbitCamera camera;
+    camera.target = center;
+    camera.distance = radius * 1.7F;
+    return camera;
+}
+
+Math::CameraLens sceneLens(float radius)
+{
+    Math::CameraLens lens{};
+    lens.nearZ = std::clamp(radius * 0.01F, 1e-6F, 0.1F); // reversed infinite Z keeps precision at any near plane
+    return lens;
+}
+
 void updateFly(FlyCamera& camera, const CameraInput& input, float deltaSeconds)
 {
     if (input.rightDrag)

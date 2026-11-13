@@ -73,6 +73,19 @@ void updateOrbit(OrbitCamera& camera, const CameraInput& input, float deltaSecon
 /// @return Its transform (scale 1).
 [[nodiscard]] Math::Transform orbitTransform(const OrbitCamera& camera);
 
+/// @brief The orbit a scene opens with: around its centre from +Z (glTF models face +Z, so this is the front),
+///        far enough to see all of it. Golden images use it too, so they show what the Renderer shows first.
+/// @param center The centre of a sphere around the scene.
+/// @param radius Its radius; > 0.
+/// @return The orbit, spinning.
+[[nodiscard]] OrbitCamera frameScene(const Math::Vec3& center, float radius);
+
+/// @brief The lens for a scene of a given size: the near plane follows it, so small models aren't clipped and big
+///        ones keep depth precision.
+/// @param radius The radius of a sphere around the scene.
+/// @return The default lens with that near plane.
+[[nodiscard]] Math::CameraLens sceneLens(float radius);
+
 /// @brief Applies a frame's input to a flying camera.
 /// @param camera       The camera.
 /// @param input        The frame's input.
