@@ -189,7 +189,7 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 
 **Not in M5:** mesh shaders and meshlets, ray tracing, HZB occlusion culling, HDR output, async compute (mesh shaders and meshlets in M6, the rest in M12).
 
-## M6 — glTF scenes and Meow2Renderer 🟨
+## M6 — glTF scenes and Meow2Renderer ✅
 **Goal:** open the Khronos glTF 2.0 sample scenes in Meow2Renderer through the same `Scene` the editor and player use, draw them with metallic-roughness PBR on both backends, catch regressions with golden images, and give Renderer its ImGui shell. The old M7 was merged in (owner decision 2026-11-07); scene files moved to M7, the Editor (owner decision 2026-11-09); the rest of advanced rendering is M12.
 **Depends on:** M5
 
@@ -215,13 +215,15 @@ Planned as four PRs (PR 2, scene files, moved to M7). glTF is an import source, 
 | 4 | Window sizes in logical units (follow display scaling), first-run size 80 % of the display (owner decision 2026-11-10) | §9 | ✅ | #190 / PR #191 |
 | 5 Verification, meshlets and close | **meshoptimizer** (submodule, owner-approved 2026-11-09): vertex cache and overdraw optimisation at import | §4 | ✅ | #192 / PR #193 |
 | 5 | **Meshlets** (owner request, pulled forward from M12): clusters from meshoptimizer, culled per cluster, drawn with mesh shaders where the GPU has them; the indirect path stays for the rest; tested on a glTF sample scene | §11 | ✅ | #192 / PR #193 |
-| 5 | Golden-image tests per backend (label `visual`), from fixed glTF cameras; new goldens only with the owner's sign-off | §13 | ⬜ | |
-| 5 | The 25 suggested scenes: test scenes first, then the showcase ones (DamagedHelmet the first goal) | §13 | ⬜ | |
-| 5 | Closing PR bumps the version to **0.7.0** | §21 | ⬜ | |
+| 5 | Golden-image tests per backend (label `visual`), from fixed glTF cameras; new goldens only with the owner's sign-off | §13 | ✅ | #194 / PR #195 |
+| 5 | The 25 suggested scenes: test scenes first, then the showcase ones (DamagedHelmet the first goal) | §13 | ✅ | #194 / PR #195 |
+| 5 | Closing PR bumps the version to **0.7.0** | §21 | ✅ | #194 / PR #195 |
 
 **Suggested scenes:** first light (Box, BoxTextured, Duck, Avocado); coordinates (OrientationTest, NegativeScaleTest, TextureCoordinateTest); PBR (MetalRoughSpheres, MetalRoughSpheresNoTextures, EnvironmentTest); normal maps (NormalTangentTest, NormalTangentMirrorTest); textures and colour (TextureSettingsTest, TextureTransformTest, VertexColorTest); transparency (AlphaBlendModeTest); showcase (DamagedHelmet, FlightHelmet, WaterBottle, BoomBox, Lantern, Corset, SciFiHelmet); stress (Sponza, ABeautifulGame).
 
 **Done when:** the suggested scenes open in Renderer on both backends with validation clean and match their golden images; a meshlet-drawn sample scene matches the indirect path.
+
+**Released as `v0.7.0`** once PR #195 is merged and tagged (with the owner's go-ahead). Every suggested scene matches its reference screenshot except where the reference uses another view or environment; ABeautifulGame's glass (`KHR_materials_transmission`) draws opaque until M12.
 
 **Not in M6** (M12): skinning, morph targets, Draco and meshopt compression, Basis Universal textures, `KHR_materials_*` extensions. Node animation is played in Renderer only, without an animation system.
 
@@ -316,3 +318,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-09 — Owner decisions: scene files move from M6 to M7; M7 is the Editor (was M9), M8 Physics (modular, backend open), M9 Scripting (new), M12 Advanced rendering and M13 Platforms swapped; meshoptimizer approved and meshlets pulled into M6 PR 5; issue-based tracking from M7; M6 PR 4 gains the stopgap cameras.
 - 2026-11-10 — M6 PR 4 gains the rendering debug tools and logical window sizes (#190, owner requests).
 - 2026-11-12 — M6 PR 5 split in two: meshoptimizer and meshlets (#192), then golden images, the sample scenes and 0.7.0.
+- 2026-11-13 — M6 done (0.7.0): golden images for the 25 suggested scenes (#194).

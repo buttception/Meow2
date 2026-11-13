@@ -50,9 +50,9 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Scene (entities and components on EnTT, command buffers) | [Scene](Scene.md) | ✅ M2 |
 | Shaders (HLSL through DXC) | [Shaders](Shaders.md) | ✅ M4 |
 | Assets (stable IDs, `.meta` sidecars, loading) | [Assets](Assets.md) | ✅ M4 |
-| glTF import (`.gltf`/`.glb`, images, sample fetch) | [Gltf](Gltf.md) | 🟨 M6 |
-| Materials and shading (PBR, normal maps, mips, double-sided, mirrored, blended) | [Rendering](Rendering.md) | 🟨 M6 |
-| Meow2Renderer (ImGui shell, scene picker, stats) | [Renderer](Renderer.md) | 🟨 M6 |
+| glTF import (`.gltf`/`.glb`, images, sample fetch) | [Gltf](Gltf.md) | ✅ M6 |
+| Materials and shading (PBR, normal maps, mips, double-sided, mirrored, blended, meshlets) | [Rendering](Rendering.md) | ✅ M6 |
+| Meow2Renderer (ImGui shell, scene picker, stats, debug views) | [Renderer](Renderer.md) | ✅ M6 |
 | Theme: colours, fonts, app and asset icons (Renderer and Editor) | [Theme](Theme.md) | ✅ |
 | RHI (Vulkan and D3D12, bindless, render graph, GPU-driven drawing, switching backends while running) | [Rhi](Rhi.md) | ✅ M5 |
 | Jobs (`JobSystem`, enkiTS) | [Jobs](Jobs.md) | ✅ M1 |
@@ -68,7 +68,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 
 ## Roadmap
 
-M0 (foundation), **M1 (core runtime, `v0.2.x`)**, **M2 (platform & scene foundation, `v0.3.0`)**, **M3 (math, `v0.4.0`)**, **M4 (shaders and assets, `v0.5.0`)** and **M5 (the RHI, `v0.6.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers, release zips, the game loop, window and input events, IDs, the scene with command buffers, and the virtual file system, and the math: transforms and their hierarchy, camera and reversed-Z projections, bounding volumes and culling, rays and picking, random numbers, colours, easing and splines, and vertex packing ([Math](Math.md)), [shaders](Shaders.md) and [assets](Assets.md), and the [RHI](Rhi.md): Vulkan and D3D12, bindless and GPU-driven, switchable while running. The Qt editor window (M7) is in too. Next up is **M6**: Meow2Renderer as a showcase, with glTF scenes. The full roadmap is in [milestones.md](../../milestones.md).
+M0 (foundation), **M1 (core runtime, `v0.2.x`)**, **M2 (platform & scene foundation, `v0.3.0`)**, **M3 (math, `v0.4.0`)**, **M4 (shaders and assets, `v0.5.0`)**, **M5 (the RHI, `v0.6.0`)** and **M6 (glTF scenes and Meow2Renderer, `v0.7.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers, release zips, the game loop, window and input events, IDs, the scene with command buffers, and the virtual file system, and the math: transforms and their hierarchy, camera and reversed-Z projections, bounding volumes and culling, rays and picking, random numbers, colours, easing and splines, and vertex packing ([Math](Math.md)), [shaders](Shaders.md) and [assets](Assets.md), and the [RHI](Rhi.md): Vulkan and D3D12, bindless and GPU-driven, switchable while running; and [glTF scenes](Gltf.md) drawn with metallic-roughness PBR, a physically based sky and meshlets in [Meow2Renderer](Renderer.md), checked by golden images ([Testing](Testing.md#golden-images)). The Qt editor window (M7) is in too. Next up is **M7**: the editor, with scene files and an MCP server. The full roadmap is in [milestones.md](../../milestones.md).
 
 ## API reference
 

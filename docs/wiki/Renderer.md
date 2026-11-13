@@ -2,7 +2,7 @@
 
 The rendering test bed and showcase: opens a glTF scene (or a grid of 100,000 cubes), draws it through the GPU-driven path on Vulkan or D3D12, and puts a Dear ImGui shell on top to pick scenes and read stats.
 
-- **Status:** 🟨 M6. ImGui shell, scene picker and stats (#172 / PR #173); log console, debug-tool settings, saved window layout, and orbit, fly and glTF cameras with animations (#188); rendering debug views, the live render graph and frame capture (#190); the meshlet path, its setting, statistics and debug view (#192).
+- **Status:** ✅ M6. ImGui shell, scene picker and stats (#172 / PR #173); log console, debug-tool settings, saved window layout, and orbit, fly and glTF cameras with animations (#188); rendering debug views, the live render graph and frame capture (#190); the meshlet path, its setting, statistics and debug view (#192); millimetre-sized models framed properly, and its first view shared with the golden-image tests (#194).
 
 ## Using it
 
