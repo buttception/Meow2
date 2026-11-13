@@ -133,6 +133,7 @@ struct PipelineD3D12
 {
     ID3D12PipelineState* state = nullptr; ///< The pipeline.
     bool compute = false;                 ///< A compute pipeline rather than a graphics one.
+    D3D_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST; ///< Set when a graphics pipeline is bound.
 };
 
 /// @brief Records into one ID3D12GraphicsCommandList7.

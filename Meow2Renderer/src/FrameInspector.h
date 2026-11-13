@@ -64,6 +64,51 @@ struct FlowLayout
     std::uint32_t rows = 0;           ///< The tallest column's passes.
 };
 
+/// @brief What kind of resource a pin stands for; it picks the pin's and wire's colour.
+enum class ResourceKind : std::uint8_t
+{
+    ColorTexture,  ///< A texture of colour or other data, which the Pass view can show.
+    DepthTexture,  ///< A depth texture (shown as grey).
+    Buffer,        ///< A buffer: draw data, counts, constants.
+    IndirectBuffer ///< A buffer some pass reads as indirect draw or dispatch arguments.
+};
+
+/// @brief The kind of a resource of a flow.
+/// @param flow     The flow.
+/// @param resource Index into FrameFlow::resources.
+/// @return Its kind.
+[[nodiscard]] ResourceKind resourceKind(const FrameFlow& flow, std::uint32_t resource);
+
+/// @brief A kind's name, as the view shows it ("Colour texture", "Indirect arguments", …).
+/// @param kind The kind.
+/// @return The name.
+[[nodiscard]] const char* resourceKindName(ResourceKind kind);
+
+/// @brief A pass's pins in the flow view, each a resource index, in the order of its accesses. Plain data.
+struct FlowPins
+{
+    std::vector<std::uint32_t> inputs{};  ///< What it reads, and what it draws over (a write after another pass's).
+    std::vector<std::uint32_t> outputs{}; ///< What it writes.
+};
+
+/// @brief A pass's input and output pins: a read is an input; a write is an output, and also an input when an earlier
+///        pass wrote the resource (the pass draws over that, so the data flows through it).
+/// @param flow The flow.
+/// @param pass The pass.
+/// @return Its pins, without repeats.
+[[nodiscard]] FlowPins passPins(const FrameFlow& flow, std::uint32_t pass);
+
+/// @brief A pin of the flow view: a pass's input or output for one resource. Plain data.
+struct FlowPin
+{
+    std::uint32_t pass = 0;     ///< The pass.
+    std::uint32_t resource = 0; ///< Index into FrameFlow::resources.
+    bool output = false;        ///< An output (right side) or an input (left side).
+
+    /// @brief Pins are equal when every field is.
+    friend bool operator==(const FlowPin&, const FlowPin&) = default;
+};
+
 /// @brief A render graph's passes and resources, before compile().
 /// @param graph  The frame's graph.
 /// @param device For the textures' sizes and formats.
@@ -71,7 +116,9 @@ struct FlowLayout
 [[nodiscard]] FrameFlow describeGraph(const Renderer::RenderGraph& graph, Rhi::IRhiDevice& device);
 
 /// @brief Lays a flow out in columns: a pass that reads what another wrote goes to its right, so independent passes
-///        (the sky's lookup tables beside the culling) stand side by side instead of in one long line.
+///        (the sky's lookup tables beside the culling) stand side by side instead of in one long line. Within a
+///        column, passes are ordered by where their inputs come from (the average row of their writers), so wires
+///        cross less; passes with no inputs keep their order.
 /// @param flow The flow.
 /// @return The layout.
 [[nodiscard]] FlowLayout layoutFlow(const FrameFlow& flow);
@@ -203,8 +250,28 @@ private:
                                     std::uint32_t frameSlot);
     /// @brief The controls of a display: channels and range.
     static void drawDisplayControls(DisplaySettings& settings, bool depth);
-    /// @brief Draws a flow; returns the pass clicked, if any.
-    std::optional<std::uint32_t> drawFlow(const FrameFlow& flow, std::optional<std::uint32_t> selected, const char* id);
+    /// @brief What was clicked in a flow view this frame. Plain data.
+    struct FlowClick
+    {
+        std::optional<std::uint32_t> pass{}; ///< A pass's node.
+        std::optional<FlowPin> pin{};        ///< A pin.
+    };
+
+    /// @brief Draws a flow as a node graph: a node per pass, input pins left, output pins right, wires from each
+    ///        output to the inputs that read it, coloured by resource kind. Drag with the right or middle mouse
+    ///        button to pan.
+    /// @param flow     The flow.
+    /// @param selected The selected pass, drawn highlighted with its wires.
+    /// @param pin      The selected pin, drawn highlighted.
+    /// @param id       ImGui ID of the view.
+    /// @param height   The view's height in pixels.
+    /// @return What was clicked.
+    FlowClick drawFlow(const FrameFlow& flow, std::optional<std::uint32_t> selected, std::optional<FlowPin> pin,
+                       const char* id, float height);
+    /// @brief The colours of the resource kinds, on one line.
+    static void drawLegend();
+    /// @brief The details of a selected pin under a flow view: kind, size, who writes and reads it.
+    static void drawPinInfo(const FrameFlow& flow, const FlowPin& pin, const UiFonts& fonts);
     /// @brief Frees every GPU object (backend switch, destruction).
     void release(Rhi::IRhiDevice& device);
 
@@ -219,6 +286,9 @@ private:
 
     FrameFlow m_liveFlow;                           ///< The last frame's flow.
     std::optional<std::string> m_selectedPass;      ///< The pass shown live, by name (indices move between frames).
+    std::optional<FlowPin> m_livePin;               ///< The pin clicked in the live view (indices of m_liveFlow).
+    std::optional<std::string> m_focusOutput;       ///< An output tab to bring forward in the Pass view, by name.
+    std::optional<FlowPin> m_capturePin;            ///< The pin clicked in the capture.
     std::vector<LiveOutput> m_live;                 ///< Its outputs.
     std::vector<Renderer::GraphResource> m_uiReads; ///< This frame's textures shown by the UI.
 

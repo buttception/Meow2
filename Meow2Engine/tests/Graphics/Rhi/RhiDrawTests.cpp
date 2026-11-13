@@ -814,6 +814,40 @@ TEST_F(RhiStatesTest, WithoutBlendingAlphaOverwrites)
     m_device->destroy(pipeline);
 }
 
+TEST_F(RhiStatesTest, LinesDrawOnePixelWide)
+{
+    const std::vector<std::byte> vertex = bytecode(c_statesShader, "vsLine");
+    const std::vector<std::byte> pixel = bytecode(c_statesShader, "psMain");
+    Result<PipelineHandle> pipeline = m_device->createGraphicsPipeline({.vertexCode = vertex,
+                                                                        .vertexEntry = "vsLine",
+                                                                        .pixelCode = pixel,
+                                                                        .colorFormat = RhiFormat::Rgba8Unorm,
+                                                                        .topology = PrimitiveTopology::Lines,
+                                                                        .name = "Lines"});
+    ASSERT_TRUE(pipeline) << pipeline.error().message;
+    const TextureHandle target = makeTarget();
+    const BufferHandle readback = makeBuffer(sizeof(Pixel) * c_targetSize * c_targetSize, RhiMemory::Readback);
+    renderToReadback(target, readback,
+                     [&](IRhiCommandList& list)
+                     {
+                         Shader::PushConstants push{};
+                         push.userData = packColor(255, 0, 0, 255);
+                         list.setPipeline(*pipeline);
+                         list.setPushConstants(push);
+                         list.draw(2);
+                     });
+
+    EXPECT_EQ(pixelAt(readback, c_targetSize / 2, 31).r, 255) << "on the line";
+    EXPECT_EQ(pixelAt(readback, c_targetSize / 2, 29).r, 0) << "two rows above: one pixel wide";
+    EXPECT_EQ(pixelAt(readback, c_targetSize / 2, 33).r, 0) << "two rows below";
+    EXPECT_EQ(pixelAt(readback, 2, 31).r, 0) << "before its start";
+
+    m_device->destroy(*pipeline);
+    m_device->destroy(target);
+    m_device->destroy(readback);
+    EXPECT_EQ(m_device->validationErrorCount(), 0U);
+}
+
 /// @brief A PipelineLibrary over a private copy of the cooked triangle, so a test can damage it.
 class PipelineLibraryTest : public RhiDrawTest
 {

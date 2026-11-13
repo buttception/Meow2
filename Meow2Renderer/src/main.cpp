@@ -4,8 +4,10 @@
 ///        a grid of cubes through the GPU-driven path, and shows an ImGui shell to pick scenes and read stats.
 
 #include "ConsoleWindow.h"
+#include "DebugLines.h"
 #include "FrameInspector.h"
 #include "ImGuiLayer.h"
+#include "InfiniteGrid.h"
 #include "RenderDebug.h"
 #include "RendererUi.h"
 #include "SceneView.h"
@@ -294,6 +296,8 @@ int main(int argc, char** argv)
     std::unique_ptr<Meow2::Renderer::ToneMapPass> toneMap;         // the scene's HDR colour into the swapchain
     std::unique_ptr<Meow2::RendererApp::RenderDebug> renderDebug;  // debug views, wireframes, frozen culling
     std::unique_ptr<Meow2::RendererApp::FrameInspector> inspector; // render-graph view, pass view, frame capture
+    std::unique_ptr<Meow2::RendererApp::InfiniteGrid> grid;        // the ground grid (renderer.grid)
+    std::unique_ptr<Meow2::RendererApp::DebugLines> debugLines;    // the frozen camera's frustum
     // The starting sun: renderer.sunElevation and renderer.sunDirection, in degrees (the Stats window's sliders).
     Meow2::RendererApp::SunControls sun;
     sun.elevationDegrees =
@@ -413,6 +417,10 @@ int main(int argc, char** argv)
             inspector = std::make_unique<Meow2::RendererApp::FrameInspector>(
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c18-8000-80a4-7b19d2e6c059"), appLog);
             inspector->watch(config.getString("renderer.watchPass", "")); // for checks without the mouse
+            grid = std::make_unique<Meow2::RendererApp::InfiniteGrid>(
+                *renderDevice, *pipelines, assetId("01a1b5e2-3c1b-8000-80a4-7b19d2e6c05c"), c_sceneFormat, appLog);
+            debugLines = std::make_unique<Meow2::RendererApp::DebugLines>(
+                *renderDevice, *pipelines, assetId("01a1b5e2-3c1a-8000-80a4-7b19d2e6c05b"), c_sceneFormat, appLog);
             renderDebug = std::make_unique<Meow2::RendererApp::RenderDebug>(
                 *pipelines, assetId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058"), colorFormat, appLog);
             // renderer.debugView (a MEOW2_DEBUG_VIEW_* number, -1 shaded) and renderer.wireframe (off, overlay, only):
@@ -589,11 +597,11 @@ int main(int argc, char** argv)
         return true;
     };
     const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &view, &viewDeps, &ui, &sky, &sun, &jobs,
-                              &depthTexture, &sceneColor, &toneMap, &renderDebug, &inspector, &makeDepth, &renderDoc,
-                              &clock, &pendingSwap, &pendingScene, &sceneError, &scenesWindow, &consoleWindow,
-                              &settingsWindow, &config, &orbit, &fly, &cameraState, &startCamera, &cameraScene,
-                              &posedAnimation, &input, &frameTimes, &showUi, &sampleRoot, &switchScene, captureFrame,
-                              captureAtFrame, swapAtFrame, switchSceneAtFrame,
+                              &depthTexture, &sceneColor, &toneMap, &renderDebug, &inspector, &grid, &debugLines,
+                              &makeDepth, &renderDoc, &clock, &pendingSwap, &pendingScene, &sceneError, &scenesWindow,
+                              &consoleWindow, &settingsWindow, &config, &orbit, &fly, &cameraState, &startCamera,
+                              &cameraScene, &posedAnimation, &input, &frameTimes, &showUi, &sampleRoot, &switchScene,
+                              captureFrame, captureAtFrame, swapAtFrame, switchSceneAtFrame,
                               cubeCount = static_cast<std::uint32_t>(
                                   std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000))]
     {
@@ -890,15 +898,36 @@ int main(int argc, char** argv)
                 if (renderDebug)
                 {
                     renderDebug->apply(view->gpu(), frame); // the view mode, its pipelines, the sky pass
-                    frustum = renderDebug->cullingFrustum(frustum);
+                    frustum = renderDebug->cullingFrustum(frustum, frame);
                     clear = renderDebug->clearColor(c_clear);
                 }
                 view->gpu().setView(device.frameSlot(), frame, frustum);
                 const Meow2::Renderer::GraphResource hdr =
                     view->gpu().addPasses(graph, device.frameSlot(), nullptr, sceneColor, depthTexture, clear);
+                if (grid && Meow2::RendererApp::readSetting(config, Meow2::RendererApp::c_gridSetting))
+                {
+                    grid->addPasses(graph, device.frameSlot(), frame, hdr, sceneColor, view->gpu().depthResource(),
+                                    depthTexture, swapchain->width(), swapchain->height());
+                }
                 if (renderDebug)
                 {
                     renderDebug->addOverlays(graph, view->gpu(), hdr, sceneColor, depthTexture, device.frameSlot());
+                }
+                if (debugLines)
+                {
+                    debugLines->clear();
+                    if (const std::optional<Meow2::Shader::FrameConstants> frozen =
+                            renderDebug ? renderDebug->frozenCamera() : std::nullopt)
+                    {
+                        constexpr Meow2::Math::Color c_frustumColor{.r = 1.0F, .g = 0.85F, .b = 0.1F, .a = 1.0F};
+                        for (const Meow2::RendererApp::DebugLine& line : Meow2::RendererApp::frustumLines(
+                                 *frozen, std::max(view->radius() * 4.0F, frozen->projection._43 * 10.0F),
+                                 c_frustumColor))
+                        {
+                            debugLines->add(line);
+                        }
+                    }
+                    debugLines->addPass(graph, device.frameSlot(), frame.viewProjection, hdr, sceneColor);
                 }
                 if (!(renderDebug && renderDebug->addPresent(graph, hdr, sceneColor, *swapchain, device)) && toneMap)
                 {

@@ -24,3 +24,14 @@ float4 psMain(VertexOutput input) : SV_Target
 {
     return input.color;
 }
+
+/// A horizontal line through row 31 of a 64-pixel target (y = 1/64 in clip space, the row's centre), from x = -0.8 to
+/// 0.8: for line-list pipelines (PrimitiveTopology::Lines).
+VertexOutput vsLine(uint vertexId : SV_VertexID)
+{
+    VertexOutput output;
+    output.position = float4(vertexId == 0 ? -0.8 : 0.8, 1.0 / 64.0, 0.5, 1.0);
+    const uint packed = g_push.userData;
+    output.color = float4(packed & 255, (packed >> 8) & 255, (packed >> 16) & 255, packed >> 24) / 255.0;
+    return output;
+}

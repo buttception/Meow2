@@ -7,3 +7,7 @@ stage = "vertex"
 [[entry]]
 name = "psMain"
 stage = "pixel"
+
+[[entry]]
+name = "vsLine"
+stage = "vertex"

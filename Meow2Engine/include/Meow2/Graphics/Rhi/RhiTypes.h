@@ -225,6 +225,13 @@ enum class FillMode : std::uint8_t
     Wireframe ///< Only their edges, one pixel wide: for debug views.
 };
 
+/// @brief What a vertex pipeline's vertices make.
+enum class PrimitiveTopology : std::uint8_t
+{
+    Triangles, ///< Every three vertices a triangle.
+    Lines      ///< Every two vertices a line, one pixel wide: debug drawing (frustums, physics shapes).
+};
+
 /// @brief A rectangle drawing is clipped to, in pixels from the target's top-left corner. Plain data.
 struct ScissorRect
 {
@@ -258,7 +265,8 @@ struct GraphicsPipelineDesc
     CullMode cull = CullMode::None;    ///< Which triangles to skip.
     BlendMode blend = BlendMode::None; ///< How output combines with the target.
     FillMode fill = FillMode::Solid;   ///< Filled triangles, or only their edges.
-    std::string name = "Pipeline";     ///< Shown in debugging tools.
+    PrimitiveTopology topology = PrimitiveTopology::Triangles; ///< Triangles or lines; vertex pipelines only.
+    std::string name = "Pipeline";                             ///< Shown in debugging tools.
 };
 
 /// @brief What to create a compute pipeline with. Plain data. The bytecode is only read during the call.

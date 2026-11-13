@@ -145,7 +145,13 @@ void RhiCommandListD3D12::endRendering()
 
 void RhiCommandListD3D12::setPipeline(PipelineHandle pipeline)
 {
-    m_list->SetPipelineState(m_device.pipeline(pipeline).state);
+    const PipelineD3D12 record = m_device.pipeline(pipeline);
+    m_list->SetPipelineState(record.state);
+    if (!record.compute)
+    {
+        // D3D12 sets the topology on the list, not in the pipeline (which only knows triangles or lines).
+        m_list->IASetPrimitiveTopology(record.topology);
+    }
 }
 
 void RhiCommandListD3D12::beginMarker(const char* name)

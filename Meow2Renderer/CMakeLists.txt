@@ -6,10 +6,14 @@ add_library(Meow2RendererCore STATIC
     src/CameraControls.h
     src/ConsoleWindow.cpp
     src/ConsoleWindow.h
+    src/DebugLines.cpp
+    src/DebugLines.h
     src/FrameInspector.cpp
     src/FrameInspector.h
     src/ImGuiLayer.cpp
     src/ImGuiLayer.h
+    src/InfiniteGrid.cpp
+    src/InfiniteGrid.h
     src/RenderDebug.cpp
     src/RenderDebug.h
     src/RendererUi.cpp

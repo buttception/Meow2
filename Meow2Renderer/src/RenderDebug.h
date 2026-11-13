@@ -45,6 +45,7 @@ struct RenderDebugState
     int view = -1;                                ///< MEOW2_DEBUG_VIEW_*, or -1 for the shaded scene.
     WireframeMode wireframe = WireframeMode::Off; ///< Edges.
     bool freezeCulling = false;                   ///< Keep culling with the frustum from when this was turned on.
+    bool showFrustum = true;                      ///< While frozen, draw the frozen camera's frustum.
 };
 
 /// @brief The debug views' pipelines and the state that picks them, applied to a GpuScene each frame.
@@ -84,8 +85,13 @@ public:
 
     /// @brief The frustum to cull with: the camera's, or the one kept when culling was frozen.
     /// @param current The camera's frustum this frame.
+    /// @param frame   The camera's frame constants, kept with the frustum when culling freezes (frozenCamera()).
     /// @return The frustum to pass to GpuScene::setView().
-    [[nodiscard]] Math::Frustum cullingFrustum(const Math::Frustum& current);
+    [[nodiscard]] Math::Frustum cullingFrustum(const Math::Frustum& current, const Shader::FrameConstants& frame);
+
+    /// @brief The camera culling was frozen with, while it is and its frustum is to be drawn.
+    /// @return Its frame constants, or nothing (not frozen, or showFrustum off).
+    [[nodiscard]] std::optional<Shader::FrameConstants> frozenCamera() const;
 
     /// @brief The colour to clear the scene to: the scene's, or black for debug views.
     /// @param normal The scene's clear colour.
@@ -127,6 +133,9 @@ private:
         bool failed = false;                             ///< A build failed; don't retry every frame.
     };
 
+    /// @brief The view buttons: one per view, grouped, the active one highlighted.
+    void drawViewButtons();
+
     /// @brief Builds what the current state needs for a scene.
     /// @return False if a pipeline couldn't be built (the views stay off for it).
     bool prepare(Renderer::GpuScene& scene);
@@ -138,6 +147,7 @@ private:
     std::optional<Renderer::PipelineId> m_present; ///< ToneMap.hlsl's DEBUG_OUTPUT = 1, built on first use.
     ScenePipelines m_scene;
     RenderDebugState m_state;
-    std::optional<Math::Frustum> m_frozen; ///< Kept while culling is frozen.
+    std::optional<Math::Frustum> m_frozen;                ///< Kept while culling is frozen.
+    std::optional<Shader::FrameConstants> m_frozenCamera; ///< The camera it was frozen with.
 };
 } // namespace Meow2::RendererApp
