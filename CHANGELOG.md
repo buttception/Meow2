@@ -41,6 +41,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - Every app opens at 1920 x 1080 (1080p) by default instead of 1280 x 720; a size saved in the app's config still wins (#176).
 
 ### Fixed
+- `ctest -L` found nothing for a test suite's second label (`visual`, `windows`): only the first label was kept (#195).
 - Rotated texture transforms (`KHR_texture_transform`) turned the texture the wrong way; Khronos' TextureTransformTest now passes (#195).
 - Meow2Renderer framed models only a few millimetres across from too far away (MetalRoughSpheresNoTextures) (#195).
 - The console window showed some characters wrongly on Windows (`→` as `ΓåÆ`); it now uses UTF-8 (#191).
