@@ -1,9 +1,9 @@
 # File system
 
-Engine code reads and writes files by **virtual path**, like `assets/textures/cat.png`. The first part names a **mount**, and the app decides what each mount is: a folder on disk today, a game package once games are exported (M11), Android's built-in assets later (M13). The same game code then runs from the editor's project folder, an exported game and a phone.
+Engine code reads and writes files by **virtual path**, like `assets/textures/cat.png`. The first part names a **mount**, and the app decides what each mount is: a folder on disk today, a game package once games are exported (M12), Android's built-in assets later (M14). The same game code then runs from the editor's project folder, an exported game and a phone.
 
 - Header: `#include <Meow2/Platform/FileSystem/FileSystem.h>`. Namespace `Meow2::FileSystem`.
-- Status: ✅ M2 (#99). Folder mounts; packages and Android assets come with M11/M13.
+- Status: ✅ M2 (#99). Folder mounts; packages and Android assets come with M12/M14.
 
 ## Using it
 
@@ -58,7 +58,7 @@ Two threads writing the *same* file at once is still a race on the file itself (
 
 ## Not yet
 
-- **Package mounts** (M11) and **Android assets** (M13).
+- **Package mounts** (M12) and **Android assets** (M14).
 - **Overlay mounts** (several sources under one name, later ones winning, for mods and patches).
 - **File watching** for hot reload (shaders in Meow2Renderer, M4).
 - **Async loading:** jobs call the file system directly for now; streaming comes with the asset system.

@@ -52,8 +52,8 @@ struct DirectoryEntry
 /// ErrorCode::InvalidArgument: an empty path, a leading `/`, `\`, `:`, empty components (`a//b`), and `.` or `..`,
 /// so no path can leave its mount. A path whose mount isn't mounted is ErrorCode::NotFound.
 ///
-/// **Mounts** are given by the composition root: today native folders (mountDirectory()); game packages (M11) and
-/// Android assets (M13) will be further kinds of mount with the same paths, so game code doesn't change.
+/// **Mounts** are given by the composition root: today native folders (mountDirectory()); game packages (M12) and
+/// Android assets (M14) will be further kinds of mount with the same paths, so game code doesn't change.
 /// @par Thread safety
 /// Thread-safe. Reads, writes and queries may run on any thread at once (jobs load assets); they look up the mount
 /// under a shared lock and do the file I/O without holding it. mountDirectory() and unmount() take the lock

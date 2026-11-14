@@ -87,7 +87,7 @@ How they're drawn (PBR, normal maps, mips, double-sided, mirrored and blended su
 - UV sets other than 0, and the `KHR_materials_*` extensions.
 - glTF's sampler `minFilter` is reduced to "mipmaps or not": every texture has mips, and nearest filtering applies to them too.
 - Scene files: models are imported each run (M7).
-- Skins, morph targets and an animation system (blending, events): M12. Animations are only sampled per node.
+- Skins, morph targets and an animation system (blending, events): M13. Animations are only sampled per node.
 - Images are decoded one after another on one thread; big scenes such as Sponza take a few seconds in Debug.
 
 ## Tests

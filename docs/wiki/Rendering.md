@@ -63,7 +63,7 @@ Opaque surfaces are drawn **deferred** by default (`GpuScene::setDeferred()`, Me
 - **One lighting function for both paths:** `shaders/Lighting.hlsli` holds `lightSurface()` / `shadeSurface()` (the BRDF, sun, sky light) on a `Surface` struct. Forward's `psMain` fills a `Surface` from the material and calls it; deferred fills it from the G-buffer. So the two paths can't drift apart.
 - **The position isn't stored.** A G-buffer could hold each pixel's position, but that's 8–16 more bytes per pixel to write and read every frame, and depth already says where the pixel is. `positionFromDepth()` (in `Lighting.hlsli`) takes the pixel's centre in clip space (`x`, `y` from its coordinates, `z` its depth) back through `FrameConstants::inverseViewProjection` and divides by `w`. With reversed infinite Z this is exact up to float precision.
 - **Debug views** (other than Position) still draw forward: they're a variant of the forward shader. The Position view is the exception; [Renderer](Renderer.md#frame-and-debugging) explains it.
-- **Why deferred now, with one light?** The sun alone doesn't need it: deferred pays off with many lights (each touches only the pixels it reaches, once) and with screen-space effects that read normals and depth (SSAO, SSR). The G-buffer is the base for both (M12).
+- **Why deferred now, with one light?** The sun alone doesn't need it: deferred pays off with many lights (each touches only the pixels it reaches, once) and with screen-space effects that read normals and depth (SSAO, SSR). The G-buffer is the base for both (M13).
 - **Pitfalls avoided:** the G-buffer is cleared to zero each frame, so background pixels hold nothing a later pass could mistake for a surface; its state is carried between frames (where Lighting left it), so the next frame's writes wait for the last frame's reads; it's remade at the scene's size and freed on a backend switch (GpuScene's device user).
 ### Meshes for the GPU: optimisation and meshlets
 
@@ -251,7 +251,7 @@ The sun casts **cascaded shadow maps** (`GpuScene::setShadows()`, `shaders/Shado
   2. **Shadow map N** copies the cached map texel for texel (`psCopyDepth`, a full-screen pass that writes depth).
   3. **Movable shadow N** draws the movable casters over the copy, every frame.
 
-  Lighting reads the result: static and movable shadows combined. An instance is movable when its `InstanceData::flags` has `MEOW2_INSTANCE_MOVABLE`, which `gatherInstances()` sets from `MeshRenderer::movable`. Until the editor infers mobility from components (M12), Meow2Renderer marks what the file's animations move, and their children.
+  Lighting reads the result: static and movable shadows combined. An instance is movable when its `InstanceData::flags` has `MEOW2_INSTANCE_MOVABLE`, which `gatherInstances()` sets from `MeshRenderer::movable`. Until the editor infers mobility from components (M13), Meow2Renderer marks what the file's animations move, and their children.
 - **Drawing casters.** Each set is culled against the cascade's box by the same `csCull` (its record picked by `g_push.instance`, and `CullConstants::mobility` keeping only static or only movable instances), then drawn through the indirect path with depth-only pipelines (no colour target, [Rhi](Rhi.md#depth-only-passes)). `psShadow` cuts out alpha-masked materials, so leaves and fences cast their shape. Meshlets aren't used for casters yet.
 - **Reading the shadow.** In `lightSurface()`, forward and deferred alike, sunlight is multiplied by `sunShadow()`:
   - the cascade is picked by the point's view distance;
@@ -269,7 +269,7 @@ The sun casts **cascaded shadow maps** (`GpuScene::setShadows()`, `shaders/Shado
 - Rotated texture transforms don't rotate the tangent frame, so a rotated normal map is lit slightly wrong (rare in practice).
 - Exact MikkTSpace tangents (needs a library, with approval).
 - Shadows from other lights (point and spot lights come with the editor); contact shadows; soft shadows that widen with distance (PCSS) or virtual shadow maps; meshlets for shadow casters.
-- Occlusion culling of meshlets against a depth pyramid (HZB, M12); levels of detail; meshlets cooked into files with the mesh at import (M7) rather than built on load.
+- Occlusion culling of meshlets against a depth pyramid (HZB, M13); levels of detail; meshlets cooked into files with the mesh at import (M7) rather than built on load.
 
 ## Tests
 

@@ -22,8 +22,8 @@ struct DirectoryMount
     std::filesystem::path root; ///< The folder.
 };
 
-/// @brief What a mount reads from. A variant, not a virtual interface (techstack.md §3): packages (M11) and Android
-///        assets (M13) become further alternatives.
+/// @brief What a mount reads from. A variant, not a virtual interface (techstack.md §3): packages (M12) and Android
+///        assets (M14) become further alternatives.
 using MountSource = std::variant<DirectoryMount>;
 
 /// @brief One entry of the mount table.
