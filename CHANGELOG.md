@@ -8,6 +8,9 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Changed
+- The roadmap: M7, the Editor, is planned in six steps (commands and undo, an editor and a game viewport with a faster GPU scene, scene files and an asset browser, gizmos and picking, the Renderer's debug tools in Qt, MCP for AI agents), and shadows come first in M12 (#201).
+
 ## [0.7.0] — 2026-11-14
 
 ### Added
