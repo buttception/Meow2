@@ -8,9 +8,12 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
-## [0.7.0] — 2026-11-13
+## [0.7.0] — 2026-11-14
 
 ### Added
+- Meow2Renderer draws an infinite grid on the ground (y = 0), worked out in a compute pass: the X axis red, the Z axis blue, cells in powers of ten that follow the camera's height, hidden behind geometry and faded far away. GRID in the Settings window turns it off (#197).
+- Meow2Renderer: freezing culling also draws the frozen camera's view volume in yellow lines through the scene, so flying out shows what it sees; SHOW FRUSTUM hides it (#197).
+- RHI: line-list pipelines (`PrimitiveTopology::Lines`) on Vulkan and D3D12, for debug lines (#197).
 - Golden-image tests: the 25 suggested Khronos samples are drawn as Meow2Renderer first shows them, on Vulkan and Direct3D 12, and compared with approved images, so a change that alters how a scene looks fails a test. A failure saves what was drawn and a difference image; `MEOW2_UPDATE_GOLDENS=1` writes new candidates for review (#195).
 - PNG writing (stb_image_write), for golden images and later screenshots (#195).
 - Meshlets: on GPUs with mesh shaders, scenes are drawn in small clusters of up to 124 triangles, and clusters outside the view or facing away are skipped before their vertices are shaded; other GPUs draw as before, and both give the same image. Meow2Renderer's Settings window turns it on and off (MESHLETS), its Stats window shows how many meshlets and triangles were drawn, and its Debug window has a Meshlets view (#193).
@@ -28,6 +31,8 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - glTF 2.0 import: `.gltf` and `.glb` files open in Meow2Renderer (`--set renderer.scene=Duck`, or a path) with their node tree, meshes and base colour textures, converted to the engine's left-handed space, on Vulkan and D3D12. `cmake -P cmake/FetchGltfSample.cmake <Model>` downloads Khronos sample models on demand (#170).
 
 ### Changed
+- Meow2Renderer's Render graph window is a node graph: each pass a node with its inputs and outputs as labelled pins, wires between pins coloured by kind (colour texture, depth, buffer, indirect arguments), ordered so wires cross less. Labels no longer overlap, also with the wireframe overlay on. Clicking a texture's pin shows it in the Pass window; clicking a buffer's lists every pass that writes and reads it. Right-drag pans. The Frame capture window uses the same graph (#197).
+- Meow2Renderer's Debug window shows every view as a button, grouped, with the active one highlighted, instead of a drop-down (#197).
 - The scene is drawn in high dynamic range and tone mapped in its own pass, before the UI; opaque surfaces, the sky and transparent ones are separate passes (#191).
 - Window sizes follow display scaling in every app (the size at 100 %), and a new window takes 80 % of the screen instead of 1920 × 1080; a window too big for its screen is shrunk to fit (#191).
 - Meow2Renderer: Fetch only downloads a sample; .GLTF and .GLB buttons beside each downloaded one open that version. Every window but the console is a tab of one panel on the left (#191).

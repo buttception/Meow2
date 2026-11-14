@@ -141,6 +141,7 @@ Result<Rhi::PipelineHandle> PipelineLibrary::build(const Entry& entry)
                                                           .cull = request.cull,
                                                           .blend = request.blend,
                                                           .fill = request.fill,
+                                                          .topology = request.topology,
                                                           .name = request.name});
 }
 

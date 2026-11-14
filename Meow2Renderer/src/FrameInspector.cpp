@@ -51,6 +51,50 @@ const char* formatName(Rhi::RhiFormat format)
     return "?";
 }
 
+/// @brief A resource kind's colour for pins and wires: textures warm, buffers cool.
+ImVec4 kindColour(ResourceKind kind)
+{
+    switch (kind)
+    {
+        case ResourceKind::ColorTexture:
+            return ImVec4{0.96F, 0.62F, 0.22F, 1.0F}; // orange
+        case ResourceKind::DepthTexture:
+            return ImVec4{0.30F, 0.78F, 0.92F, 1.0F}; // cyan
+        case ResourceKind::Buffer:
+            return ImVec4{0.48F, 0.82F, 0.45F, 1.0F}; // green
+        case ResourceKind::IndirectBuffer:
+            return ImVec4{0.74F, 0.50F, 0.98F, 1.0F}; // violet
+    }
+    return ImVec4{1.0F, 1.0F, 1.0F, 1.0F};
+}
+
+/// @brief A state's name, as the pin details show it.
+const char* stateName(Rhi::ResourceState state)
+{
+    switch (state)
+    {
+        case Rhi::ResourceState::Undefined:
+            return "undefined";
+        case Rhi::ResourceState::ColorTarget:
+            return "colour target";
+        case Rhi::ResourceState::DepthTarget:
+            return "depth target";
+        case Rhi::ResourceState::ShaderRead:
+            return "shader read";
+        case Rhi::ResourceState::ShaderWrite:
+            return "shader write";
+        case Rhi::ResourceState::CopySource:
+            return "copy source";
+        case Rhi::ResourceState::CopyTarget:
+            return "copy target";
+        case Rhi::ResourceState::IndirectArgs:
+            return "indirect arguments";
+        case Rhi::ResourceState::HostRead:
+            return "CPU read";
+    }
+    return "?";
+}
+
 /// @brief How a new display starts: depth spread over the near range (reversed Z puts most of a scene near 0), colour
 ///        as it is.
 FrameInspector::DisplaySettings defaultSettings(bool depth)
@@ -130,7 +174,170 @@ FlowLayout layoutFlow(const FrameFlow& flow)
     }
     layout.columns = static_cast<std::uint32_t>(perColumn.size());
     layout.rows = perColumn.empty() ? 0 : *std::ranges::max_element(perColumn);
+
+    // Fewer crossings: column by column, left to right, order passes by the average row of the passes their inputs
+    // come from (the barycentre heuristic). Earlier columns are final when a column is sorted. Passes with no
+    // inputs from the frame keep their place in the order they were added.
+    for (std::uint32_t column = 1; column < layout.columns; ++column)
+    {
+        struct Keyed
+        {
+            float key = 0.0F;
+            std::uint32_t pass = 0;
+        };
+        std::vector<Keyed> passes;
+        for (std::uint32_t pass = 0; pass < flow.passes.size(); ++pass)
+        {
+            if (layout.column[pass] != column)
+            {
+                continue;
+            }
+            float sum = 0.0F;
+            std::uint32_t count = 0;
+            for (const FlowAccess& access : flow.passes[pass].accesses)
+            {
+                if (const std::optional<std::uint32_t> writer = writerBefore(flow, access.resource, pass))
+                {
+                    sum += static_cast<float>(layout.row[*writer]);
+                    ++count;
+                }
+            }
+            passes.push_back({.key = count > 0 ? sum / static_cast<float>(count) : static_cast<float>(layout.row[pass]),
+                              .pass = pass});
+        }
+        std::ranges::stable_sort(passes, {}, &Keyed::key);
+        for (std::uint32_t row = 0; row < passes.size(); ++row)
+        {
+            layout.row[passes[row].pass] = row;
+        }
+    }
     return layout;
+}
+
+ResourceKind resourceKind(const FrameFlow& flow, std::uint32_t resource)
+{
+    const FlowResource& info = flow.resources[resource];
+    if (info.texture)
+    {
+        return isDepthFormat(info.info.format) ? ResourceKind::DepthTexture : ResourceKind::ColorTexture;
+    }
+    for (const FlowPass& pass : flow.passes)
+    {
+        for (const FlowAccess& access : pass.accesses)
+        {
+            if (access.resource == resource && access.state == Rhi::ResourceState::IndirectArgs)
+            {
+                return ResourceKind::IndirectBuffer;
+            }
+        }
+    }
+    return ResourceKind::Buffer;
+}
+
+const char* resourceKindName(ResourceKind kind)
+{
+    switch (kind)
+    {
+        case ResourceKind::ColorTexture:
+            return "Colour texture";
+        case ResourceKind::DepthTexture:
+            return "Depth texture";
+        case ResourceKind::Buffer:
+            return "Buffer";
+        case ResourceKind::IndirectBuffer:
+            return "Indirect arguments";
+    }
+    return "?";
+}
+
+FlowGeometry placeFlow(const FrameFlow& flow, const FlowMetrics& metrics,
+                       const std::function<float(std::string_view)>& textWidth)
+{
+    const FlowLayout layout = layoutFlow(flow);
+    const auto passCount = static_cast<std::uint32_t>(flow.passes.size());
+    FlowGeometry geometry;
+    geometry.nodes.resize(passCount);
+
+    // Each node: wide enough for its title, and for its longest input and output label side by side.
+    const auto widest = [&](const std::vector<std::uint32_t>& resources)
+    {
+        float width = 0.0F;
+        for (const std::uint32_t resource : resources)
+        {
+            width = std::max(width, textWidth(flow.resources[resource].name));
+        }
+        return width;
+    };
+    for (std::uint32_t pass = 0; pass < passCount; ++pass)
+    {
+        FlowNode& node = geometry.nodes[pass];
+        node.pins = passPins(flow, pass);
+        node.title = std::format("{}  {}", pass, flow.passes[pass].name);
+        const float pinsWidth = widest(node.pins.inputs) + widest(node.pins.outputs) + metrics.dot * 4.0F +
+                                metrics.pad * 2.0F + metrics.sideGap;
+        node.width = std::max({metrics.minWidth, textWidth(node.title) + metrics.pad * 2.0F, pinsWidth});
+        const auto rows = static_cast<float>(
+            std::max<std::size_t>({node.pins.inputs.size(), node.pins.outputs.size(), std::size_t{1}}));
+        node.height = metrics.titleHeight + rows * metrics.pinRow + metrics.pad * 0.5F;
+    }
+
+    // Columns as wide as their widest node; nodes stacked in each column in the layout's row order.
+    std::vector<float> columnWidth(layout.columns, 0.0F);
+    for (std::uint32_t pass = 0; pass < passCount; ++pass)
+    {
+        columnWidth[layout.column[pass]] = std::max(columnWidth[layout.column[pass]], geometry.nodes[pass].width);
+    }
+    std::vector<float> columnX(layout.columns, metrics.margin);
+    for (std::uint32_t column = 1; column < layout.columns; ++column)
+    {
+        columnX[column] = columnX[column - 1] + columnWidth[column - 1] + metrics.columnGap;
+    }
+    std::vector<std::uint32_t> order(passCount);
+    for (std::uint32_t pass = 0; pass < passCount; ++pass)
+    {
+        order[pass] = pass;
+    }
+    std::ranges::sort(
+        order, [&](std::uint32_t a, std::uint32_t b)
+        { return std::pair{layout.column[a], layout.row[a]} < std::pair{layout.column[b], layout.row[b]}; });
+    std::vector<float> columnBottom(layout.columns, metrics.margin);
+    for (const std::uint32_t pass : order)
+    {
+        const std::uint32_t column = layout.column[pass];
+        geometry.nodes[pass].x = columnX[column];
+        geometry.nodes[pass].y = columnBottom[column];
+        columnBottom[column] += geometry.nodes[pass].height + metrics.rowGap;
+    }
+    if (layout.columns > 0)
+    {
+        geometry.width = columnX.back() + columnWidth.back() + metrics.margin;
+        geometry.height = *std::ranges::max_element(columnBottom) - metrics.rowGap + metrics.margin;
+    }
+    return geometry;
+}
+
+FlowPins passPins(const FrameFlow& flow, std::uint32_t pass)
+{
+    FlowPins pins;
+    const auto add = [](std::vector<std::uint32_t>& list, std::uint32_t resource)
+    {
+        if (std::ranges::find(list, resource) == list.end())
+        {
+            list.push_back(resource);
+        }
+    };
+    for (const FlowAccess& access : flow.passes[pass].accesses)
+    {
+        if (!access.writes || writerBefore(flow, access.resource, pass))
+        {
+            add(pins.inputs, access.resource);
+        }
+        if (access.writes)
+        {
+            add(pins.outputs, access.resource);
+        }
+    }
+    return pins;
 }
 
 FrameInspector::FrameInspector(Renderer::RenderDevice& device, Renderer::PipelineLibrary& pipelines, AssetId shader,
@@ -191,6 +398,7 @@ void FrameInspector::release(Rhi::IRhiDevice& device)
     m_snapshots.clear();
     m_capture.reset();
     m_capturePass.reset();
+    m_capturePin.reset();
     m_captureSnapshot.reset();
     free(m_captureDisplay);
     for (const Rhi::TextureHandle texture : m_retired)
@@ -548,80 +756,266 @@ void FrameInspector::drawDisplayControls(DisplaySettings& settings, bool depth)
                                 : "Values shown black to white; HDR colour can go above 1.");
 }
 
-std::optional<std::uint32_t> FrameInspector::drawFlow(const FrameFlow& flow, std::optional<std::uint32_t> selected,
-                                                      const char* id)
+FrameInspector::FlowClick FrameInspector::drawFlow(const FrameFlow& flow, std::optional<std::uint32_t> selected,
+                                                   std::optional<FlowPin> pin, const char* id, float height)
 {
-    std::optional<std::uint32_t> clicked;
-    const FlowLayout layout = layoutFlow(flow);
+    FlowClick click;
+    const auto passCount = static_cast<std::uint32_t>(flow.passes.size());
     const float scale = ImGui::GetStyle().FontScaleDpi;
-    const ImVec2 box{150.0F * scale, 30.0F * scale};
-    const ImVec2 gap{70.0F * scale, 14.0F * scale};
-    ImGui::BeginChild(
-        id, ImVec2{0.0F, std::min(260.0F * scale, (box.y + gap.y) * static_cast<float>(layout.rows) + gap.y * 2.0F)},
-        ImGuiChildFlags_Borders, ImGuiWindowFlags_HorizontalScrollbar);
+    const float line = ImGui::GetTextLineHeight();
+    const FlowMetrics metrics{.pad = 8.0F * scale,
+                              .titleHeight = line + 8.0F * scale,
+                              .pinRow = line + 6.0F * scale,
+                              .dot = 4.5F * scale,
+                              .columnGap = 90.0F * scale,
+                              .rowGap = 24.0F * scale,
+                              .margin = 16.0F * scale,
+                              .minWidth = 140.0F * scale,
+                              .sideGap = 24.0F * scale};
+    const FlowGeometry geometry = placeFlow(flow, metrics, [](std::string_view text)
+                                            { return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x; });
+    const float pad = metrics.pad;
+    const float titleHeight = metrics.titleHeight;
+    const float pinRow = metrics.pinRow;
+    const float dot = metrics.dot;
+    std::vector<FlowPins> pins(passCount);
+    std::vector<ImVec2> size(passCount);
+    std::vector<ImVec2> position(passCount);
+    std::vector<std::string> titles(passCount);
+    for (std::uint32_t pass = 0; pass < passCount; ++pass)
+    {
+        const FlowNode& node = geometry.nodes[pass];
+        pins[pass] = node.pins;
+        size[pass] = ImVec2{node.width, node.height};
+        position[pass] = ImVec2{node.x, node.y};
+        titles[pass] = node.title;
+    }
+    const float contentWidth = geometry.width;
+    const float contentHeight = geometry.height;
+
+    ImGui::BeginChild(id, ImVec2{0.0F, height}, ImGuiChildFlags_Borders,
+                      ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoMove);
+    // Pan with the right or middle button, like a node editor.
+    if (ImGui::IsWindowHovered() &&
+        (ImGui::IsMouseDragging(ImGuiMouseButton_Right) || ImGui::IsMouseDragging(ImGuiMouseButton_Middle)))
+    {
+        const ImVec2 delta = ImGui::GetIO().MouseDelta;
+        ImGui::SetScrollX(ImGui::GetScrollX() - delta.x);
+        ImGui::SetScrollY(ImGui::GetScrollY() - delta.y);
+    }
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 origin = ImGui::GetCursorScreenPos();
-    const auto boxMin = [&](std::uint32_t pass)
+    const auto nodeMin = [&](std::uint32_t pass)
     {
-        return ImVec2{origin.x + gap.y + static_cast<float>(layout.column[pass]) * (box.x + gap.x),
-                      origin.y + gap.y + static_cast<float>(layout.row[pass]) * (box.y + gap.y)};
+        return ImVec2{origin.x + position[pass].x, origin.y + position[pass].y};
+    };
+    const auto inputAt = [&](std::uint32_t pass, std::size_t index)
+    {
+        const ImVec2 min = nodeMin(pass);
+        return ImVec2{min.x, min.y + titleHeight + pinRow * (static_cast<float>(index) + 0.5F)};
+    };
+    const auto outputAt = [&](std::uint32_t pass, std::size_t index)
+    {
+        const ImVec2 min = nodeMin(pass);
+        return ImVec2{min.x + size[pass].x, min.y + titleHeight + pinRow * (static_cast<float>(index) + 0.5F)};
+    };
+    const auto touches = [&](std::uint32_t pass, std::uint32_t resource)
+    {
+        return pin && pin->pass == pass && pin->resource == resource;
     };
 
-    // Links first, under the boxes: from the pass that wrote a resource to each pass that uses it after.
-    std::set<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t>> drawn;
+    // Wires first, under the nodes: from the output of the pass that last wrote a resource to each input that uses
+    // it. Dim ones first, highlighted ones (the selected pass's or pin's) over them.
+    for (int layer = 0; layer < 2; ++layer)
+    {
+        for (std::uint32_t pass = 0; pass < passCount; ++pass)
+        {
+            for (std::size_t input = 0; input < pins[pass].inputs.size(); ++input)
+            {
+                const std::uint32_t resource = pins[pass].inputs[input];
+                const std::optional<std::uint32_t> writer = writerBefore(flow, resource, pass);
+                if (!writer)
+                {
+                    continue;
+                }
+                const auto output = static_cast<std::size_t>(std::ranges::find(pins[*writer].outputs, resource) -
+                                                             pins[*writer].outputs.begin());
+                const bool highlighted = (selected && (*selected == pass || *selected == *writer)) ||
+                                         touches(pass, resource) || touches(*writer, resource);
+                if (highlighted != (layer == 1))
+                {
+                    continue;
+                }
+                ImVec4 colour = kindColour(resourceKind(flow, resource));
+                colour.w = highlighted ? 1.0F : 0.5F;
+                const ImVec2 from = outputAt(*writer, output);
+                const ImVec2 to = inputAt(pass, input);
+                const float bend = std::max(std::abs(to.x - from.x) * 0.5F, 40.0F * scale);
+                draw->AddBezierCubic(from, ImVec2{from.x + bend, from.y}, ImVec2{to.x - bend, to.y}, to,
+                                     ImGui::GetColorU32(colour), (highlighted ? 3.0F : 1.6F) * scale);
+            }
+        }
+    }
+
+    // A pin: its dot (hollow when nothing in the frame connects to it), the resource's name, and a hit area.
+    const auto drawPin = [&](std::uint32_t pass, std::uint32_t resource, ImVec2 at, bool output, bool connected)
+    {
+        const ResourceKind kind = resourceKind(flow, resource);
+        const ImU32 colour = ImGui::GetColorU32(kindColour(kind));
+        if (connected)
+        {
+            draw->AddCircleFilled(at, dot, colour);
+        }
+        else
+        {
+            draw->AddCircle(at, dot, colour, 0, 1.5F * scale);
+        }
+        if (touches(pass, resource) && pin->output == output)
+        {
+            draw->AddCircle(at, dot + 3.0F * scale, ImGui::GetColorU32(UiColors::c_text), 0, 1.5F * scale);
+        }
+        const FlowResource& info = flow.resources[resource];
+        const float textWidth = ImGui::CalcTextSize(info.name.c_str()).x;
+        const ImVec2 text{output ? at.x - dot * 2.0F - textWidth : at.x + dot * 2.0F, at.y - line * 0.5F};
+        draw->AddText(text, ImGui::GetColorU32(UiColors::c_text), info.name.c_str());
+        const float hitWidth = textWidth + dot * 4.0F;
+        ImGui::SetCursorScreenPos(
+            ImVec2{output ? at.x - hitWidth + dot * 2.0F : at.x - dot * 2.0F, at.y - pinRow * 0.5F});
+        ImGui::PushID(static_cast<int>(resource * 2 + (output ? 1U : 0U)));
+        if (ImGui::InvisibleButton("pin", ImVec2{hitWidth, pinRow}))
+        {
+            click.pin = FlowPin{.pass = pass, .resource = resource, .output = output};
+        }
+        if (ImGui::IsItemHovered())
+        {
+            if (info.texture)
+            {
+                ImGui::SetTooltip("%s\n%s, %u x %u %s\nClick to show it.", info.name.c_str(), resourceKindName(kind),
+                                  info.info.width, info.info.height, formatName(info.info.format));
+            }
+            else
+            {
+                ImGui::SetTooltip("%s\n%s\nClick for who writes and reads it.", info.name.c_str(),
+                                  resourceKindName(kind));
+            }
+        }
+        ImGui::PopID();
+    };
+
+    // The nodes: a title bar (click to watch the pass), then a row per pin.
+    for (std::uint32_t pass = 0; pass < passCount; ++pass)
+    {
+        const ImVec2 min = nodeMin(pass);
+        const ImVec2 max{min.x + size[pass].x, min.y + size[pass].y};
+        const bool isSelected = selected && *selected == pass;
+        ImGui::PushID(static_cast<int>(pass));
+        ImGui::SetCursorScreenPos(min);
+        if (ImGui::InvisibleButton("node", ImVec2{size[pass].x, titleHeight}))
+        {
+            click.pass = pass;
+        }
+        const bool hovered = ImGui::IsItemHovered();
+        const float rounding = 4.0F * scale;
+        draw->AddRectFilled(min, max, ImGui::GetColorU32(UiColors::c_frame), rounding);
+        draw->AddRectFilled(min, ImVec2{max.x, min.y + titleHeight},
+                            ImGui::GetColorU32(isSelected ? UiColors::c_accent
+                                                          : (hovered ? UiColors::c_line : UiColors::c_frameHovered)),
+                            rounding, ImDrawFlags_RoundTop);
+        draw->AddRect(min, max, ImGui::GetColorU32(isSelected ? UiColors::c_accentBright : UiColors::c_line), rounding,
+                      isSelected ? 2.0F : 1.0F);
+        draw->PushClipRect(min, ImVec2{max.x, min.y + titleHeight}, true);
+        draw->AddText(ImVec2{min.x + pad, min.y + (titleHeight - line) * 0.5F}, ImGui::GetColorU32(UiColors::c_text),
+                      titles[pass].c_str());
+        draw->PopClipRect();
+        for (std::size_t input = 0; input < pins[pass].inputs.size(); ++input)
+        {
+            const std::uint32_t resource = pins[pass].inputs[input];
+            drawPin(pass, resource, inputAt(pass, input), false, writerBefore(flow, resource, pass).has_value());
+        }
+        for (std::size_t output = 0; output < pins[pass].outputs.size(); ++output)
+        {
+            const std::uint32_t resource = pins[pass].outputs[output];
+            // Connected when a later pass uses what this one wrote.
+            bool used = false;
+            for (std::uint32_t later = pass + 1; later < passCount && !used; ++later)
+            {
+                used = std::ranges::find(pins[later].inputs, resource) != pins[later].inputs.end() &&
+                       writerBefore(flow, resource, later) == pass;
+            }
+            drawPin(pass, resource, outputAt(pass, output), true, used);
+        }
+        ImGui::PopID();
+    }
+    // The child's scrollable size.
+    ImGui::SetCursorScreenPos(origin);
+    ImGui::Dummy(ImVec2{contentWidth, contentHeight});
+    ImGui::EndChild();
+    return click;
+}
+
+void FrameInspector::drawLegend()
+{
+    constexpr std::array<ResourceKind, 4> c_kinds{ResourceKind::ColorTexture, ResourceKind::DepthTexture,
+                                                  ResourceKind::Buffer, ResourceKind::IndirectBuffer};
+    for (std::size_t i = 0; i < c_kinds.size(); ++i)
+    {
+        if (i > 0)
+        {
+            ImGui::SameLine(0.0F, ImGui::GetStyle().ItemSpacing.x * 3.0F);
+        }
+        // A dot like the pins', then the name.
+        const float radius = ImGui::GetTextLineHeight() * 0.22F;
+        const ImVec2 at = ImGui::GetCursorScreenPos();
+        ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2{at.x + radius, at.y + ImGui::GetTextLineHeight() * 0.5F},
+                                                    radius, ImGui::GetColorU32(kindColour(c_kinds[i])));
+        ImGui::Dummy(ImVec2{radius * 2.0F, ImGui::GetTextLineHeight()});
+        ImGui::SameLine();
+        ImGui::TextColored(UiColors::c_textDim, "%s", resourceKindName(c_kinds[i]));
+    }
+}
+
+void FrameInspector::drawPinInfo(const FrameFlow& flow, const FlowPin& pin, const UiFonts& fonts)
+{
+    if (pin.pass >= flow.passes.size() || pin.resource >= flow.resources.size())
+    {
+        return; // the frame changed since it was clicked
+    }
+    const FlowResource& resource = flow.resources[pin.resource];
+    const ResourceKind kind = resourceKind(flow, pin.resource);
+    ImGui::TextColored(kindColour(kind), "%s", resource.name.c_str());
+    ImGui::SameLine();
+    if (resource.texture)
+    {
+        ImGui::TextColored(UiColors::c_textDim, "%s, %u x %u %s", resourceKindName(kind), resource.info.width,
+                           resource.info.height, formatName(resource.info.format));
+    }
+    else
+    {
+        ImGui::TextColored(UiColors::c_textDim, "%s: not an image, so it can't be shown", resourceKindName(kind));
+    }
+    pushMonoFont(fonts);
+    if (!pin.output)
+    {
+        const std::optional<std::uint32_t> writer = writerBefore(flow, pin.resource, pin.pass);
+        const std::string from = writer ? std::format("from {} {}", *writer, flow.passes[*writer].name)
+                                        : std::string{"from before the frame (imported as it was)"};
+        ImGui::TextColored(UiColors::c_textDim, "Input of %u %s, %s", pin.pass, flow.passes[pin.pass].name.c_str(),
+                           from.c_str());
+    }
+    // Every use in the frame, in order.
     for (std::uint32_t pass = 0; pass < flow.passes.size(); ++pass)
     {
         for (const FlowAccess& access : flow.passes[pass].accesses)
         {
-            const std::optional<std::uint32_t> writer = writerBefore(flow, access.resource, pass);
-            if (!writer || !drawn.insert({*writer, pass, access.resource}).second)
+            if (access.resource == pin.resource)
             {
-                continue;
-            }
-            const bool highlighted = selected && (*selected == pass || *selected == *writer);
-            const ImU32 colour = ImGui::GetColorU32(highlighted ? UiColors::c_accent : UiColors::c_line);
-            const ImVec2 from{boxMin(*writer).x + box.x, boxMin(*writer).y + box.y * 0.5F};
-            const ImVec2 to{boxMin(pass).x, boxMin(pass).y + box.y * 0.5F};
-            const float bend = std::max((to.x - from.x) * 0.5F, 20.0F * scale);
-            draw->AddBezierCubic(from, ImVec2{from.x + bend, from.y}, ImVec2{to.x - bend, to.y}, to, colour,
-                                 highlighted ? 2.0F : 1.0F);
-            if (highlighted)
-            {
-                const std::string& name = flow.resources[access.resource].name;
-                draw->AddText(ImVec2{(from.x + to.x) * 0.5F - ImGui::CalcTextSize(name.c_str()).x * 0.5F,
-                                     (from.y + to.y) * 0.5F - ImGui::GetTextLineHeight()},
-                              ImGui::GetColorU32(UiColors::c_text), name.c_str());
+                ImGui::TextColored(pass == pin.pass ? UiColors::c_text : UiColors::c_textDim, "%-6s %2u %s (%s)",
+                                   access.writes ? "WRITE" : "READ", pass, flow.passes[pass].name.c_str(),
+                                   stateName(access.state));
             }
         }
     }
-    for (std::uint32_t pass = 0; pass < flow.passes.size(); ++pass)
-    {
-        const ImVec2 min = boxMin(pass);
-        const ImVec2 max{min.x + box.x, min.y + box.y};
-        ImGui::SetCursorScreenPos(min);
-        ImGui::PushID(static_cast<int>(pass));
-        if (ImGui::InvisibleButton("pass", box))
-        {
-            clicked = pass;
-        }
-        const bool hovered = ImGui::IsItemHovered();
-        ImGui::PopID();
-        const bool isSelected = selected && *selected == pass;
-        draw->AddRectFilled(min, max, ImGui::GetColorU32(hovered ? UiColors::c_frameHovered : UiColors::c_frame));
-        draw->AddRect(min, max, ImGui::GetColorU32(isSelected ? UiColors::c_accentBright : UiColors::c_line), 0.0F,
-                      isSelected ? 2.0F : 1.0F);
-        const std::string label = std::format("{}  {}", pass, flow.passes[pass].name);
-        draw->PushClipRect(min, max, true);
-        draw->AddText(ImVec2{min.x + 6.0F * scale, min.y + (box.y - ImGui::GetTextLineHeight()) * 0.5F},
-                      ImGui::GetColorU32(UiColors::c_text), label.c_str());
-        draw->PopClipRect();
-    }
-    // The child's scrollable size.
-    ImGui::SetCursorScreenPos(origin);
-    ImGui::Dummy(ImVec2{gap.y * 2.0F + static_cast<float>(layout.columns) * (box.x + gap.x),
-                        gap.y * 2.0F + static_cast<float>(layout.rows) * (box.y + gap.y)});
-    ImGui::EndChild();
-    return clicked;
+    popMonoFont();
 }
 
 void FrameInspector::drawWindows(ImGuiLayer& ui, const UiFonts& fonts)
@@ -640,17 +1034,45 @@ void FrameInspector::drawWindows(ImGuiLayer& ui, const UiFonts& fonts)
                 selected = pass;
             }
         }
-        ImGui::TextColored(UiColors::c_textDim, "%zu passes, %zu resources. Click a pass to watch its outputs.",
+        ImGui::TextColored(UiColors::c_textDim,
+                           "%zu passes, %zu resources. Click a pass to watch its outputs, a pin to see its resource. "
+                           "Right-drag to pan.",
                            m_liveFlow.passes.size(), m_liveFlow.resources.size());
-        if (const std::optional<std::uint32_t> clicked = drawFlow(m_liveFlow, selected, "live"))
+        drawLegend();
+        // The graph takes the room left after the button and the pin's details.
+        const float footer = ImGui::GetFrameHeightWithSpacing() * (m_livePin ? 7.0F : 1.0F);
+        const FlowClick click = drawFlow(m_liveFlow, selected, m_livePin, "live",
+                                         std::max(160.0F * scale, ImGui::GetContentRegionAvail().y - footer));
+        if (click.pass)
         {
-            m_selectedPass = (m_selectedPass && *m_selectedPass == m_liveFlow.passes[*clicked].name)
+            m_livePin.reset();
+            m_selectedPass = (m_selectedPass && *m_selectedPass == m_liveFlow.passes[*click.pass].name)
                                  ? std::nullopt // a second click stops watching
-                                 : std::optional{m_liveFlow.passes[*clicked].name};
+                                 : std::optional{m_liveFlow.passes[*click.pass].name};
+        }
+        if (click.pin)
+        {
+            m_livePin = click.pin;
+            // A texture is shown in the Pass view: watch the pass that wrote it, on its tab.
+            if (m_liveFlow.resources[click.pin->resource].texture)
+            {
+                const std::optional<std::uint32_t> writer =
+                    click.pin->output ? std::optional{click.pin->pass}
+                                      : writerBefore(m_liveFlow, click.pin->resource, click.pin->pass);
+                if (writer)
+                {
+                    m_selectedPass = m_liveFlow.passes[*writer].name;
+                    m_focusOutput = m_liveFlow.resources[click.pin->resource].name;
+                }
+            }
         }
         if (ImGui::Button("CAPTURE FRAME (F9)"))
         {
             requestCapture();
+        }
+        if (m_livePin)
+        {
+            drawPinInfo(m_liveFlow, *m_livePin, fonts);
         }
     }
     ImGui::End();
@@ -674,7 +1096,14 @@ void FrameInspector::drawWindows(ImGuiLayer& ui, const UiFonts& fonts)
             {
                 for (LiveOutput& output : m_live)
                 {
-                    if (!ImGui::BeginTabItem(output.name.c_str()))
+                    // A pin clicked in the graph brings its tab forward, once.
+                    const bool focus = m_focusOutput && *m_focusOutput == output.name;
+                    if (focus)
+                    {
+                        m_focusOutput.reset();
+                    }
+                    if (!ImGui::BeginTabItem(output.name.c_str(), nullptr,
+                                             focus ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
                     {
                         continue;
                     }
@@ -729,31 +1158,53 @@ void FrameInspector::drawWindows(ImGuiLayer& ui, const UiFonts& fonts)
                 }
                 m_snapshots.clear();
                 m_capture.reset();
+                m_capturePin.reset();
                 m_capturePass.reset();
                 m_captureSnapshot.reset();
                 ImGui::End();
                 return;
             }
-            if (const std::optional<std::uint32_t> clicked = drawFlow(*m_capture, m_capturePass, "capture"))
+            // Shows a texture as a pass left it.
+            const auto select = [&](std::uint32_t writer, std::uint32_t resource)
             {
-                m_capturePass = clicked;
+                for (std::size_t i = 0; i < m_snapshots.size(); ++i)
+                {
+                    if (m_snapshots[i].pass == writer && m_snapshots[i].resource == resource)
+                    {
+                        m_captureSnapshot = i;
+                        m_captureSettings = defaultSettings(m_snapshots[i].depth);
+                    }
+                }
+            };
+            drawLegend();
+            const FlowClick click = drawFlow(*m_capture, m_capturePass, m_capturePin, "capture",
+                                             std::max(160.0F * scale, ImGui::GetContentRegionAvail().y * 0.45F));
+            if (click.pass)
+            {
+                m_capturePass = click.pass;
+                m_capturePin.reset();
+            }
+            if (click.pin)
+            {
+                m_capturePin = click.pin;
+                m_capturePass = click.pin->pass;
+                const std::optional<std::uint32_t> writer =
+                    click.pin->output ? std::optional{click.pin->pass}
+                                      : writerBefore(*m_capture, click.pin->resource, click.pin->pass);
+                if (writer && m_capture->resources[click.pin->resource].texture)
+                {
+                    select(*writer, click.pin->resource);
+                }
+            }
+            if (m_capturePin)
+            {
+                drawPinInfo(*m_capture, *m_capturePin, fonts);
             }
             if (m_capturePass)
             {
                 const FlowPass& pass = m_capture->passes[*m_capturePass];
                 ImGui::SeparatorText(std::format("{}  {}", *m_capturePass, pass.name).c_str());
                 // Inputs: what it reads, and which pass wrote it; outputs: what it wrote. Clicking shows the texture.
-                const auto select = [&](std::uint32_t writer, std::uint32_t resource)
-                {
-                    for (std::size_t i = 0; i < m_snapshots.size(); ++i)
-                    {
-                        if (m_snapshots[i].pass == writer && m_snapshots[i].resource == resource)
-                        {
-                            m_captureSnapshot = i;
-                            m_captureSettings = defaultSettings(m_snapshots[i].depth);
-                        }
-                    }
-                };
                 pushMonoFont(fonts);
                 for (const FlowAccess& access : pass.accesses)
                 {

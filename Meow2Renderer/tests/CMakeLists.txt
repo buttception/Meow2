@@ -4,6 +4,7 @@ meow2_add_test_suite(
     MODULE    RendererApp
     SOURCES
         CameraControlsTests.cpp
+        DebugOverlaysTests.cpp
         FrameInspectorTests.cpp
         RendererUiTests.cpp
         ShellWindowsTests.cpp
@@ -16,7 +17,9 @@ if(MEOW2_GPU_TESTS AND MEOW2_SHADER_TOOLS)
         TARGET    Meow2RendererGoldenTests
         MODULE    Visual
         LABELS    gpu visual
-        SOURCES   GoldenImageTests.cpp
+        SOURCES
+            DebugOverlayGpuTests.cpp
+            GoldenImageTests.cpp
         LIBRARIES Meow2RendererCore)
     add_dependencies(Meow2RendererGoldenTests Meow2Shaders)
     target_compile_definitions(Meow2RendererGoldenTests PRIVATE

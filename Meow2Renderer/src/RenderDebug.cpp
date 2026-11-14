@@ -5,7 +5,7 @@
 
 #include <imgui.h>
 
-#include <format>
+#include <algorithm>
 #include <string>
 
 namespace Meow2::RendererApp
@@ -36,18 +36,6 @@ constexpr std::array<DebugViewEntry, 21> c_views{{
     {MEOW2_DEBUG_VIEW_SPECULAR, "Specular only", "Lighting"},
 }};
 
-/// @brief The menu's label for a view.
-std::string_view labelOf(int view)
-{
-    for (const DebugViewEntry& entry : c_views)
-    {
-        if (entry.view == view)
-        {
-            return entry.label;
-        }
-    }
-    return "?";
-}
 } // namespace
 
 std::span<const DebugViewEntry> debugViewEntries()
@@ -171,18 +159,25 @@ void RenderDebug::apply(Renderer::GpuScene& scene, Shader::FrameConstants& frame
     scene.setSkyPass(!(ready && active()));
 }
 
-Math::Frustum RenderDebug::cullingFrustum(const Math::Frustum& current)
+Math::Frustum RenderDebug::cullingFrustum(const Math::Frustum& current, const Shader::FrameConstants& frame)
 {
     if (!m_state.freezeCulling)
     {
         m_frozen.reset();
+        m_frozenCamera.reset();
         return current;
     }
     if (!m_frozen)
     {
         m_frozen = current;
+        m_frozenCamera = frame;
     }
     return *m_frozen;
+}
+
+std::optional<Shader::FrameConstants> RenderDebug::frozenCamera() const
+{
+    return m_state.showFrustum ? m_frozenCamera : std::nullopt;
 }
 
 Math::Color RenderDebug::clearColor(const Math::Color& normal) const
@@ -224,6 +219,58 @@ bool RenderDebug::addPresent(Renderer::RenderGraph& graph, Renderer::GraphResour
     return true;
 }
 
+void RenderDebug::drawViewButtons()
+{
+    // Every view is one click away: a row of equal buttons per group, wrapping to the window's width, the active one
+    // in the accent colour.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float buttonWidth = 0.0F;
+    for (const DebugViewEntry& entry : c_views)
+    {
+        buttonWidth =
+            std::max(buttonWidth, ImGui::CalcTextSize(entry.label.data(), entry.label.data() + entry.label.size()).x);
+    }
+    buttonWidth += style.FramePadding.x * 2.0F;
+    const float available = ImGui::GetContentRegionAvail().x;
+    const int columns =
+        std::max(1, static_cast<int>((available + style.ItemSpacing.x) / (buttonWidth + style.ItemSpacing.x)));
+    buttonWidth = std::max(buttonWidth, (available - style.ItemSpacing.x * static_cast<float>(columns - 1)) /
+                                            static_cast<float>(columns)); // fill the row
+    std::string_view group;
+    int column = 0;
+    for (const DebugViewEntry& entry : c_views)
+    {
+        if (entry.group != group)
+        {
+            group = entry.group;
+            column = 0;
+            ImGui::TextColored(UiColors::c_textDim, "%.*s", static_cast<int>(group.size()), group.data());
+        }
+        if (column > 0)
+        {
+            ImGui::SameLine();
+        }
+        const bool active = m_state.view == entry.view;
+        if (active)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, UiColors::c_accent);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, UiColors::c_accentBright);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, UiColors::c_accentBright);
+        }
+        ImGui::PushID(entry.view);
+        if (ImGui::Button(std::string{entry.label}.c_str(), ImVec2{buttonWidth, 0.0F}))
+        {
+            m_state.view = entry.view;
+        }
+        ImGui::PopID();
+        if (active)
+        {
+            ImGui::PopStyleColor(3);
+        }
+        column = (column + 1) % columns;
+    }
+}
+
 void RenderDebug::drawWindow(const UiFonts& fonts)
 {
     if (!ImGui::Begin("DEBUG###Debug"))
@@ -233,23 +280,7 @@ void RenderDebug::drawWindow(const UiFonts& fonts)
     }
     drawWindowAccents();
     ImGui::SeparatorText("VIEW");
-    if (ImGui::BeginCombo("##view", std::string{labelOf(m_state.view)}.c_str()))
-    {
-        std::string_view group;
-        for (const DebugViewEntry& entry : c_views)
-        {
-            if (entry.group != group)
-            {
-                group = entry.group;
-                ImGui::TextDisabled("%.*s", static_cast<int>(group.size()), group.data());
-            }
-            if (ImGui::Selectable(std::format("   {}", entry.label).c_str(), m_state.view == entry.view))
-            {
-                m_state.view = entry.view;
-            }
-        }
-        ImGui::EndCombo();
-    }
+    drawViewButtons();
     if (m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_OVERDRAW))
     {
         ImGui::TextColored(UiColors::c_textDim, "Layers per pixel: blue 1, green 2, yellow 4,\nred 8, white 16+.");
@@ -278,6 +309,9 @@ void RenderDebug::drawWindow(const UiFonts& fonts)
     ImGui::SeparatorText("CULLING");
     ImGui::Checkbox("FREEZE", &m_state.freezeCulling);
     ImGui::SetItemTooltip("Keep culling with the camera's frustum from now: fly away and see what was culled.");
+    ImGui::SameLine();
+    ImGui::Checkbox("SHOW FRUSTUM", &m_state.showFrustum);
+    ImGui::SetItemTooltip("While frozen, draw the frozen camera's view volume (yellow), through the scene.");
     if (m_scene.failed)
     {
         pushMonoFont(fonts);

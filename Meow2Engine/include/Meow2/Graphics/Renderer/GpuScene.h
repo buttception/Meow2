@@ -348,6 +348,14 @@ public:
     /// @param graph The graph.
     void endFrame(const RenderGraph& graph);
 
+    /// @brief The depth target in this frame's graph, for passes after addPasses() that read or test it (an infinite
+    ///        grid hidden behind the scene). Importing the texture again would track its state twice.
+    /// @return The resource the last addPasses() imported.
+    [[nodiscard]] GraphResource depthResource() const
+    {
+        return m_depthResource;
+    }
+
     /// @brief Where the surviving draw counts land, for tests and statistics.
     /// @return A buffer holding one `uint` per draw list (MEOW2_DRAW_LIST_*), the back-culled list first. Changes when
     ///         the backend does.

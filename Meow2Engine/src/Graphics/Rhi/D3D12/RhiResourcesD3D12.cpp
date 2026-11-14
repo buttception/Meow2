@@ -741,7 +741,9 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
                                                                                     : D3D12_DEPTH_WRITE_MASK_ZERO,
                                       .DepthFunc = desc.depthTest ? D3D12_COMPARISON_FUNC_GREATER_EQUAL // reversed Z
                                                                   : D3D12_COMPARISON_FUNC_ALWAYS};
-    pipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    const bool lines = desc.topology == PrimitiveTopology::Lines && desc.meshCode.empty();
+    pipelineDesc.PrimitiveTopologyType =
+        lines ? D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE : D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     pipelineDesc.NumRenderTargets = 1;
     pipelineDesc.RTVFormats[0] = d3d12Format(desc.colorFormat);
     pipelineDesc.DSVFormat = hasDepth ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_UNKNOWN;
@@ -766,6 +768,7 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     // Every state that differs between our pipelines must be in the key, or the library hands back another pipeline
     // with the same shaders (a wireframe view would load the solid one).
     key.addValue(pipelineDesc.RasterizerState.FillMode);
+    key.addValue(pipelineDesc.PrimitiveTopologyType);
     key.addValue(pipelineDesc.DepthStencilState.DepthEnable);
     key.addValue(pipelineDesc.DepthStencilState.DepthFunc);
     key.addValue(pipelineDesc.BlendState.RenderTarget[0].SrcBlend);
@@ -813,7 +816,10 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     }
     (*state)->SetName(wideName(desc.name).c_str());
     const std::scoped_lock lock{m_resourceMutex};
-    return m_pipelines.create({.state = *state, .compute = false});
+    return m_pipelines.create(
+        {.state = *state,
+         .compute = false,
+         .topology = lines ? D3D_PRIMITIVE_TOPOLOGY_LINELIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST});
 }
 
 Result<PipelineHandle> RhiDeviceD3D12::createComputePipeline(const ComputePipelineDesc& desc)

@@ -155,7 +155,7 @@ public:
 
     /// @brief A texture's heap slot, for `ResourceDescriptorHeap[index]` as a Texture2D.
     /// @param texture The texture.
-    /// @return The index; c_invalidBindlessIndex for a stale handle or a depth texture.
+    /// @return The index; c_invalidBindlessIndex for a stale handle. A depth texture reads as one float (its depth).
     /// @note Thread-safe.
     [[nodiscard]] virtual std::uint32_t bindlessIndex(TextureHandle texture) = 0;
 

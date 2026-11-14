@@ -71,10 +71,16 @@ inline constexpr BoolSetting c_meshletsSetting{"renderer.meshlets", "MESHLETS",
                                                "object.",
                                                true, SettingEffect::Now};
 
+/// @brief `renderer.grid`: the infinite grid on the ground plane (y = 0), worked out in a compute pass.
+inline constexpr BoolSetting c_gridSetting{"renderer.grid", "GRID",
+                                           "An endless grid on the ground (y = 0): the X axis red, the Z axis "
+                                           "blue, cells in powers of ten that follow the camera's height.",
+                                           true, SettingEffect::Now};
+
 /// @brief Every setting the window shows, in its order.
-inline constexpr std::array<BoolSetting, 7> c_boolSettings{
+inline constexpr std::array<BoolSetting, 8> c_boolSettings{
     c_validationSetting,       c_vsyncSetting, c_renderDocSetting, c_renderDocWindowSetting,
-    c_compressTexturesSetting, c_skySetting,   c_meshletsSetting};
+    c_compressTexturesSetting, c_skySetting,   c_meshletsSetting,  c_gridSetting};
 
 /// @brief Where ImGui's window layout is kept in the config (ImGuiLayer::loadLayout(), takeLayoutChange()).
 inline constexpr std::string_view c_uiLayoutKey = "renderer.uiLayout";

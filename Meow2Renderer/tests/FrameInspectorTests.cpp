@@ -59,3 +59,86 @@ TEST(FrameInspector, LaysOutPassesInColumns)
     EXPECT_EQ(layout.rows, 2U);
 }
 } // namespace Meow2::RendererApp
+
+namespace Meow2::RendererApp
+{
+TEST(FrameInspector, NodesHavePinsForEachAccess)
+{
+    const FrameFlow flow = sampleFlow();
+    const FlowPins opaque = passPins(flow, 2);
+    EXPECT_EQ(opaque.inputs, (std::vector<std::uint32_t>{0})) << "reads the draws; its colour write starts fresh";
+    EXPECT_EQ(opaque.outputs, (std::vector<std::uint32_t>{1}));
+    const FlowPins sky = passPins(flow, 3);
+    EXPECT_EQ(sky.inputs, (std::vector<std::uint32_t>{2, 1})) << "draws over the opaque pass's colour: an input too";
+    EXPECT_EQ(sky.outputs, (std::vector<std::uint32_t>{1}));
+    const FlowPins toneMap = passPins(flow, 4);
+    EXPECT_EQ(toneMap.inputs, (std::vector<std::uint32_t>{1}));
+    EXPECT_TRUE(toneMap.outputs.empty());
+}
+
+TEST(FrameInspector, NodesInAColumnDontOverlap)
+{
+    // Three independent passes in one column, with different numbers of pins and names of different lengths.
+    FrameFlow flow;
+    flow.resources = {{.name = "A"}, {.name = "A much longer resource name"}, {.name = "C"}, {.name = "D"}};
+    flow.passes = {
+        {.name = "One", .accesses = {writes(0)}},
+        {.name = "Two", .accesses = {writes(1), writes(2), writes(3)}},
+        {.name = "Three with a long name", .accesses = {writes(2)}},
+    };
+    const FlowMetrics metrics{};
+    const FlowGeometry geometry =
+        placeFlow(flow, metrics, [](std::string_view text) { return 7.0F * static_cast<float>(text.size()); });
+    ASSERT_EQ(geometry.nodes.size(), 3U);
+    for (std::size_t i = 0; i < geometry.nodes.size(); ++i)
+    {
+        const FlowNode& node = geometry.nodes[i];
+        EXPECT_GE(node.width, 7.0F * static_cast<float>(node.title.size())) << "the title fits";
+        EXPECT_LE(node.x + node.width, geometry.width);
+        EXPECT_LE(node.y + node.height, geometry.height);
+        for (std::size_t j = i + 1; j < geometry.nodes.size(); ++j)
+        {
+            const FlowNode& other = geometry.nodes[j];
+            const bool apart = node.x + node.width <= other.x || other.x + other.width <= node.x ||
+                               node.y + node.height <= other.y || other.y + other.height <= node.y;
+            EXPECT_TRUE(apart) << node.title << " overlaps " << other.title;
+        }
+    }
+    EXPECT_GT(geometry.nodes[1].height, geometry.nodes[0].height) << "three pins need three rows";
+    EXPECT_GE(geometry.nodes[1].width, 7.0F * 27.0F) << "the long resource name fits";
+}
+
+TEST(FrameInspector, OrdersRowsSoWiresCrossLess)
+{
+    // A and B write in column 0; C reads B's and D reads A's. In the order added, C's wire would cross D's.
+    FrameFlow flow;
+    flow.resources = {{.name = "a"}, {.name = "b"}};
+    flow.passes = {
+        {.name = "A", .accesses = {writes(0)}},
+        {.name = "B", .accesses = {writes(1)}},
+        {.name = "C", .accesses = {reads(1)}},
+        {.name = "D", .accesses = {reads(0)}},
+    };
+    const FlowLayout layout = layoutFlow(flow);
+    EXPECT_EQ(layout.column[2], 1U);
+    EXPECT_EQ(layout.column[3], 1U);
+    EXPECT_EQ(layout.row[3], 0U) << "D reads A's (row 0), so it goes on top";
+    EXPECT_EQ(layout.row[2], 1U);
+}
+
+TEST(FrameInspector, ResourceKinds)
+{
+    FrameFlow flow;
+    flow.resources = {{.name = "Colour", .texture = true, .info = {.format = Rhi::RhiFormat::Rgba16Float}},
+                      {.name = "Depth", .texture = true, .info = {.format = Rhi::RhiFormat::D32Float}},
+                      {.name = "Draws"},
+                      {.name = "Instances"}};
+    flow.passes = {{.name = "Draw",
+                    .accesses = {{.resource = 2, .state = Rhi::ResourceState::IndirectArgs, .writes = false},
+                                 {.resource = 3, .state = Rhi::ResourceState::ShaderRead, .writes = false}}}};
+    EXPECT_EQ(resourceKind(flow, 0), ResourceKind::ColorTexture);
+    EXPECT_EQ(resourceKind(flow, 1), ResourceKind::DepthTexture);
+    EXPECT_EQ(resourceKind(flow, 2), ResourceKind::IndirectBuffer) << "some pass reads it as indirect arguments";
+    EXPECT_EQ(resourceKind(flow, 3), ResourceKind::Buffer);
+}
+} // namespace Meow2::RendererApp

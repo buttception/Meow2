@@ -727,7 +727,8 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO}; // shaders pull their own vertices
     const VkPipelineInputAssemblyStateCreateInfo assembly{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
+        .topology = desc.topology == PrimitiveTopology::Lines ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST
+                                                              : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
     const VkPipelineViewportStateCreateInfo viewport{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, .viewportCount = 1, .scissorCount = 1};
     // Clockwise, as in D3D: the flipped viewport keeps screen positions the same on both backends.
