@@ -237,7 +237,7 @@ Planned as four PRs (PR 2, scene files, moved to M7), plus PRs 6, 7 and 8 for th
 From M7 on, features are tracked as GitHub issues and this file keeps only the map (owner decision 2026-11-09); the workflow change in AGENTS.md is M7's first PR. Planned as six PRs (owner decisions 2026-11-14: Qt's `QJsonDocument` for JSON, cpp-httplib for MCP's HTTP, TOML for `.m2scene`, one field-descriptor registry per component, the debug tools remade in Qt; no play/pause until physics or scripting gives it something to run).
 
 - ✅ Qt main window with a native viewport, size/position/mode in the config — #58 / PR #59
-- **PR 1 Foundation**
+- ✅ **PR 1 Foundation** — #210 / PR #211
   - The AGENTS.md workflow change (issue-based tracking)
   - Command system: every editor action is an undoable command in `EditorCommandRegistry` (techstack §20), parameter schemas as `QJsonDocument`; read-only queries registered the same way; one undo/redo stack; menus, toolbar and shortcuts only issue commands
   - Log console dock on the engine's `ConsoleBuffer`, only the level coloured (as in PowerShell), filters, copy
@@ -361,3 +361,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-14 — Owner decision: cascaded shadow maps (#202 / PR #203) join M6 as its last PR; `v0.7.0` is tagged on its merge.
 - 2026-11-14 — M7 planned as six PRs with the owner's decisions (JSON, HTTP, TOML scenes, field descriptors, Qt debug tools, two viewports, gizmos, framebuffer picking, an Unreal-style GPU instance buffer); M12 gains inferred mobility and more shadow work.
 - 2026-11-14 — Owner decision: Audio is M10, after Scripting; Game UI, Export, Advanced rendering and Platforms renumbered M11–M14.
+- 2026-11-14 — M7 PR 1 done (#210 / PR #211); from M7 on, progress is tracked in issues (AGENTS.md §4).
