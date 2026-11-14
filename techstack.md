@@ -112,6 +112,7 @@ Examples:
 | `MEOW2_PHYSICS_BACKEND` | **⚠ OPEN** (M8) | The physics library: Box3D, Jolt or PhysX, decided in M8; `None` builds without physics |
 | `MEOW2_SIMD` | `AVX2` | x64 instruction set for the whole build: `AVX2` (+ FMA3, F16C) or `SSE4.2`; every app checks the CPU at startup (§10) |
 | `MEOW2_SHADER_TOOLS` | ON | Downloads the pinned DXC (`MEOW2_DXC_DIR` uses an unpacked release instead); off, shaders can't be compiled, only loaded |
+| `MEOW2_MSVC_MP` | OFF | MSVC `/MP` for Visual Studio solutions (owner request 2026-11-14); no effect with Ninja, which compiles files in parallel itself |
 
 ### Presets
 `windows-msvc-{debug,relwithdebinfo,release}`, `linux-clang-{debug,relwithdebinfo,release}`, later `android-arm64-*`.
@@ -762,3 +763,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-14 — §11: cascaded shadow maps for the sun, static casters cached and movable casters drawn every frame (owner request, M6's last PR); RHI depth-only passes.
 - 2026-11-14 — §10: quaternions stored, Euler shown; §11: GPU instance buffer with a scatter pass (M7), inferred mobility (M12); §20: `QJsonDocument` and cpp-httplib chosen; `.m2scene` is TOML (milestones.md M7).
 - 2026-11-14 — Roadmap: Audio is M10 (owner decision), later milestones renumbered (Game UI M11, Export M12, Advanced rendering M13, Platforms M14); §2/§3: an `Audio` subsystem, library open.
+- 2026-11-14 — §2: `MEOW2_MSVC_MP` (`/MP` for Visual Studio solutions, off by default); CI builds on the owner's PC can be pinned to a CPU set from the runner's `.env` (`MEOW2_CPU_AFFINITY`).

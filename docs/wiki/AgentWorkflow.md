@@ -49,6 +49,16 @@ cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxili
 
 The Windows CI job on the self-hosted runner does the same thing (see [CI](CI.md)).
 
+### CPU pinning
+
+On the owner's PC (Ryzen 9 9950X3D) agents build only on CCD1, logical processors 16–31, and never on CCD0 (0–15, the V-Cache CCD the owner uses). Launch the build with `start`, which sets the affinity and priority for it and everything it starts, and give Ninja and ctest 16 jobs:
+
+```
+cmd /c "start """" /b /wait /belownormal /affinity FFFF0000 cmd /c build.cmd"
+```
+
+with `set CMAKE_BUILD_PARALLEL_LEVEL=16` and `set CTEST_PARALLEL_LEVEL=16` in `build.cmd` (a batch file in the session's scratchpad that calls `vcvars64.bat` and runs the build). `start /wait` sets `ERRORLEVEL` to the build's exit code, but `||` after it doesn't see it: check `ERRORLEVEL` on the next line. `/MP` doesn't matter for these Ninja builds ([Building → Parallel builds](Building.md#parallel-builds)).
+
 Gotchas:
 - **Path length (MAX_PATH).** MSVC fails with `C1083: Cannot open compiler generated file: '': Invalid argument` when build paths get longer than 260 characters, for example a checkout under `%TEMP%`. That's why the clean check below uses a short, git-ignored folder inside the worktree (`build-*/` is in `.gitignore`).
 - **Visual Studio Installer updates.** While the installer is updating VS, `vcvars64.bat` can be missing for a while ("is not recognized"). Wait for the installer to finish; don't change the build.

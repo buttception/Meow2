@@ -55,6 +55,18 @@ option(MEOW2_RHI_VULKAN    "Vulkan backend of the RHI" ON)
 include(CMakeDependentOption)
 cmake_dependent_option(MEOW2_RHI_D3D12 "D3D12 backend of the RHI (Windows only)" ON "WIN32" OFF)
 option(MEOW2_GPU_TESTS     "Tests that need a GPU and a desktop (labels gpu, visual)" OFF)
+option(MEOW2_MSVC_MP       "MSVC: compile a project's files in parallel (/MP), for Visual Studio solutions" OFF)
+
+# /MP lets one cl.exe compile many files at once. Only MSBuild (Visual Studio generators) hands cl.exe many files;
+# Ninja starts one cl.exe per file and runs them in parallel itself (-j, CMAKE_BUILD_PARALLEL_LEVEL), so there /MP
+# would do nothing.
+if(MEOW2_MSVC_MP AND MSVC)
+    if(CMAKE_GENERATOR MATCHES "^Visual Studio")
+        add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/MP>")
+    else()
+        message(STATUS "MEOW2_MSVC_MP: no effect with ${CMAKE_GENERATOR} (it compiles files in parallel itself)")
+    endif()
+endif()
 
 # ---- Output layout ----------------------------------------------------------
 # All executables (and later DLLs such as Qt's) land in one bin/ folder so they

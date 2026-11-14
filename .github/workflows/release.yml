@@ -58,8 +58,14 @@ jobs:
 
           rem The tag must match project(VERSION): v0.2.0 -> Meow2-0.2.0-windows-x64.zip
           set "VERSION=%GITHUB_REF_NAME:~1%"
-          cmake --workflow --preset windows-msvc-release || exit /b 1
-          cmake --build --preset windows-msvc-release --target package || exit /b 1
+          rem Optional CPU pinning from the runner's .env, as in ci.yml; ERRORLEVEL is checked on its own line because
+          rem "start" doesn't pass the exit code to ||.
+          set "PIN="
+          if defined MEOW2_CPU_AFFINITY set "PIN=start "" /b /wait /belownormal /affinity %MEOW2_CPU_AFFINITY%"
+          %PIN% cmake --workflow --preset windows-msvc-release
+          if not "%ERRORLEVEL%"=="0" exit /b 1
+          %PIN% cmake --build --preset windows-msvc-release --target package
+          if not "%ERRORLEVEL%"=="0" exit /b 1
           rem No parentheses inside the error message: cmd would end the ( ... ) block at the first ")" (#84).
           if not exist "build\windows-msvc-release\package\Meow2-%VERSION%-windows-x64.zip" (echo ::error::No Meow2-%VERSION%-windows-x64.zip: does the tag match the project VERSION in CMakeLists.txt? & exit /b 1)
 

@@ -25,6 +25,7 @@ Build output goes to `<build dir>/bin` (executables) and `<build dir>/lib` (libr
 | `MEOW2_BUILD_PLAYER` | ON | Build `Meow2Player` |
 | `MEOW2_BUILD_RENDERER` | ON | Build `Meow2Renderer` |
 | `MEOW2_SHADER_TOOLS` | ON | Download the pinned DXC ([Shaders](Shaders.md)) |
+| `MEOW2_MSVC_MP` | OFF | MSVC `/MP`: each `cl.exe` compiles several files of a project at once. Only for Visual Studio solutions (`windows-vs2022`); Ninja already runs one `cl.exe` per file in parallel, so there it does nothing. See [Parallel builds](#parallel-builds) |
 
 The engine library is always built.
 
@@ -65,6 +66,27 @@ ctest --preset windows-msvc-debug
 
 - Windows presets only appear on Windows, and Linux presets only on Linux. (Workflow presets are listed everywhere, because CMake doesn't support conditions on them; running one for the other OS fails with "disabled configure preset".)
 - MSVC needs the Visual Studio environment: use a *Developer PowerShell for VS 2022*, or open the folder in Visual Studio 2022 (it reads the presets and sets that environment up for you). To build from a standard prompt instead, see the next section.
+
+## Parallel builds
+
+- **Ninja presets** (`windows-msvc-*`, CI): Ninja starts one `cl.exe` per source file and runs as many at once as `-j` or `CMAKE_BUILD_PARALLEL_LEVEL` says (default: the logical processor count). `/MP` has nothing to split there.
+- **Visual Studio solution** (`windows-vs2022`): MSBuild builds several projects at once, but hands each project's files to one `cl.exe`, which compiles them one by one unless `/MP` is on. Turn it on with `MEOW2_MSVC_MP`, for example in your own, git-ignored `CMakeUserPresets.json`:
+
+  ```json
+  {
+      "version": 6,
+      "configurePresets": [
+          {
+              "name": "my-vs2022",
+              "inherits": "windows-vs2022",
+              "cacheVariables": { "MEOW2_MSVC_MP": "ON" }
+          }
+      ]
+  }
+  ```
+
+  or once on the command line: `cmake --preset windows-vs2022 -DMEOW2_MSVC_MP=ON` (kept in the cache). MSBuild's parallel projects and `/MP` together can start more compilers than there are cores; that's normal and the OS shares them out.
+- **Keeping builds on some cores:** `start "" /b /wait /belownormal /affinity FFFF0000 cmake --build …` runs a build, and everything it starts, on logical processors 16–31 only. Agents and CI do that on the owner's PC ([AgentWorkflow](AgentWorkflow.md#cpu-pinning), [CI](CI.md#cpu-pinning)).
 
 ## Visual Studio solution (any command prompt)
 

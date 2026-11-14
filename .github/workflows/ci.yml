@@ -171,4 +171,13 @@ jobs:
           call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat"
           where cl >nul 2>nul || (echo ::error::cl.exe not on PATH after vcvars64.bat & exit /b 1)
 
-          cmake --workflow --preset windows-msvc-${{ matrix.config }}
+          rem Optional CPU pinning, set only by the runner's own .env file, never by the repo (docs/wiki/CI.md):
+          rem MEOW2_CPU_AFFINITY=FFFF0000 keeps the build and the tests on those logical processors, at below-normal
+          rem priority; child processes inherit both. Unset, the build runs as before.
+          set "PIN="
+          if defined MEOW2_CPU_AFFINITY set "PIN=start "" /b /wait /belownormal /affinity %MEOW2_CPU_AFFINITY%"
+          if defined PIN echo Build pinned to CPU affinity mask %MEOW2_CPU_AFFINITY%
+          rem "start" doesn't pass the exit code to || but does set ERRORLEVEL, so check it on its own line
+          rem (a crash's exit code is negative, which "if errorlevel 1" would miss).
+          %PIN% cmake --workflow --preset windows-msvc-${{ matrix.config }}
+          if not "%ERRORLEVEL%"=="0" exit /b %ERRORLEVEL%
