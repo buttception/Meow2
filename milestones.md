@@ -193,7 +193,7 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 **Goal:** open the Khronos glTF 2.0 sample scenes in Meow2Renderer through the same `Scene` the editor and player use, draw them with metallic-roughness PBR on both backends, catch regressions with golden images, and give Renderer its ImGui shell. The old M7 was merged in (owner decision 2026-11-07); scene files moved to M7, the Editor (owner decision 2026-11-09); the rest of advanced rendering is M12.
 **Depends on:** M5
 
-Planned as four PRs (PR 2, scene files, moved to M7). glTF is an import source, never the scene format: the engine's own `.m2scene` holds scenes (M7).
+Planned as four PRs (PR 2, scene files, moved to M7), plus PR 6 for the owner's feedback on the debug tools. glTF is an import source, never the scene format: the engine's own `.m2scene` holds scenes (M7).
 
 | PR | Feature | Notes (techstack.md) | Status | Issue / PR |
 |---|---|---|---|---|
@@ -218,12 +218,13 @@ Planned as four PRs (PR 2, scene files, moved to M7). glTF is an import source, 
 | 5 | Golden-image tests per backend (label `visual`), from fixed glTF cameras; new goldens only with the owner's sign-off | §13 | ✅ | #194 / PR #195 |
 | 5 | The 25 suggested scenes: test scenes first, then the showcase ones (DamagedHelmet the first goal) | §13 | ✅ | #194 / PR #195 |
 | 5 | Closing PR bumps the version to **0.7.0** | §21 | ✅ | #194 / PR #195 |
+| 6 Debug tools (last of M6) | Owner feedback on the debug tools: the render graph as a node graph (pins, wires coloured by kind, click a pin to see its resource), the frozen camera's frustum drawn as lines, an infinite grid drawn in compute, view buttons; RHI line-list pipelines | §11 | ✅ | #196 / PR #197 |
 
 **Suggested scenes:** first light (Box, BoxTextured, Duck, Avocado); coordinates (OrientationTest, NegativeScaleTest, TextureCoordinateTest); PBR (MetalRoughSpheres, MetalRoughSpheresNoTextures, EnvironmentTest); normal maps (NormalTangentTest, NormalTangentMirrorTest); textures and colour (TextureSettingsTest, TextureTransformTest, VertexColorTest); transparency (AlphaBlendModeTest); showcase (DamagedHelmet, FlightHelmet, WaterBottle, BoomBox, Lantern, Corset, SciFiHelmet); stress (Sponza, ABeautifulGame).
 
 **Done when:** the suggested scenes open in Renderer on both backends with validation clean and match their golden images; a meshlet-drawn sample scene matches the indirect path.
 
-**Released as `v0.7.0`** once PR #195 is merged and tagged (with the owner's go-ahead). Every suggested scene matches its reference screenshot except where the reference uses another view or environment; ABeautifulGame's glass (`KHR_materials_transmission`) draws opaque until M12.
+**Released as `v0.7.0`** once PR #197, M6's last PR (owner decision 2026-11-14), is merged and tagged on its merge commit (with the owner's go-ahead). The version was set to 0.7.0 by PR #195. Every suggested scene matches its reference screenshot except where the reference uses another view or environment; ABeautifulGame's glass (`KHR_materials_transmission`) draws opaque until M12.
 
 **Not in M6** (M12): skinning, morph targets, Draco and meshopt compression, Basis Universal textures, `KHR_materials_*` extensions. Node animation is played in Renderer only, without an animation system.
 
@@ -235,7 +236,6 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 
 - Command system: every editor action is an undoable command in `EditorCommandRegistry` (techstack §20)
 - ✅ Qt main window with a native viewport, size/position/mode in the config — #58 / PR #59
-- ✅ Renderer debug tools (owner feedback): render graph as a node graph, frozen-frustum lines, infinite grid, view buttons — #196 / PR #197
 - Dock layout (UI only issues commands; editor shortcuts are Qt shortcuts)
 - Viewport widget (swapchain on the Qt native window), driven by `tick()` from a Qt timer
 - `QtInputSource`: viewport keyboard/mouse → `InputSystem` while the viewport has focus (play mode / viewport camera)
@@ -320,3 +320,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-10 — M6 PR 4 gains the rendering debug tools and logical window sizes (#190, owner requests).
 - 2026-11-12 — M6 PR 5 split in two: meshoptimizer and meshlets (#192), then golden images, the sample scenes and 0.7.0.
 - 2026-11-13 — M6 done (0.7.0): golden images for the 25 suggested scenes (#194).
+- 2026-11-14 — Owner decision: the debug-tool feedback (#196 / PR #197) is M6's last PR, and `v0.7.0` is tagged on its merge.
