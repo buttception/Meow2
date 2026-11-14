@@ -106,7 +106,8 @@ std::vector<entt::entity> instantiateModel(Scene::Scene& scene, Scene::Transform
                                            const Assets::ImportedModel& model, std::span<const AssetId> meshIds,
                                            entt::entity parent = entt::null);
 
-/// @brief One InstanceData per part of every entity with a MeshRenderer and a WorldTransform.
+/// @brief One InstanceDesc per part of every entity with a MeshRenderer and a WorldTransform, in a stable order (the
+///        component storage's), so GpuScene::setInstances() keeps each part in the same slot from call to call.
 /// @param scene  The scene, after TransformHierarchy::update(). Not changed (non-const: EnTT views of const components
 /// need an
 ///               allocator with a default constructor, which the scene's hasn't).
@@ -114,5 +115,5 @@ std::vector<entt::entity> instantiateModel(Scene::Scene& scene, Scene::Transform
 /// @param out    Cleared, then filled.
 /// @return A box around everything gathered, in world space; empty when nothing was.
 std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshes& meshes,
-                                          std::vector<Shader::InstanceData>& out);
+                                          std::vector<InstanceDesc>& out);
 } // namespace Meow2::Renderer

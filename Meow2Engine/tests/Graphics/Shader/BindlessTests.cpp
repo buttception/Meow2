@@ -179,4 +179,19 @@ TEST_F(BindlessTest, SpirvPassesTheValidator)
     }
 #endif
 }
+
+TEST(BindlessLayout, InstanceRecordsMatchTheShaders)
+{
+    // GpuScene's instance records, as Common.hlsli checks them on the HLSL side: a 3 x 4 transform and the previous
+    // frame's, the rarely-changing info apart from it, and the update csScatter copies into both.
+    EXPECT_EQ(sizeof(InstanceTransform), 96U);
+    EXPECT_EQ(offsetof(InstanceTransform, previous0), 48U);
+    EXPECT_EQ(sizeof(InstanceInfo), 16U);
+    EXPECT_EQ(sizeof(InstanceUpdate), 112U);
+    EXPECT_EQ(offsetof(InstanceUpdate, world0), 16U);
+    EXPECT_EQ(offsetof(InstanceUpdate, previous0), 64U);
+    EXPECT_EQ(sizeof(FrameConstants), 480U);
+    EXPECT_EQ(offsetof(FrameConstants, viewProjectionRelative), 416U);
+    EXPECT_EQ(offsetof(CullConstants, instanceInfoBuffer), offsetof(CullConstants, mobility) + 4U);
+}
 } // namespace Meow2::Shader

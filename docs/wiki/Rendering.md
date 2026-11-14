@@ -42,6 +42,44 @@ The scene isn't drawn into the swapchain any more but into **Scene colour**, an 
 
 Why: every step's output is now a texture of the render graph, which the Renderer's inspector can show ([Renderer](Renderer.md#frame-and-debugging)), and post-processing (bloom, exposure control) has an HDR image to work on. It costs one full-screen pass.
 
+### Instances: a persistent GPU buffer
+
+Unreal's "GPU Scene" model: instances live in GPU buffers with **stable slots**, and only what changed is uploaded each frame.
+
+```cpp
+std::vector<Renderer::InstanceDesc> instances;           // .world, .mesh, .material, .movable
+Renderer::gatherInstances(scene, meshes, instances);      // one per mesh part, in a stable order
+gpuScene.setInstances(instances);                         // every frame is fine: only the changes go up
+
+const std::uint32_t slot = *gpuScene.addInstance({.world = matrix, .mesh = cube, .material = red});
+gpuScene.updateInstance(slot, {.world = moved, .mesh = cube, .material = red});
+gpuScene.removeInstance(slot);
+```
+
+- **Two buffers**, both written only by the GPU:
+  - `InstanceTransform` (96 bytes): the local → world matrix as 3 × 4 (`world0..2` are the columns of the row-vector `Mat4`, so `world.x = dot(world0, float4(local, 1))`), and last frame's beside it (`previous0..2`), for motion vectors later;
+  - `InstanceInfo` (16 bytes): mesh, material and flags (`MEOW2_INSTANCE_MIRRORED`, `MOVABLE`, `FREE`). It rarely changes, so moving an object leaves it alone.
+- **Each frame**, the first view's `addPasses()` writes the changed slots as `InstanceUpdate` records (112 bytes: slot, info, transform and previous transform) into an upload buffer of that frame slot, and an **Update instances** pass (`csScatter`, one thread per record) copies them into place before anything culls. With nothing changed the pass stays in the graph, skipped, so the graph view doesn't flicker.
+- **What changed:** `setInstances()` compares each slot with what the GPU already has, so calling it every frame with a whole scene uploads only the moved objects; `instanceUploads()` says how many records the last frame sent. Slot *i* is instance *i*, so a stable order (EnTT's storage order in `gatherInstances()`) keeps every object in its slot.
+- **Previous transforms:** each record carries the transform the GPU should keep as "previous". A slot that moved is sent once more the next frame with previous = current, so for every slot "previous" means last frame's. A new instance starts with previous = current.
+- **Free slots:** `removeInstance()` marks a slot `MEOW2_INSTANCE_FREE` and culling skips it; `addInstance()` reuses the lowest free slot. Free slots at the end are dropped, since culling runs up to the last slot in use.
+- **No idle GPU needed:** every write goes through the frame's upload buffer, which the GPU finished reading when that frame slot was last used. The old `setInstances()` wrote a buffer the GPU might still be reading.
+- **The camera is subtracted on the GPU:** the vertex and mesh shaders project `world - cameraPosition` with `FrameConstants::viewProjectionRelative` (worked out by `setView()`: the camera's translation put back, then the view-projection). Moving the camera changes no instance, and the large numbers of a far position never go through the projection. A high/low split of positions, for worlds of hundreds of kilometres, can come later on top of this.
+
+### Several views per frame
+
+Each camera drawn in a frame is a **view**: the main one (`c_mainView`) exists from the start, `addView()` adds more (the editor's game viewport) and `removeView()` frees one. Each has its own culling lists, meshlet task lists, frame and cull constants, G-buffer, shadow cascades and cached shadow maps, and blended sort order; meshes, materials, textures and instances are shared, and uploaded once per frame.
+
+```cpp
+gpuScene.setView(slot, editorFrame, editorFrustum);              // c_mainView
+gpuScene.setView(slot, gameFrame, gameFrustum, gameView);
+gpuScene.addPasses(graph, slot, nullptr, editorColor, editorDepth, clear);
+gpuScene.addPasses(graph, slot, nullptr, gameColor, gameDepth, clear, gameView);
+graph.compile();  /* execute */  gpuScene.endFrame(graph);        // once, for every view
+```
+
+The getters that describe a frame (`drewDeferred()`, `gBuffer()`, `shadowCascades()`, `shadowMaps()`, `meshletStats()`, `countBuffer()`, `depthResource()`) take an optional `ViewId`. A view that isn't drawn in a frame costs nothing.
+
 
 ### Deferred shading
 
@@ -247,11 +285,11 @@ The sun casts **cascaded shadow maps** (`GpuScene::setShadows()`, `shaders/Shado
   - it's **25 % larger** than the slice and only moves when the slice leaves it, which keeps the cached map below valid while the camera moves around inside;
   - its depth covers every caster, so things between the sun and the slice cast into it.
 - **Static casters cached, movable ones every frame.** Per cascade:
-  1. **Static shadow N** draws the static casters into a cached map, only when it's stale: the cascade moved, the sun turned, a static instance appeared, went or moved (a fingerprint of the static instances, kept by `setInstances()`), or the settings changed. On other frames its passes stay in the render graph marked `skipped` (`GraphPass::skipped`: not recorded, no barriers), so the graph has the same passes every frame.
+  1. **Static shadow N** draws the static casters into a cached map, only when it's stale: the cascade moved, the sun turned, a static instance appeared, went or moved (a fingerprint of the static instances, worked out when instances change), or the settings changed. On other frames its passes stay in the render graph marked `skipped` (`GraphPass::skipped`: not recorded, no barriers), so the graph has the same passes every frame.
   2. **Shadow map N** copies the cached map texel for texel (`psCopyDepth`, a full-screen pass that writes depth).
   3. **Movable shadow N** draws the movable casters over the copy, every frame.
 
-  Lighting reads the result: static and movable shadows combined. An instance is movable when its `InstanceData::flags` has `MEOW2_INSTANCE_MOVABLE`, which `gatherInstances()` sets from `MeshRenderer::movable`. Until the editor infers mobility from components (M13), Meow2Renderer marks what the file's animations move, and their children.
+  Lighting reads the result: static and movable shadows combined. An instance is movable when its `InstanceDesc::movable` is set (`MEOW2_INSTANCE_MOVABLE` on the GPU), which `gatherInstances()` takes from `MeshRenderer::movable`. Until the editor infers mobility from components (M13), Meow2Renderer marks what the file's animations move, and their children.
 - **Drawing casters.** Each set is culled against the cascade's box by the same `csCull` (its record picked by `g_push.instance`, and `CullConstants::mobility` keeping only static or only movable instances), then drawn through the indirect path with depth-only pipelines (no colour target, [Rhi](Rhi.md#depth-only-passes)). `psShadow` cuts out alpha-masked materials, so leaves and fences cast their shape. Meshlets aren't used for casters yet.
 - **Reading the shadow.** In `lightSurface()`, forward and deferred alike, sunlight is multiplied by `sunShadow()`:
   - the cascade is picked by the point's view distance;
@@ -282,6 +320,11 @@ The sun casts **cascaded shadow maps** (`GpuScene::setShadows()`, `shaders/Shado
 | `RhiGpu*.GpuSceneTest.BoxShadowsTheGround` | a box over a slab, sun nearly overhead: the slab under the box is darker than beside it, forward and deferred |
 | `RhiGpu*.GpuSceneTest.StaticShadowsAreCached` | static maps drawn once; again only for a new sun or a moved static caster; a movable caster moves its shadow without redrawing them |
 | `RhiGpu*.GpuSceneTest.ShadowGraphKeepsItsShape` | the same passes whether the static cache is drawn or not; skipped while it's valid |
+| `RhiGpu*.GpuSceneTest.MovingOneInstanceUploadsOne` | 1000 instances: the first frame uploads all, an unchanged scene nothing, one moved object one record (and one more to settle), drawn where it moved |
+| `RhiGpu*.GpuSceneTest.InstanceSlotsAreStable` | slots handed out in order, a removed one not drawn and reused first, the others untouched |
+| `RhiGpu*.GpuSceneTest.TwoViewsInOneFrame` | two cameras, front and back, drawn in one frame into their own targets: each sees its own cube |
+| `RhiGpu*.GpuSceneTest.PreviousTransformFollows` | read back from the GPU: a moved instance has last frame's transform as previous, and its new one a frame later |
+| `Shader.BindlessLayout.InstanceRecordsMatchTheShaders` | the instance records' sizes and offsets, as the shaders expect |
 | `Renderer.RenderGraph.SkippedPassesAreKeptButNotRun` | a skipped pass stays in the graph, places no barriers, changes no state, and shares the list before it |
 | `RhiGpu*.SkyAtmosphereTest.TransmittanceFallsTowardsTheHorizon` | the transmittance LUT: more light gets through straight up than along the horizon, and red more than blue |
 | `RhiGpu*.SkyAtmosphereTest.SkyIsBlueAtNoonAndRedAtSunset` | the sky-view LUT: a blue zenith with the sun overhead; red-orange towards a setting sun |

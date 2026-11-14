@@ -145,7 +145,7 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
     }
     view->m_animations = std::move(model->animations);
     view->m_hierarchy->update();
-    std::vector<Shader::InstanceData> instances;
+    std::vector<Renderer::InstanceDesc> instances;
     if (const std::optional<Math::Aabb> bounds = Renderer::gatherInstances(*view->m_world, view->m_meshes, instances))
     {
         view->m_center = bounds->center;
@@ -175,7 +175,7 @@ void SceneView::pose(int animation, float seconds)
         m_hierarchy->setLocal(m_nodeEntities[i], local);
     }
     m_hierarchy->update();
-    std::vector<Shader::InstanceData> instances;
+    std::vector<Renderer::InstanceDesc> instances;
     static_cast<void>(Renderer::gatherInstances(*m_world, m_meshes, instances));
     m_gpu->setInstances(instances);
 }
@@ -212,7 +212,7 @@ Result<std::unique_ptr<SceneView>> SceneView::cubeGrid(const SceneViewDeps& deps
     }
     // A cube 47 on a side, 3 units apart; no materials, so each cube's colour comes from its index.
     constexpr std::uint32_t c_side = 47;
-    std::vector<Shader::InstanceData> instances(count);
+    std::vector<Renderer::InstanceDesc> instances(count);
     for (std::uint32_t i = 0; i < count; ++i)
     {
         Math::Transform transform;
