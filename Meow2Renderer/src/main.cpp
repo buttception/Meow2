@@ -452,6 +452,7 @@ int main(int argc, char** argv)
                                               .jobs = jobs,
                                               .log = appLog,
                                               .shader = assetId("01a1b5e2-3c12-8000-80a4-7b19d2e6c053"),
+                                              .deferredShader = assetId("01a1b5e2-3c1c-8000-80a4-7b19d2e6c05d"),
                                               .colorFormat = c_sceneFormat,
                                               .sky = sky.get(),
                                               .textures = {.compress = compressTextures,
@@ -881,6 +882,7 @@ int main(int argc, char** argv)
                 const Meow2::Math::Vec3 sunDirection = Meow2::RendererApp::sunDirection(sun);
                 view->gpu().setMeshlets(
                     Meow2::RendererApp::readSetting(config, Meow2::RendererApp::c_meshletsSetting)); // read each frame
+                view->gpu().setDeferred(Meow2::RendererApp::readSetting(config, Meow2::RendererApp::c_deferredSetting));
                 view->gpu().setLighting(
                     {.sunDirection = sunDirection, .sunIntensity = sun.intensity, .exposure = sun.exposure});
                 if (sky)

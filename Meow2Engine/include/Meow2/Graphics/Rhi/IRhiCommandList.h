@@ -19,8 +19,9 @@ class IRhiSwapchain;
 ///        ResourceState::DepthTarget.
 struct RenderTargets
 {
-    TextureHandle color{};                   ///< The (first) colour target.
-    /// @brief More colour targets, drawn to at once (a G-buffer): SV_Target1 onwards, in order; an unset handle ends the
+    TextureHandle color{}; ///< The (first) colour target.
+    /// @brief More colour targets, drawn to at once (a G-buffer): SV_Target1 onwards, in order; an unset handle ends
+    /// the
     ///        list. All targets are the first one's size. The pipeline's GraphicsPipelineDesc::extraColorFormats match.
     std::array<TextureHandle, c_maxColorTargets - 1> extraColors{};
     std::optional<Math::Color> clearColor{}; ///< Clear every colour target to this; empty keeps what's there.

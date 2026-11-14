@@ -8,7 +8,16 @@
 //   turns their counts into mesh dispatches; asMain culls each meshlet against the frustum and by its normal cone, and
 //   msMain draws the ones left.
 #include "Common.hlsli"
-#include "Atmosphere.hlsli" // c_pi, the sky lookups
+#include "Lighting.hlsli" // shading, shared with Deferred.hlsl
+
+#ifndef GBUFFER
+#define GBUFFER 0
+#endif
+#if GBUFFER && DEBUG_VIEW != 0
+// The G-buffer variant has no debug views: they draw forward. (The cooker still builds every combination of options.)
+#undef DEBUG_VIEW
+#define DEBUG_VIEW 0
+#endif
 
 /// Signed distance from a plane, positive inside.
 float planeDistance(float4 plane, float3 position)
@@ -392,62 +401,6 @@ float4 sampleMaterial(uint texture, uint sampler, float2 uv, float4 fallback)
     return image.Sample(heapSampler(NonUniformResourceIndex(sampler)), uv);
 }
 
-/// GGX (Trowbridge-Reitz) normal distribution: how many microfacets face along the half vector.
-float distributionGgx(float nDotH, float alpha)
-{
-    const float alpha2 = alpha * alpha;
-    const float d = nDotH * nDotH * (alpha2 - 1.0) + 1.0;
-    return alpha2 / (c_pi * d * d);
-}
-
-/// Height-correlated Smith visibility for GGX, with the 1 / (4 n·l n·v) of the specular term folded in.
-float visibilitySmithGgx(float nDotL, float nDotV, float alpha)
-{
-    const float alpha2 = alpha * alpha;
-    const float lightTerm = nDotV * sqrt(nDotL * nDotL * (1.0 - alpha2) + alpha2);
-    const float viewTerm = nDotL * sqrt(nDotV * nDotV * (1.0 - alpha2) + alpha2);
-    return 0.5 / max(lightTerm + viewTerm, 1e-5);
-}
-
-/// Schlick's Fresnel: reflectance rises towards 1 at grazing angles.
-float3 fresnelSchlick(float3 f0, float vDotH)
-{
-    return f0 + (1.0 - f0) * pow(1.0 - vDotH, 5.0);
-}
-
-/// Karis' analytic fit of the split-sum environment BRDF, for the ambient specular without a lookup texture.
-float3 environmentBrdf(float3 f0, float nDotV, float roughness)
-{
-    const float4 c0 = float4(-1.0, -0.0275, -0.572, 0.022);
-    const float4 c1 = float4(1.0, 0.0425, 1.04, -0.04);
-    const float4 r = roughness * c0 + c1;
-    const float a004 = min(r.x * r.x, exp2(-9.28 * nDotV)) * r.x + r.y;
-    const float2 scaleBias = float2(-1.04, 1.04) * a004 + r.zw;
-    return f0 * scaleBias.x + scaleBias.y;
-}
-
-/// Irradiance from the sky in a normal's direction: its 9 spherical-harmonic coefficients (already convolved with
-/// the cosine lobe by Sky.hlsl's csIrradiance) evaluated there.
-float3 skyIrradiance(uint buffer, float3 n)
-{
-    const ByteAddressBuffer coefficients = heapBuffer(buffer);
-    const float basis[9] = {0.282095,
-                            0.488603 * n.y,
-                            0.488603 * n.z,
-                            0.488603 * n.x,
-                            1.092548 * n.x * n.y,
-                            1.092548 * n.y * n.z,
-                            0.315392 * (3.0 * n.z * n.z - 1.0),
-                            1.092548 * n.x * n.z,
-                            0.546274 * (n.x * n.x - n.y * n.y)};
-    float3 irradiance = 0.0;
-    for (uint k = 0; k < 9; ++k)
-    {
-        irradiance += coefficients.Load<float4>(k * 16).rgb * basis[k];
-    }
-    return max(irradiance, 0.0);
-}
-
 #if DEBUG_VIEW == 1
 /// A colour from a number, so neighbouring numbers differ (triangles, instances, materials).
 float3 hashColor(uint value)
@@ -457,7 +410,20 @@ float3 hashColor(uint value)
 }
 #endif
 
+#if GBUFFER
+/// The G-buffer variant's targets (GpuScene's G-buffer textures, in this order).
+struct GBufferOutput
+{
+    float4 albedo : SV_Target0;   ///< rgb: base colour (an sRGB target).
+    float4 normal : SV_Target1;   ///< xyz: the shading normal.
+    float4 material : SV_Target2; ///< r: metallic, g: roughness, b: occlusion.
+    float4 emissive : SV_Target3; ///< rgb: emitted light.
+};
+
+GBufferOutput psMain(VertexOutput input, bool frontFace : SV_IsFrontFace)
+#else
 float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
+#endif
 {
 #if DEBUG_VIEW == 2
     // The wireframe overlay (a line-fill pipeline): every edge in the bright accent, whatever the material.
@@ -546,61 +512,29 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
         baseColor = float4(float3(hash & 255, (hash >> 8) & 255, (hash >> 16) & 255) / 255.0, 1.0);
     }
 
-    // Cook-Torrance: Lambert diffuse for the light that enters the surface, GGX specular for what reflects off it.
-    // Metals have no diffuse and tint their reflection; dielectrics reflect 4 % at normal incidence.
     roughness = clamp(roughness, 0.045, 1.0); // a perfect mirror would turn the sun into a single bright pixel
-    const float alpha = roughness * roughness;
-    const float3 diffuseColor = baseColor.rgb * (1.0 - metallic);
-    const float3 f0 = lerp(float3(0.04, 0.04, 0.04), baseColor.rgb, metallic);
-
-    const float3 view = normalize(frame.cameraPosition.xyz - input.worldPosition);
-    const float3 light = frame.sunDirection.xyz;
-    const float3 halfway = normalize(view + light);
-    const float nDotV = max(dot(normal, view), 1e-4);
-    const float nDotL = saturate(dot(normal, light));
-    const float nDotH = saturate(dot(normal, halfway));
-    const float vDotH = saturate(dot(view, halfway));
-
-    const float3 fresnel = fresnelSchlick(f0, vDotH);
-    const float3 specular = fresnel * distributionGgx(nDotH, alpha) * visibilitySmithGgx(nDotL, nDotV, alpha);
-    const float3 diffuse = (1.0 - fresnel) * diffuseColor / c_pi;
-    float3 sun = frame.sunColor.rgb * frame.sunDirection.w;
-    const bool sky = frame.environmentMap != 0;
-    if (sky)
-    {
-        // Sunlight reaching the ground has crossed the atmosphere: reddened and dimmed when the sun is low.
-        sun *= sampleTransmittance(frame.transmittanceLut, frame.environmentSampler,
-                                   viewHeightFromAltitude(frame.groundColor.w), light.y);
-    }
-    const float3 sunDiffuse = diffuse * sun * nDotL;
-    const float3 sunSpecular = specular * sun * nDotL;
-
-    // Ambient light from the surroundings. With a sky: image-based lighting, the split-sum approximation (Karis 2013)
-    // - diffuse from the sky's spherical harmonics, specular from its environment map blurred for this roughness,
-    // weighted by the analytic environment BRDF. Without one: a sky colour above and a ground colour below.
-    const float3 reflected = reflect(-view, normal);
-    float3 diffuseAmbient;
-    float3 specularAmbient;
-    if (sky)
-    {
-        diffuseAmbient = skyIrradiance(frame.irradianceBuffer, normal) / c_pi;
-        Texture2D<float4> environment = ResourceDescriptorHeap[frame.environmentMap];
-        const float lod = roughness * float(frame.environmentLevels - 1);
-        specularAmbient = environment.SampleLevel(heapSampler(frame.environmentSampler),
-                                                  octahedralUv(reflected), lod).rgb;
-    }
-    else
-    {
-        diffuseAmbient = lerp(frame.groundColor.rgb, frame.skyColor.rgb, normal.y * 0.5 + 0.5);
-        specularAmbient = lerp(frame.groundColor.rgb, frame.skyColor.rgb, reflected.y * 0.5 + 0.5);
-    }
-    const float3 ambientDiffuse = diffuseColor * diffuseAmbient * occlusion;
-    const float3 ambientSpecular = environmentBrdf(f0, nDotV, roughness) * specularAmbient * occlusion;
-    float3 color = sunDiffuse + sunSpecular + ambientDiffuse + ambientSpecular + emissive;
-
-    // Exposure, in linear light. The tone curve comes later, in its own pass (ToneMap.hlsl), so the scene's colour can
-    // be inspected and post-processed as it is.
-    color *= frame.sunColor.w;
+#if GBUFFER
+    // Deferred: the surface goes into the G-buffer, and Deferred.hlsl's psLighting shades it with the same
+    // lightSurface(). No position: lighting rebuilds it from depth.
+    GBufferOutput gbuffer;
+    gbuffer.albedo = float4(baseColor.rgb, 1.0);
+    gbuffer.normal = float4(normal, 1.0);
+    gbuffer.material = float4(metallic, roughness, occlusion, 1.0);
+    gbuffer.emissive = float4(emissive, 1.0);
+    return gbuffer;
+#else
+    Surface surface;
+    surface.baseColor = baseColor.rgb;
+    surface.metallic = metallic;
+    surface.roughness = roughness;
+    surface.occlusion = occlusion;
+    surface.emissive = emissive;
+    surface.normal = normal;
+    surface.position = input.worldPosition;
+    const LightTerms terms = lightSurface(frame, surface);
+    const float3 view = terms.view;
+    const float3 color = (terms.sunDiffuse + terms.sunSpecular + terms.ambientDiffuse + terms.ambientSpecular + emissive) *
+                         frame.sunColor.w; // exposure, in linear light: the tone curve is its own pass (ToneMap.hlsl)
 #if DEBUG_VIEW == 1
     // Debug views: one property instead of the shaded colour. Written as display values; the debug tone-map pass shows
     // them without the tone curve. Lighting views keep the exposure, like the scene.
@@ -665,16 +599,17 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
         case MEOW2_DEBUG_VIEW_LIGHTING:
         {
             // A white dielectric under the same light: diffuse plus a 4 % specular.
-            const float3 whiteFresnel = fresnelSchlick(float3(0.04, 0.04, 0.04), vDotH);
-            const float3 lit = ((1.0 - whiteFresnel) / c_pi + whiteFresnel * distributionGgx(nDotH, alpha) *
-                                                                  visibilitySmithGgx(nDotL, nDotV, alpha)) * sun * nDotL +
-                               diffuseAmbient * occlusion;
+            const float3 whiteFresnel = fresnelSchlick(float3(0.04, 0.04, 0.04), terms.vDotH);
+            const float3 lit = ((1.0 - whiteFresnel) / c_pi + whiteFresnel * distributionGgx(terms.nDotH, terms.alpha) *
+                                                                  visibilitySmithGgx(terms.nDotL, terms.nDotV, terms.alpha)) *
+                                   terms.sun * terms.nDotL +
+                               terms.skyDiffuse * occlusion;
             return float4(lit * frame.sunColor.w, 1.0);
         }
         case MEOW2_DEBUG_VIEW_DIFFUSE:
-            return float4((sunDiffuse + ambientDiffuse) * frame.sunColor.w, 1.0);
+            return float4((terms.sunDiffuse + terms.ambientDiffuse) * frame.sunColor.w, 1.0);
         case MEOW2_DEBUG_VIEW_SPECULAR:
-            return float4((sunSpecular + ambientSpecular) * frame.sunColor.w, 1.0);
+            return float4((terms.sunSpecular + terms.ambientSpecular) * frame.sunColor.w, 1.0);
         case MEOW2_DEBUG_VIEW_BLACK:
             return float4(0.0, 0.0, 0.0, 1.0);
         default:
@@ -682,4 +617,5 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
     }
 #endif
     return float4(color, baseColor.a);
+#endif
 }

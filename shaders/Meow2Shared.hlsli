@@ -50,6 +50,8 @@ struct FrameConstants
     uint taskCounts;         ///< Writable heap index of the meshlet path's counters (MEOW2_TASK_COUNT_*).
     uint taskCapacity;       ///< TaskItems each list has room for.
     uint cullBuffer;         ///< Heap index of this frame's CullConstants: the task shader culls with its planes.
+    MEOW2_MATRIX(inverseViewProjection); ///< Clip space → the instances' space: rebuilds positions from depth (deferred
+                                         ///< lighting). Set by GpuScene::setView().
 };
 
 /// One drawn object, in a buffer the GPU reads and compute culling can edit.
@@ -255,6 +257,20 @@ struct TaskItem
 #define MEOW2_TASK_COUNT_MESHLETS 3u   ///< Meshlets drawn (left after cluster culling).
 #define MEOW2_TASK_COUNT_TRIANGLES 4u  ///< Their triangles.
 #define MEOW2_TASK_COUNT_SIZE 8u       ///< uints in the buffer.
+
+/// What deferred lighting (Deferred.hlsl's psLighting) reads: the G-buffer and depth, as heap indices. Written by GpuScene
+/// once per frame.
+struct DeferredInputs
+{
+    uint albedo;   ///< RGBA8 sRGB: base colour.
+    uint normal;   ///< RGBA16F: the shading normal.
+    uint material; ///< RGBA8: metallic, roughness, occlusion.
+    uint emissive; ///< RGBA16F: emitted light.
+    uint depth;    ///< D32F, read as one float: reversed Z, 0 where nothing was drawn.
+    uint width;    ///< The targets' size in pixels.
+    uint height;   ///< Ditto.
+    uint padding0; ///< Pads to 32 bytes.
+};
 
 /// What the culling pass reads, once per frame.
 struct CullConstants

@@ -37,6 +37,7 @@ struct SceneViewDeps
     Jobs::JobSystem& jobs;                        ///< Runs the transform hierarchy.
     Log::Logger& log;                             ///< Receives import warnings.
     AssetId shader;                               ///< `shaders/GpuDriven.hlsl`.
+    AssetId deferredShader;                       ///< `shaders/Deferred.hlsl`: the deferred path (DEFERRED setting).
     Rhi::RhiFormat colorFormat;                   ///< The swapchain's format.
     const Renderer::SkyAtmosphere* sky = nullptr; ///< Lights every view and is drawn behind it; null for none.
     Renderer::TextureCooking textures{};          ///< How models' textures are cooked (BC7/BC5, the cache).

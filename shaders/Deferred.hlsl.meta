@@ -1,0 +1,9 @@
+id = "01a1b5e2-3c1c-8000-80a4-7b19d2e6c05d"
+
+[[entry]]
+name = "vsFullscreen"
+stage = "vertex"
+
+[[entry]]
+name = "psLighting"
+stage = "pixel"

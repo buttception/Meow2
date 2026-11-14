@@ -110,6 +110,7 @@ struct GoldenCase
 {
     std::string_view scene{};                          ///< The sample's name.
     Rhi::RhiBackend backend = Rhi::RhiBackend::Vulkan; ///< The API it's drawn with.
+    bool forward = false; ///< Forward shading instead of the deferred path: both must match the same golden.
 };
 
 /// @brief The name of a backend in file and test names.
@@ -122,19 +123,22 @@ std::string_view backendName(Rhi::RhiBackend backend)
 ///        so this keeps the names readable and the same from build to build.
 void PrintTo(const GoldenCase& golden, std::ostream* out)
 {
-    *out << golden.scene << '_' << backendName(golden.backend);
+    *out << golden.scene << '_' << backendName(golden.backend) << (golden.forward ? "_forward" : "");
 }
 
-/// @brief Every scene on every backend this build has.
+/// @brief Every scene on every backend this build has, deferred (the default path) and forward.
 std::vector<GoldenCase> allCases()
 {
     std::vector<GoldenCase> cases;
-    for (const std::string_view scene : c_scenes)
+    for (const bool forward : {false, true})
     {
-        cases.push_back({.scene = scene, .backend = Rhi::RhiBackend::Vulkan});
+        for (const std::string_view scene : c_scenes)
+        {
+            cases.push_back({.scene = scene, .backend = Rhi::RhiBackend::Vulkan, .forward = forward});
 #if MEOW2_RHI_D3D12
-        cases.push_back({.scene = scene, .backend = Rhi::RhiBackend::D3D12});
+            cases.push_back({.scene = scene, .backend = Rhi::RhiBackend::D3D12, .forward = forward});
 #endif
+        }
     }
     return cases;
 }
@@ -292,6 +296,7 @@ protected:
                                   .jobs = m_jobs,
                                   .log = m_log,
                                   .shader = assetId("01a1b5e2-3c12-8000-80a4-7b19d2e6c053"),
+                                  .deferredShader = assetId("01a1b5e2-3c1c-8000-80a4-7b19d2e6c05d"),
                                   .colorFormat = c_hdrFormat,
                                   .sky = m_sky.get(),
                                   .textures = {.compress = false, .cache = nullptr, .jobs = &m_jobs}},
@@ -318,8 +323,9 @@ protected:
 
     /// @brief Draws the scene as Meow2Renderer first shows it: the file's first camera if it has one, else the front
     ///        orbit (or c_fixedCameras); the default sun; the sky; the tone curve. Keeps the last of c_frames frames.
-    /// @param scene The sample's name, for c_fixedCameras.
-    Assets::Image draw(std::string_view scene)
+    /// @param scene   The sample's name, for c_fixedCameras.
+    /// @param forward Forward shading instead of the deferred path.
+    Assets::Image draw(std::string_view scene, bool forward)
     {
         Rhi::IRhiDevice& rhi = m_render->device();
         Math::CameraLens lens = sceneLens(m_view->radius());
@@ -354,6 +360,7 @@ protected:
             frame.projection = matrices.projection;
             frame.viewProjection = matrices.viewProjection;
             frame.cameraPosition = {camera.position.x, camera.position.y, camera.position.z, 0.0F};
+            m_view->gpu().setDeferred(!forward);
             m_view->gpu().setLighting(
                 {.sunDirection = sunDirection, .sunIntensity = sun.intensity, .exposure = sun.exposure});
 
@@ -430,8 +437,10 @@ TEST_P(GoldenImageTest, MatchesGolden)
     {
         return;
     }
-    const Assets::Image actual = draw(golden.scene);
-    const std::string name = std::format("{}-{}.png", golden.scene, backendName(golden.backend));
+    const Assets::Image actual = draw(golden.scene, golden.forward);
+    EXPECT_EQ(m_view->gpu().drewDeferred(), !golden.forward) << "drawn on the path asked for";
+    const std::string name =
+        std::format("{}-{}.png", golden.scene, backendName(golden.backend)); // one golden for both paths
     const fs::path goldenPath = fs::path{MEOW2_GOLDEN_DIR} / name;
     const fs::path outputDir = fs::path{MEOW2_VISUAL_OUTPUT_DIR};
 
@@ -460,7 +469,8 @@ TEST_P(GoldenImageTest, MatchesGolden)
     if (result.differing > allowed)
     {
         // What it drew and where it differs, next to the build, for a look.
-        const fs::path stem = outputDir / std::format("{}-{}", golden.scene, backendName(golden.backend));
+        const fs::path stem = outputDir / std::format("{}-{}{}", golden.scene, backendName(golden.backend),
+                                                      golden.forward ? "-forward" : "");
         EXPECT_TRUE(writePng(stem.string() + ".png", actual));
         EXPECT_TRUE(writePng(stem.string() + "-diff.png", result.difference));
         ADD_FAILURE() << result.differing << " pixels differ by more than " << c_channelTolerance << " (allowed "
@@ -471,5 +481,8 @@ TEST_P(GoldenImageTest, MatchesGolden)
 
 INSTANTIATE_TEST_SUITE_P(Samples, GoldenImageTest, ::testing::ValuesIn(allCases()),
                          [](const ::testing::TestParamInfo<GoldenCase>& info)
-                         { return std::format("{}_{}", info.param.scene, backendName(info.param.backend)); });
+                         {
+                             return std::format("{}_{}{}", info.param.scene, backendName(info.param.backend),
+                                                info.param.forward ? "_forward" : "");
+                         });
 } // namespace Meow2::RendererApp

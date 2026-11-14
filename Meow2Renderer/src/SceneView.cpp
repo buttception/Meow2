@@ -81,9 +81,12 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
                      ? static_cast<std::uint32_t>(model->meshes[static_cast<std::size_t>(node.mesh)].primitives.size())
                      : 0;
     }
-    Result<std::unique_ptr<Renderer::GpuScene>> gpu = Renderer::GpuScene::create(
-        deps.device, deps.pipelines,
-        {.shader = deps.shader, .instanceCapacity = std::max(parts, 1U), .colorFormat = deps.colorFormat});
+    Result<std::unique_ptr<Renderer::GpuScene>> gpu =
+        Renderer::GpuScene::create(deps.device, deps.pipelines,
+                                   {.shader = deps.shader,
+                                    .deferredShader = deps.deferredShader,
+                                    .instanceCapacity = std::max(parts, 1U),
+                                    .colorFormat = deps.colorFormat});
     if (!gpu)
     {
         return Unexpected<Error>{gpu.error()};
@@ -161,9 +164,11 @@ Math::Mat4 SceneView::nodeWorld(std::int32_t node) const
 Result<std::unique_ptr<SceneView>> SceneView::cubeGrid(const SceneViewDeps& deps, std::uint32_t count)
 {
     auto view = std::make_unique<SceneView>(deps, "Cube grid");
-    Result<std::unique_ptr<Renderer::GpuScene>> gpu =
-        Renderer::GpuScene::create(deps.device, deps.pipelines,
-                                   {.shader = deps.shader, .instanceCapacity = count, .colorFormat = deps.colorFormat});
+    Result<std::unique_ptr<Renderer::GpuScene>> gpu = Renderer::GpuScene::create(deps.device, deps.pipelines,
+                                                                                 {.shader = deps.shader,
+                                                                                  .deferredShader = deps.deferredShader,
+                                                                                  .instanceCapacity = count,
+                                                                                  .colorFormat = deps.colorFormat});
     if (!gpu)
     {
         return Unexpected<Error>{gpu.error()};

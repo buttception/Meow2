@@ -77,10 +77,23 @@ inline constexpr BoolSetting c_gridSetting{"renderer.grid", "GRID",
                                            "blue, cells in powers of ten that follow the camera's height.",
                                            true, SettingEffect::Now};
 
+/// @brief `renderer.deferred`: opaque surfaces drawn deferred (a G-buffer, then one lighting pass) instead of forward.
+inline constexpr BoolSetting c_deferredSetting{"renderer.deferred", "DEFERRED",
+                                               "Draw opaque surfaces into a G-buffer, then light every pixel once "
+                                               "from it (position rebuilt from depth); off for forward shading. Both "
+                                               "give the same image.",
+                                               true, SettingEffect::Now};
+
 /// @brief Every setting the window shows, in its order.
-inline constexpr std::array<BoolSetting, 8> c_boolSettings{
-    c_validationSetting,       c_vsyncSetting, c_renderDocSetting, c_renderDocWindowSetting,
-    c_compressTexturesSetting, c_skySetting,   c_meshletsSetting,  c_gridSetting};
+inline constexpr std::array<BoolSetting, 9> c_boolSettings{c_validationSetting,
+                                                           c_vsyncSetting,
+                                                           c_renderDocSetting,
+                                                           c_renderDocWindowSetting,
+                                                           c_compressTexturesSetting,
+                                                           c_skySetting,
+                                                           c_meshletsSetting,
+                                                           c_deferredSetting,
+                                                           c_gridSetting};
 
 /// @brief Where ImGui's window layout is kept in the config (ImGuiLayer::loadLayout(), takeLayoutChange()).
 inline constexpr std::string_view c_uiLayoutKey = "renderer.uiLayout";

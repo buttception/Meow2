@@ -28,6 +28,13 @@ namespace
 constexpr std::uint32_t c_maxMeshes = 4096;
 constexpr std::uint32_t c_maxMaterials = 4096;
 constexpr std::uint32_t c_cullGroupSize = 64; // [numthreads] in GpuDriven.hlsl
+// The G-buffer, in the order GpuDriven.hlsl's GBufferOutput writes it: albedo (8-bit sRGB is enough for a colour),
+// normal (16-bit float: 8 bits per axis would band smooth highlights), material (metallic, roughness, occlusion: 8 bits
+// each), emissive (16-bit float: emitted light goes above 1).
+constexpr std::array<Rhi::RhiFormat, 4> c_gBufferFormats{Rhi::RhiFormat::Rgba8Srgb, Rhi::RhiFormat::Rgba16Float,
+                                                         Rhi::RhiFormat::Rgba8Unorm, Rhi::RhiFormat::Rgba16Float};
+constexpr std::array<const char*, 4> c_gBufferNames{"G-buffer albedo", "G-buffer normal", "G-buffer material",
+                                                    "G-buffer emissive"};
 /// @brief Bytes of one draw list's mesh dispatch arguments: x, y, z and a pad (csTaskArgs).
 constexpr std::uint32_t c_taskArgBytes = 16;
 /// @brief The most TaskItems a list can use: one task group each, and a dispatch has at most 2^22 groups.
@@ -255,6 +262,34 @@ Result<std::unique_ptr<GpuScene>> GpuScene::create(RenderDevice& device, Pipelin
     }
     scene->m_blendPipeline = *blend;
 
+    // The deferred path: the same draw lists writing the G-buffer (GBUFFER = 1), and the pass that lights it.
+    if (desc.deferredShader.isValid())
+    {
+        Result<DrawPipelines> gBuffer = scene->makeDrawPipelines(
+            {.options = {{"GBUFFER", "1"}},
+             .colorFormat = c_gBufferFormats[0],
+             .extraColorFormats = {c_gBufferFormats[1], c_gBufferFormats[2], c_gBufferFormats[3]},
+             .blended = false,
+             .name = "G-buffer"});
+        if (!gBuffer)
+        {
+            return Unexpected<Error>{gBuffer.error()};
+        }
+        scene->m_gBufferPipelines = *gBuffer;
+        Result<PipelineId> lighting = pipelines.add(GraphicsPipelineRequest{.shader = desc.deferredShader,
+                                                                            .vertexEntry = "vsFullscreen",
+                                                                            .pixelEntry = "psLighting",
+                                                                            .colorFormat = desc.colorFormat,
+                                                                            .depthFormat = Rhi::RhiFormat::Unknown,
+                                                                            .depthWrite = false,
+                                                                            .name = "Deferred lighting"});
+        if (!lighting)
+        {
+            return Unexpected<Error>{lighting.error()};
+        }
+        scene->m_lightingPipeline = *lighting;
+    }
+
     // Registered after the pipeline library, so its pipelines are back before the scene restores.
     GpuScene* const self = scene.get();
     scene->m_deviceUser = device.addUser(
@@ -338,6 +373,12 @@ Result<void> GpuScene::createBuffers(Rhi::IRhiDevice& device)
         {
             return made;
         }
+        if (Result<void> made = makeBuffer(m_deferredInputs[slot], sizeof(Shader::DeferredInputs),
+                                           Rhi::RhiMemory::Upload, "Deferred inputs");
+            !made)
+        {
+            return made;
+        }
     }
     return {};
 }
@@ -396,6 +437,8 @@ void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
         device.destroy(m_frameBuffers[slot]);
         device.destroy(m_cullBuffers[slot]);
         device.destroy(m_countReadback[slot]);
+        device.destroy(m_deferredInputs[slot]);
+        m_deferredInputs[slot] = {};
         m_frameBuffers[slot] = {};
         m_cullBuffers[slot] = {};
         m_countReadback[slot] = {};
@@ -424,6 +467,15 @@ void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
         device.destroy(record.sampler);
         record.sampler = {};
     }
+    // The G-buffer is made again at the next deferred frame, at the targets' size.
+    for (Rhi::TextureHandle& texture : m_gBuffer)
+    {
+        device.destroy(texture);
+        texture = {};
+    }
+    m_gBufferWidth = 0;
+    m_gBufferHeight = 0;
+    m_gBufferState = Rhi::ResourceState::Undefined;
 }
 
 Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
@@ -754,6 +806,8 @@ void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& fr
     constants.taskCounts = device.bindlessStorageIndex(m_taskCountBuffer);
     constants.taskCapacity = m_taskCapacity;
     constants.cullBuffer = device.bindlessIndex(m_cullBuffers[frameSlot]);
+    // Deferred lighting rebuilds each pixel's position from its depth with this.
+    XMStoreFloat4x4(&constants.inverseViewProjection, XMMatrixInverse(nullptr, XMLoadFloat4x4(&frame.viewProjection)));
     Math::Vec3 sun;
     XMStoreFloat3(&sun, XMVector3Normalize(Math::load(m_lighting.sunDirection)));
     constants.sunDirection = {sun.x, sun.y, sun.z, m_lighting.sunIntensity};
@@ -943,7 +997,7 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
     {
         colorResource = graph.import(color, ResourceState::Undefined, "Scene colour");
     }
-    const auto targets = [&](bool lists)
+    const auto targets = [&](bool lists, bool withColor = true)
     {
         std::vector<GraphAccess> accesses{{m_depthResource, ResourceState::DepthTarget}};
         if (lists && meshlets)
@@ -957,7 +1011,7 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
             accesses.push_back({m_countResource, ResourceState::IndirectArgs});
             accesses.push_back({m_drawResource, ResourceState::IndirectArgs});
         }
-        if (swapchain == nullptr)
+        if (swapchain == nullptr && withColor)
         {
             accesses.push_back({colorResource, ResourceState::ColorTarget});
         }
@@ -998,14 +1052,84 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
         }
     }
     current.hasMeshLists = meshlets;
-    graph.addPass({.name = "Opaque",
-                   .accesses = targets(true),
-                   .record = [this, begin, clear, push, current](Rhi::IRhiCommandList& list)
-                   {
-                       begin(list, clear, 0.0F);
-                       recordLists(list, current, push);
-                       list.endRendering();
-                   }});
+    m_frameDeferred = m_deferred && !m_override && m_gBufferPipelines && m_lightingPipeline && swapchain == nullptr &&
+                      ensureGBuffer(device, color);
+    if (m_frameDeferred)
+    {
+        // Deferred: the draw lists write each surface's properties into the G-buffer (and depth), then one full-screen
+        // pass lights every pixel from them. Same lists, same culling, same pipelines per list, other outputs.
+        DrawPipelines gBuffer{};
+        for (std::uint32_t drawList = 0; drawList < MEOW2_DRAW_LIST_COUNT; ++drawList)
+        {
+            gBuffer.lists[drawList] = m_gBufferPipelines->lists[drawList];
+            gBuffer.meshLists[drawList] = m_gBufferPipelines->meshLists[drawList];
+        }
+        gBuffer.hasMeshLists = meshlets && m_gBufferPipelines->hasMeshLists;
+        std::vector<GraphAccess> gBufferAccesses = targets(true, false);
+        for (std::size_t i = 0; i < m_gBuffer.size(); ++i)
+        {
+            m_gBufferResources[i] = graph.import(m_gBuffer[i], m_gBufferState, c_gBufferNames[i]);
+            gBufferAccesses.push_back({m_gBufferResources[i], ResourceState::ColorTarget});
+        }
+        graph.addPass({.name = "G-buffer",
+                       .accesses = std::move(gBufferAccesses),
+                       .record = [this, depth, push, gBuffer](Rhi::IRhiCommandList& list)
+                       {
+                           // Cleared to zero: a pixel nothing covers stays empty (its depth too, for the sky).
+                           list.beginRendering(
+                               Rhi::RenderTargets{.color = m_gBuffer[0],
+                                                  .extraColors = {m_gBuffer[1], m_gBuffer[2], m_gBuffer[3]},
+                                                  .clearColor = Math::Color{.a = 0.0F},
+                                                  .depth = depth,
+                                                  .clearDepth = 0.0F});
+                           recordLists(list, gBuffer, push);
+                           list.endRendering();
+                       }});
+
+        // The lighting pass reads the G-buffer and depth through heap indices, from this record.
+        const Shader::DeferredInputs inputs{.albedo = device.bindlessIndex(m_gBuffer[0]),
+                                            .normal = device.bindlessIndex(m_gBuffer[1]),
+                                            .material = device.bindlessIndex(m_gBuffer[2]),
+                                            .emissive = device.bindlessIndex(m_gBuffer[3]),
+                                            .depth = device.bindlessIndex(depth),
+                                            .width = m_gBufferWidth,
+                                            .height = m_gBufferHeight,
+                                            .padding0 = 0};
+        std::memcpy(device.mappedMemory(m_deferredInputs[frameSlot]).data(), &inputs, sizeof(inputs));
+        Shader::PushConstants lightingPush = push;
+        lightingPush.userData = device.bindlessIndex(m_deferredInputs[frameSlot]);
+        std::vector<GraphAccess> lightingAccesses{{m_depthResource, ResourceState::ShaderRead},
+                                                  {colorResource, ResourceState::ColorTarget}};
+        for (const GraphResource resource : m_gBufferResources)
+        {
+            lightingAccesses.push_back({resource, ResourceState::ShaderRead});
+        }
+        graph.addPass({.name = "Lighting",
+                       .accesses = std::move(lightingAccesses),
+                       .record =
+                           [this, color, clear, lightingPush](Rhi::IRhiCommandList& list)
+                       {
+                           // Clears the scene colour, then shades every pixel the G-buffer covers; the rest is the
+                           // clear colour until the sky pass.
+                           list.beginRendering(Rhi::RenderTargets{.color = color, .clearColor = clear});
+                           list.setPipeline(m_pipelines.get(*m_lightingPipeline));
+                           list.setPushConstants(lightingPush);
+                           list.draw(3);
+                           list.endRendering();
+                       },
+                       .small = true});
+    }
+    else
+    {
+        graph.addPass({.name = "Opaque",
+                       .accesses = targets(true),
+                       .record = [this, begin, clear, push, current](Rhi::IRhiCommandList& list)
+                       {
+                           begin(list, clear, 0.0F);
+                           recordLists(list, current, push);
+                           list.endRendering();
+                       }});
+    }
     if (meshlets)
     {
         // The counts come back to the CPU a few frames later, without waiting (meshletStats()).
@@ -1086,7 +1210,8 @@ Result<DrawPipelines> GpuScene::makeDrawPipelines(const DrawPipelineOptions& opt
         Result<PipelineId> draw =
             m_pipelines.add(GraphicsPipelineRequest{.shader = m_desc.shader,
                                                     .options = options.options,
-                                                    .colorFormat = m_desc.colorFormat,
+                                                    .colorFormat = options.colorFormat.value_or(m_desc.colorFormat),
+                                                    .extraColorFormats = options.extraColorFormats,
                                                     .depthFormat = Rhi::RhiFormat::D32Float,
                                                     .depthTest = options.depthTest,
                                                     .depthWrite = options.depthWrite,
@@ -1100,23 +1225,31 @@ Result<DrawPipelines> GpuScene::makeDrawPipelines(const DrawPipelineOptions& opt
         }
         out.lists[list] = *draw;
     }
-    Result<PipelineId> blend = m_pipelines.add(GraphicsPipelineRequest{
-        .shader = m_desc.shader,
-        .options = options.options,
-        .vertexEntry = "vsBlend",
-        .colorFormat = m_desc.colorFormat,
-        .depthFormat = Rhi::RhiFormat::D32Float,
-        .depthTest = options.depthTest,
-        .depthWrite = false,
-        .cull = Rhi::CullMode::None,
-        .blend = options.blend == Rhi::BlendMode::Additive ? Rhi::BlendMode::Additive : Rhi::BlendMode::Alpha,
-        .fill = options.fill,
-        .name = std::format("{}: blended instances", options.name)});
-    if (!blend)
+    if (!options.blended)
+    {
+        out.blend = out.lists[0]; // not used: the caller draws no blended surfaces with these
+    }
+    else if (Result<PipelineId> blend = m_pipelines.add(GraphicsPipelineRequest{
+                 .shader = m_desc.shader,
+                 .options = options.options,
+                 .vertexEntry = "vsBlend",
+                 .colorFormat = options.colorFormat.value_or(m_desc.colorFormat),
+                 .extraColorFormats = options.extraColorFormats,
+                 .depthFormat = Rhi::RhiFormat::D32Float,
+                 .depthTest = options.depthTest,
+                 .depthWrite = false,
+                 .cull = Rhi::CullMode::None,
+                 .blend = options.blend == Rhi::BlendMode::Additive ? Rhi::BlendMode::Additive : Rhi::BlendMode::Alpha,
+                 .fill = options.fill,
+                 .name = std::format("{}: blended instances", options.name)});
+             !blend)
     {
         return Unexpected<Error>{blend.error()};
     }
-    out.blend = *blend;
+    else
+    {
+        out.blend = *blend;
+    }
     if (options.meshlets && m_device.device().adapter().meshShaders)
     {
         if (Result<void> made = addMeshPipelines(options, out); !made)
@@ -1136,7 +1269,8 @@ Result<void> GpuScene::addMeshPipelines(const DrawPipelineOptions& options, Draw
                                     .options = options.options,
                                     .taskEntry = "asMain",
                                     .meshEntry = "msMain",
-                                    .colorFormat = m_desc.colorFormat,
+                                    .colorFormat = options.colorFormat.value_or(m_desc.colorFormat),
+                                    .extraColorFormats = options.extraColorFormats,
                                     .depthFormat = Rhi::RhiFormat::D32Float,
                                     .depthTest = options.depthTest,
                                     .depthWrite = options.depthWrite,
@@ -1229,6 +1363,37 @@ void GpuScene::addOverlayPass(RenderGraph& graph, std::string name, const DrawPi
          }});
 }
 
+bool GpuScene::ensureGBuffer(Rhi::IRhiDevice& device, Rhi::TextureHandle color)
+{
+    const Rhi::TextureInfo target = device.textureInfo(color);
+    if (m_gBuffer[0].isSet() && m_gBufferWidth == target.width && m_gBufferHeight == target.height)
+    {
+        return true;
+    }
+    for (Rhi::TextureHandle& texture : m_gBuffer)
+    {
+        device.destroy(texture); // deferred until the GPU is done with it
+        texture = {};
+    }
+    for (std::size_t i = 0; i < m_gBuffer.size(); ++i)
+    {
+        Result<Rhi::TextureHandle> made = device.createTexture({.width = target.width,
+                                                                .height = target.height,
+                                                                .format = c_gBufferFormats[i],
+                                                                .renderTarget = true,
+                                                                .tag = Memory::MemTag::Renderer,
+                                                                .name = c_gBufferNames[i]});
+        if (!made)
+        {
+            return false; // this frame draws forward
+        }
+        m_gBuffer[i] = *made;
+    }
+    m_gBufferWidth = target.width;
+    m_gBufferHeight = target.height;
+    m_gBufferState = Rhi::ResourceState::Undefined;
+    return true;
+}
 void GpuScene::endFrame(const RenderGraph& graph)
 {
     // Their copies are recorded; the device keeps them until the GPU has run them (deferred destruction).
@@ -1240,6 +1405,10 @@ void GpuScene::endFrame(const RenderGraph& graph)
     m_drawState = graph.finalState(m_drawResource);
     m_countState = graph.finalState(m_countResource);
     m_depthState = graph.finalState(m_depthResource);
+    if (m_frameDeferred)
+    {
+        m_gBufferState = graph.finalState(m_gBufferResources[0]); // all four end where Lighting read them
+    }
     if (m_frameUsesMeshlets)
     {
         m_taskState = graph.finalState(m_taskResource);

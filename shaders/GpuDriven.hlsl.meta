@@ -33,3 +33,6 @@ stage = "mesh"
 # the editor build 1 and 2.
 [options]
 DEBUG_VIEW = [0, 1, 2]
+# 1: psMain writes the G-buffer (GpuScene's deferred path) instead of shading; Deferred.hlsl lights it. Only with
+# DEBUG_VIEW = 0 (the other combinations cook to the same code).
+GBUFFER = [0, 1]

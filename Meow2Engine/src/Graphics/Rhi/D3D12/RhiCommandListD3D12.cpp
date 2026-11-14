@@ -61,8 +61,8 @@ RhiCommandListD3D12::RhiCommandListD3D12(RhiDeviceD3D12& device)
 }
 
 void RhiCommandListD3D12::startRendering(std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors,
-                                         const D3D12_CPU_DESCRIPTOR_HANDLE* depth,
-                                         std::uint32_t width, std::uint32_t height)
+                                         const D3D12_CPU_DESCRIPTOR_HANDLE* depth, std::uint32_t width,
+                                         std::uint32_t height)
 {
     MEOW2_ASSERT(!m_rendering, "endRendering() wasn't called");
     m_list->OMSetRenderTargets(static_cast<UINT>(colors.size()), colors.data(), FALSE, depth);

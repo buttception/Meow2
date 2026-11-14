@@ -36,6 +36,10 @@ struct DrawPipelineOptions
     bool depthWrite = true;                      ///< Whether the draw lists write depth.
     bool meshlets = true; ///< Also build the meshlet path's pipelines, where the GPU has mesh shaders. False keeps
                           ///< frames drawn with this set on the indirect path.
+    /// @brief The (first) colour target's format; empty: the scene's (GpuSceneDesc::colorFormat).
+    std::optional<Rhi::RhiFormat> colorFormat{};
+    std::array<Rhi::RhiFormat, Rhi::c_maxColorTargets - 1> extraColorFormats{}; ///< More targets, e.g. a G-buffer's.
+    bool blended = true;          ///< Also build the pipeline for blended surfaces (DrawPipelines::blend).
     std::string name = "Variant"; ///< Prefix of the pipelines' names.
 };
 
@@ -61,7 +65,8 @@ struct MeshletStats
 /// @brief What to create a GpuScene with. Plain data.
 struct GpuSceneDesc
 {
-    AssetId shader{};                                     ///< `shaders/GpuDriven.hlsl`.
+    AssetId shader{};         ///< `shaders/GpuDriven.hlsl`.
+    AssetId deferredShader{}; ///< `shaders/Deferred.hlsl`, for the deferred path (setDeferred()); unset: forward only.
     std::uint32_t instanceCapacity = 1;                   ///< Most instances; > 0.
     Rhi::RhiFormat colorFormat = Rhi::RhiFormat::Unknown; ///< Format of the colour target.
 };
@@ -287,6 +292,33 @@ public:
         m_skyPass = draw;
     }
 
+    /// @brief Draws opaque surfaces deferred: a **G-buffer** pass writes each surface's properties (the textures
+    ///        gBuffer() lists), then a **Lighting** pass shades every pixel once from them, rebuilding its position
+    ///        from depth. Off: one **Opaque** pass shades as it draws (forward). Both give the same image.
+    ///
+    /// Only when the scene was made with GpuSceneDesc::deferredShader and draws into its own colour texture (not a
+    /// swapchain); a pipeline override (debug views) always draws forward. Blended surfaces are always forward.
+    /// @param deferred True for the deferred path.
+    void setDeferred(bool deferred)
+    {
+        m_deferred = deferred;
+    }
+
+    /// @brief Whether this frame drew deferred (after addPasses()).
+    /// @return True if the G-buffer and Lighting passes were added.
+    [[nodiscard]] bool drewDeferred() const
+    {
+        return m_frameDeferred;
+    }
+
+    /// @brief The G-buffer textures (created on the first deferred frame, at the colour target's size): albedo
+    ///        (RGBA8 sRGB), normal (RGBA16F), material (RGBA8: metallic, roughness, occlusion), emissive (RGBA16F).
+    /// @return Them; unset handles before the first deferred frame.
+    [[nodiscard]] const std::array<Rhi::TextureHandle, 4>& gBuffer() const
+    {
+        return m_gBuffer;
+    }
+
     /// @brief Adds a material, and keeps a copy for the next device.
     /// @param material Its parameters.
     /// @return Its index, for Shader::InstanceData::material, or an error when the scene has too many.
@@ -398,6 +430,12 @@ private:
     /// @return The first error; what was made is destroyed by destroyBuffers().
     [[nodiscard]] Result<void> createBuffers(Rhi::IRhiDevice& device);
 
+    /// @brief Makes the G-buffer at a colour target's size, if it isn't already.
+    /// @param device The device.
+    /// @param color  The scene's colour target; the G-buffer matches its size.
+    /// @return False if a texture couldn't be made (the frame then draws forward).
+    bool ensureGBuffer(Rhi::IRhiDevice& device, Rhi::TextureHandle color);
+
     /// @brief Destroys every buffer, the meshes' too, and forgets their handles.
     /// @param device The device they were made on.
     void destroyBuffers(Rhi::IRhiDevice& device);
@@ -505,8 +543,18 @@ private:
     std::vector<std::uint32_t> m_blended;    ///< Instances with blended materials, drawn sorted.
     std::vector<std::uint32_t> m_blendOrder; ///< This frame's back-to-front order of m_blended.
     SceneLighting m_lighting{};
-    const SkyAtmosphere* m_sky = nullptr; ///< Optional: lights the scene and is drawn behind it.
-    bool m_skyPass = true;                ///< Whether the sky's pass is added (setSkyPass()).
+    const SkyAtmosphere* m_sky = nullptr;            ///< Optional: lights the scene and is drawn behind it.
+    bool m_skyPass = true;                           ///< Whether the sky's pass is added (setSkyPass()).
+    bool m_deferred = false;                         ///< setDeferred().
+    bool m_frameDeferred = false;                    ///< Whether the last addPasses() drew deferred.
+    std::optional<DrawPipelines> m_gBufferPipelines; ///< GBUFFER = 1, into the G-buffer's formats.
+    std::optional<PipelineId> m_lightingPipeline;    ///< Deferred.hlsl's psLighting.
+    std::array<Rhi::TextureHandle, 4> m_gBuffer{};   ///< Albedo, normal, material, emissive.
+    std::uint32_t m_gBufferWidth = 0;                ///< Their size.
+    std::uint32_t m_gBufferHeight = 0;
+    Rhi::ResourceState m_gBufferState = Rhi::ResourceState::Undefined; ///< Where the last frame left them.
+    std::array<GraphResource, 4> m_gBufferResources{};
+    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_deferredInputs{}; ///< DeferredInputs, per frame slot.
     Rhi::BufferHandle m_materialBuffer;
     Rhi::ResourceState m_drawState = Rhi::ResourceState::Undefined;
     Rhi::ResourceState m_countState = Rhi::ResourceState::Undefined;
