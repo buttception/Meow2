@@ -287,6 +287,7 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 **Goal:** what comes after PBR, once the editor is up (owner decision 2026-11-07).
 **Depends on:** M6, M7
 
+- ✅ Deferred shading (owner request, pulled forward 2026-11-14): G-buffer, lighting from depth, forward kept as a setting; the Position debug view; screenshots of the Renderer's frame — #198 / PR #199
 - Animation: skinning, morph targets, an animation system (Renderer's M6 player only poses nodes)
 - Compression: Draco and meshopt meshes, Basis Universal textures
 - `KHR_materials_*` extensions (clearcoat, transmission, sheen, …)
@@ -321,3 +322,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-12 — M6 PR 5 split in two: meshoptimizer and meshlets (#192), then golden images, the sample scenes and 0.7.0.
 - 2026-11-13 — M6 done (0.7.0): golden images for the 25 suggested scenes (#194).
 - 2026-11-14 — Owner decision: the debug-tool feedback (#196 / PR #197) is M6's last PR, and `v0.7.0` is tagged on its merge.
+- 2026-11-14 — Deferred shading pulled forward into M12 (owner request, #198).

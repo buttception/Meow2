@@ -294,6 +294,14 @@ Renderer saves the pipeline cache of each backend it used to `cache/vulkan-pipel
 
 With SDL's `offscreen` driver there's no window to draw to, so Renderer creates no device. That's how smoke tests run on machines with no GPU.
 
+
+### Several colour targets
+
+`RenderTargets::extraColors` adds up to three more colour targets to a pass (`c_maxColorTargets` = 4, a G-buffer's needs; both APIs guarantee 8), drawn at once: the pixel shader writes `SV_Target0` to the first, `SV_Target1` to the next, and so on. The pipeline lists the same formats in `GraphicsPipelineDesc::extraColorFormats`; an unset handle or `Unknown` format ends either list. Every target is cleared with `clearColor` and blends the same way. Vulkan passes them as dynamic-rendering attachments; D3D12 binds them with one `OMSetRenderTargets()`, and the pipeline-library key includes every format.
+
+### Reading a swapchain image
+
+`IRhiCommandList::copySwapchainToBuffer()` copies the acquired swapchain image, what the window shows, UI included, into a buffer, rows tightly packed, in the swapchain's format (BGRA8 sRGB on Windows). It moves the image out of its colour-target layout for the copy and back, so the frame is presented as usual. Vulkan swapchains are made with transfer-source usage for this; D3D12 back buffers can always be copied. Meow2Renderer's screenshots use it, so a screenshot can only ever hold the app's own pixels.
 ### Pipeline states for debugging
 
 `GraphicsPipelineDesc` has `fill` (`FillMode::Wireframe` draws only edges), `topology` (`PrimitiveTopology::Lines` draws a line list, two vertices per line, one pixel wide: debug lines; vertex pipelines only), `blend = BlendMode::Additive` (counting, light accumulation) and `depthTest` (false passes every pixel; depth stays bound, the compare becomes ALWAYS, so the pipeline still matches a pass with a depth target). D3D12's pipeline library is keyed by these states too (and by the topology type; the list topology is set with the pipeline, `IASetPrimitiveTopology`, since D3D12 keeps it in the command list rather than the pipeline): before, two pipelines with the same shaders but different fill or blending could load each other from the cache. `IRhiDevice::textureInfo()` reports a texture's size, mip levels and format. A depth texture can be read by shaders through `bindlessIndex()`, as one float (its depth): the grid compares against the scene's depth that way.
