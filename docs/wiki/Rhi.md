@@ -296,7 +296,7 @@ With SDL's `offscreen` driver there's no window to draw to, so Renderer creates 
 
 ### Pipeline states for debugging
 
-`GraphicsPipelineDesc` has `fill` (`FillMode::Wireframe` draws only edges), `blend = BlendMode::Additive` (counting, light accumulation) and `depthTest` (false passes every pixel; depth stays bound, the compare becomes ALWAYS, so the pipeline still matches a pass with a depth target). D3D12's pipeline library is keyed by these states too: before, two pipelines with the same shaders but different fill or blending could load each other from the cache. `IRhiDevice::textureInfo()` reports a texture's size, mip levels and format.
+`GraphicsPipelineDesc` has `fill` (`FillMode::Wireframe` draws only edges), `topology` (`PrimitiveTopology::Lines` draws a line list, two vertices per line, one pixel wide: debug lines; vertex pipelines only), `blend = BlendMode::Additive` (counting, light accumulation) and `depthTest` (false passes every pixel; depth stays bound, the compare becomes ALWAYS, so the pipeline still matches a pass with a depth target). D3D12's pipeline library is keyed by these states too (and by the topology type; the list topology is set with the pipeline, `IASetPrimitiveTopology`, since D3D12 keeps it in the command list rather than the pipeline): before, two pipelines with the same shaders but different fill or blending could load each other from the cache. `IRhiDevice::textureInfo()` reports a texture's size, mip levels and format. A depth texture can be read by shaders through `bindlessIndex()`, as one float (its depth): the grid compares against the scene's depth that way.
 
 ## Tests
 

@@ -8,6 +8,15 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+- Meow2Renderer draws an infinite grid on the ground (y = 0), worked out in a compute pass: the X axis red, the Z axis blue, cells in powers of ten that follow the camera's height, hidden behind geometry and faded far away. GRID in the Settings window turns it off (#197).
+- Meow2Renderer: freezing culling also draws the frozen camera's view volume in yellow lines through the scene, so flying out shows what it sees; SHOW FRUSTUM hides it (#197).
+- RHI: line-list pipelines (`PrimitiveTopology::Lines`) on Vulkan and D3D12, for debug lines (#197).
+
+### Changed
+- Meow2Renderer's Render graph window is a node graph: each pass a node with its inputs and outputs as labelled pins, wires between pins coloured by kind (colour texture, depth, buffer, indirect arguments), ordered so wires cross less. Labels no longer overlap, also with the wireframe overlay on. Clicking a texture's pin shows it in the Pass window; clicking a buffer's lists every pass that writes and reads it. Right-drag pans. The Frame capture window uses the same graph (#197).
+- Meow2Renderer's Debug window shows every view as a button, grouped, with the active one highlighted, instead of a drop-down (#197).
+
 ## [0.7.0] — 2026-11-13
 
 ### Added

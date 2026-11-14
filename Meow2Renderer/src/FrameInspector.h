@@ -16,9 +16,11 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Meow2::RendererApp
@@ -97,6 +99,48 @@ struct FlowPins
 /// @param pass The pass.
 /// @return Its pins, without repeats.
 [[nodiscard]] FlowPins passPins(const FrameFlow& flow, std::uint32_t pass);
+
+/// @brief The flow view's spacing, in pixels (already scaled for the display). Plain data.
+struct FlowMetrics
+{
+    float pad = 8.0F;          ///< Inside a node, around its text.
+    float titleHeight = 22.0F; ///< A node's title bar.
+    float pinRow = 20.0F;      ///< One pin's row.
+    float dot = 4.5F;          ///< A pin's radius.
+    float columnGap = 90.0F;   ///< Between columns, where the wires run.
+    float rowGap = 24.0F;      ///< Between nodes in a column.
+    float margin = 16.0F;      ///< Around everything.
+    float minWidth = 140.0F;   ///< The narrowest node.
+    float sideGap = 24.0F;     ///< Between a node's input labels and its output labels.
+};
+
+/// @brief One node of the flow view: where it is, its size and pins. Plain data.
+struct FlowNode
+{
+    float x = 0.0F;      ///< Left edge, from the view's top left.
+    float y = 0.0F;      ///< Top edge.
+    float width = 0.0F;  ///< Width.
+    float height = 0.0F; ///< Height: the title bar and a row per pin on the side with more.
+    FlowPins pins{};     ///< Its pins.
+    std::string title{}; ///< "<index>  <name>".
+};
+
+/// @brief Every node of a flow view, placed. Plain data.
+struct FlowGeometry
+{
+    std::vector<FlowNode> nodes{}; ///< Per pass.
+    float width = 0.0F;            ///< The whole view's size.
+    float height = 0.0F;           ///< Ditto.
+};
+
+/// @brief Places a flow's nodes: columns from layoutFlow(), each as wide as its widest node, nodes stacked in each
+///        column in row order with a gap, each node wide enough for its title and its input and output labels.
+/// @param flow      The flow.
+/// @param metrics   The spacing.
+/// @param textWidth How wide a text is drawn, in pixels.
+/// @return The nodes.
+[[nodiscard]] FlowGeometry placeFlow(const FrameFlow& flow, const FlowMetrics& metrics,
+                                     const std::function<float(std::string_view)>& textWidth);
 
 /// @brief A pin of the flow view: a pass's input or output for one resource. Plain data.
 struct FlowPin

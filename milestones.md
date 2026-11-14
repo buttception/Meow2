@@ -235,6 +235,7 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 
 - Command system: every editor action is an undoable command in `EditorCommandRegistry` (techstack §20)
 - ✅ Qt main window with a native viewport, size/position/mode in the config — #58 / PR #59
+- ✅ Renderer debug tools (owner feedback): render graph as a node graph, frozen-frustum lines, infinite grid, view buttons — #196 / PR #197
 - Dock layout (UI only issues commands; editor shortcuts are Qt shortcuts)
 - Viewport widget (swapchain on the Qt native window), driven by `tick()` from a Qt timer
 - `QtInputSource`: viewport keyboard/mouse → `InputSystem` while the viewport has focus (play mode / viewport camera)

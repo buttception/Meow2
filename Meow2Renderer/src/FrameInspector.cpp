@@ -250,6 +250,72 @@ const char* resourceKindName(ResourceKind kind)
     return "?";
 }
 
+FlowGeometry placeFlow(const FrameFlow& flow, const FlowMetrics& metrics,
+                       const std::function<float(std::string_view)>& textWidth)
+{
+    const FlowLayout layout = layoutFlow(flow);
+    const auto passCount = static_cast<std::uint32_t>(flow.passes.size());
+    FlowGeometry geometry;
+    geometry.nodes.resize(passCount);
+
+    // Each node: wide enough for its title, and for its longest input and output label side by side.
+    const auto widest = [&](const std::vector<std::uint32_t>& resources)
+    {
+        float width = 0.0F;
+        for (const std::uint32_t resource : resources)
+        {
+            width = std::max(width, textWidth(flow.resources[resource].name));
+        }
+        return width;
+    };
+    for (std::uint32_t pass = 0; pass < passCount; ++pass)
+    {
+        FlowNode& node = geometry.nodes[pass];
+        node.pins = passPins(flow, pass);
+        node.title = std::format("{}  {}", pass, flow.passes[pass].name);
+        const float pinsWidth = widest(node.pins.inputs) + widest(node.pins.outputs) + metrics.dot * 4.0F +
+                                metrics.pad * 2.0F + metrics.sideGap;
+        node.width = std::max({metrics.minWidth, textWidth(node.title) + metrics.pad * 2.0F, pinsWidth});
+        const auto rows = static_cast<float>(
+            std::max<std::size_t>({node.pins.inputs.size(), node.pins.outputs.size(), std::size_t{1}}));
+        node.height = metrics.titleHeight + rows * metrics.pinRow + metrics.pad * 0.5F;
+    }
+
+    // Columns as wide as their widest node; nodes stacked in each column in the layout's row order.
+    std::vector<float> columnWidth(layout.columns, 0.0F);
+    for (std::uint32_t pass = 0; pass < passCount; ++pass)
+    {
+        columnWidth[layout.column[pass]] = std::max(columnWidth[layout.column[pass]], geometry.nodes[pass].width);
+    }
+    std::vector<float> columnX(layout.columns, metrics.margin);
+    for (std::uint32_t column = 1; column < layout.columns; ++column)
+    {
+        columnX[column] = columnX[column - 1] + columnWidth[column - 1] + metrics.columnGap;
+    }
+    std::vector<std::uint32_t> order(passCount);
+    for (std::uint32_t pass = 0; pass < passCount; ++pass)
+    {
+        order[pass] = pass;
+    }
+    std::ranges::sort(
+        order, [&](std::uint32_t a, std::uint32_t b)
+        { return std::pair{layout.column[a], layout.row[a]} < std::pair{layout.column[b], layout.row[b]}; });
+    std::vector<float> columnBottom(layout.columns, metrics.margin);
+    for (const std::uint32_t pass : order)
+    {
+        const std::uint32_t column = layout.column[pass];
+        geometry.nodes[pass].x = columnX[column];
+        geometry.nodes[pass].y = columnBottom[column];
+        columnBottom[column] += geometry.nodes[pass].height + metrics.rowGap;
+    }
+    if (layout.columns > 0)
+    {
+        geometry.width = columnX.back() + columnWidth.back() + metrics.margin;
+        geometry.height = *std::ranges::max_element(columnBottom) - metrics.rowGap + metrics.margin;
+    }
+    return geometry;
+}
+
 FlowPins passPins(const FrameFlow& flow, std::uint32_t pass)
 {
     FlowPins pins;
@@ -694,73 +760,38 @@ FrameInspector::FlowClick FrameInspector::drawFlow(const FrameFlow& flow, std::o
                                                    std::optional<FlowPin> pin, const char* id, float height)
 {
     FlowClick click;
-    const FlowLayout layout = layoutFlow(flow);
     const auto passCount = static_cast<std::uint32_t>(flow.passes.size());
     const float scale = ImGui::GetStyle().FontScaleDpi;
     const float line = ImGui::GetTextLineHeight();
-    const float pad = 8.0F * scale;
-    const float titleHeight = line + 8.0F * scale;
-    const float pinRow = line + 6.0F * scale;
-    const float dot = 4.5F * scale;
-    const float columnGap = 90.0F * scale;
-    const float rowGap = 24.0F * scale;
-    const float margin = 16.0F * scale;
-
-    // Each node's pins and size: wide enough for its title, and for its longest input and output side by side.
+    const FlowMetrics metrics{.pad = 8.0F * scale,
+                              .titleHeight = line + 8.0F * scale,
+                              .pinRow = line + 6.0F * scale,
+                              .dot = 4.5F * scale,
+                              .columnGap = 90.0F * scale,
+                              .rowGap = 24.0F * scale,
+                              .margin = 16.0F * scale,
+                              .minWidth = 140.0F * scale,
+                              .sideGap = 24.0F * scale};
+    const FlowGeometry geometry = placeFlow(flow, metrics, [](std::string_view text)
+                                            { return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x; });
+    const float pad = metrics.pad;
+    const float titleHeight = metrics.titleHeight;
+    const float pinRow = metrics.pinRow;
+    const float dot = metrics.dot;
     std::vector<FlowPins> pins(passCount);
     std::vector<ImVec2> size(passCount);
-    std::vector<std::string> titles(passCount);
-    const auto widest = [&](const std::vector<std::uint32_t>& resources)
-    {
-        float width = 0.0F;
-        for (const std::uint32_t resource : resources)
-        {
-            width = std::max(width, ImGui::CalcTextSize(flow.resources[resource].name.c_str()).x);
-        }
-        return width;
-    };
-    for (std::uint32_t pass = 0; pass < passCount; ++pass)
-    {
-        pins[pass] = passPins(flow, pass);
-        titles[pass] = std::format("{}  {}", pass, flow.passes[pass].name);
-        const float pinsWidth = widest(pins[pass].inputs) + widest(pins[pass].outputs) + dot * 4.0F + pad * 2.0F +
-                                24.0F * scale; // the gap between the two sides
-        const float width =
-            std::max({140.0F * scale, ImGui::CalcTextSize(titles[pass].c_str()).x + pad * 2.0F, pinsWidth});
-        const auto rows = static_cast<float>(
-            std::max<std::size_t>({pins[pass].inputs.size(), pins[pass].outputs.size(), std::size_t{1}}));
-        size[pass] = ImVec2{width, titleHeight + rows * pinRow + pad * 0.5F};
-    }
-
-    // Columns as wide as their widest node; nodes stacked in each column in the layout's row order.
-    std::vector<float> columnWidth(layout.columns, 0.0F);
-    for (std::uint32_t pass = 0; pass < passCount; ++pass)
-    {
-        columnWidth[layout.column[pass]] = std::max(columnWidth[layout.column[pass]], size[pass].x);
-    }
-    std::vector<float> columnX(layout.columns, margin);
-    for (std::uint32_t column = 1; column < layout.columns; ++column)
-    {
-        columnX[column] = columnX[column - 1] + columnWidth[column - 1] + columnGap;
-    }
-    std::vector<std::uint32_t> order(passCount);
-    for (std::uint32_t pass = 0; pass < passCount; ++pass)
-    {
-        order[pass] = pass;
-    }
-    std::ranges::sort(
-        order, [&](std::uint32_t a, std::uint32_t b)
-        { return std::pair{layout.column[a], layout.row[a]} < std::pair{layout.column[b], layout.row[b]}; });
     std::vector<ImVec2> position(passCount);
-    std::vector<float> columnBottom(layout.columns, margin);
-    for (const std::uint32_t pass : order)
+    std::vector<std::string> titles(passCount);
+    for (std::uint32_t pass = 0; pass < passCount; ++pass)
     {
-        const std::uint32_t column = layout.column[pass];
-        position[pass] = ImVec2{columnX[column], columnBottom[column]};
-        columnBottom[column] += size[pass].y + rowGap;
+        const FlowNode& node = geometry.nodes[pass];
+        pins[pass] = node.pins;
+        size[pass] = ImVec2{node.width, node.height};
+        position[pass] = ImVec2{node.x, node.y};
+        titles[pass] = node.title;
     }
-    const float contentWidth = layout.columns == 0 ? 0.0F : columnX.back() + columnWidth.back() + margin;
-    const float contentHeight = columnBottom.empty() ? 0.0F : *std::ranges::max_element(columnBottom) - rowGap + margin;
+    const float contentWidth = geometry.width;
+    const float contentHeight = geometry.height;
 
     ImGui::BeginChild(id, ImVec2{0.0F, height}, ImGuiChildFlags_Borders,
                       ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoMove);
