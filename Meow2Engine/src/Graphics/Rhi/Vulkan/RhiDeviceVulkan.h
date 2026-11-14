@@ -19,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <shared_mutex>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -165,10 +166,10 @@ public:
 
 private:
     /// @brief Starts rendering and sets the viewport and scissor to the target's size.
-    /// @param color  The colour attachment.
+    /// @param colors The colour attachments, in order (one, or several for a G-buffer).
     /// @param depth  The depth attachment, or null.
-    /// @param extent The target's size.
-    void startRendering(const VkRenderingAttachmentInfo& color, const VkRenderingAttachmentInfo* depth,
+    /// @param extent The targets' size.
+    void startRendering(std::span<const VkRenderingAttachmentInfo> colors, const VkRenderingAttachmentInfo* depth,
                         VkExtent2D extent);
 
     RhiDeviceVulkan& m_device;

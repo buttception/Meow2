@@ -90,15 +90,15 @@ RhiCommandListVulkan::RhiCommandListVulkan(RhiDeviceVulkan& device)
 {
 }
 
-void RhiCommandListVulkan::startRendering(const VkRenderingAttachmentInfo& color,
+void RhiCommandListVulkan::startRendering(std::span<const VkRenderingAttachmentInfo> colors,
                                           const VkRenderingAttachmentInfo* depth, VkExtent2D extent)
 {
     MEOW2_ASSERT(!m_rendering, "endRendering() wasn't called");
     const VkRenderingInfo rendering{.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
                                     .renderArea = {.offset = {0, 0}, .extent = extent},
                                     .layerCount = 1,
-                                    .colorAttachmentCount = 1,
-                                    .pColorAttachments = &color,
+                                    .colorAttachmentCount = static_cast<std::uint32_t>(colors.size()),
+                                    .pColorAttachments = colors.data(),
                                     .pDepthAttachment = depth};
     vkCmdBeginRendering(m_commandBuffer, &rendering);
     m_rendering = true;
@@ -144,21 +144,37 @@ void RhiCommandListVulkan::beginRendering(IRhiSwapchain& swapchain, std::optiona
                            .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
         depthAttachment.clearValue.depthStencil = {.depth = clearDepth.value_or(0.0F), .stencil = 0};
     }
-    startRendering(attachment, depth.isSet() ? &depthAttachment : nullptr, target.extent());
+    startRendering({&attachment, 1}, depth.isSet() ? &depthAttachment : nullptr, target.extent());
 }
 
 void RhiCommandListVulkan::beginRendering(const RenderTargets& targets)
 {
     const TextureVulkan color = m_device.texture(targets.color);
-    VkRenderingAttachmentInfo attachment{.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                                         .imageView = color.view,
-                                         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                         .loadOp = loadOp(targets.clearColor.has_value()),
-                                         .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
-    if (targets.clearColor)
+    // The first target, then the extra ones up to the first unset handle (a G-buffer).
+    std::array<VkRenderingAttachmentInfo, c_maxColorTargets> attachments{};
+    std::uint32_t count = 0;
+    const auto add = [&](TextureHandle texture)
     {
-        const Math::Color& clear = *targets.clearColor;
-        attachment.clearValue.color = {{clear.r, clear.g, clear.b, clear.a}};
+        VkRenderingAttachmentInfo& attachment = attachments[count++];
+        attachment = {.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                      .imageView = m_device.texture(texture).view,
+                      .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                      .loadOp = loadOp(targets.clearColor.has_value()),
+                      .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
+        if (targets.clearColor)
+        {
+            const Math::Color& clear = *targets.clearColor;
+            attachment.clearValue.color = {{clear.r, clear.g, clear.b, clear.a}};
+        }
+    };
+    add(targets.color);
+    for (const TextureHandle extra : targets.extraColors)
+    {
+        if (!extra.isSet())
+        {
+            break;
+        }
+        add(extra);
     }
     VkRenderingAttachmentInfo depth{};
     if (targets.depth.isSet())
@@ -170,7 +186,7 @@ void RhiCommandListVulkan::beginRendering(const RenderTargets& targets)
                  .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
         depth.clearValue.depthStencil = {.depth = targets.clearDepth.value_or(0.0F), .stencil = 0};
     }
-    startRendering(attachment, targets.depth.isSet() ? &depth : nullptr, color.extent);
+    startRendering({attachments.data(), count}, targets.depth.isSet() ? &depth : nullptr, color.extent);
 }
 
 void RhiCommandListVulkan::endRendering()

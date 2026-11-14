@@ -7,6 +7,7 @@
 #include <Meow2/Graphics/Shader/BindlessLayout.h>
 #include <Meow2/Math/Color.h>
 
+#include <array>
 #include <cstdint>
 #include <optional>
 
@@ -18,8 +19,11 @@ class IRhiSwapchain;
 ///        ResourceState::DepthTarget.
 struct RenderTargets
 {
-    TextureHandle color{};                   ///< The colour target.
-    std::optional<Math::Color> clearColor{}; ///< Clear to this; empty keeps what's there.
+    TextureHandle color{};                   ///< The (first) colour target.
+    /// @brief More colour targets, drawn to at once (a G-buffer): SV_Target1 onwards, in order; an unset handle ends the
+    ///        list. All targets are the first one's size. The pipeline's GraphicsPipelineDesc::extraColorFormats match.
+    std::array<TextureHandle, c_maxColorTargets - 1> extraColors{};
+    std::optional<Math::Color> clearColor{}; ///< Clear every colour target to this; empty keeps what's there.
     TextureHandle depth{};                   ///< The depth target; an unset handle means none.
     std::optional<float> clearDepth{};       ///< Clear to this (0 is far, reversed Z); empty keeps what's there.
 };

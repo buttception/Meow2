@@ -135,6 +135,7 @@ Result<Rhi::PipelineHandle> PipelineLibrary::build(const Entry& entry)
                                                           .pixelCode = *pixel,
                                                           .pixelEntry = request.pixelEntry,
                                                           .colorFormat = request.colorFormat,
+                                                          .extraColorFormats = request.extraColorFormats,
                                                           .depthFormat = request.depthFormat,
                                                           .depthTest = request.depthTest,
                                                           .depthWrite = request.depthWrite,

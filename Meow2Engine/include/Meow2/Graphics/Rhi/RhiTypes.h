@@ -241,6 +241,10 @@ struct ScissorRect
     std::uint32_t height = 0; ///< Height in pixels.
 };
 
+/// @brief The most colour targets one pass draws to at once (RenderTargets, GraphicsPipelineDesc): a G-buffer needs
+///        four. Vulkan and D3D12 guarantee eight.
+inline constexpr std::uint32_t c_maxColorTargets = 4;
+
 /// @brief What to create a graphics pipeline with. Plain data. Depth uses GREATER_EQUAL, for reversed Z (techstack.md
 ///        §10). The bytecode is only read during the call.
 ///
@@ -258,7 +262,10 @@ struct GraphicsPipelineDesc
     std::string meshEntry = "msMain";           ///< Its entry point.
     std::span<const std::byte> pixelCode{};     ///< Pixel shader bytecode.
     std::string pixelEntry = "psMain";          ///< Its entry point.
-    RhiFormat colorFormat = RhiFormat::Unknown; ///< Format of the colour target.
+    RhiFormat colorFormat = RhiFormat::Unknown; ///< Format of the (first) colour target.
+    /// @brief Formats of more colour targets drawn at once (a G-buffer), in order after the first; Unknown ends the
+    ///        list. Every target gets the same blending.
+    std::array<RhiFormat, c_maxColorTargets - 1> extraColorFormats{};
     RhiFormat depthFormat = RhiFormat::Unknown; ///< Format of the depth target; Unknown for none.
     bool depthTest = true;             ///< Whether depth is tested; false passes every pixel (depth stays bound).
     bool depthWrite = true;            ///< Whether drawing updates depth.
