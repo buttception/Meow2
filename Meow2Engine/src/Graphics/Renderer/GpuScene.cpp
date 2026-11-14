@@ -209,6 +209,10 @@ Result<std::unique_ptr<GpuScene>> GpuScene::create(RenderDevice& device, Pipelin
     {
         return Unexpected<Error>{made.error()};
     }
+    if (Result<ViewId> main = scene->addView(); !main)
+    {
+        return Unexpected<Error>{main.error()};
+    }
 
     Result<PipelineId> cull =
         pipelines.add(ComputePipelineRequest{.shader = desc.shader, .entry = "csCull", .name = "Cull"});
@@ -217,6 +221,13 @@ Result<std::unique_ptr<GpuScene>> GpuScene::create(RenderDevice& device, Pipelin
         return Unexpected<Error>{cull.error()};
     }
     scene->m_cullPipeline = *cull;
+    Result<PipelineId> scatter =
+        pipelines.add(ComputePipelineRequest{.shader = desc.shader, .entry = "csScatter", .name = "Update instances"});
+    if (!scatter)
+    {
+        return Unexpected<Error>{scatter.error()};
+    }
+    scene->m_scatterPipeline = *scatter;
     // One pipeline per draw list: they differ only in which side is culled (see MEOW2_DRAW_LIST_*).
     for (std::uint32_t list = 0; list < MEOW2_DRAW_LIST_COUNT; ++list)
     {
@@ -355,44 +366,69 @@ GpuScene::~GpuScene()
     }
 }
 
+namespace
+{
+/// @brief Makes a buffer, or returns the error.
+Result<void> makeBuffer(Rhi::IRhiDevice& device, Rhi::BufferHandle& out, std::uint64_t size, Rhi::RhiMemory memory,
+                        const char* name)
+{
+    Result<Rhi::BufferHandle> buffer =
+        device.createBuffer({.size = size, .memory = memory, .tag = Memory::MemTag::Renderer, .name = name});
+    if (!buffer)
+    {
+        return Unexpected<Error>{buffer.error()};
+    }
+    out = *buffer;
+    return {};
+}
+} // namespace
+
 Result<void> GpuScene::createBuffers(Rhi::IRhiDevice& device)
 {
-    const auto makeBuffer = [&device](Rhi::BufferHandle& out, std::uint64_t size, Rhi::RhiMemory memory,
-                                      const char* name) -> Result<void>
-    {
-        Result<Rhi::BufferHandle> buffer =
-            device.createBuffer({.size = size, .memory = memory, .tag = Memory::MemTag::Renderer, .name = name});
-        if (!buffer)
-        {
-            return Unexpected<Error>{buffer.error()};
-        }
-        out = *buffer;
-        return {};
-    };
     const std::uint64_t capacity = m_desc.instanceCapacity;
     for (Result<void> made :
-         {makeBuffer(m_instanceBuffer, capacity * sizeof(Shader::InstanceData), Rhi::RhiMemory::Upload, "Instances"),
-          makeBuffer(m_meshBuffer, std::uint64_t{c_maxMeshes} * sizeof(Shader::MeshDraw), Rhi::RhiMemory::Upload,
-                     "Meshes"),
-          // Every list has room for every instance: an instance lands in exactly one, but which isn't known up front.
-          makeBuffer(m_drawBuffer, capacity * MEOW2_DRAW_LIST_COUNT * sizeof(Shader::IndirectDraw),
+         {makeBuffer(device, m_transformBuffer, capacity * sizeof(Shader::InstanceTransform), Rhi::RhiMemory::GpuOnly,
+                     "Instance transforms"),
+          makeBuffer(device, m_infoBuffer, capacity * sizeof(Shader::InstanceInfo), Rhi::RhiMemory::GpuOnly,
+                     "Instance infos"),
+          makeBuffer(device, m_meshBuffer, std::uint64_t{c_maxMeshes} * sizeof(Shader::MeshDraw),
+                     Rhi::RhiMemory::Upload, "Meshes"),
+          makeBuffer(device, m_materialBuffer, std::uint64_t{c_maxMaterials} * sizeof(Shader::MaterialData),
+                     Rhi::RhiMemory::Upload, "Materials")})
+    {
+        if (!made)
+        {
+            return made;
+        }
+    }
+    m_transformState = Rhi::ResourceState::Undefined;
+    m_infoState = Rhi::ResourceState::Undefined;
+    return {};
+}
+
+Result<void> GpuScene::createViewBuffers(Rhi::IRhiDevice& device, View& view)
+{
+    const std::uint64_t capacity = m_desc.instanceCapacity;
+    view.taskCapacity = m_taskItemsNeeded;
+    for (Result<void> made :
+         {// Every list has room for every instance: an instance lands in exactly one, but which isn't known up front.
+          makeBuffer(device, view.drawBuffer, capacity * MEOW2_DRAW_LIST_COUNT * sizeof(Shader::IndirectDraw),
                      Rhi::RhiMemory::GpuOnly, "Draws"),
-          makeBuffer(m_countBuffer, MEOW2_DRAW_LIST_COUNT * sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly,
+          makeBuffer(device, view.countBuffer, MEOW2_DRAW_LIST_COUNT * sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly,
                      "Draw counts"),
           // The sun's shadow passes cull into their own lists, reused cascade after cascade.
-          makeBuffer(m_shadowDrawBuffer, capacity * MEOW2_DRAW_LIST_COUNT * sizeof(Shader::IndirectDraw),
+          makeBuffer(device, view.shadowDrawBuffer, capacity * MEOW2_DRAW_LIST_COUNT * sizeof(Shader::IndirectDraw),
                      Rhi::RhiMemory::GpuOnly, "Shadow draws"),
-          makeBuffer(m_shadowCountBuffer, MEOW2_DRAW_LIST_COUNT * sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly,
-                     "Shadow draw counts"),
-          makeBuffer(m_materialBuffer, std::uint64_t{c_maxMaterials} * sizeof(Shader::MaterialData),
-                     Rhi::RhiMemory::Upload, "Materials"),
+          makeBuffer(device, view.shadowCountBuffer, MEOW2_DRAW_LIST_COUNT * sizeof(std::uint32_t),
+                     Rhi::RhiMemory::GpuOnly, "Shadow draw counts"),
           // The meshlet path's: made on every GPU (they're small), used only with mesh shaders.
-          makeBuffer(m_taskBuffer, std::uint64_t{m_taskCapacity} * MEOW2_DRAW_LIST_COUNT * sizeof(Shader::TaskItem),
+          makeBuffer(device, view.taskBuffer,
+                     std::uint64_t{view.taskCapacity} * MEOW2_DRAW_LIST_COUNT * sizeof(Shader::TaskItem),
                      Rhi::RhiMemory::GpuOnly, "Task items"),
-          makeBuffer(m_taskCountBuffer, MEOW2_TASK_COUNT_SIZE * sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly,
-                     "Meshlet counts"),
-          makeBuffer(m_taskArgsBuffer, std::uint64_t{MEOW2_DRAW_LIST_COUNT} * c_taskArgBytes, Rhi::RhiMemory::GpuOnly,
-                     "Task arguments")})
+          makeBuffer(device, view.taskCountBuffer, MEOW2_TASK_COUNT_SIZE * sizeof(std::uint32_t),
+                     Rhi::RhiMemory::GpuOnly, "Meshlet counts"),
+          makeBuffer(device, view.taskArgsBuffer, std::uint64_t{MEOW2_DRAW_LIST_COUNT} * c_taskArgBytes,
+                     Rhi::RhiMemory::GpuOnly, "Task arguments")})
     {
         if (!made)
         {
@@ -401,47 +437,30 @@ Result<void> GpuScene::createBuffers(Rhi::IRhiDevice& device)
     }
     for (std::uint32_t slot = 0; slot < Rhi::c_maxFramesInFlight; ++slot)
     {
-        if (Result<void> made = makeBuffer(m_frameBuffers[slot], sizeof(Shader::FrameConstants), Rhi::RhiMemory::Upload,
-                                           "Frame constants");
-            !made)
+        for (Result<void> made :
+             {makeBuffer(device, view.frameBuffers[slot], sizeof(Shader::FrameConstants), Rhi::RhiMemory::Upload,
+                         "Frame constants"),
+              makeBuffer(device, view.cullBuffers[slot], sizeof(Shader::CullConstants), Rhi::RhiMemory::Upload,
+                         "Cull constants"),
+              makeBuffer(device, view.countReadback[slot], MEOW2_TASK_COUNT_SIZE * sizeof(std::uint32_t),
+                         Rhi::RhiMemory::Readback, "Meshlet counts readback"),
+              makeBuffer(device, view.deferredInputs[slot], sizeof(Shader::DeferredInputs), Rhi::RhiMemory::Upload,
+                         "Deferred inputs"),
+              // The sun's shadow: its constants, a cull record per cascade and caster set.
+              makeBuffer(device, view.shadowConstantBuffers[slot], sizeof(Shader::ShadowConstants),
+                         Rhi::RhiMemory::Upload, "Shadow constants"),
+              makeBuffer(device, view.shadowCullBuffers[slot], sizeof(Shader::CullConstants) * 2 * c_maxShadowCascades,
+                         Rhi::RhiMemory::Upload, "Shadow cull constants")})
         {
-            return made;
+            if (!made)
+            {
+                return made;
+            }
         }
-        if (Result<void> made = makeBuffer(m_cullBuffers[slot], sizeof(Shader::CullConstants), Rhi::RhiMemory::Upload,
-                                           "Cull constants");
-            !made)
+        // The casters' frame constants, per cascade.
+        for (Rhi::BufferHandle& buffer : view.shadowFrameBuffers[slot])
         {
-            return made;
-        }
-        if (Result<void> made = makeBuffer(m_countReadback[slot], MEOW2_TASK_COUNT_SIZE * sizeof(std::uint32_t),
-                                           Rhi::RhiMemory::Readback, "Meshlet counts readback");
-            !made)
-        {
-            return made;
-        }
-        if (Result<void> made = makeBuffer(m_deferredInputs[slot], sizeof(Shader::DeferredInputs),
-                                           Rhi::RhiMemory::Upload, "Deferred inputs");
-            !made)
-        {
-            return made;
-        }
-        // The sun's shadow: its constants, a cull record per cascade and caster set, the casters' frame constants.
-        if (Result<void> made = makeBuffer(m_shadowConstantBuffers[slot], sizeof(Shader::ShadowConstants),
-                                           Rhi::RhiMemory::Upload, "Shadow constants");
-            !made)
-        {
-            return made;
-        }
-        if (Result<void> made =
-                makeBuffer(m_shadowCullBuffers[slot], sizeof(Shader::CullConstants) * 2 * c_maxShadowCascades,
-                           Rhi::RhiMemory::Upload, "Shadow cull constants");
-            !made)
-        {
-            return made;
-        }
-        for (Rhi::BufferHandle& buffer : m_shadowFrameBuffers[slot])
-        {
-            if (Result<void> made = makeBuffer(buffer, sizeof(Shader::FrameConstants), Rhi::RhiMemory::Upload,
+            if (Result<void> made = makeBuffer(device, buffer, sizeof(Shader::FrameConstants), Rhi::RhiMemory::Upload,
                                                "Shadow frame constants");
                 !made)
             {
@@ -452,77 +471,158 @@ Result<void> GpuScene::createBuffers(Rhi::IRhiDevice& device)
     return {};
 }
 
-Result<void> GpuScene::sizeTaskBuffer(Rhi::IRhiDevice& device)
+void GpuScene::destroyViewBuffers(Rhi::IRhiDevice& device, View& view)
 {
-    // Each opaque instance can write one TaskItem per 32 meshlets, all into one list (which isn't known up front).
-    std::uint64_t items = 0;
-    m_meshletStats.meshlets = 0;
-    m_meshletStats.triangles = 0;
-    for (const Shader::InstanceData& instance : m_instances)
-    {
-        if (instance.mesh >= m_meshes.size() ||
-            (instance.material < m_materials.size() && m_materials[instance.material].blend))
-        {
-            continue;
-        }
-        const MeshData& mesh = m_meshes[instance.mesh];
-        items += (mesh.meshlets.size() + MEOW2_TASK_MESHLETS - 1) / MEOW2_TASK_MESHLETS;
-        m_meshletStats.meshlets += static_cast<std::uint32_t>(mesh.meshlets.size());
-        m_meshletStats.triangles += mesh.indices.size() / 3;
-    }
-    const auto needed = static_cast<std::uint32_t>(std::clamp<std::uint64_t>(items, 1, c_maxTaskItems));
-    if (needed <= m_taskCapacity && m_taskBuffer.isSet())
-    {
-        return {};
-    }
-    device.destroy(m_taskBuffer); // the GPU is idle (setInstances()' precondition)
-    m_taskBuffer = {};
-    Result<Rhi::BufferHandle> buffer =
-        device.createBuffer({.size = std::uint64_t{needed} * MEOW2_DRAW_LIST_COUNT * sizeof(Shader::TaskItem),
-                             .memory = Rhi::RhiMemory::GpuOnly,
-                             .tag = Memory::MemTag::Renderer,
-                             .name = "Task items"});
-    if (!buffer)
-    {
-        return Unexpected<Error>{buffer.error()};
-    }
-    m_taskBuffer = *buffer;
-    m_taskCapacity = needed;
-    m_taskState = Rhi::ResourceState::Undefined;
-    return {};
-}
-
-void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
-{
-    // Unset handles are ignored, so this also cleans up after a creation that stopped halfway.
-    for (Rhi::BufferHandle* buffer :
-         {&m_instanceBuffer, &m_meshBuffer, &m_drawBuffer, &m_countBuffer, &m_materialBuffer, &m_taskBuffer,
-          &m_taskCountBuffer, &m_taskArgsBuffer, &m_shadowDrawBuffer, &m_shadowCountBuffer})
+    // Unset handles are ignored, so this also cleans up after a creation that stopped halfway. The device keeps
+    // everything until the GPU is done with it (deferred destruction).
+    for (Rhi::BufferHandle* buffer : {&view.drawBuffer, &view.countBuffer, &view.taskBuffer, &view.taskCountBuffer,
+                                      &view.taskArgsBuffer, &view.shadowDrawBuffer, &view.shadowCountBuffer})
     {
         device.destroy(*buffer);
         *buffer = {};
     }
     for (std::uint32_t slot = 0; slot < Rhi::c_maxFramesInFlight; ++slot)
     {
-        device.destroy(m_frameBuffers[slot]);
-        device.destroy(m_cullBuffers[slot]);
-        device.destroy(m_countReadback[slot]);
-        device.destroy(m_deferredInputs[slot]);
-        m_deferredInputs[slot] = {};
-        for (Rhi::BufferHandle* buffer : {&m_shadowConstantBuffers[slot], &m_shadowCullBuffers[slot]})
+        for (Rhi::BufferHandle* buffer :
+             {&view.frameBuffers[slot], &view.cullBuffers[slot], &view.countReadback[slot], &view.deferredInputs[slot],
+              &view.shadowConstantBuffers[slot], &view.shadowCullBuffers[slot]})
         {
             device.destroy(*buffer);
             *buffer = {};
         }
-        for (Rhi::BufferHandle& buffer : m_shadowFrameBuffers[slot])
+        for (Rhi::BufferHandle& buffer : view.shadowFrameBuffers[slot])
         {
             device.destroy(buffer);
             buffer = {};
         }
-        m_frameBuffers[slot] = {};
-        m_cullBuffers[slot] = {};
-        m_countReadback[slot] = {};
-        m_slotReadsBack[slot] = false;
+        view.slotReadsBack[slot] = false;
+    }
+    // The G-buffer is made again at the next deferred frame, at the targets' size.
+    for (Rhi::TextureHandle& texture : view.gBuffer)
+    {
+        device.destroy(texture);
+        texture = {};
+    }
+    view.gBufferWidth = 0;
+    view.gBufferHeight = 0;
+    view.gBufferState = Rhi::ResourceState::Undefined;
+    // The shadow maps are made again at the next frame with shadows, and every cache drawn again.
+    for (std::size_t i = 0; i < c_maxShadowCascades; ++i)
+    {
+        device.destroy(view.staticMaps[i]);
+        device.destroy(view.shadowMaps[i]);
+        view.staticMaps[i] = {};
+        view.shadowMaps[i] = {};
+        view.staticStates[i] = Rhi::ResourceState::Undefined;
+        view.shadowStates[i] = Rhi::ResourceState::Undefined;
+    }
+    view.shadowMapResolution = 0;
+    view.shadowMapCount = 0;
+    view.staticShadowDirty = ~0U;
+    view.frameShadows = false;
+    // The new buffers and the next depth target start with no contents.
+    for (Rhi::ResourceState* state :
+         {&view.drawState, &view.countState, &view.depthState, &view.taskState, &view.taskCountState,
+          &view.taskArgsState, &view.shadowDrawState, &view.shadowCountState})
+    {
+        *state = Rhi::ResourceState::Undefined;
+    }
+    view.lastDepth = {};
+    view.taskCapacity = 0;
+}
+
+Result<ViewId> GpuScene::addView()
+{
+    auto view = std::make_unique<View>();
+    if (Result<void> made = createViewBuffers(m_device.device(), *view); !made)
+    {
+        destroyViewBuffers(m_device.device(), *view);
+        return Unexpected<Error>{made.error()};
+    }
+    // A removed view's id is reused, so ids stay small.
+    for (ViewId id = 1; id < m_views.size(); ++id)
+    {
+        if (!m_views[id])
+        {
+            m_views[id] = std::move(view);
+            return id;
+        }
+    }
+    m_views.push_back(std::move(view));
+    return static_cast<ViewId>(m_views.size() - 1);
+}
+
+void GpuScene::removeView(ViewId id)
+{
+    MEOW2_ASSERT(id != c_mainView, "The main view stays as long as the scene");
+    if (id < m_views.size() && m_views[id])
+    {
+        destroyViewBuffers(m_device.device(), *m_views[id]);
+        m_views[id].reset();
+    }
+}
+
+std::uint32_t GpuScene::viewCount() const
+{
+    return static_cast<std::uint32_t>(std::ranges::count_if(m_views, [](const auto& view) { return view != nullptr; }));
+}
+
+GpuScene::View& GpuScene::view(ViewId id)
+{
+    MEOW2_ASSERT(id < m_views.size() && m_views[id], "No such view");
+    return *m_views[id];
+}
+
+const GpuScene::View& GpuScene::view(ViewId id) const
+{
+    MEOW2_ASSERT(id < m_views.size() && m_views[id], "No such view");
+    return *m_views[id];
+}
+
+bool GpuScene::ensureTaskBuffer(Rhi::IRhiDevice& device, View& view)
+{
+    if (view.taskCapacity >= m_taskItemsNeeded && view.taskBuffer.isSet())
+    {
+        return true;
+    }
+    device.destroy(view.taskBuffer); // deferred until the GPU is done with it
+    view.taskBuffer = {};
+    view.taskCapacity = 0;
+    Result<Rhi::BufferHandle> buffer = device.createBuffer(
+        {.size = std::uint64_t{m_taskItemsNeeded} * MEOW2_DRAW_LIST_COUNT * sizeof(Shader::TaskItem),
+         .memory = Rhi::RhiMemory::GpuOnly,
+         .tag = Memory::MemTag::Renderer,
+         .name = "Task items"});
+    if (!buffer)
+    {
+        return false;
+    }
+    view.taskBuffer = *buffer;
+    view.taskCapacity = m_taskItemsNeeded;
+    view.taskState = Rhi::ResourceState::Undefined;
+    return true;
+}
+
+void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
+{
+    // Unset handles are ignored, so this also cleans up after a creation that stopped halfway.
+    for (Rhi::BufferHandle* buffer : {&m_transformBuffer, &m_infoBuffer, &m_meshBuffer, &m_materialBuffer})
+    {
+        device.destroy(*buffer);
+        *buffer = {};
+    }
+    for (std::uint32_t slot = 0; slot < Rhi::c_maxFramesInFlight; ++slot)
+    {
+        device.destroy(m_updateBuffers[slot]);
+        m_updateBuffers[slot] = {};
+        m_updateCapacity[slot] = 0;
+    }
+    for (const std::unique_ptr<View>& view : m_views)
+    {
+        if (view)
+        {
+            destroyViewBuffers(device, *view);
+        }
     }
     for (const Rhi::BufferHandle buffer : m_meshResources)
     {
@@ -547,31 +647,8 @@ void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
         device.destroy(record.sampler);
         record.sampler = {};
     }
-    // The G-buffer is made again at the next deferred frame, at the targets' size.
-    for (Rhi::TextureHandle& texture : m_gBuffer)
-    {
-        device.destroy(texture);
-        texture = {};
-    }
-    m_gBufferWidth = 0;
-    m_gBufferHeight = 0;
-    m_gBufferState = Rhi::ResourceState::Undefined;
-    // The shadow maps are made again at the next frame with shadows, and every cache drawn again.
-    for (std::size_t i = 0; i < c_maxShadowCascades; ++i)
-    {
-        device.destroy(m_staticMaps[i]);
-        device.destroy(m_shadowMaps[i]);
-        m_staticMaps[i] = {};
-        m_shadowMaps[i] = {};
-        m_staticStates[i] = Rhi::ResourceState::Undefined;
-        m_shadowStates[i] = Rhi::ResourceState::Undefined;
-    }
-    m_shadowMapResolution = 0;
-    m_shadowMapCount = 0;
-    m_shadowDrawState = Rhi::ResourceState::Undefined;
-    m_shadowCountState = Rhi::ResourceState::Undefined;
-    m_staticShadowDirty = ~0U;
-    m_frameShadows = false;
+    m_transformState = Rhi::ResourceState::Undefined;
+    m_infoState = Rhi::ResourceState::Undefined;
 }
 
 Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
@@ -579,6 +656,16 @@ Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
     if (Result<void> made = createBuffers(device); !made)
     {
         return made;
+    }
+    for (const std::unique_ptr<View>& view : m_views)
+    {
+        if (view)
+        {
+            if (Result<void> made = createViewBuffers(device, *view); !made)
+            {
+                return made;
+            }
+        }
     }
     // Mesh records hold heap indices, which are different on the new device: upload every mesh again.
     for (std::uint32_t mesh = 0; mesh < m_meshes.size(); ++mesh)
@@ -588,8 +675,16 @@ Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
             return uploaded;
         }
     }
-    std::memcpy(device.mappedMemory(m_instanceBuffer).data(), m_instances.data(),
-                m_instances.size() * sizeof(Shader::InstanceData));
+    // The new instance buffers start empty: every slot, free ones too, is uploaded by the next frame. The GPU's
+    // "previous" transform starts equal to the current one, as for a new instance.
+    m_dirty.clear();
+    for (std::uint32_t slot = 0; slot < m_instances.size(); ++slot)
+    {
+        m_instances[slot].dirty = true;
+        m_instances[slot].settling = false;
+        m_instances[slot].previous = m_instances[slot].desc.world;
+        m_dirty.push_back(slot);
+    }
     for (SamplerRecord& record : m_samplers)
     {
         Result<Rhi::SamplerHandle> sampler = device.createSampler(record.desc);
@@ -611,14 +706,6 @@ Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
     {
         writeMaterial(device, material);
     }
-    // The new buffers and the next depth target start with no contents.
-    m_drawState = Rhi::ResourceState::Undefined;
-    m_countState = Rhi::ResourceState::Undefined;
-    m_depthState = Rhi::ResourceState::Undefined;
-    m_taskState = Rhi::ResourceState::Undefined;
-    m_taskCountState = Rhi::ResourceState::Undefined;
-    m_taskArgsState = Rhi::ResourceState::Undefined;
-    m_lastDepth = {};
     return {};
 }
 
@@ -838,47 +925,187 @@ Result<std::uint32_t> GpuScene::addMesh(const MeshData& mesh)
         return Unexpected<Error>{uploaded.error()};
     }
     m_meshes.push_back(std::move(stored));
+    m_derivedStale = true; // instances may already use it: their meshlet needs and bounds change
     return index;
 }
 
-void GpuScene::setInstances(std::span<const Shader::InstanceData> instances)
+namespace
+{
+/// @brief Whether two descriptions draw the same thing in the same place.
+bool sameInstance(const InstanceDesc& a, const InstanceDesc& b)
+{
+    return a.mesh == b.mesh && a.material == b.material && a.movable == b.movable &&
+           std::memcmp(&a.world, &b.world, sizeof(Math::Mat4)) == 0;
+}
+
+/// @brief The 3 × 4 form of a row-vector Mat4 (InstanceTransform's): its columns, the last row's translation in w.
+void storeRows(const Math::Mat4& m, Shader::float4& row0, Shader::float4& row1, Shader::float4& row2)
+{
+    row0 = {m.m[0][0], m.m[1][0], m.m[2][0], m.m[3][0]};
+    row1 = {m.m[0][1], m.m[1][1], m.m[2][1], m.m[3][1]};
+    row2 = {m.m[0][2], m.m[1][2], m.m[2][2], m.m[3][2]};
+}
+} // namespace
+
+void GpuScene::storeInstance(std::uint32_t slot, const InstanceDesc& desc)
+{
+    InstanceRecord& record = m_instances[slot];
+    const bool wasFree = (record.flags & MEOW2_INSTANCE_FREE) != 0;
+    if (!wasFree && sameInstance(record.desc, desc))
+    {
+        return; // nothing to upload
+    }
+    if (wasFree)
+    {
+        record.previous = desc.world; // a new instance hasn't moved
+        ++m_liveInstances;
+    }
+    // A negative determinant mirrors the mesh, which reverses its triangles' winding on screen.
+    const DirectX::XMMATRIX world = DirectX::XMLoadFloat4x4(&desc.world);
+    const bool mirrored = DirectX::XMVectorGetX(DirectX::XMMatrixDeterminant(world)) < 0.0F;
+    record.desc = desc;
+    record.flags = (mirrored ? MEOW2_INSTANCE_MIRRORED : 0U) | (desc.movable ? MEOW2_INSTANCE_MOVABLE : 0U);
+    if (!record.dirty)
+    {
+        record.dirty = true;
+        m_dirty.push_back(slot);
+    }
+    m_derivedStale = true;
+}
+
+void GpuScene::setInstances(std::span<const InstanceDesc> instances)
 {
     MEOW2_ASSERT(instances.size() <= m_desc.instanceCapacity, "More instances than GpuSceneDesc::instanceCapacity");
-    m_instances.assign(instances.begin(), instances.end()); // kept for the next device, after a backend switch
-    m_blended.clear();
-    m_blendOrder.clear(); // its indices were into the old instances; the next setView() sorts the new ones
-    // For the sun's shadow: a box around every caster, whether any moves, and a fingerprint of the static ones (FNV-1a
-    // over their placement, mesh and material), so their cached shadow maps are drawn again only when they change.
-    std::optional<Math::Aabb> bounds;
-    std::uint64_t staticHash = 14695981039346656037ULL;
-    m_hasMovable = false;
-    for (std::uint32_t i = 0; i < m_instances.size(); ++i)
+    const auto count = static_cast<std::uint32_t>(instances.size());
+    // Slots past the end go: they're no longer read (culling stops at the last slot), so they need no upload.
+    for (std::uint32_t slot = count; slot < m_instances.size(); ++slot)
     {
-        Shader::InstanceData& instance = m_instances[i];
-        // A negative determinant mirrors the mesh, which reverses its triangles' winding on screen.
-        const DirectX::XMMATRIX world = DirectX::XMLoadFloat4x4(&instance.world);
-        const bool mirrored = DirectX::XMVectorGetX(DirectX::XMMatrixDeterminant(world)) < 0.0F;
-        const bool movable = (instance.flags & MEOW2_INSTANCE_MOVABLE) != 0; // the caller's; the rest is ours
-        instance.flags = (mirrored ? MEOW2_INSTANCE_MIRRORED : 0U) | (movable ? MEOW2_INSTANCE_MOVABLE : 0U);
-        m_hasMovable = m_hasMovable || movable;
-        if (instance.mesh < m_meshes.size())
+        if ((m_instances[slot].flags & MEOW2_INSTANCE_FREE) == 0)
         {
-            const Math::Aabb box = Math::transformAabb(m_meshes[instance.mesh].bounds, world);
-            bounds = bounds ? mergeBoxes(*bounds, box) : box;
-        }
-        if (!movable)
-        {
-            const auto* bytes = reinterpret_cast<const unsigned char*>(&instance);
-            for (std::size_t b = 0; b < sizeof(Shader::InstanceData); ++b)
-            {
-                staticHash = (staticHash ^ bytes[b]) * 1099511628211ULL;
-            }
-        }
-        if (instance.material < m_materials.size() && m_materials[instance.material].blend)
-        {
-            m_blended.push_back(i);
+            --m_liveInstances;
         }
     }
+    if (count < m_instances.size())
+    {
+        m_instances.resize(count);
+        m_derivedStale = true;
+    }
+    m_instances.resize(count); // new slots start free, so storeInstance() uploads them
+    for (std::uint32_t slot = 0; slot < count; ++slot)
+    {
+        storeInstance(slot, instances[slot]);
+    }
+}
+
+Result<std::uint32_t> GpuScene::addInstance(const InstanceDesc& instance)
+{
+    std::uint32_t slot = 0;
+    while (slot < m_instances.size() && (m_instances[slot].flags & MEOW2_INSTANCE_FREE) == 0)
+    {
+        ++slot;
+    }
+    if (slot == m_instances.size())
+    {
+        if (slot >= m_desc.instanceCapacity)
+        {
+            return fail(ErrorCode::OutOfMemory,
+                        std::format("The scene is full: {} instances (GpuSceneDesc::instanceCapacity)", slot));
+        }
+        m_instances.emplace_back();
+    }
+    storeInstance(slot, instance);
+    return slot;
+}
+
+void GpuScene::updateInstance(std::uint32_t slot, const InstanceDesc& instance)
+{
+    MEOW2_ASSERT(slot < m_instances.size() && (m_instances[slot].flags & MEOW2_INSTANCE_FREE) == 0,
+                 "updateInstance() of a slot that isn't in use");
+    storeInstance(slot, instance);
+}
+
+void GpuScene::removeInstance(std::uint32_t slot)
+{
+    if (slot >= m_instances.size() || (m_instances[slot].flags & MEOW2_INSTANCE_FREE) != 0)
+    {
+        return;
+    }
+    InstanceRecord& record = m_instances[slot];
+    record.flags = MEOW2_INSTANCE_FREE;
+    --m_liveInstances;
+    m_derivedStale = true;
+    if (!record.dirty)
+    {
+        record.dirty = true;
+        m_dirty.push_back(slot);
+    }
+    // Free slots at the end are dropped: culling stops at the last one in use.
+    while (!m_instances.empty() && (m_instances.back().flags & MEOW2_INSTANCE_FREE) != 0)
+    {
+        m_instances.pop_back();
+    }
+}
+
+void GpuScene::refreshDerived()
+{
+    if (!m_derivedStale)
+    {
+        return;
+    }
+    m_derivedStale = false;
+    m_blended.clear();
+    // For the sun's shadow: a box around every caster, whether any moves, and a fingerprint of the static ones (FNV-1a
+    // over their slot, placement, mesh and material), so their cached shadow maps are drawn again only when they
+    // change. And the meshlet path's room: each opaque instance writes one TaskItem per 32 meshlets, all into one list.
+    std::optional<Math::Aabb> bounds;
+    std::uint64_t staticHash = 14695981039346656037ULL;
+    const auto hash = [&staticHash](const void* data, std::size_t size)
+    {
+        const auto* bytes = static_cast<const unsigned char*>(data);
+        for (std::size_t b = 0; b < size; ++b)
+        {
+            staticHash = (staticHash ^ bytes[b]) * 1099511628211ULL;
+        }
+    };
+    m_hasMovable = false;
+    std::uint64_t items = 0;
+    m_meshletTotals = {};
+    for (std::uint32_t slot = 0; slot < m_instances.size(); ++slot)
+    {
+        const InstanceRecord& record = m_instances[slot];
+        if ((record.flags & MEOW2_INSTANCE_FREE) != 0)
+        {
+            continue;
+        }
+        const InstanceDesc& instance = record.desc;
+        m_hasMovable = m_hasMovable || instance.movable;
+        if (instance.mesh < m_meshes.size())
+        {
+            const Math::Aabb box =
+                Math::transformAabb(m_meshes[instance.mesh].bounds, DirectX::XMLoadFloat4x4(&instance.world));
+            bounds = bounds ? mergeBoxes(*bounds, box) : box;
+        }
+        if (!instance.movable)
+        {
+            hash(&slot, sizeof(slot));
+            hash(&instance.world, sizeof(instance.world));
+            hash(&instance.mesh, sizeof(instance.mesh));
+            hash(&instance.material, sizeof(instance.material));
+        }
+        const bool blended = instance.material < m_materials.size() && m_materials[instance.material].blend;
+        if (blended)
+        {
+            m_blended.push_back(slot);
+        }
+        else if (instance.mesh < m_meshes.size())
+        {
+            const MeshData& mesh = m_meshes[instance.mesh];
+            items += (mesh.meshlets.size() + MEOW2_TASK_MESHLETS - 1) / MEOW2_TASK_MESHLETS;
+            m_meshletTotals.meshlets += static_cast<std::uint32_t>(mesh.meshlets.size());
+            m_meshletTotals.triangles += static_cast<std::uint32_t>(mesh.indices.size() / 3);
+        }
+    }
+    m_taskItemsNeeded = static_cast<std::uint32_t>(std::clamp<std::uint64_t>(items, 1, c_maxTaskItems));
     if (bounds)
     {
         const float radius = std::sqrt(bounds->extents.x * bounds->extents.x + bounds->extents.y * bounds->extents.y +
@@ -888,19 +1115,21 @@ void GpuScene::setInstances(std::span<const Shader::InstanceData> instances)
     if (staticHash != m_staticHash)
     {
         m_staticHash = staticHash;
-        m_staticShadowDirty = ~0U; // a static caster appeared, went or moved: every cached map is stale
+        // A static caster appeared, went or moved: every view's cached maps are stale.
+        for (const std::unique_ptr<View>& view : m_views)
+        {
+            if (view)
+            {
+                view->staticShadowDirty = ~0U;
+            }
+        }
     }
-    std::memcpy(m_device.device().mappedMemory(m_instanceBuffer).data(), m_instances.data(),
-                m_instances.size() * sizeof(Shader::InstanceData));
-    // Out of GPU memory for the lists leaves them unset: meshletsAvailable() turns false, and the indirect path draws.
-    [[maybe_unused]] const Result<void> sized = sizeTaskBuffer(m_device.device());
 }
 
 bool GpuScene::meshletsAvailable() const
 {
     return m_device.device().adapter().meshShaders && m_taskArgsPipeline.has_value() &&
-           std::ranges::all_of(m_meshPipelines, [](const std::optional<PipelineId>& id) { return id.has_value(); }) &&
-           m_taskBuffer.isSet();
+           std::ranges::all_of(m_meshPipelines, [](const std::optional<PipelineId>& id) { return id.has_value(); });
 }
 
 bool GpuScene::usesMeshlets() const
@@ -908,33 +1137,48 @@ bool GpuScene::usesMeshlets() const
     return m_meshletsWanted && meshletsAvailable() && (!m_override || m_override->hasMeshLists);
 }
 
-void GpuScene::readMeshletStats(Rhi::IRhiDevice& device, std::uint32_t frameSlot)
+void GpuScene::readMeshletStats(Rhi::IRhiDevice& device, View& view, std::uint32_t frameSlot)
 {
-    if (!m_slotReadsBack[frameSlot])
+    view.meshletStats.meshlets = m_meshletTotals.meshlets;
+    view.meshletStats.triangles = m_meshletTotals.triangles;
+    if (!view.slotReadsBack[frameSlot])
     {
         return;
     }
     std::array<std::uint32_t, MEOW2_TASK_COUNT_SIZE> counts{};
-    std::memcpy(counts.data(), device.mappedMemory(m_countReadback[frameSlot]).data(), sizeof(counts));
-    m_meshletStats.meshletsDrawn = counts[MEOW2_TASK_COUNT_MESHLETS];
-    m_meshletStats.trianglesDrawn = counts[MEOW2_TASK_COUNT_TRIANGLES];
-    m_meshletStats.valid = true;
+    std::memcpy(counts.data(), device.mappedMemory(view.countReadback[frameSlot]).data(), sizeof(counts));
+    view.meshletStats.meshletsDrawn = counts[MEOW2_TASK_COUNT_MESHLETS];
+    view.meshletStats.trianglesDrawn = counts[MEOW2_TASK_COUNT_TRIANGLES];
+    view.meshletStats.valid = true;
 }
 
-void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& frame, const Math::Frustum& frustum)
+void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& frame, const Math::Frustum& frustum,
+                       ViewId viewId)
 {
     using namespace DirectX;
     Rhi::IRhiDevice& device = m_device.device();
-    readMeshletStats(device, frameSlot); // this slot's last frame is done
+    refreshDerived();
+    View& view = this->view(viewId);
+    readMeshletStats(device, view, frameSlot); // this slot's last frame is done
+    // Out of GPU memory for the lists leaves them unset: this view draws through the indirect path.
+    [[maybe_unused]] const bool taskRoom = ensureTaskBuffer(device, view);
     Shader::FrameConstants constants = frame;
     constants.materialBuffer = device.bindlessIndex(m_materialBuffer);
     constants.materialCount = static_cast<std::uint32_t>(m_materials.size());
-    constants.taskBuffer = device.bindlessIndex(m_taskBuffer);
-    constants.taskCounts = device.bindlessStorageIndex(m_taskCountBuffer);
-    constants.taskCapacity = m_taskCapacity;
-    constants.cullBuffer = device.bindlessIndex(m_cullBuffers[frameSlot]);
+    constants.taskBuffer = device.bindlessIndex(view.taskBuffer);
+    constants.taskCounts = device.bindlessStorageIndex(view.taskCountBuffer);
+    constants.taskCapacity = view.taskCapacity;
+    constants.cullBuffer = device.bindlessIndex(view.cullBuffers[frameSlot]);
+    constants.instanceInfoBuffer = device.bindlessIndex(m_infoBuffer);
+    // The camera is subtracted on the GPU (world - camera, then this), so moving the camera changes no instance and
+    // a far position keeps its precision through the projection: translate back by the camera, then project.
+    const XMMATRIX viewProjection = XMLoadFloat4x4(&frame.viewProjection);
+    XMStoreFloat4x4(
+        &constants.viewProjectionRelative,
+        XMMatrixMultiply(XMMatrixTranslation(frame.cameraPosition.x, frame.cameraPosition.y, frame.cameraPosition.z),
+                         viewProjection));
     // Deferred lighting rebuilds each pixel's position from its depth with this.
-    XMStoreFloat4x4(&constants.inverseViewProjection, XMMatrixInverse(nullptr, XMLoadFloat4x4(&frame.viewProjection)));
+    XMStoreFloat4x4(&constants.inverseViewProjection, XMMatrixInverse(nullptr, viewProjection));
     Math::Vec3 sun;
     XMStoreFloat3(&sun, XMVector3Normalize(Math::load(m_lighting.sunDirection)));
     constants.sunDirection = {sun.x, sun.y, sun.z, m_lighting.sunIntensity};
@@ -951,8 +1195,8 @@ void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& fr
         constants.environmentSampler = inputs.environmentSampler;
         constants.groundColor.w = m_sky->settings().cameraAltitudeKm;
     }
-    writeShadows(frameSlot, sun, constants); // the cascades, and where lighting finds them
-    std::memcpy(m_device.device().mappedMemory(m_frameBuffers[frameSlot]).data(), &constants, sizeof(constants));
+    writeShadows(view, frameSlot, sun, constants); // the cascades, and where lighting finds them
+    std::memcpy(device.mappedMemory(view.frameBuffers[frameSlot]).data(), &constants, sizeof(constants));
 
     // Blended instances are drawn farthest first, so each mixes with what's behind it, by the distance from the
     // camera to the box centre. Sorting whole instances is the usual compromise: overlapping
@@ -960,18 +1204,18 @@ void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& fr
     std::vector<std::pair<float, std::uint32_t>> distances;
     distances.reserve(m_blended.size());
     const XMVECTOR camera = XMVectorSet(frame.cameraPosition.x, frame.cameraPosition.y, frame.cameraPosition.z, 0.0F);
-    for (const std::uint32_t index : m_blended)
+    for (const std::uint32_t slot : m_blended)
     {
-        const Shader::InstanceData& instance = m_instances[index];
+        const InstanceDesc& instance = m_instances[slot].desc;
         const Math::Vec3 local = instance.mesh < m_meshes.size() ? m_meshes[instance.mesh].bounds.center : Math::Vec3{};
         const XMVECTOR center = XMVector3Transform(Math::load(local), XMLoadFloat4x4(&instance.world));
-        distances.emplace_back(XMVectorGetX(XMVector3LengthSq(XMVectorSubtract(center, camera))), index);
+        distances.emplace_back(XMVectorGetX(XMVector3LengthSq(XMVectorSubtract(center, camera))), slot);
     }
     std::sort(distances.begin(), distances.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
-    m_blendOrder.clear();
-    for (const auto& [distance, index] : distances)
+    view.blendOrder.clear();
+    for (const auto& [distance, slot] : distances)
     {
-        m_blendOrder.push_back(index);
+        view.blendOrder.push_back(slot);
     }
 
     Shader::CullConstants cull{};
@@ -981,50 +1225,62 @@ void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& fr
     cull.plane3 = frustum.planes[3];
     cull.plane4 = frustum.planes[4];
     cull.plane5 = frustum.planes[5];
-    cull.instanceBuffer = m_device.device().bindlessIndex(m_instanceBuffer);
-    cull.meshBuffer = m_device.device().bindlessIndex(m_meshBuffer);
-    cull.drawBuffer = m_device.device().bindlessStorageIndex(m_drawBuffer);
-    cull.countBuffer = m_device.device().bindlessStorageIndex(m_countBuffer);
-    cull.instanceCount = instanceCount();
+    cull.instanceBuffer = device.bindlessIndex(m_transformBuffer);
+    cull.instanceInfoBuffer = device.bindlessIndex(m_infoBuffer);
+    cull.meshBuffer = device.bindlessIndex(m_meshBuffer);
+    cull.drawBuffer = device.bindlessStorageIndex(view.drawBuffer);
+    cull.countBuffer = device.bindlessStorageIndex(view.countBuffer);
+    cull.instanceCount = static_cast<std::uint32_t>(m_instances.size());
     cull.materialBuffer = constants.materialBuffer;
     cull.materialCount = constants.materialCount;
     cull.drawCapacity = m_desc.instanceCapacity;
     const std::optional<Math::Vec3> apex = frustumApex(frustum);
     cull.origin = apex ? Shader::float4{apex->x, apex->y, apex->z, 1.0F} : Shader::float4{0.0F, 0.0F, 0.0F, 0.0F};
     cull.meshlets = 0; // addPasses() decides
-    cull.taskBuffer = device.bindlessStorageIndex(m_taskBuffer);
-    cull.taskCounts = device.bindlessStorageIndex(m_taskCountBuffer);
-    cull.taskCapacity = m_taskCapacity;
-    cull.taskArguments = device.bindlessStorageIndex(m_taskArgsBuffer);
-    std::memcpy(device.mappedMemory(m_cullBuffers[frameSlot]).data(), &cull, sizeof(cull));
+    cull.taskBuffer = device.bindlessStorageIndex(view.taskBuffer);
+    cull.taskCounts = device.bindlessStorageIndex(view.taskCountBuffer);
+    cull.taskCapacity = view.taskCapacity;
+    cull.taskArguments = device.bindlessStorageIndex(view.taskArgsBuffer);
+    std::memcpy(device.mappedMemory(view.cullBuffers[frameSlot]).data(), &cull, sizeof(cull));
 }
 
-GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain* swapchain,
-                                  Rhi::TextureHandle color, Rhi::TextureHandle depth, const Math::Color& clear)
+bool GpuScene::ensureUpdateBuffer(Rhi::IRhiDevice& device, std::uint32_t frameSlot, std::uint32_t records)
+{
+    if (m_updateCapacity[frameSlot] >= records && m_updateBuffers[frameSlot].isSet())
+    {
+        return true;
+    }
+    // Grown by doubling, so a scene that keeps growing doesn't make a new buffer every frame.
+    const std::uint32_t capacity = std::max({records, m_updateCapacity[frameSlot] * 2, 256U});
+    device.destroy(m_updateBuffers[frameSlot]); // deferred until the GPU is done with it
+    m_updateBuffers[frameSlot] = {};
+    m_updateCapacity[frameSlot] = 0;
+    Result<Rhi::BufferHandle> buffer =
+        device.createBuffer({.size = std::uint64_t{capacity} * sizeof(Shader::InstanceUpdate),
+                             .memory = Rhi::RhiMemory::Upload,
+                             .tag = Memory::MemTag::Renderer,
+                             .name = "Instance updates"});
+    if (!buffer)
+    {
+        return false;
+    }
+    m_updateBuffers[frameSlot] = *buffer;
+    m_updateCapacity[frameSlot] = capacity;
+    return true;
+}
+
+std::vector<GraphAccess> GpuScene::instanceReads() const
+{
+    return {{m_transformResource, Rhi::ResourceState::ShaderRead}, {m_infoResource, Rhi::ResourceState::ShaderRead}};
+}
+
+void GpuScene::addSharedPasses(RenderGraph& graph, std::uint32_t frameSlot)
 {
     using Rhi::ResourceState;
-    if (depth != m_lastDepth) // a new target, e.g. after a resize
-    {
-        m_lastDepth = depth;
-        m_depthState = ResourceState::Undefined;
-    }
-    m_drawResource = graph.import(m_drawBuffer, m_drawState, "Draw commands");
-    m_countResource = graph.import(m_countBuffer, m_countState, "Draw counts");
-    m_depthResource = graph.import(depth, m_depthState, "Depth");
-    // The path is fixed for the frame here: culling writes one kind of list, and the draws read it.
-    const bool meshlets = usesMeshlets();
-    m_frameUsesMeshlets = meshlets;
-    m_slotReadsBack[frameSlot] = meshlets;
-    const std::uint32_t meshletFlag = meshlets ? 1U : 0U;
-    std::memcpy(m_device.device().mappedMemory(m_cullBuffers[frameSlot]).data() +
-                    offsetof(Shader::CullConstants, meshlets),
-                &meshletFlag, sizeof(meshletFlag));
-    if (meshlets)
-    {
-        m_taskResource = graph.import(m_taskBuffer, m_taskState, "Task items");
-        m_taskCountResource = graph.import(m_taskCountBuffer, m_taskCountState, "Meshlet counts");
-        m_taskArgsResource = graph.import(m_taskArgsBuffer, m_taskArgsState, "Task arguments");
-    }
+    m_sharedPassesAdded = true;
+    Rhi::IRhiDevice& device = m_device.device();
+    m_transformResource = graph.import(m_transformBuffer, m_transformState, "Instance transforms");
+    m_infoResource = graph.import(m_infoBuffer, m_infoState, "Instance infos");
 
     // New textures are copied first. The copies run before every later pass, which see them as shader inputs.
     if (!m_pendingTextures.empty())
@@ -1070,42 +1326,143 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
                        .small = true});
     }
 
-    const std::uint32_t cullIndex = m_device.device().bindlessIndex(m_cullBuffers[frameSlot]);
+    // The changed instances: written into this frame slot's upload buffer (the GPU finished with it when the slot was
+    // last used), then copied into place by csScatter. A slot that moved is sent once more next frame with its
+    // previous transform equal to its current one, so "previous" means last frame's for every slot.
+    std::vector<std::uint32_t> settling;
+    std::uint32_t uploads = 0;
+    std::erase_if(m_dirty, [this](std::uint32_t slot) { return slot >= m_instances.size(); }); // dropped meanwhile
+    const auto pending = static_cast<std::uint32_t>(m_dirty.size());
+    if (pending > 0 && ensureUpdateBuffer(device, frameSlot, pending))
+    {
+        std::byte* const mapped = device.mappedMemory(m_updateBuffers[frameSlot]).data();
+        for (const std::uint32_t slot : m_dirty)
+        {
+            InstanceRecord& record = m_instances[slot];
+            Shader::InstanceUpdate update{};
+            update.slot = slot;
+            update.material = record.desc.material;
+            update.mesh = record.desc.mesh;
+            update.flags = record.flags;
+            storeRows(record.desc.world, update.world0, update.world1, update.world2);
+            storeRows(record.previous, update.previous0, update.previous1, update.previous2);
+            std::memcpy(mapped + std::size_t{uploads} * sizeof(update), &update, sizeof(update));
+            ++uploads;
+            record.dirty = false;
+            const bool moved = std::memcmp(&record.previous, &record.desc.world, sizeof(Math::Mat4)) != 0;
+            record.previous = record.desc.world;
+            record.settling = moved && (record.flags & MEOW2_INSTANCE_FREE) == 0;
+            if (record.settling)
+            {
+                settling.push_back(slot);
+            }
+        }
+        m_dirty = std::move(settling);
+        for (const std::uint32_t slot : m_dirty)
+        {
+            m_instances[slot].dirty = true; // sent again next frame, previous = current
+        }
+    }
+    // Always in the graph, skipped when nothing changed, so the graph has the same shape every frame (a pass that comes
+    // and goes makes the Render graph window flicker).
+    const std::uint32_t updateIndex = uploads > 0 ? device.bindlessIndex(m_updateBuffers[frameSlot]) : 0U;
+    const std::uint32_t transforms = device.bindlessStorageIndex(m_transformBuffer);
+    const std::uint32_t infos = device.bindlessStorageIndex(m_infoBuffer);
+    {
+        graph.addPass({.name = "Update instances",
+                       .accesses = {{m_transformResource, ResourceState::ShaderWrite},
+                                    {m_infoResource, ResourceState::ShaderWrite}},
+                       .record =
+                           [this, updateIndex, transforms, infos, uploads](Rhi::IRhiCommandList& list)
+                       {
+                           Shader::PushConstants push{};
+                           push.userData = updateIndex;
+                           push.instance = uploads;
+                           push.instanceBuffer = transforms;
+                           push.frameBuffer = infos;
+                           list.setPipeline(m_pipelines.get(*m_scatterPipeline));
+                           list.setPushConstants(push);
+                           list.dispatch((uploads + c_cullGroupSize - 1) / c_cullGroupSize);
+                       },
+                       .small = true,
+                       .skipped = uploads == 0});
+    }
+    m_lastUploads = uploads;
+}
+
+GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain* swapchain,
+                                  Rhi::TextureHandle color, Rhi::TextureHandle depth, const Math::Color& clear,
+                                  ViewId viewId)
+{
+    using Rhi::ResourceState;
+    if (!m_sharedPassesAdded)
+    {
+        addSharedPasses(graph, frameSlot); // once per frame, before any view culls
+    }
+    View& view = this->view(viewId);
+    View* const v = &view; // for the passes' lambdas: views live behind unique_ptrs, so the address is stable
+    view.drawn = true;
+    if (depth != view.lastDepth) // a new target, e.g. after a resize
+    {
+        view.lastDepth = depth;
+        view.depthState = ResourceState::Undefined;
+    }
+    view.drawResource = graph.import(view.drawBuffer, view.drawState, "Draw commands");
+    view.countResource = graph.import(view.countBuffer, view.countState, "Draw counts");
+    view.depthResource = graph.import(depth, view.depthState, "Depth");
+    // The path is fixed for the frame here: culling writes one kind of list, and the draws read it.
+    const bool meshlets = usesMeshlets() && view.taskBuffer.isSet() && view.taskCapacity >= m_taskItemsNeeded;
+    view.frameUsesMeshlets = meshlets;
+    view.slotReadsBack[frameSlot] = meshlets;
+    const std::uint32_t meshletFlag = meshlets ? 1U : 0U;
+    std::memcpy(m_device.device().mappedMemory(view.cullBuffers[frameSlot]).data() +
+                    offsetof(Shader::CullConstants, meshlets),
+                &meshletFlag, sizeof(meshletFlag));
+    if (meshlets)
+    {
+        view.taskResource = graph.import(view.taskBuffer, view.taskState, "Task items");
+        view.taskCountResource = graph.import(view.taskCountBuffer, view.taskCountState, "Meshlet counts");
+        view.taskArgsResource = graph.import(view.taskArgsBuffer, view.taskArgsState, "Task arguments");
+    }
+
+    const std::uint32_t cullIndex = m_device.device().bindlessIndex(view.cullBuffers[frameSlot]);
+    const auto slotCount = static_cast<std::uint32_t>(m_instances.size());
     graph.addPass({.name = "Clear draw count",
-                   .accesses = {{m_countResource, ResourceState::CopyTarget}},
-                   .record = [this](Rhi::IRhiCommandList& list) { list.fillBuffer(m_countBuffer, 0); },
+                   .accesses = {{view.countResource, ResourceState::CopyTarget}},
+                   .record = [v](Rhi::IRhiCommandList& list) { list.fillBuffer(v->countBuffer, 0); },
                    .small = true});
     if (meshlets)
     {
         graph.addPass({.name = "Clear meshlet counts",
-                       .accesses = {{m_taskCountResource, ResourceState::CopyTarget}},
-                       .record = [this](Rhi::IRhiCommandList& list) { list.fillBuffer(m_taskCountBuffer, 0); },
+                       .accesses = {{view.taskCountResource, ResourceState::CopyTarget}},
+                       .record = [v](Rhi::IRhiCommandList& list) { list.fillBuffer(v->taskCountBuffer, 0); },
                        .small = true});
     }
-    std::vector<GraphAccess> cullAccesses{{m_countResource, ResourceState::ShaderWrite},
-                                          {m_drawResource, ResourceState::ShaderWrite}};
+    std::vector<GraphAccess> cullAccesses = instanceReads();
+    cullAccesses.push_back({view.countResource, ResourceState::ShaderWrite});
+    cullAccesses.push_back({view.drawResource, ResourceState::ShaderWrite});
     if (meshlets)
     {
-        cullAccesses.push_back({m_taskResource, ResourceState::ShaderWrite});
-        cullAccesses.push_back({m_taskCountResource, ResourceState::ShaderWrite});
+        cullAccesses.push_back({view.taskResource, ResourceState::ShaderWrite});
+        cullAccesses.push_back({view.taskCountResource, ResourceState::ShaderWrite});
     }
     graph.addPass({.name = "Cull instances",
                    .accesses = std::move(cullAccesses),
                    .record =
-                       [this, cullIndex](Rhi::IRhiCommandList& list)
+                       [this, cullIndex, slotCount](Rhi::IRhiCommandList& list)
                    {
                        Shader::PushConstants push{};
                        push.userData = cullIndex;
                        list.setPipeline(m_pipelines.get(*m_cullPipeline));
                        list.setPushConstants(push);
-                       list.dispatch((instanceCount() + c_cullGroupSize - 1) / c_cullGroupSize);
+                       list.dispatch((slotCount + c_cullGroupSize - 1) / c_cullGroupSize);
                    },
                    .small = true});
     if (meshlets)
     {
         graph.addPass({.name = "Task arguments",
-                       .accesses = {{m_taskCountResource, ResourceState::ShaderWrite},
-                                    {m_taskArgsResource, ResourceState::ShaderWrite}},
+                       .accesses = {{view.taskCountResource, ResourceState::ShaderWrite},
+                                    {view.taskArgsResource, ResourceState::ShaderWrite}},
                        .record =
                            [this, cullIndex](Rhi::IRhiCommandList& list)
                        {
@@ -1127,28 +1484,30 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
     }
     const auto targets = [&](bool lists, bool withColor = true)
     {
-        std::vector<GraphAccess> accesses{{m_depthResource, ResourceState::DepthTarget}};
+        std::vector<GraphAccess> accesses = instanceReads();
+        accesses.push_back({view.depthResource, ResourceState::DepthTarget});
         if (lists && meshlets)
         {
-            accesses.push_back({m_taskArgsResource, ResourceState::IndirectArgs});
-            accesses.push_back({m_taskResource, ResourceState::ShaderRead});
-            accesses.push_back({m_taskCountResource, ResourceState::ShaderWrite}); // the task shader counts survivors
+            accesses.push_back({view.taskArgsResource, ResourceState::IndirectArgs});
+            accesses.push_back({view.taskResource, ResourceState::ShaderRead});
+            accesses.push_back(
+                {view.taskCountResource, ResourceState::ShaderWrite}); // the task shader counts survivors
         }
         else if (lists)
         {
-            accesses.push_back({m_countResource, ResourceState::IndirectArgs});
-            accesses.push_back({m_drawResource, ResourceState::IndirectArgs});
+            accesses.push_back({view.countResource, ResourceState::IndirectArgs});
+            accesses.push_back({view.drawResource, ResourceState::IndirectArgs});
         }
         if (swapchain == nullptr && withColor)
         {
             accesses.push_back({colorResource, ResourceState::ColorTarget});
         }
-        if (m_frameShadows)
+        if (view.frameShadows)
         {
             // Everything that shades reads the sun's shadow maps (harmless for the G-buffer pass, which doesn't).
-            for (std::uint32_t i = 0; i < m_cascades.settings().count; ++i)
+            for (std::uint32_t i = 0; i < view.cascades.settings().count; ++i)
             {
-                accesses.push_back({m_shadowResources[i], ResourceState::ShaderRead});
+                accesses.push_back({view.shadowResources[i], ResourceState::ShaderRead});
             }
         }
         return accesses;
@@ -1173,12 +1532,12 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
     };
     Rhi::IRhiDevice& device = m_device.device();
     Shader::PushConstants push{};
-    push.frameBuffer = device.bindlessIndex(m_frameBuffers[frameSlot]);
-    push.instanceBuffer = device.bindlessIndex(m_instanceBuffer);
+    push.frameBuffer = device.bindlessIndex(view.frameBuffers[frameSlot]);
+    push.instanceBuffer = device.bindlessIndex(m_transformBuffer);
     push.userData = device.bindlessIndex(m_meshBuffer);
-    if (m_frameShadows)
+    if (view.frameShadows)
     {
-        addShadowPasses(graph, frameSlot, push); // before anything that shades
+        addShadowPasses(view, graph, frameSlot, push); // before anything that shades
     }
 
     // This frame's pipelines for each list, on its path.
@@ -1192,9 +1551,9 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
         }
     }
     current.hasMeshLists = meshlets;
-    m_frameDeferred = m_deferred && !m_override && m_gBufferPipelines && m_lightingPipeline && swapchain == nullptr &&
-                      ensureGBuffer(device, color);
-    if (m_frameDeferred)
+    view.frameDeferred = m_deferred && !m_override && m_gBufferPipelines && m_lightingPipeline &&
+                         swapchain == nullptr && ensureGBuffer(device, view, color);
+    if (view.frameDeferred)
     {
         // Deferred: the draw lists write each surface's properties into the G-buffer (and depth), then one full-screen
         // pass lights every pixel from them. Same lists, same culling, same pipelines per list, other outputs.
@@ -1206,48 +1565,48 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
         }
         gBuffer.hasMeshLists = meshlets && m_gBufferPipelines->hasMeshLists;
         std::vector<GraphAccess> gBufferAccesses = targets(true, false);
-        for (std::size_t i = 0; i < m_gBuffer.size(); ++i)
+        for (std::size_t i = 0; i < view.gBuffer.size(); ++i)
         {
-            m_gBufferResources[i] = graph.import(m_gBuffer[i], m_gBufferState, c_gBufferNames[i]);
-            gBufferAccesses.push_back({m_gBufferResources[i], ResourceState::ColorTarget});
+            view.gBufferResources[i] = graph.import(view.gBuffer[i], view.gBufferState, c_gBufferNames[i]);
+            gBufferAccesses.push_back({view.gBufferResources[i], ResourceState::ColorTarget});
         }
         graph.addPass({.name = "G-buffer",
                        .accesses = std::move(gBufferAccesses),
-                       .record = [this, depth, push, gBuffer](Rhi::IRhiCommandList& list)
+                       .record = [this, v, depth, push, gBuffer](Rhi::IRhiCommandList& list)
                        {
                            // Cleared to zero: a pixel nothing covers stays empty (its depth too, for the sky).
                            list.beginRendering(
-                               Rhi::RenderTargets{.color = m_gBuffer[0],
-                                                  .extraColors = {m_gBuffer[1], m_gBuffer[2], m_gBuffer[3]},
+                               Rhi::RenderTargets{.color = v->gBuffer[0],
+                                                  .extraColors = {v->gBuffer[1], v->gBuffer[2], v->gBuffer[3]},
                                                   .clearColor = Math::Color{.a = 0.0F},
                                                   .depth = depth,
                                                   .clearDepth = 0.0F});
-                           recordLists(list, gBuffer, push);
+                           recordLists(*v, list, gBuffer, push, v->drawBuffer, v->countBuffer);
                            list.endRendering();
                        }});
 
         // The lighting pass reads the G-buffer and depth through heap indices, from this record.
-        const Shader::DeferredInputs inputs{.albedo = device.bindlessIndex(m_gBuffer[0]),
-                                            .normal = device.bindlessIndex(m_gBuffer[1]),
-                                            .material = device.bindlessIndex(m_gBuffer[2]),
-                                            .emissive = device.bindlessIndex(m_gBuffer[3]),
+        const Shader::DeferredInputs inputs{.albedo = device.bindlessIndex(view.gBuffer[0]),
+                                            .normal = device.bindlessIndex(view.gBuffer[1]),
+                                            .material = device.bindlessIndex(view.gBuffer[2]),
+                                            .emissive = device.bindlessIndex(view.gBuffer[3]),
                                             .depth = device.bindlessIndex(depth),
-                                            .width = m_gBufferWidth,
-                                            .height = m_gBufferHeight,
+                                            .width = view.gBufferWidth,
+                                            .height = view.gBufferHeight,
                                             .padding0 = 0};
-        std::memcpy(device.mappedMemory(m_deferredInputs[frameSlot]).data(), &inputs, sizeof(inputs));
+        std::memcpy(device.mappedMemory(view.deferredInputs[frameSlot]).data(), &inputs, sizeof(inputs));
         Shader::PushConstants lightingPush = push;
-        lightingPush.userData = device.bindlessIndex(m_deferredInputs[frameSlot]);
-        std::vector<GraphAccess> lightingAccesses{{m_depthResource, ResourceState::ShaderRead},
+        lightingPush.userData = device.bindlessIndex(view.deferredInputs[frameSlot]);
+        std::vector<GraphAccess> lightingAccesses{{view.depthResource, ResourceState::ShaderRead},
                                                   {colorResource, ResourceState::ColorTarget}};
-        if (m_frameShadows)
+        if (view.frameShadows)
         {
-            for (std::uint32_t i = 0; i < m_cascades.settings().count; ++i)
+            for (std::uint32_t i = 0; i < view.cascades.settings().count; ++i)
             {
-                lightingAccesses.push_back({m_shadowResources[i], ResourceState::ShaderRead});
+                lightingAccesses.push_back({view.shadowResources[i], ResourceState::ShaderRead});
             }
         }
-        for (const GraphResource resource : m_gBufferResources)
+        for (const GraphResource resource : view.gBufferResources)
         {
             lightingAccesses.push_back({resource, ResourceState::ShaderRead});
         }
@@ -1270,10 +1629,10 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
     {
         graph.addPass({.name = "Opaque",
                        .accesses = targets(true),
-                       .record = [this, begin, clear, push, current](Rhi::IRhiCommandList& list)
+                       .record = [this, v, begin, clear, push, current](Rhi::IRhiCommandList& list)
                        {
                            begin(list, clear, 0.0F);
-                           recordLists(list, current, push);
+                           recordLists(*v, list, current, push, v->drawBuffer, v->countBuffer);
                            list.endRendering();
                        }});
     }
@@ -1281,14 +1640,15 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
     {
         // The counts come back to the CPU a few frames later, without waiting (meshletStats()).
         graph.addPass({.name = "Read meshlet counts",
-                       .accesses = {{m_taskCountResource, ResourceState::CopySource}},
+                       .accesses = {{view.taskCountResource, ResourceState::CopySource}},
                        .record =
-                           [this, frameSlot](Rhi::IRhiCommandList& list)
+                           [v, frameSlot](Rhi::IRhiCommandList& list)
                        {
                            // The CPU last read this buffer before the slot's fence: no barrier needed before the copy.
-                           list.copyBuffer(m_taskCountBuffer, m_countReadback[frameSlot],
+                           list.copyBuffer(v->taskCountBuffer, v->countReadback[frameSlot],
                                            MEOW2_TASK_COUNT_SIZE * sizeof(std::uint32_t));
-                           list.barrier(m_countReadback[frameSlot], ResourceState::CopyTarget, ResourceState::HostRead);
+                           list.barrier(v->countReadback[frameSlot], ResourceState::CopyTarget,
+                                        ResourceState::HostRead);
                        },
                        .small = true});
     }
@@ -1308,22 +1668,22 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
                        .small = true});
     }
 
-    // Blended draws are recorded directly, one per instance, in this frame's order: {instance, index count}.
+    // Blended draws are recorded directly, one per instance, in this frame's order: {slot, index count}.
     std::vector<std::pair<std::uint32_t, std::uint32_t>> blended;
-    blended.reserve(m_blendOrder.size());
-    for (const std::uint32_t index : m_blendOrder)
+    blended.reserve(view.blendOrder.size());
+    for (const std::uint32_t slot : view.blendOrder)
     {
-        if (index >= m_instances.size())
+        if (slot >= m_instances.size() || (m_instances[slot].flags & MEOW2_INSTANCE_FREE) != 0)
         {
             continue;
         }
-        const std::uint32_t mesh = m_instances[index].mesh;
+        const std::uint32_t mesh = m_instances[slot].desc.mesh;
         if (mesh < m_meshes.size())
         {
-            blended.emplace_back(index, static_cast<std::uint32_t>(m_meshes[mesh].indices.size()));
+            blended.emplace_back(slot, static_cast<std::uint32_t>(m_meshes[mesh].indices.size()));
         }
     }
-    m_blendDraws = blended; // for overlay passes this frame
+    view.blendDraws = blended; // for overlay passes this frame
     if (!blended.empty())
     {
         graph.addPass({.name = "Blended",
@@ -1334,10 +1694,10 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
                            // After everything opaque, so they mix with it; vsBlend reads the instance from g_push.
                            begin(list, std::nullopt, std::nullopt);
                            list.setPipeline(m_pipelines.get(m_override ? m_override->blend : *m_blendPipeline));
-                           for (const auto& [instance, indexCount] : blended)
+                           for (const auto& [slot, indexCount] : blended)
                            {
                                Shader::PushConstants draw = push;
-                               draw.instance = instance;
+                               draw.instance = slot;
                                list.setPushConstants(draw);
                                list.draw(indexCount);
                            }
@@ -1438,13 +1798,7 @@ Result<void> GpuScene::addMeshPipelines(const DrawPipelineOptions& options, Draw
     return {};
 }
 
-void GpuScene::recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipelines,
-                           const Shader::PushConstants& push) const
-{
-    recordLists(list, pipelines, push, m_drawBuffer, m_countBuffer);
-}
-
-void GpuScene::recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipelines,
+void GpuScene::recordLists(const View& view, Rhi::IRhiCommandList& list, const DrawPipelines& pipelines,
                            const Shader::PushConstants& push, Rhi::BufferHandle draws, Rhi::BufferHandle counts) const
 {
     if (pipelines.hasMeshLists)
@@ -1456,7 +1810,7 @@ void GpuScene::recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipe
             listPush.instance = drawList;
             list.setPipeline(m_pipelines.get(pipelines.meshLists[drawList]));
             list.setPushConstants(listPush);
-            list.dispatchMeshIndirect(m_taskArgsBuffer, std::uint64_t{drawList} * c_taskArgBytes);
+            list.dispatchMeshIndirect(view.taskArgsBuffer, std::uint64_t{drawList} * c_taskArgBytes);
         }
         return;
     }
@@ -1472,48 +1826,51 @@ void GpuScene::recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipe
 
 void GpuScene::addOverlayPass(RenderGraph& graph, std::string name, const DrawPipelines& pipelines, GraphResource color,
                               Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot,
-                              bool debug)
+                              bool debug, ViewId viewId)
 {
     Rhi::IRhiDevice& device = m_device.device();
+    const View& view = this->view(viewId);
+    const View* const v = &view;
     Shader::PushConstants push{};
-    push.frameBuffer = device.bindlessIndex(m_frameBuffers[frameSlot]);
-    push.instanceBuffer = device.bindlessIndex(m_instanceBuffer);
+    push.frameBuffer = device.bindlessIndex(view.frameBuffers[frameSlot]);
+    push.instanceBuffer = device.bindlessIndex(m_transformBuffer);
     push.userData = device.bindlessIndex(m_meshBuffer);
     // The lists culling filled this frame: TaskItems on the meshlet path, indirect draws on the other. Overlay
     // pipelines without meshlet pipelines can't draw TaskItems, so on a meshlet frame they redraw only blended
     // surfaces.
-    const bool lists = !m_frameUsesMeshlets || pipelines.hasMeshLists;
+    const bool lists = !view.frameUsesMeshlets || pipelines.hasMeshLists;
     DrawPipelines used = pipelines;
-    used.hasMeshLists = m_frameUsesMeshlets;
-    std::vector<GraphAccess> accesses{{m_depthResource, Rhi::ResourceState::DepthTarget},
-                                      {color, Rhi::ResourceState::ColorTarget}};
-    if (lists && m_frameUsesMeshlets)
+    used.hasMeshLists = view.frameUsesMeshlets;
+    std::vector<GraphAccess> accesses = instanceReads();
+    accesses.push_back({view.depthResource, Rhi::ResourceState::DepthTarget});
+    accesses.push_back({color, Rhi::ResourceState::ColorTarget});
+    if (lists && view.frameUsesMeshlets)
     {
-        accesses.push_back({m_taskArgsResource, Rhi::ResourceState::IndirectArgs});
-        accesses.push_back({m_taskResource, Rhi::ResourceState::ShaderRead});
-        accesses.push_back({m_taskCountResource, Rhi::ResourceState::ShaderWrite});
+        accesses.push_back({view.taskArgsResource, Rhi::ResourceState::IndirectArgs});
+        accesses.push_back({view.taskResource, Rhi::ResourceState::ShaderRead});
+        accesses.push_back({view.taskCountResource, Rhi::ResourceState::ShaderWrite});
     }
     else if (lists)
     {
-        accesses.push_back({m_countResource, Rhi::ResourceState::IndirectArgs});
-        accesses.push_back({m_drawResource, Rhi::ResourceState::IndirectArgs});
+        accesses.push_back({view.countResource, Rhi::ResourceState::IndirectArgs});
+        accesses.push_back({view.drawResource, Rhi::ResourceState::IndirectArgs});
     }
     graph.addPass(
         {.name = std::move(name),
          .accesses = std::move(accesses),
          .record =
-             [this, used, lists, push, colorTexture, depth, blended = m_blendDraws](Rhi::IRhiCommandList& list)
+             [this, v, used, lists, push, colorTexture, depth, blended = view.blendDraws](Rhi::IRhiCommandList& list)
          {
              list.beginRendering(Rhi::RenderTargets{.color = colorTexture, .depth = depth});
              if (lists)
              {
-                 recordLists(list, used, push);
+                 recordLists(*v, list, used, push, v->drawBuffer, v->countBuffer);
              }
              list.setPipeline(m_pipelines.get(used.blend));
-             for (const auto& [instance, indexCount] : blended)
+             for (const auto& [slot, indexCount] : blended)
              {
                  Shader::PushConstants draw = push;
-                 draw.instance = instance;
+                 draw.instance = slot;
                  list.setPushConstants(draw);
                  list.draw(indexCount);
              }
@@ -1522,19 +1879,19 @@ void GpuScene::addOverlayPass(RenderGraph& graph, std::string name, const DrawPi
          .debug = debug});
 }
 
-bool GpuScene::ensureGBuffer(Rhi::IRhiDevice& device, Rhi::TextureHandle color)
+bool GpuScene::ensureGBuffer(Rhi::IRhiDevice& device, View& view, Rhi::TextureHandle color)
 {
     const Rhi::TextureInfo target = device.textureInfo(color);
-    if (m_gBuffer[0].isSet() && m_gBufferWidth == target.width && m_gBufferHeight == target.height)
+    if (view.gBuffer[0].isSet() && view.gBufferWidth == target.width && view.gBufferHeight == target.height)
     {
         return true;
     }
-    for (Rhi::TextureHandle& texture : m_gBuffer)
+    for (Rhi::TextureHandle& texture : view.gBuffer)
     {
         device.destroy(texture); // deferred until the GPU is done with it
         texture = {};
     }
-    for (std::size_t i = 0; i < m_gBuffer.size(); ++i)
+    for (std::size_t i = 0; i < view.gBuffer.size(); ++i)
     {
         Result<Rhi::TextureHandle> made = device.createTexture({.width = target.width,
                                                                 .height = target.height,
@@ -1546,13 +1903,14 @@ bool GpuScene::ensureGBuffer(Rhi::IRhiDevice& device, Rhi::TextureHandle color)
         {
             return false; // this frame draws forward
         }
-        m_gBuffer[i] = *made;
+        view.gBuffer[i] = *made;
     }
-    m_gBufferWidth = target.width;
-    m_gBufferHeight = target.height;
-    m_gBufferState = Rhi::ResourceState::Undefined;
+    view.gBufferWidth = target.width;
+    view.gBufferHeight = target.height;
+    view.gBufferState = Rhi::ResourceState::Undefined;
     return true;
 }
+
 void GpuScene::endFrame(const RenderGraph& graph)
 {
     // Their copies are recorded; the device keeps them until the GPU has run them (deferred destruction).
@@ -1561,28 +1919,89 @@ void GpuScene::endFrame(const RenderGraph& graph)
         m_device.device().destroy(buffer);
     }
     m_spentStaging.clear();
-    m_drawState = graph.finalState(m_drawResource);
-    m_countState = graph.finalState(m_countResource);
-    m_depthState = graph.finalState(m_depthResource);
-    if (m_frameShadows)
+    if (m_sharedPassesAdded)
     {
-        for (std::uint32_t i = 0; i < m_cascades.settings().count; ++i)
+        m_transformState = graph.finalState(m_transformResource);
+        m_infoState = graph.finalState(m_infoResource);
+        m_sharedPassesAdded = false;
+    }
+    for (const std::unique_ptr<View>& pointer : m_views)
+    {
+        if (!pointer || !pointer->drawn)
         {
-            m_staticStates[i] = graph.finalState(m_staticResources[i]);
-            m_shadowStates[i] = graph.finalState(m_shadowResources[i]);
+            continue;
         }
-        m_shadowDrawState = graph.finalState(m_shadowDrawResource);
-        m_shadowCountState = graph.finalState(m_shadowCountResource);
+        View& view = *pointer;
+        view.drawn = false;
+        view.drawState = graph.finalState(view.drawResource);
+        view.countState = graph.finalState(view.countResource);
+        view.depthState = graph.finalState(view.depthResource);
+        if (view.frameShadows)
+        {
+            for (std::uint32_t i = 0; i < view.cascades.settings().count; ++i)
+            {
+                view.staticStates[i] = graph.finalState(view.staticResources[i]);
+                view.shadowStates[i] = graph.finalState(view.shadowResources[i]);
+            }
+            view.shadowDrawState = graph.finalState(view.shadowDrawResource);
+            view.shadowCountState = graph.finalState(view.shadowCountResource);
+        }
+        if (view.frameDeferred)
+        {
+            view.gBufferState = graph.finalState(view.gBufferResources[0]); // all four end where Lighting read them
+        }
+        if (view.frameUsesMeshlets)
+        {
+            view.taskState = graph.finalState(view.taskResource);
+            view.taskCountState = graph.finalState(view.taskCountResource);
+            view.taskArgsState = graph.finalState(view.taskArgsResource);
+        }
     }
-    if (m_frameDeferred)
-    {
-        m_gBufferState = graph.finalState(m_gBufferResources[0]); // all four end where Lighting read them
-    }
-    if (m_frameUsesMeshlets)
-    {
-        m_taskState = graph.finalState(m_taskResource);
-        m_taskCountState = graph.finalState(m_taskCountResource);
-        m_taskArgsState = graph.finalState(m_taskArgsResource);
-    }
+}
+
+MeshletStats GpuScene::meshletStats(ViewId id) const
+{
+    return view(id).meshletStats;
+}
+
+Rhi::BufferHandle GpuScene::meshletCountBuffer(ViewId id) const
+{
+    return view(id).taskCountBuffer;
+}
+
+std::uint32_t GpuScene::staticShadowRedraws(ViewId id) const
+{
+    return view(id).staticShadowRedraws;
+}
+
+std::span<const ShadowCascade> GpuScene::shadowCascades(ViewId id) const
+{
+    const View& view = this->view(id);
+    return view.frameShadows ? view.cascades.cascades() : std::span<const ShadowCascade>{};
+}
+
+const std::array<Rhi::TextureHandle, c_maxShadowCascades>& GpuScene::shadowMaps(ViewId id) const
+{
+    return view(id).shadowMaps;
+}
+
+bool GpuScene::drewDeferred(ViewId id) const
+{
+    return view(id).frameDeferred;
+}
+
+const std::array<Rhi::TextureHandle, 4>& GpuScene::gBuffer(ViewId id) const
+{
+    return view(id).gBuffer;
+}
+
+GraphResource GpuScene::depthResource(ViewId id) const
+{
+    return view(id).depthResource;
+}
+
+Rhi::BufferHandle GpuScene::countBuffer(ViewId id) const
+{
+    return view(id).countBuffer;
 }
 } // namespace Meow2::Renderer

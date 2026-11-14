@@ -142,11 +142,11 @@ protected:
         m_scene->setSky(m_sky.get());
     }
 
-    static Shader::InstanceData instanceAt(const Math::Vec3& position, std::uint32_t material = 1)
+    static InstanceDesc instanceAt(const Math::Vec3& position, std::uint32_t material = 1)
     {
         Math::Transform transform;
         transform.position = position;
-        Shader::InstanceData instance{};
+        InstanceDesc instance{};
         instance.world = Math::toMat4(transform);
         instance.material = material;
         return instance;
@@ -298,7 +298,7 @@ protected:
 TEST_F(GpuSceneTest, CubeIsVisible)
 {
     makeScene(1);
-    const std::vector<Shader::InstanceData> instances{instanceAt({0.0F, 0.0F, 3.0F})};
+    const std::vector<InstanceDesc> instances{instanceAt({0.0F, 0.0F, 3.0F})};
     m_scene->setInstances(instances);
     Math::Frustum frustum{};
 
@@ -314,7 +314,7 @@ TEST_F(GpuSceneTest, HundredThousandInstancesCullLikeTheCpu)
     constexpr std::uint32_t c_count = 100'000;
     constexpr std::uint32_t c_side = 47; // 47³ is a little over 100k
     makeScene(c_count);
-    std::vector<Shader::InstanceData> instances;
+    std::vector<InstanceDesc> instances;
     instances.reserve(c_count);
     for (std::uint32_t i = 0; i < c_count; ++i)
     {
@@ -330,7 +330,7 @@ TEST_F(GpuSceneTest, HundredThousandInstancesCullLikeTheCpu)
 
     const float radius = std::sqrt(0.75F);
     std::uint32_t expected = 0;
-    for (const Shader::InstanceData& instance : instances)
+    for (const InstanceDesc& instance : instances)
     {
         const Math::Sphere sphere{.center = {instance.world.m[3][0], instance.world.m[3][1], instance.world.m[3][2]},
                                   .radius = radius};
@@ -345,14 +345,13 @@ TEST_F(GpuSceneTest, ReversedDepthKeepsTheNearestCube)
 {
     makeScene(2);
     // The far cube is drawn second, so only the depth test can keep the near one on top.
-    const std::vector<Shader::InstanceData> instances{instanceAt({0.0F, 0.0F, 3.0F}, 1),
-                                                      instanceAt({0.0F, 0.0F, 6.0F}, 2)};
+    const std::vector<InstanceDesc> instances{instanceAt({0.0F, 0.0F, 3.0F}, 1), instanceAt({0.0F, 0.0F, 6.0F}, 2)};
     m_scene->setInstances(instances);
     Math::Frustum frustum{};
     EXPECT_EQ(runFrame(frustum), 2U);
     const auto both = pixelAt(c_size / 2, c_size / 2);
 
-    const std::vector<Shader::InstanceData> nearOnly{instanceAt({0.0F, 0.0F, 3.0F}, 1)};
+    const std::vector<InstanceDesc> nearOnly{instanceAt({0.0F, 0.0F, 3.0F}, 1)};
     m_scene->setInstances(nearOnly);
     EXPECT_EQ(runFrame(frustum), 1U);
     EXPECT_EQ(pixelAt(c_size / 2, c_size / 2), both);
@@ -393,7 +392,7 @@ TEST_F(GpuSceneTest, ModelDrawsWithItsTexture)
     const std::vector<entt::entity> entities = instantiateModel(world, hierarchy, model, *meshIds);
     ASSERT_EQ(entities.size(), 1U);
     hierarchy.update();
-    std::vector<Shader::InstanceData> instances;
+    std::vector<InstanceDesc> instances;
     const std::optional<Math::Aabb> bounds = gatherInstances(world, meshes, instances);
     ASSERT_EQ(instances.size(), 1U);
     ASSERT_TRUE(bounds);
@@ -435,9 +434,9 @@ Math::Transform at(const Math::Vec3& position)
 }
 
 /// @brief An instance of `mesh` with a transform.
-Shader::InstanceData instanceOf(const Math::Transform& transform, std::uint32_t mesh, std::uint32_t material)
+InstanceDesc instanceOf(const Math::Transform& transform, std::uint32_t mesh, std::uint32_t material)
 {
-    Shader::InstanceData instance{};
+    InstanceDesc instance{};
     instance.world = Math::toMat4(transform);
     instance.mesh = mesh;
     instance.material = material;
@@ -470,7 +469,7 @@ TEST_F(GpuSceneTest, MirroredAndDoubleSidedInstancesDraw)
     // Turned around, the quad shows its back: culled when one-sided, drawn when double-sided.
     Math::Transform behind = at({0.0F, 0.0F, 3.0F});
     behind.rotation = Math::fromAxisAngle(Math::c_up, Math::c_pi);
-    std::vector<Shader::InstanceData> instances{instanceOf(behind, *quad, *oneSided)};
+    std::vector<InstanceDesc> instances{instanceOf(behind, *quad, *oneSided)};
     m_scene->setInstances(instances);
     EXPECT_EQ(runFrame(frustum), 1U);
     EXPECT_EQ(brightness(pixelAt(c_size / 2, c_size / 2)), 0) << "one-sided, seen from behind: culled";
@@ -503,7 +502,7 @@ TEST_F(GpuSceneTest, BlendedMaterialMixesWithWhatsBehind)
     ASSERT_TRUE(green && glass);
     Math::Frustum frustum{};
 
-    std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 4.0F}), *quad, *green)};
+    std::vector<InstanceDesc> instances{instanceOf(at({0.0F, 0.0F, 4.0F}), *quad, *green)};
     m_scene->setInstances(instances);
     EXPECT_EQ(runFrame(frustum), 1U);
     const auto opaque = pixelAt(c_size / 2, c_size / 2);
@@ -533,7 +532,7 @@ TEST_F(GpuSceneTest, NormalMapChangesLighting)
     m_scene->setLighting({.sunDirection = {1.0F, 0.0F, -1.0F}, .sunIntensity = 2.0F});
     Math::Frustum frustum{};
 
-    std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *flat)};
+    std::vector<InstanceDesc> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *flat)};
     m_scene->setInstances(instances);
     EXPECT_EQ(runFrame(frustum), 1U);
     const int flatLight = brightness(pixelAt(c_size / 2, c_size / 2));
@@ -568,7 +567,7 @@ TEST_F(GpuSceneTest, TextureTransformMovesTheTexture)
     ASSERT_TRUE(plain && moved);
     Math::Frustum frustum{};
 
-    std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *plain)};
+    std::vector<InstanceDesc> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *plain)};
     m_scene->setInstances(instances);
     EXPECT_EQ(runFrame(frustum), 1U);
     const auto before = pixelAt(c_size / 2, c_size / 2);
@@ -597,7 +596,7 @@ TEST_F(GpuSceneTest, SmoothMetalReflectsTheSky)
     {
         Math::Transform transform = at({0.0F, 0.0F, 3.0F});
         transform.rotation = Math::fromAxisAngle({1.0F, 0.0F, 0.0F}, Math::toRadians(tilt));
-        const std::vector<Shader::InstanceData> instances{instanceOf(transform, *quad, *mirror)};
+        const std::vector<InstanceDesc> instances{instanceOf(transform, *quad, *mirror)};
         m_scene->setInstances(instances);
         EXPECT_EQ(runFrame(frustum), 1U);
         seen[tilt > 0.0F ? 0 : 1] = pixelAt(c_size / 2, c_size / 2);
@@ -643,7 +642,7 @@ TEST_F(GpuSceneTest, DebugViewsShowTheirChannel)
     const Result<DrawPipelines> views = m_scene->makeDrawPipelines({.options = {{"DEBUG_VIEW", "1"}}, .name = "Views"});
     ASSERT_TRUE(views) << views.error().message;
     m_scene->setPipelineOverride(*views);
-    const std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *material)};
+    const std::vector<InstanceDesc> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *material)};
     m_scene->setInstances(instances);
     Math::Frustum frustum{};
     const auto [x, y] = pixelFor(0.4F, 0.3F); // inside the quad, off its diagonal
@@ -684,7 +683,7 @@ TEST_F(GpuSceneTest, WireframeDrawsOnlyEdges)
     m_debugView = MEOW2_DEBUG_VIEW_BLACK;
     m_overlay = *wire;
     m_clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
-    const std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *material)};
+    const std::vector<InstanceDesc> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *material)};
     m_scene->setInstances(instances);
     Math::Frustum frustum{};
     EXPECT_EQ(runFrame(frustum), 1U);
@@ -723,8 +722,8 @@ TEST_F(GpuSceneTest, OverdrawCountsLayers)
     m_debugView = MEOW2_DEBUG_VIEW_OVERDRAW;
     m_clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
     // Two quads side by side, overlapping between x = -0.5 and 1.
-    const std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, 0),
-                                                      instanceOf(at({0.5F, 0.0F, 3.0F}), *quad, 0)};
+    const std::vector<InstanceDesc> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, 0),
+                                              instanceOf(at({0.5F, 0.0F, 3.0F}), *quad, 0)};
     m_scene->setInstances(instances);
     Math::Frustum frustum{};
     EXPECT_EQ(runFrame(frustum), 2U);
@@ -743,7 +742,7 @@ TEST_F(GpuSceneTest, OverdrawCountsLayers)
 TEST_F(GpuSceneTest, FrozenCullingKeepsTheOldFrustum)
 {
     makeScene(4);
-    const std::vector<Shader::InstanceData> instances{instanceAt({0.0F, 0.0F, 3.0F})};
+    const std::vector<InstanceDesc> instances{instanceAt({0.0F, 0.0F, 3.0F})};
     m_scene->setInstances(instances);
     Math::Frustum frustum{};
     m_cameraRotation = Math::fromAxisAngle(Math::Vec3{0.0F, 1.0F, 0.0F}, Math::c_pi); // looking down -Z, away from it
@@ -887,7 +886,7 @@ TEST_F(GpuSceneTest, MeshletPathMatchesIndirect)
     Math::Transform behind = at({0.0F, 1.6F, 6.0F});
     behind.rotation = Math::fromAxisAngle(Math::c_up, Math::c_pi);
     behind.scale = {0.6F, 0.6F, 0.6F};
-    const std::vector<Shader::InstanceData> instances{
+    const std::vector<InstanceDesc> instances{
         instanceOf(turned, *sphere, *oneSided), instanceOf(mirrored, *sphere, *oneSided),
         instanceOf(behind, *quad, *twoSided), instanceOf(at({0.0F, -1.6F, 4.0F}), 0, 9)};
     m_scene->setInstances(instances);
@@ -919,9 +918,9 @@ TEST_F(GpuSceneTest, MeshletCullingSkipsHiddenClusters)
     Math::Frustum frustum{};
 
     // Draws one instance through both paths: the same image, and how many meshlets the meshlet path drew.
-    const auto drawBoth = [&](const Shader::InstanceData& instance)
+    const auto drawBoth = [&](const InstanceDesc& instance)
     {
-        const std::vector<Shader::InstanceData> instances{instance};
+        const std::vector<InstanceDesc> instances{instance};
         m_scene->setInstances(instances);
         m_scene->setMeshlets(false);
         EXPECT_EQ(runFrame(frustum), 1U);
@@ -967,7 +966,7 @@ TEST_F(GpuSceneTest, MeshletViewColoursClusters)
     ASSERT_TRUE(views) << views.error().message;
     ASSERT_TRUE(views->hasMeshLists);
     m_scene->setPipelineOverride(*views);
-    const std::vector<Shader::InstanceData> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *sphere, *material)};
+    const std::vector<InstanceDesc> instances{instanceOf(at({0.0F, 0.0F, 3.0F}), *sphere, *material)};
     m_scene->setInstances(instances);
     m_debugView = MEOW2_DEBUG_VIEW_MESHLETS;
     Math::Frustum frustum{};
@@ -1008,15 +1007,15 @@ TEST_F(GpuSceneTest, MeshletViewColoursClusters)
 namespace
 {
 /// @brief An instance at a position with a scale (the fixture's cube is 1 m across), optionally movable.
-Shader::InstanceData placed(const Math::Vec3& position, const Math::Vec3& scale, bool movable = false)
+InstanceDesc placed(const Math::Vec3& position, const Math::Vec3& scale, bool movable = false)
 {
     Math::Transform transform;
     transform.position = position;
     transform.scale = scale;
-    Shader::InstanceData instance{};
+    InstanceDesc instance{};
     instance.world = Math::toMat4(transform);
     instance.material = 1;
-    instance.flags = movable ? MEOW2_INSTANCE_MOVABLE : 0U;
+    instance.movable = movable;
     return instance;
 }
 
@@ -1051,8 +1050,8 @@ TEST_F(GpuSceneTest, BoxShadowsTheGround)
     // The sun nearly overhead, a little towards +Z: the box's shadow falls just in front of it.
     m_scene->setLighting({.sunDirection = {0.0F, 1.0F, 0.15F}});
     m_scene->setShadows({.cascades = {.count = 4, .resolution = 1024}});
-    m_scene->setInstances(std::vector<Shader::InstanceData>{placed({0.0F, -1.5F, 6.0F}, {8.0F, 0.1F, 8.0F}),
-                                                            placed({0.0F, 0.0F, 6.0F}, {1.0F, 1.0F, 1.0F})});
+    m_scene->setInstances(std::vector<InstanceDesc>{placed({0.0F, -1.5F, 6.0F}, {8.0F, 0.1F, 8.0F}),
+                                                    placed({0.0F, 0.0F, 6.0F}, {1.0F, 1.0F, 1.0F})});
     const auto under = pixelOf({0.0F, c_groundTop, 5.6F});  // in the box's shadow
     const auto beside = pixelOf({2.5F, c_groundTop, 5.6F}); // in the sun
     for (const bool deferred : {false, true})
@@ -1079,9 +1078,9 @@ TEST_F(GpuSceneTest, StaticShadowsAreCached)
     m_cameraRotation = c_lookingDown;
     m_scene->setLighting({.sunDirection = {0.0F, 1.0F, 0.15F}});
     m_scene->setShadows({.cascades = {.count = 4, .resolution = 512}});
-    const Shader::InstanceData ground = placed({0.0F, -1.5F, 6.0F}, {8.0F, 0.1F, 8.0F});
-    const Shader::InstanceData box = placed({-1.5F, 0.0F, 6.0F}, {1.0F, 1.0F, 1.0F});
-    std::vector<Shader::InstanceData> instances{ground, box, placed({1.5F, 0.0F, 5.0F}, {1.0F, 1.0F, 1.0F}, true)};
+    const InstanceDesc ground = placed({0.0F, -1.5F, 6.0F}, {8.0F, 0.1F, 8.0F});
+    const InstanceDesc box = placed({-1.5F, 0.0F, 6.0F}, {1.0F, 1.0F, 1.0F});
+    std::vector<InstanceDesc> instances{ground, box, placed({1.5F, 0.0F, 5.0F}, {1.0F, 1.0F, 1.0F}, true)};
     m_scene->setInstances(instances);
     Math::Frustum frustum;
     const auto darkness = [&](const Math::Vec3& world)
@@ -1141,11 +1140,227 @@ TEST_F(GpuSceneTest, ShadowGraphKeepsItsShape)
     for (std::size_t i = 0; i < drawn.size(); ++i)
     {
         EXPECT_EQ(drawn[i].first, cached[i].first);
-        EXPECT_FALSE(drawn[i].second) << drawn[i].first << " runs when the cache is stale";
+        EXPECT_FALSE(drawn[i].second) << drawn[i].first << " runs on the first frame";
         const bool isStatic = drawn[i].first.find("Static shadow") != std::string::npos;
         staticPasses += isStatic ? 1U : 0U;
-        EXPECT_EQ(cached[i].second, isStatic) << cached[i].first;
+        // The instance upload is skipped too: nothing moved between the two frames.
+        const bool isUpload = drawn[i].first == "Update instances";
+        EXPECT_EQ(cached[i].second, isStatic || isUpload) << cached[i].first;
     }
     EXPECT_EQ(staticPasses, 2U * 3U) << "clear, cull and draw per cascade";
+}
+
+namespace
+{
+/// @brief How bright each half of an image is: the sum of R + G + B over the left and the right half.
+std::pair<std::uint64_t, std::uint64_t> halfBrightness(std::span<const std::uint8_t> pixels)
+{
+    std::uint64_t left = 0;
+    std::uint64_t right = 0;
+    for (std::uint32_t y = 0; y < c_size; ++y)
+    {
+        for (std::uint32_t x = 0; x < c_size; ++x)
+        {
+            const std::size_t at = (std::size_t{y} * c_size + x) * 4;
+            const std::uint64_t value = std::uint64_t{pixels[at]} + pixels[at + 1] + pixels[at + 2];
+            (x < c_size / 2 ? left : right) += value;
+        }
+    }
+    return {left, right};
+}
+
+/// @brief Cubes far behind the camera (looking down +Z from the origin): in the scene, never drawn.
+std::vector<InstanceDesc> behindTheCamera(std::uint32_t count)
+{
+    std::vector<InstanceDesc> instances;
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        Math::Transform transform;
+        transform.position =
+            Math::Vec3{static_cast<float>(i % 32) * 2.0F - 32.0F, static_cast<float>(i / 32) * 2.0F - 32.0F, -10.0F};
+        instances.push_back({.world = Math::toMat4(transform), .mesh = 0, .material = 1});
+    }
+    return instances;
+}
+} // namespace
+
+TEST_F(GpuSceneTest, MovingOneInstanceUploadsOne)
+{
+    makeScene(1000);
+    std::vector<InstanceDesc> instances = behindTheCamera(999);
+    instances.insert(instances.begin(), instanceAt({-0.8F, 0.0F, 3.0F})); // slot 0, on the left
+    m_scene->setInstances(instances);
+    Math::Frustum frustum;
+    EXPECT_EQ(runFrame(frustum), 1U);
+    EXPECT_EQ(m_scene->instanceUploads(), 1000U) << "the first frame uploads every slot";
+    const auto [leftBefore, rightBefore] = halfBrightness(image());
+    EXPECT_GT(leftBefore, rightBefore);
+
+    m_scene->setInstances(instances); // nothing changed
+    static_cast<void>(runFrame(frustum));
+    EXPECT_EQ(m_scene->instanceUploads(), 0U) << "an unchanged scene uploads nothing";
+
+    instances[0] = instanceAt({0.8F, 0.0F, 3.0F}); // to the right
+    m_scene->setInstances(instances);
+    static_cast<void>(runFrame(frustum));
+    EXPECT_EQ(m_scene->instanceUploads(), 1U) << "the one that moved";
+    const auto [leftAfter, rightAfter] = halfBrightness(image());
+    EXPECT_GT(rightAfter, leftAfter) << "drawn where it moved to";
+
+    static_cast<void>(runFrame(frustum));
+    EXPECT_EQ(m_scene->instanceUploads(), 1U) << "sent once more, so its previous transform catches up";
+    static_cast<void>(runFrame(frustum));
+    EXPECT_EQ(m_scene->instanceUploads(), 0U) << "then settled";
+}
+
+TEST_F(GpuSceneTest, InstanceSlotsAreStable)
+{
+    makeScene(8);
+    const Result<std::uint32_t> left = m_scene->addInstance(instanceAt({-0.8F, 0.0F, 3.0F}));
+    const Result<std::uint32_t> right = m_scene->addInstance(instanceAt({0.8F, 0.0F, 3.0F}));
+    const Result<std::uint32_t> hidden = m_scene->addInstance(behindTheCamera(1).front());
+    ASSERT_TRUE(left && right && hidden);
+    EXPECT_EQ(*left, 0U);
+    EXPECT_EQ(*right, 1U);
+    EXPECT_EQ(*hidden, 2U);
+    Math::Frustum frustum;
+    EXPECT_EQ(runFrame(frustum), 2U);
+
+    m_scene->removeInstance(*left);
+    EXPECT_EQ(m_scene->instanceCount(), 2U);
+    EXPECT_EQ(runFrame(frustum), 1U) << "a free slot isn't drawn";
+    const auto [leftHalf, rightHalf] = halfBrightness(image());
+    EXPECT_EQ(leftHalf, 0U);
+    EXPECT_GT(rightHalf, 0U);
+
+    const Result<std::uint32_t> reused = m_scene->addInstance(instanceAt({0.0F, 0.8F, 3.0F}));
+    ASSERT_TRUE(reused);
+    EXPECT_EQ(*reused, 0U) << "the lowest free slot";
+    EXPECT_EQ(runFrame(frustum), 2U);
+    EXPECT_EQ(m_scene->instanceUploads(), 1U) << "only the new one: the others kept their slots";
+
+    m_scene->updateInstance(*right, instanceAt({0.8F, -0.8F, 3.0F}));
+    static_cast<void>(runFrame(frustum));
+    EXPECT_EQ(m_scene->instanceUploads(), 1U);
+    m_scene->removeInstance(*hidden);
+    m_scene->removeInstance(*hidden); // again: ignored
+    EXPECT_EQ(m_scene->instanceCount(), 2U);
+}
+
+TEST_F(GpuSceneTest, TwoViewsInOneFrame)
+{
+    makeScene(2);
+    // One cube in front of the camera (+Z), one behind it (-Z), with different colours (materials past the end get a
+    // colour from their index).
+    m_scene->setInstances(std::vector{instanceAt({0.0F, 0.0F, 3.0F}, 1), instanceAt({0.0F, 0.0F, -3.0F}, 2)});
+    const Result<ViewId> back = m_scene->addView();
+    ASSERT_TRUE(back) << back.error().message;
+    EXPECT_NE(*back, c_mainView);
+    EXPECT_EQ(m_scene->viewCount(), 2U);
+
+    Result<std::unique_ptr<OffscreenTarget>> backTarget = OffscreenTarget::create(m_render->device(), c_size, c_size);
+    ASSERT_TRUE(backTarget) << backTarget.error().message;
+    Result<Rhi::TextureHandle> backDepth = m_render->device().createTexture(
+        {.width = c_size, .height = c_size, .format = Rhi::RhiFormat::D32Float, .renderTarget = true, .name = "Depth"});
+    ASSERT_TRUE(backDepth) << backDepth.error().message;
+
+    Rhi::IRhiDevice& device = m_render->device();
+    Result<Rhi::IRhiCommandList*> first = device.beginFrame();
+    ASSERT_TRUE(first);
+    const std::uint32_t slot = device.frameSlot();
+    // Two cameras at the origin: one looking down +Z, one turned around.
+    const auto viewFor = [&](const Math::Quat& rotation, ViewId view)
+    {
+        Math::Transform camera;
+        camera.rotation = rotation;
+        const Math::CameraMatrices matrices = Math::cameraMatrices(camera, Math::CameraLens{}, 1.0F);
+        Shader::FrameConstants frame{};
+        frame.view = matrices.view;
+        frame.projection = matrices.projection;
+        frame.viewProjection = matrices.viewProjection;
+        m_scene->setView(slot, frame, Math::frustumFromCamera(matrices), view);
+    };
+    viewFor(Math::Transform{}.rotation, c_mainView);
+    viewFor(Math::fromAxisAngle(Math::Vec3{0.0F, 1.0F, 0.0F}, Math::c_pi), *back);
+    RenderGraph graph;
+    static_cast<void>(m_scene->addPasses(graph, slot, nullptr, m_target->texture(), m_depth, m_clear));
+    static_cast<void>(m_scene->addPasses(graph, slot, nullptr, (*backTarget)->texture(), *backDepth, m_clear, *back));
+    graph.compile();
+    Result<std::vector<Rhi::IRhiCommandList*>> lists = graph.execute(device, m_jobs);
+    ASSERT_TRUE(lists) << lists.error().message;
+    m_scene->endFrame(graph);
+    Result<Rhi::IRhiCommandList*> last = device.commandList(0);
+    ASSERT_TRUE(last);
+    lists->push_back(*last);
+    for (OffscreenTarget* target : {m_target.get(), backTarget->get()})
+    {
+        (*last)->barrier(target->texture(), Rhi::ResourceState::ColorTarget, Rhi::ResourceState::CopySource);
+        target->copyToCpu(**last);
+    }
+    ASSERT_TRUE(device.endFrame(*lists));
+    device.waitIdle();
+
+    const auto centre = [](const OffscreenTarget& target)
+    {
+        std::array<std::uint8_t, 4> pixel{};
+        std::memcpy(pixel.data(), target.pixels().data() + (std::size_t{c_size / 2} * c_size + c_size / 2) * 4, 4);
+        return pixel;
+    };
+    const auto front = centre(*m_target);
+    const auto behind = centre(**backTarget);
+    EXPECT_GT(front[0] + front[1] + front[2], 0) << "the main view sees the cube in front";
+    EXPECT_GT(behind[0] + behind[1] + behind[2], 0) << "the other view sees the cube behind";
+    EXPECT_NE(front, behind) << "each view drew its own cube";
+
+    m_scene->removeView(*back);
+    EXPECT_EQ(m_scene->viewCount(), 1U);
+    device.destroy(*backDepth);
+}
+
+TEST_F(GpuSceneTest, PreviousTransformFollows)
+{
+    makeScene(4);
+    std::vector<InstanceDesc> instances{instanceAt({0.0F, 0.0F, 3.0F})};
+    m_scene->setInstances(instances);
+    Math::Frustum frustum;
+    static_cast<void>(runFrame(frustum));
+
+    // Reads slot 0's InstanceTransform back from the GPU.
+    const auto readTransform = [this]
+    {
+        Rhi::IRhiDevice& device = m_render->device();
+        Result<Rhi::BufferHandle> readback =
+            device.createBuffer({.size = sizeof(Shader::InstanceTransform), .memory = Rhi::RhiMemory::Readback});
+        EXPECT_TRUE(readback);
+        EXPECT_TRUE(device.beginFrame());
+        Result<Rhi::IRhiCommandList*> list = device.commandList(0); // endFrame() takes lists from commandList()
+        EXPECT_TRUE(list);
+        const Rhi::BufferHandle transforms = m_scene->instanceTransformBuffer();
+        (*list)->barrier(transforms, Rhi::ResourceState::ShaderRead, Rhi::ResourceState::CopySource);
+        (*list)->copyBuffer(transforms, *readback, sizeof(Shader::InstanceTransform));
+        (*list)->barrier(transforms, Rhi::ResourceState::CopySource, Rhi::ResourceState::ShaderRead);
+        (*list)->barrier(*readback, Rhi::ResourceState::CopyTarget, Rhi::ResourceState::HostRead);
+        EXPECT_TRUE(device.endFrame(std::vector<Rhi::IRhiCommandList*>{*list}));
+        device.waitIdle();
+        Shader::InstanceTransform transform{};
+        std::memcpy(&transform, device.mappedMemory(*readback).data(), sizeof(transform));
+        device.destroy(*readback);
+        return transform;
+    };
+    Shader::InstanceTransform transform = readTransform();
+    EXPECT_FLOAT_EQ(transform.world0.w, 0.0F) << "x translation, in the 3 x 4's first row";
+    EXPECT_FLOAT_EQ(transform.world2.w, 3.0F) << "z translation";
+    EXPECT_FLOAT_EQ(transform.previous2.w, 3.0F) << "a new instance hasn't moved";
+
+    instances[0] = instanceAt({1.0F, 0.0F, 3.0F});
+    m_scene->setInstances(instances);
+    static_cast<void>(runFrame(frustum));
+    transform = readTransform();
+    EXPECT_FLOAT_EQ(transform.world0.w, 1.0F) << "where it is";
+    EXPECT_FLOAT_EQ(transform.previous0.w, 0.0F) << "where it was last frame";
+
+    static_cast<void>(runFrame(frustum));
+    transform = readTransform();
+    EXPECT_FLOAT_EQ(transform.previous0.w, 1.0F) << "a frame later it hasn't moved since";
 }
 } // namespace Meow2::Renderer

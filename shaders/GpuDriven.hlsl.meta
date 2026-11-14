@@ -8,6 +8,11 @@ stage = "compute"
 name = "csTaskArgs"
 stage = "compute"
 
+# Copies the changed instances (GpuScene's instance updates) into place before culling.
+[[entry]]
+name = "csScatter"
+stage = "compute"
+
 [[entry]]
 name = "vsMain"
 stage = "vertex"
