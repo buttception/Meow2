@@ -8,6 +8,10 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+- Shadows from the sun: cascaded shadow maps (four cascades, 2048 × 2048 each) with soft edges, in both forward and deferred shading. Objects that never move are drawn into a cached shadow map only when something changes (the sun turns, the camera travels far, a static object moves); moving objects, such as what a glTF animation drives, are drawn every frame. Meow2Renderer has a SHADOWS setting, a Cascades debug view, and counts cache redraws in its Stats window; the golden images now include shadows (#203).
+- RHI: depth-only passes and pipelines, with no colour target (#203).
+
 ## [0.7.0] — 2026-11-14
 
 ### Added

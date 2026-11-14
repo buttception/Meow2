@@ -236,13 +236,39 @@ The PBR shader then uses `skyIrradiance(normal) / π` for diffuse ambient light,
 
 **Aerial perspective** (haze over distant objects) is Hillaire's fourth LUT, a 3D texture; it comes when the RHI has 3D textures.
 
+### Shadows from the sun
+
+The sun casts **cascaded shadow maps** (`GpuScene::setShadows()`, `shaders/Shadows.hlsl`, the shadow lookup in `Lighting.hlsli`). A shadow map is a depth image seen from the light: a point is in shadow when something nearer the sun covers it in that image.
+
+- **Cascades.** One map can't be sharp near the camera and still reach far away, so the camera's view is cut into **4 slices** by distance, each with its own 2048 × 2048 map (`renderer.shadowResolution`). The splits blend even spacing with logarithmic spacing (λ = 0.8, `cascadeSplits()`), so near slices are short and sharp. How far shadows reach is worked out from the scene's bounds and the camera, rounded up to a power of two, at most 200 m (`renderer.shadowDistance`).
+- **Stable boxes.** Each cascade is an orthographic box the sun looks through (`ShadowCascades`, `ShadowCascades.h`):
+  - it's fitted to a sphere around the slice whose size doesn't depend on where the camera looks (`sliceRadius()`), so turning the camera doesn't resize texels;
+  - its position is snapped to whole texels, so shadow edges don't crawl as the camera moves;
+  - it's **25 % larger** than the slice and only moves when the slice leaves it, which keeps the cached map below valid while the camera moves around inside;
+  - its depth covers every caster, so things between the sun and the slice cast into it.
+- **Static casters cached, movable ones every frame.** Per cascade:
+  1. **Static shadow N** draws the static casters into a cached map, only when it's stale: the cascade moved, the sun turned, a static instance appeared, went or moved (a fingerprint of the static instances, kept by `setInstances()`), or the settings changed.
+  2. **Shadow map N** copies the cached map texel for texel (`psCopyDepth`, a full-screen pass that writes depth).
+  3. **Movable shadow N** draws the movable casters over the copy, every frame.
+
+  Lighting reads the result: static and movable shadows combined. An instance is movable when its `InstanceData::flags` has `MEOW2_INSTANCE_MOVABLE`, which `gatherInstances()` sets from `MeshRenderer::movable`. Until the editor infers mobility from components (M12), Meow2Renderer marks what the file's animations move, and their children.
+- **Drawing casters.** Each set is culled against the cascade's box by the same `csCull` (its record picked by `g_push.instance`, and `CullConstants::mobility` keeping only static or only movable instances), then drawn through the indirect path with depth-only pipelines (no colour target, [Rhi](Rhi.md#depth-only-passes)). `psShadow` cuts out alpha-masked materials, so leaves and fences cast their shape. Meshlets aren't used for casters yet.
+- **Reading the shadow.** In `lightSurface()`, forward and deferred alike, sunlight is multiplied by `sunShadow()`:
+  - the cascade is picked by the point's view distance;
+  - in the last 10 % of a cascade it blends into the next, and after the last the shadow fades out;
+  - the point is first pushed out along its normal by 1.5 texels (normal-offset bias), which stops surfaces from shadowing themselves in stripes (shadow acne), plus a tiny constant depth bias;
+  - a 3 × 3 tent filter over 4 × 4 texels softens the edge and moves it smoothly.
+
+  Reversed Z, as everywhere: nearer the sun is the larger depth, and the maps clear to 0.
+- **Seeing it.** The Cascades debug view colours each pixel by its cascade (red, green, blue, yellow; grey past the last), darker in shadow. The maps are textures of the render graph ("Shadow map N", "Shadow static N"), shown in the Pass view. Meow2Renderer's Stats window counts how often static maps were drawn again, which should rarely rise.
+
 ## Not yet
 
 - Aerial perspective, clouds, a night sky; punctual lights from `KHR_lights_punctual`.
 - Cooking at import time (with M7's asset files) rather than on first load; BC6H for HDR images.
 - Rotated texture transforms don't rotate the tangent frame, so a rotated normal map is lit slightly wrong (rare in practice).
 - Exact MikkTSpace tangents (needs a library, with approval).
-- Shadows.
+- Shadows from other lights (point and spot lights come with the editor); contact shadows; soft shadows that widen with distance (PCSS) or virtual shadow maps; meshlets for shadow casters.
 - Occlusion culling of meshlets against a depth pyramid (HZB, M12); levels of detail; meshlets cooked into files with the mesh at import (M7) rather than built on load.
 
 ## Tests
@@ -252,6 +278,9 @@ The PBR shader then uses `skyIrradiance(normal) / π` for diffuse ambient light,
 | `Visual.Backends/DeferredTest.GBufferHoldsTheSurface/*` | on the Box sample, the G-buffer holds its red albedo, a unit normal, metallic 0 and roughness 1, and stays empty in the background |
 | `Visual.Backends/DeferredTest.PositionFromDepthLiesOnTheSurface/*` | every position rebuilt from depth lies on the Box's surface (within 5 mm) |
 | `Visual.Samples/GoldenImageTest.MatchesGolden/*`, `*_forward` | the 25 samples match the same goldens deferred and forward |
+| `Renderer.ShadowCascades.*` | splits rise from the near plane to the shadow distance; every corner of every slice lies in its cascade's box, wherever the camera looks; small camera moves keep a cascade, large ones move it by whole texels, a new sun moves all |
+| `RhiGpu*.GpuSceneTest.BoxShadowsTheGround` | a box over a slab, sun nearly overhead: the slab under the box is darker than beside it, forward and deferred |
+| `RhiGpu*.GpuSceneTest.StaticShadowsAreCached` | static maps drawn once; again only for a new sun or a moved static caster; a movable caster moves its shadow without redrawing them |
 | `RhiGpu*.SkyAtmosphereTest.TransmittanceFallsTowardsTheHorizon` | the transmittance LUT: more light gets through straight up than along the horizon, and red more than blue |
 | `RhiGpu*.SkyAtmosphereTest.SkyIsBlueAtNoonAndRedAtSunset` | the sky-view LUT: a blue zenith with the sun overhead; red-orange towards a setting sun |
 | `RhiGpu*.SkyAtmosphereTest.SurvivesABackendSwitch` | after the device is re-created, the LUTs are rebuilt with the same values |

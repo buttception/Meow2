@@ -295,6 +295,10 @@ Renderer saves the pipeline cache of each backend it used to `cache/vulkan-pipel
 With SDL's `offscreen` driver there's no window to draw to, so Renderer creates no device. That's how smoke tests run on machines with no GPU.
 
 
+### Depth-only passes
+
+A pass can draw depth alone (shadow maps): `RenderTargets::color` left unset, with only `depth`, which then sets the pass's size; and a pipeline with `colorFormat = RhiFormat::Unknown`, which has no colour targets (Vulkan: no colour attachments; D3D12: `NumRenderTargets` 0). Its pixel shader may output nothing (`void`), or only depth (`SV_Depth`, as `Shadows.hlsl`'s copy does), or just discard (alpha-masked shadow casters).
+
 ### Several colour targets
 
 `RenderTargets::extraColors` adds up to three more colour targets to a pass (`c_maxColorTargets` = 4, a G-buffer's needs; both APIs guarantee 8), drawn at once: the pixel shader writes `SV_Target0` to the first, `SV_Target1` to the next, and so on. The pipeline lists the same formats in `GraphicsPipelineDesc::extraColorFormats`; an unset handle or `Unknown` format ends either list. Every target is cleared with `clearColor` and blends the same way. Vulkan passes them as dynamic-rendering attachments; D3D12 binds them with one `OMSetRenderTargets()`, and the pipeline-library key includes every format.
