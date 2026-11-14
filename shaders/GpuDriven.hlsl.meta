@@ -29,6 +29,11 @@ stage = "amplification"
 name = "msMain"
 stage = "mesh"
 
+# The sun's shadow casters: depth only (GpuScene's shadow passes).
+[[entry]]
+name = "psShadow"
+stage = "pixel"
+
 # 0: the game's shader. 1: debug views (FrameConstants::debugView picks one); 2: the wireframe overlay. Only Meow2Renderer and
 # the editor build 1 and 2.
 [options]

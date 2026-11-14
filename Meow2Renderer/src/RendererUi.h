@@ -94,6 +94,9 @@ struct StatsInfo
     std::uint32_t textures = 0;         ///< Textures.
     std::string_view drawPath{};        ///< "meshlets" or "indirect": how the scene is drawn.
     Renderer::MeshletStats meshlets{};  ///< What the meshlet path drew, when it's the path.
+    std::uint32_t shadowCascades = 0;   ///< The sun's cascades this frame; 0 without shadows.
+    std::uint32_t staticShadowRedraws =
+        0;                              ///< Cached static shadow maps drawn so far (GpuScene::staticShadowRedraws()).
     double importMilliseconds = 0.0;    ///< How long opening the scene took.
     Rhi::GpuMemoryStats gpuMemory{};    ///< GPU memory.
     std::uint64_t validationErrors = 0; ///< From the API's validation layer.

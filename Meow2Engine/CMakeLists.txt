@@ -50,6 +50,7 @@ target_sources(Meow2Engine
         src/Graphics/Renderer/FramePacket.cpp
         src/Graphics/Renderer/FrameResources.cpp
         src/Graphics/Renderer/GpuScene.cpp
+        src/Graphics/Renderer/GpuSceneShadows.cpp
         src/Graphics/Renderer/MeshProcessing.cpp
         src/Graphics/Renderer/PipelineLibrary.cpp
         src/Graphics/Renderer/RenderDevice.cpp

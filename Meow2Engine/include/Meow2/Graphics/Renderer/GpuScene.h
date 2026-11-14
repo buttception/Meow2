@@ -9,6 +9,7 @@
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
+#include <Meow2/Graphics/Renderer/ShadowCascades.h>
 #include <Meow2/Graphics/Renderer/SkyAtmosphere.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 #include <Meow2/Graphics/Shader/BindlessLayout.h>
@@ -39,8 +40,9 @@ struct DrawPipelineOptions
     /// @brief The (first) colour target's format; empty: the scene's (GpuSceneDesc::colorFormat).
     std::optional<Rhi::RhiFormat> colorFormat{};
     std::array<Rhi::RhiFormat, Rhi::c_maxColorTargets - 1> extraColorFormats{}; ///< More targets, e.g. a G-buffer's.
-    bool blended = true;          ///< Also build the pipeline for blended surfaces (DrawPipelines::blend).
-    std::string name = "Variant"; ///< Prefix of the pipelines' names.
+    bool blended = true;               ///< Also build the pipeline for blended surfaces (DrawPipelines::blend).
+    std::string pixelEntry = "psMain"; ///< The pixel shader (`psShadow` for the sun's shadow casters).
+    std::string name = "Variant";      ///< Prefix of the pipelines' names.
 };
 
 /// @brief A GpuScene's draw pipelines: one per draw list for each path, and one for blended surfaces. Plain data.
@@ -67,8 +69,17 @@ struct GpuSceneDesc
 {
     AssetId shader{};         ///< `shaders/GpuDriven.hlsl`.
     AssetId deferredShader{}; ///< `shaders/Deferred.hlsl`, for the deferred path (setDeferred()); unset: forward only.
+    AssetId shadowShader{};   ///< `shaders/Shadows.hlsl`: the sun's shadow (setShadows()); unset: no shadows.
     std::uint32_t instanceCapacity = 1;                   ///< Most instances; > 0.
     Rhi::RhiFormat colorFormat = Rhi::RhiFormat::Unknown; ///< Format of the colour target.
+};
+
+/// @brief How the sun's shadow is drawn. Plain data.
+struct SunShadowSettings
+{
+    bool enabled = true;        ///< Whether the sun casts shadows.
+    CascadeSettings cascades{}; ///< Cascades and resolution; `distance` is worked out by the scene (see setShadows()).
+    float maxDistance = 200.0F; ///< The farthest shadows reach, in metres.
 };
 
 /// @brief A mesh ready to upload: quantised positions, octahedral normals and tangents, half-float UVs, RGBA8 colours,
@@ -292,6 +303,45 @@ public:
         m_skyPass = draw;
     }
 
+    /// @brief How the sun's shadow is drawn: cascaded shadow maps, needing GpuSceneDesc::shadowShader.
+    ///
+    /// Each cascade has a cached map of the static casters, drawn again only when the cascade moved, the sun turned or
+    /// a static instance changed, and a map drawn every frame: a copy of the cached one, with the movable casters
+    /// (MEOW2_INSTANCE_MOVABLE) drawn over it. Lighting (forward and deferred) reads that map.
+    /// How far shadows reach is worked out from the instances' bounds and the camera, in powers of two (so it rarely
+    /// changes), at most `maxDistance`.
+    /// @param settings The settings; a change of cascades or resolution draws every static map again.
+    void setShadows(const SunShadowSettings& settings);
+
+    /// @brief How the sun's shadow is drawn.
+    /// @return The settings.
+    [[nodiscard]] const SunShadowSettings& shadows() const
+    {
+        return m_shadowSettings;
+    }
+
+    /// @brief How many times a cascade's cached map of static casters has been drawn since the scene was made: for
+    ///        statistics and tests (it should rise only when the camera moves far, the sun turns or the scene changes).
+    /// @return The count.
+    [[nodiscard]] std::uint32_t staticShadowRedraws() const
+    {
+        return m_staticShadowRedraws;
+    }
+
+    /// @brief The cascades of the last setView() with shadows.
+    /// @return Them; empty without shadows.
+    [[nodiscard]] std::span<const ShadowCascade> shadowCascades() const
+    {
+        return m_frameShadows ? m_cascades.cascades() : std::span<const ShadowCascade>{};
+    }
+
+    /// @brief Each cascade's shadow map (static and movable casters), as lighting reads it.
+    /// @return The maps; unset handles before the first frame with shadows.
+    [[nodiscard]] const std::array<Rhi::TextureHandle, c_maxShadowCascades>& shadowMaps() const
+    {
+        return m_shadowMaps;
+    }
+
     /// @brief Draws opaque surfaces deferred: a **G-buffer** pass writes each surface's properties (the textures
     ///        gBuffer() lists), then a **Lighting** pass shades every pixel once from them, rebuilding its position
     ///        from depth. Off: one **Opaque** pass shades as it draws (forward). Both give the same image.
@@ -432,6 +482,20 @@ private:
     /// @return The first error; what was made is destroyed by destroyBuffers().
     [[nodiscard]] Result<void> createBuffers(Rhi::IRhiDevice& device);
 
+    /// @brief Whether the sun's shadow can be drawn (enabled, its pipelines built, instances to cast).
+    [[nodiscard]] bool shadowsReady() const;
+    /// @brief Makes each cascade's two maps at the settings' resolution, if they aren't already.
+    /// @return False if a texture couldn't be made (the frame then has no shadows).
+    bool ensureShadowMaps(Rhi::IRhiDevice& device);
+    /// @brief Fits the cascades to the camera and writes the shadow constants, the casters' frame constants and cull
+    ///        records for this frame slot; sets `constants.shadowBuffer`.
+    void writeShadows(std::uint32_t frameSlot, const Math::Vec3& sunDirection, Shader::FrameConstants& constants);
+    /// @brief Adds, per cascade, the static casters (if its cache is stale), the copy and the movable casters.
+    void addShadowPasses(RenderGraph& graph, std::uint32_t frameSlot, const Shader::PushConstants& push);
+    /// @brief recordLists() from given draw and count buffers (the camera's, or the shadow passes').
+    void recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipelines, const Shader::PushConstants& push,
+                     Rhi::BufferHandle draws, Rhi::BufferHandle counts) const;
+
     /// @brief Makes the G-buffer at a colour target's size, if it isn't already.
     /// @param device The device.
     /// @param color  The scene's colour target; the G-buffer matches its size.
@@ -571,6 +635,34 @@ private:
     GraphResource m_taskResource;
     GraphResource m_taskCountResource;
     GraphResource m_taskArgsResource;
+    SunShadowSettings m_shadowSettings{};
+    ShadowCascades m_cascades;
+    std::optional<DrawPipelines> m_shadowPipelines;                     ///< Depth only, psShadow; the indirect path.
+    std::optional<PipelineId> m_copyDepthPipeline;                      ///< Shadows.hlsl's psCopyDepth.
+    std::array<Rhi::TextureHandle, c_maxShadowCascades> m_staticMaps{}; ///< Cached static casters, per cascade.
+    std::array<Rhi::TextureHandle, c_maxShadowCascades> m_shadowMaps{}; ///< Static + movable, per cascade.
+    std::array<Rhi::ResourceState, c_maxShadowCascades> m_staticStates{};
+    std::array<Rhi::ResourceState, c_maxShadowCascades> m_shadowStates{};
+    std::array<GraphResource, c_maxShadowCascades> m_staticResources{};
+    std::array<GraphResource, c_maxShadowCascades> m_shadowResources{};
+    std::uint32_t m_shadowMapResolution = 0; ///< The maps' size; 0 before they're made.
+    std::uint32_t m_shadowMapCount = 0;      ///< How many cascades have maps.
+    Rhi::BufferHandle m_shadowDrawBuffer;    ///< The shadow passes' culled draws (reused cascade after cascade).
+    Rhi::BufferHandle m_shadowCountBuffer;
+    Rhi::ResourceState m_shadowDrawState = Rhi::ResourceState::Undefined;
+    Rhi::ResourceState m_shadowCountState = Rhi::ResourceState::Undefined;
+    GraphResource m_shadowDrawResource;
+    GraphResource m_shadowCountResource;
+    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_shadowCullBuffers{};     ///< 2 CullConstants a cascade.
+    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_shadowConstantBuffers{}; ///< ShadowConstants.
+    /// The casters' FrameConstants (the camera's, with the cascade's view-projection), per frame slot and cascade.
+    std::array<std::array<Rhi::BufferHandle, c_maxShadowCascades>, Rhi::c_maxFramesInFlight> m_shadowFrameBuffers{};
+    std::uint32_t m_staticShadowDirty = ~0U; ///< A bit per cascade whose cached map must be drawn again.
+    std::uint64_t m_staticHash = 0;          ///< Of the static instances, to see when they change.
+    Math::Sphere m_casters{};                ///< Around every instance.
+    bool m_hasMovable = false;               ///< Whether any instance is MEOW2_INSTANCE_MOVABLE.
+    bool m_frameShadows = false;             ///< Whether this frame draws the sun's shadow.
+    std::uint32_t m_staticShadowRedraws = 0;
     DeviceUser m_deviceUser; ///< Last: stops its callbacks before the members they use go away.
 };
 } // namespace Meow2::Renderer

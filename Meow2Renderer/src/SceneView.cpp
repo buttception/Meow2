@@ -85,6 +85,7 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
         Renderer::GpuScene::create(deps.device, deps.pipelines,
                                    {.shader = deps.shader,
                                     .deferredShader = deps.deferredShader,
+                                    .shadowShader = deps.shadowShader,
                                     .instanceCapacity = std::max(parts, 1U),
                                     .colorFormat = deps.colorFormat});
     if (!gpu)
@@ -111,6 +112,35 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
             view->m_cameras.push_back({.name = name.empty() ? std::format("Camera {}", view->m_cameras.size()) : name,
                                        .node = static_cast<std::int32_t>(i),
                                        .lens = camera});
+        }
+    }
+    // What the file's animations move casts into the sun's shadow every frame; the rest is cached. A node moves if a
+    // channel drives it or any of its parents (parents come first, so one pass settles it). The editor will infer this
+    // from components instead (M12).
+    std::vector<bool> movable(model->nodes.size(), false);
+    for (const Assets::ImportedAnimation& animation : model->animations)
+    {
+        for (const Assets::ImportedChannel& channel : animation.channels)
+        {
+            if (channel.node >= 0 && static_cast<std::size_t>(channel.node) < movable.size())
+            {
+                movable[static_cast<std::size_t>(channel.node)] = true;
+            }
+        }
+    }
+    for (std::size_t i = 0; i < model->nodes.size(); ++i)
+    {
+        const std::int32_t parent = model->nodes[i].parent;
+        if (parent >= 0 && movable[static_cast<std::size_t>(parent)])
+        {
+            movable[i] = true;
+        }
+        if (movable[i])
+        {
+            if (auto* renderer = view->m_world->registry().try_get<Renderer::MeshRenderer>(view->m_nodeEntities[i]))
+            {
+                renderer->movable = true;
+            }
         }
     }
     view->m_animations = std::move(model->animations);
@@ -167,6 +197,7 @@ Result<std::unique_ptr<SceneView>> SceneView::cubeGrid(const SceneViewDeps& deps
     Result<std::unique_ptr<Renderer::GpuScene>> gpu = Renderer::GpuScene::create(deps.device, deps.pipelines,
                                                                                  {.shader = deps.shader,
                                                                                   .deferredShader = deps.deferredShader,
+                                                                                  .shadowShader = deps.shadowShader,
                                                                                   .instanceCapacity = count,
                                                                                   .colorFormat = deps.colorFormat});
     if (!gpu)

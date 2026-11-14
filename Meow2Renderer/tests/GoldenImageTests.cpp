@@ -313,6 +313,7 @@ protected:
                                   .log = m_log,
                                   .shader = assetId("01a1b5e2-3c12-8000-80a4-7b19d2e6c053"),
                                   .deferredShader = assetId("01a1b5e2-3c1c-8000-80a4-7b19d2e6c05d"),
+                                  .shadowShader = assetId("01a1b5e2-3c1e-8000-80a4-7b19d2e6c05f"),
                                   .colorFormat = c_hdrFormat,
                                   .sky = m_sky.get(),
                                   .textures = {.compress = false, .cache = nullptr, .jobs = &m_jobs}},
