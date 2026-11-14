@@ -14,8 +14,11 @@ namespace Meow2::RendererApp
 /// @brief The palette, shared with Meow2Editor's Qt theme (docs/wiki/Theme.md). Linear 0..1 RGBA, as ImGui takes it.
 namespace UiColors
 {
-inline constexpr ImVec4 c_base{0.0F, 0.0F, 0.0F, 1.0F};               ///< #000000: backgrounds.
-inline constexpr ImVec4 c_panel{0.047F, 0.047F, 0.051F, 0.94F};       ///< #0C0C0D: windows, a little see-through.
+inline constexpr ImVec4 c_base{0.0F, 0.0F, 0.0F, 1.0F};         ///< #000000: backgrounds.
+inline constexpr ImVec4 c_panel{0.047F, 0.047F, 0.051F, 0.94F}; ///< #0C0C0D: windows, a little see-through.
+/// @brief How opaque Meow2Renderer's windows are: the scene shows through them (about a fifth of it), while text
+///        and controls stay readable even over a bright sky. Popups and controls stay nearly opaque.
+inline constexpr float c_windowAlpha = 0.78F;
 inline constexpr ImVec4 c_frame{0.094F, 0.094F, 0.106F, 1.0F};        ///< #18181B: fields and buttons.
 inline constexpr ImVec4 c_frameHovered{0.133F, 0.133F, 0.149F, 1.0F}; ///< #222226: a field under the mouse.
 inline constexpr ImVec4 c_line{0.204F, 0.204F, 0.227F, 1.0F};         ///< #34343A: borders and separators.

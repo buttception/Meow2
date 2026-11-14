@@ -103,7 +103,7 @@ Dear ImGui (v1.93.0-docking, a submodule) is built as `meow2_imgui` only with th
 
 ### Look
 
-Black panels with red accents, Barlow Semi Condensed for labels and Consolas for figures, the R-badge cat as its icon: see [Theme](Theme.md). `UiTheme.*` holds the ImGui side.
+Black panels with red accents, Barlow Semi Condensed for labels and Consolas for figures, the R-badge cat as its icon: see [Theme](Theme.md). `UiTheme.*` holds the ImGui side. Windows are translucent (`c_windowAlpha`, 78 % opaque): about a fifth of the scene shows through, so it stays in view behind docked panels, while text and controls stay readable over a bright sky. Popups and controls stay nearly opaque.
 
 ### ImGui on the engine
 

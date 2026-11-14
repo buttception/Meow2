@@ -753,4 +753,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-10 — §9: window sizes in logical units, 80 % default; §11: the Renderer's own frame capture and debug views (not in games); the scene is drawn in HDR with a tone-map pass.
 - 2026-11-12 — §4/§11: meshoptimizer v1.3 added (owner-approved 2026-11-09); meshlets and the optional mesh-shader path.
 - 2026-11-13 — §4/§13: stb_image_write v1.16 added (owner-approved) for PNG encoding; golden-image tests implemented (512 × 512, plain git, one golden per backend). M6 done (0.7.0).
-- 2026-11-14 — §11: deferred shading as the main opaque path (owner request), forward kept as a setting; up to four colour targets per pass.
+- 2026-11-14 — §11: deferred shading as the main opaque path (owner request, M6's last PR), forward kept as a setting; up to four colour targets per pass.

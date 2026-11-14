@@ -56,7 +56,7 @@ void applyUiTheme(ImGuiStyle& style, float scale)
     ImVec4* colors = style.Colors;
     colors[ImGuiCol_Text] = c_text;
     colors[ImGuiCol_TextDisabled] = c_textDim;
-    colors[ImGuiCol_WindowBg] = c_panel;
+    colors[ImGuiCol_WindowBg] = withAlpha(c_panel, c_windowAlpha); // translucent: the scene shows through
     colors[ImGuiCol_ChildBg] = withAlpha(c_base, 0.0F);
     colors[ImGuiCol_PopupBg] = withAlpha(c_panel, 0.98F);
     colors[ImGuiCol_Border] = c_line;
@@ -64,10 +64,10 @@ void applyUiTheme(ImGuiStyle& style, float scale)
     colors[ImGuiCol_FrameBg] = c_frame;
     colors[ImGuiCol_FrameBgHovered] = c_frameHovered;
     colors[ImGuiCol_FrameBgActive] = accentWash(0.25F);
-    colors[ImGuiCol_TitleBg] = c_base;
-    colors[ImGuiCol_TitleBgActive] = c_base;
+    colors[ImGuiCol_TitleBg] = withAlpha(c_base, c_windowAlpha);
+    colors[ImGuiCol_TitleBgActive] = withAlpha(c_base, c_windowAlpha);
     colors[ImGuiCol_TitleBgCollapsed] = withAlpha(c_base, 0.8F);
-    colors[ImGuiCol_MenuBarBg] = c_panel;
+    colors[ImGuiCol_MenuBarBg] = withAlpha(c_panel, c_windowAlpha);
     colors[ImGuiCol_ScrollbarBg] = withAlpha(c_base, 0.5F);
     colors[ImGuiCol_ScrollbarGrab] = c_line;
     colors[ImGuiCol_ScrollbarGrabHovered] = withAlpha(c_textDim, 0.6F);
