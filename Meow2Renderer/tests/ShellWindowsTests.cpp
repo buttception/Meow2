@@ -227,10 +227,10 @@ TEST(UiTheme, DashedLinesFinishAndAlternate)
         }
         // A 10-pixel line in 2-pixel dashes: on, off, on, off, on.
         const std::array<ImVec2, 2> line{ImVec2{0.0F, 0.0F}, ImVec2{10.0F, 0.0F}};
-        const int before = draw.CmdBuffer.back().ElemCount;
+        const unsigned int before = draw.CmdBuffer.back().ElemCount;
         dashedPolyline(draw, line, IM_COL32_WHITE, 1.0F, 2.0F);
-        const int added = static_cast<int>(draw.CmdBuffer.back().ElemCount) - before;
-        EXPECT_EQ(added, 3 * 6) << "three dashes, six indices each";
+        const unsigned int added = draw.CmdBuffer.back().ElemCount - before;
+        EXPECT_EQ(added, 3U * 6U) << "three dashes, six indices each";
     }
     ImGui::End();
     ImGui::EndFrame();
