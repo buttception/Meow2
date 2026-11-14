@@ -142,3 +142,23 @@ TEST(FrameInspector, ResourceKinds)
     EXPECT_EQ(resourceKind(flow, 3), ResourceKind::Buffer);
 }
 } // namespace Meow2::RendererApp
+
+namespace Meow2::RendererApp
+{
+TEST(FrameInspector, ResourcesOnlyDebugPassesWriteAreDebug)
+{
+    FrameFlow flow;
+    flow.resources = {{.name = "Depth"}, {.name = "Position (debug)"}, {.name = "Colour"}, {.name = "Imported"}};
+    flow.passes = {
+        {.name = "Opaque", .accesses = {writes(0), writes(2)}},
+        {.name = "Position from depth", .accesses = {reads(0), writes(1)}, .debug = true},
+        {.name = "Grid", .accesses = {reads(0), writes(2)}, .debug = true},
+        {.name = "Tone map", .accesses = {reads(2), reads(3)}},
+    };
+    markDebugResources(flow);
+    EXPECT_FALSE(flow.resources[0].debug) << "written by the frame";
+    EXPECT_TRUE(flow.resources[1].debug) << "only a debug pass writes it";
+    EXPECT_FALSE(flow.resources[2].debug) << "a debug pass draws over it, but the frame wrote it first";
+    EXPECT_FALSE(flow.resources[3].debug) << "imported, written by no one";
+}
+} // namespace Meow2::RendererApp

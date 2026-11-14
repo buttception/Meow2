@@ -8,6 +8,8 @@ add_library(Meow2RendererCore STATIC
     src/ConsoleWindow.h
     src/DebugLines.cpp
     src/DebugLines.h
+    src/DepthPositionView.cpp
+    src/DepthPositionView.h
     src/FrameInspector.cpp
     src/FrameInspector.h
     src/ImGuiLayer.cpp

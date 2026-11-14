@@ -361,8 +361,11 @@ public:
     /// @param colorTexture The same texture.
     /// @param depth     The depth target given to addPasses().
     /// @param frameSlot IRhiDevice::frameSlot().
+    /// @param debug     Marks the pass as a debugging tool's (GraphPass::debug), e.g. a wireframe.
+    /// @param frameSlot IRhiDevice::frameSlot().
     void addOverlayPass(RenderGraph& graph, std::string name, const DrawPipelines& pipelines, GraphResource color,
-                        Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot);
+                        Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot,
+                        bool debug = false);
 
     /// @brief Adds the culling and drawing passes.
     /// @param graph     The frame's graph.

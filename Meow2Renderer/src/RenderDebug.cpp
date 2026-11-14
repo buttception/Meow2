@@ -12,7 +12,7 @@ namespace Meow2::RendererApp
 {
 namespace
 {
-constexpr std::array<DebugViewEntry, 21> c_views{{
+constexpr std::array<DebugViewEntry, 22> c_views{{
     {-1, "Shaded", "Scene"},
     {MEOW2_DEBUG_VIEW_TRIANGLES, "Triangles", "Geometry"},
     {MEOW2_DEBUG_VIEW_MESHLETS, "Meshlets", "Geometry"},
@@ -20,6 +20,7 @@ constexpr std::array<DebugViewEntry, 21> c_views{{
     {MEOW2_DEBUG_VIEW_MATERIALS, "Materials", "Geometry"},
     {MEOW2_DEBUG_VIEW_OVERDRAW, "Overdraw", "Geometry"},
     {MEOW2_DEBUG_VIEW_DEPTH, "Depth", "Geometry"},
+    {MEOW2_DEBUG_VIEW_POSITION, "Position", "Geometry", true},
     {MEOW2_DEBUG_VIEW_GEOMETRY_NORMAL, "Geometry normal", "Surface"},
     {MEOW2_DEBUG_VIEW_SHADING_NORMAL, "Shading normal", "Surface"},
     {MEOW2_DEBUG_VIEW_TANGENT, "Tangent", "Surface"},
@@ -84,7 +85,9 @@ bool RenderDebug::prepare(Renderer::GpuScene& scene)
         out = *made;
         return true;
     };
-    const bool needsView = m_state.view >= 0 && m_state.view != static_cast<int>(MEOW2_DEBUG_VIEW_OVERDRAW);
+    // Position is drawn by DepthPositionView from the depth of the normal frame: no shader variant.
+    const bool needsView = m_state.view >= 0 && m_state.view != static_cast<int>(MEOW2_DEBUG_VIEW_OVERDRAW) &&
+                           m_state.view != static_cast<int>(MEOW2_DEBUG_VIEW_POSITION);
     if ((needsView || m_state.wireframe == WireframeMode::Only) &&
         !build(m_scene.view, {.options = {{"DEBUG_VIEW", "1"}}, .name = "Debug view"}))
     {
@@ -135,6 +138,10 @@ void RenderDebug::apply(Renderer::GpuScene& scene, Shader::FrameConstants& frame
     {
         override = m_scene.overdraw;
         frame.debugView = MEOW2_DEBUG_VIEW_OVERDRAW;
+    }
+    else if (ready && m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_POSITION))
+    {
+        // The scene draws as usual (deferred or forward); the debug present shows the position texture instead.
     }
     else if (ready && m_state.view >= 0)
     {
@@ -190,7 +197,7 @@ void RenderDebug::addOverlays(Renderer::RenderGraph& graph, Renderer::GpuScene& 
 {
     if (m_state.wireframe != WireframeMode::Off && m_scene.scene == &scene && m_scene.wire)
     {
-        scene.addOverlayPass(graph, "Wireframe", *m_scene.wire, color, texture, depth, frameSlot);
+        scene.addOverlayPass(graph, "Wireframe", *m_scene.wire, color, texture, depth, frameSlot, true);
     }
 }
 
@@ -203,7 +210,10 @@ bool RenderDebug::addPresent(Renderer::RenderGraph& graph, Renderer::GraphResour
     }
     Shader::PushConstants push{};
     push.instance = device.bindlessIndex(texture);
-    push.userData = m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_OVERDRAW) ? 1U : 0U; // heat map, or as is
+    // 1: overdraw as a heat map; 2: positions as 1 m bands; 0: colours as they are.
+    push.userData = m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_OVERDRAW)   ? 1U
+                    : m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_POSITION) ? 2U
+                                                                                  : 0U;
     graph.addPass({.name = "Debug present",
                    .accesses = {{hdr, Rhi::ResourceState::ShaderRead}},
                    .record =
@@ -215,7 +225,8 @@ bool RenderDebug::addPresent(Renderer::RenderGraph& graph, Renderer::GraphResour
                        list.draw(3);
                        list.endRendering();
                    },
-                   .small = true});
+                   .small = true,
+                   .debug = true});
     return true;
 }
 
@@ -262,6 +273,18 @@ void RenderDebug::drawViewButtons()
         {
             m_state.view = entry.view;
         }
+        if (entry.generated)
+        {
+            // A dotted outline: this view shows a buffer a debug-only pass makes for it, not one the frame has.
+            const float inset = 2.0F;
+            const ImVec2 min = ImGui::GetItemRectMin();
+            const ImVec2 max = ImGui::GetItemRectMax();
+            dashedRect(*ImGui::GetWindowDrawList(), ImVec2{min.x + inset, min.y + inset},
+                       ImVec2{max.x - inset, max.y - inset},
+                       ImGui::GetColorU32(active ? UiColors::c_text : UiColors::c_textDim), 1.0F, 3.0F);
+            ImGui::SetItemTooltip("Shown from a buffer made only for this view (dotted): a debug pass rebuilds it, "
+                                  "and nothing in the frame uses it.");
+        }
         ImGui::PopID();
         if (active)
         {
@@ -297,6 +320,13 @@ void RenderDebug::drawWindow(const UiFonts& fonts)
     else if (m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_TRIANGLES))
     {
         ImGui::TextColored(UiColors::c_textDim, "Drawn through the indirect path.");
+    }
+    else if (m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_POSITION))
+    {
+        ImGui::TextColored(UiColors::c_textDim,
+                           "Each pixel's position rebuilt from depth, as deferred\nlighting does, in "
+                           "1 m bands (x red, y green, z blue).\nMade by a debug-only pass (dashed "
+                           "in the render\ngraph): lighting never stores positions.");
     }
     ImGui::SeparatorText("WIREFRAME");
     int wireframe = static_cast<int>(m_state.wireframe);

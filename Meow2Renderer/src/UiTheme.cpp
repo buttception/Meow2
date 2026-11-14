@@ -4,6 +4,8 @@
 #include "UiTheme.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 
 namespace Meow2::RendererApp
 {
@@ -160,5 +162,38 @@ void pushMonoFont(const UiFonts& fonts)
 void popMonoFont()
 {
     ImGui::PopFont();
+}
+
+void dashedPolyline(ImDrawList& draw, std::span<const ImVec2> points, ImU32 colour, float thickness, float dash)
+{
+    float travelled = 0.0F; // along the whole line, so the pattern runs on across corners
+    for (std::size_t i = 1; i < points.size(); ++i)
+    {
+        const ImVec2 a = points[i - 1];
+        const ImVec2 b = points[i];
+        const float length = std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+        float along = 0.0F;
+        while (along < length)
+        {
+            // Where in the pattern this point is: 0..dash on, dash..2 dash off; step to the next change or the end.
+            const float phase = std::fmod(travelled, dash * 2.0F);
+            const float step = std::min(length - along, (phase < dash ? dash : dash * 2.0F) - phase);
+            if (phase < dash)
+            {
+                const float t0 = along / length;
+                const float t1 = (along + step) / length;
+                draw.AddLine(ImVec2{a.x + (b.x - a.x) * t0, a.y + (b.y - a.y) * t0},
+                             ImVec2{a.x + (b.x - a.x) * t1, a.y + (b.y - a.y) * t1}, colour, thickness);
+            }
+            along += step;
+            travelled += step;
+        }
+    }
+}
+
+void dashedRect(ImDrawList& draw, ImVec2 min, ImVec2 max, ImU32 colour, float thickness, float dash)
+{
+    const std::array<ImVec2, 5> corners{min, ImVec2{max.x, min.y}, max, ImVec2{min.x, max.y}, min};
+    dashedPolyline(draw, corners, colour, thickness, dash);
 }
 } // namespace Meow2::RendererApp

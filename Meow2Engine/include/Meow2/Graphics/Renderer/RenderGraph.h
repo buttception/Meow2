@@ -46,6 +46,10 @@ struct GraphPass
     std::vector<GraphAccess> accesses{};                 ///< Everything it touches, so the graph can place barriers.
     std::function<void(Rhi::IRhiCommandList&)> record{}; ///< Records it, on a job. Must only touch what it declared.
     bool small = false; ///< Too little work for its own job: it shares a list with the small passes next to it.
+    /// @brief Only for debugging tools, not part of the frame a game draws (Meow2Renderer's grid, debug views, the
+    ///        inspector's copies). Changes nothing in how it runs: frame inspectors draw such passes, and textures only
+    ///        they write, apart (dashed).
+    bool debug = false;
 };
 
 /// @brief A barrier the graph decided on. Plain data.

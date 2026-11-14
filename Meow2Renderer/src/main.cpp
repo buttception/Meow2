@@ -5,6 +5,7 @@
 
 #include "ConsoleWindow.h"
 #include "DebugLines.h"
+#include "DepthPositionView.h"
 #include "FrameInspector.h"
 #include "ImGuiLayer.h"
 #include "InfiniteGrid.h"
@@ -293,11 +294,12 @@ int main(int argc, char** argv)
     std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
     // The sky (renderer.sky): lights every scene and is drawn behind it. Scenes refer to it: declared before them.
     std::unique_ptr<Meow2::Renderer::SkyAtmosphere> sky;
-    std::unique_ptr<Meow2::Renderer::ToneMapPass> toneMap;         // the scene's HDR colour into the swapchain
-    std::unique_ptr<Meow2::RendererApp::RenderDebug> renderDebug;  // debug views, wireframes, frozen culling
-    std::unique_ptr<Meow2::RendererApp::FrameInspector> inspector; // render-graph view, pass view, frame capture
-    std::unique_ptr<Meow2::RendererApp::InfiniteGrid> grid;        // the ground grid (renderer.grid)
-    std::unique_ptr<Meow2::RendererApp::DebugLines> debugLines;    // the frozen camera's frustum
+    std::unique_ptr<Meow2::Renderer::ToneMapPass> toneMap;               // the scene's HDR colour into the swapchain
+    std::unique_ptr<Meow2::RendererApp::RenderDebug> renderDebug;        // debug views, wireframes, frozen culling
+    std::unique_ptr<Meow2::RendererApp::FrameInspector> inspector;       // render-graph view, pass view, frame capture
+    std::unique_ptr<Meow2::RendererApp::InfiniteGrid> grid;              // the ground grid (renderer.grid)
+    std::unique_ptr<Meow2::RendererApp::DebugLines> debugLines;          // the frozen camera's frustum
+    std::unique_ptr<Meow2::RendererApp::DepthPositionView> positionView; // the Position debug view's texture
     // The starting sun: renderer.sunElevation and renderer.sunDirection, in degrees (the Stats window's sliders).
     Meow2::RendererApp::SunControls sun;
     sun.elevationDegrees =
@@ -421,6 +423,8 @@ int main(int argc, char** argv)
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c1b-8000-80a4-7b19d2e6c05c"), c_sceneFormat, appLog);
             debugLines = std::make_unique<Meow2::RendererApp::DebugLines>(
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c1a-8000-80a4-7b19d2e6c05b"), c_sceneFormat, appLog);
+            positionView = std::make_unique<Meow2::RendererApp::DepthPositionView>(
+                *renderDevice, *pipelines, assetId("01a1b5e2-3c1d-8000-80a4-7b19d2e6c05e"), appLog);
             renderDebug = std::make_unique<Meow2::RendererApp::RenderDebug>(
                 *pipelines, assetId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058"), colorFormat, appLog);
             // renderer.debugView (a MEOW2_DEBUG_VIEW_* number, -1 shaded) and renderer.wireframe (off, overlay, only):
@@ -599,10 +603,10 @@ int main(int argc, char** argv)
     };
     const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &view, &viewDeps, &ui, &sky, &sun, &jobs,
                               &depthTexture, &sceneColor, &toneMap, &renderDebug, &inspector, &grid, &debugLines,
-                              &makeDepth, &renderDoc, &clock, &pendingSwap, &pendingScene, &sceneError, &scenesWindow,
-                              &consoleWindow, &settingsWindow, &config, &orbit, &fly, &cameraState, &startCamera,
-                              &cameraScene, &posedAnimation, &input, &frameTimes, &showUi, &sampleRoot, &switchScene,
-                              captureFrame, captureAtFrame, swapAtFrame, switchSceneAtFrame,
+                              &positionView, &makeDepth, &renderDoc, &clock, &pendingSwap, &pendingScene, &sceneError,
+                              &scenesWindow, &consoleWindow, &settingsWindow, &config, &orbit, &fly, &cameraState,
+                              &startCamera, &cameraScene, &posedAnimation, &input, &frameTimes, &showUi, &sampleRoot,
+                              &switchScene, captureFrame, captureAtFrame, swapAtFrame, switchSceneAtFrame,
                               cubeCount = static_cast<std::uint32_t>(
                                   std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000))]
     {
@@ -931,7 +935,18 @@ int main(int argc, char** argv)
                     }
                     debugLines->addPass(graph, device.frameSlot(), frame.viewProjection, hdr, sceneColor);
                 }
-                if (!(renderDebug && renderDebug->addPresent(graph, hdr, sceneColor, *swapchain, device)) && toneMap)
+                // The Position view shows a texture a debug-only pass makes from depth, instead of the scene's colour.
+                std::optional<Meow2::Renderer::GraphResource> position;
+                if (renderDebug && positionView &&
+                    renderDebug->state().view == static_cast<int>(MEOW2_DEBUG_VIEW_POSITION))
+                {
+                    position = positionView->addPass(graph, device.frameSlot(), frame, view->gpu().depthResource(),
+                                                     depthTexture, swapchain->width(), swapchain->height());
+                }
+                if (!(renderDebug &&
+                      renderDebug->addPresent(graph, position.value_or(hdr),
+                                              position ? positionView->texture() : sceneColor, *swapchain, device)) &&
+                    toneMap)
                 {
                     toneMap->addPass(graph, hdr, sceneColor, *swapchain, device);
                 }
@@ -979,6 +994,10 @@ int main(int argc, char** argv)
             if (inspector)
             {
                 inspector->endFrame(graph);
+            }
+            if (positionView)
+            {
+                positionView->endFrame(graph);
             }
             if (!recorded)
             {

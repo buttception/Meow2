@@ -166,7 +166,9 @@ struct UiDraw
 #define MEOW2_DEBUG_VIEW_SPECULAR 18u       ///< Specular light only (sun and reflections).
 #define MEOW2_DEBUG_VIEW_BLACK 19u          ///< Black, depth written: the base of a hidden-line wireframe.
 #define MEOW2_DEBUG_VIEW_MESHLETS 20u       ///< A colour per meshlet (meshlet path); grey where the indirect path drew.
-#define MEOW2_DEBUG_VIEW_COUNT 21u          ///< How many.
+#define MEOW2_DEBUG_VIEW_POSITION 21u       ///< The position rebuilt from depth, as 1 m bands: drawn by Meow2Renderer's
+                                            ///< DepthPositionView (a debug-only pass), not by GpuDriven.hlsl.
+#define MEOW2_DEBUG_VIEW_COUNT 22u          ///< How many.
 
 /// One metallic-roughness material, in a buffer shaders read by index. Linear colours. A texture index of 0 means no
 /// texture (white, or a flat normal); each texture has its own sampler.

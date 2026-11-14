@@ -31,6 +31,7 @@ struct FlowResource
     std::string name{};      ///< As given to RenderGraph::import(), or "Resource n".
     bool texture = false;    ///< A texture (it can be shown), or a buffer.
     Rhi::TextureInfo info{}; ///< Size and format, for a texture.
+    bool debug = false; ///< Only debug passes write it (markDebugResources()): made for debugging, not by the frame.
 };
 
 /// @brief What a pass does with one resource. Plain data.
@@ -46,6 +47,7 @@ struct FlowPass
 {
     std::string name{};                 ///< Its name.
     std::vector<FlowAccess> accesses{}; ///< What it reads and writes.
+    bool debug = false;                 ///< Renderer::GraphPass::debug: a debugging tool's pass.
 };
 
 /// @brief A frame's render graph as plain data: passes in the order they run and the resources between them. Plain
@@ -152,6 +154,12 @@ struct FlowPin
     /// @brief Pins are equal when every field is.
     friend bool operator==(const FlowPin&, const FlowPin&) = default;
 };
+
+/// @brief Marks the resources only debug passes write (FlowResource::debug): textures made for debugging, which the
+///        frame itself doesn't produce (a position rebuilt from depth, the inspector's images). A resource no pass
+///        writes (imported as it is) isn't marked.
+/// @param flow The flow; its passes' `debug` set.
+void markDebugResources(FrameFlow& flow);
 
 /// @brief A render graph's passes and resources, before compile().
 /// @param graph  The frame's graph.

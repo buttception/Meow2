@@ -34,6 +34,9 @@ struct DebugViewEntry
     int view = -1;            ///< MEOW2_DEBUG_VIEW_*, or -1 for the shaded scene.
     std::string_view label{}; ///< Shown in the menu.
     std::string_view group{}; ///< Heading it's listed under.
+    /// @brief Shown from a buffer a debug-only pass makes for it (the frame itself never has one): its button gets a
+    ///        dotted outline. The Position view: deferred lighting rebuilds positions without storing them.
+    bool generated = false;
 };
 
 /// @brief The view menu, in order: the shaded scene, then the debug views by group.

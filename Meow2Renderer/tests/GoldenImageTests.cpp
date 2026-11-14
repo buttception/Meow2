@@ -7,6 +7,7 @@
 /// goldens folder instead of compared: new goldens are only committed after the owner has looked at them.
 
 #include "CameraControls.h"
+#include "DepthPositionView.h"
 #include "RendererUi.h"
 #include "SceneView.h"
 
@@ -24,6 +25,7 @@
 #include <Meow2/Graphics/Renderer/SkyAtmosphere.h>
 #include <Meow2/Graphics/Renderer/ToneMapPass.h>
 #include <Meow2/Math/Camera.h>
+#include <Meow2/Math/Packing.h>
 #include <Meow2/Math/Quaternion.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
 
@@ -31,6 +33,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -38,8 +41,10 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -224,6 +229,17 @@ Comparison compare(const Assets::Image& actual, const Assets::Image& golden)
     return result;
 }
 
+/// @brief What a test adds to GoldenImageTest::draw(), to look inside the frame. Plain data.
+struct DrawHooks
+{
+    /// @brief Adds passes after the scene's, before the tone curve (each frame).
+    std::function<void(Renderer::RenderGraph&, std::uint32_t, const Shader::FrameConstants&)> addPasses{};
+    /// @brief Records copies at the end of the last frame, after the graph's lists.
+    std::function<void(Rhi::IRhiCommandList&, const Renderer::RenderGraph&)> lastFrame{};
+    /// @brief After each frame's graph has run (keep states for the next).
+    std::function<void(const Renderer::RenderGraph&)> endFrame{};
+};
+
 /// @brief A headless Meow2Renderer: the device, the sky, the tone curve and one scene, drawn at c_size × c_size.
 class GoldenImageTest : public ::testing::TestWithParam<GoldenCase>
 {
@@ -325,7 +341,8 @@ protected:
     ///        orbit (or c_fixedCameras); the default sun; the sky; the tone curve. Keeps the last of c_frames frames.
     /// @param scene   The sample's name, for c_fixedCameras.
     /// @param forward Forward shading instead of the deferred path.
-    Assets::Image draw(std::string_view scene, bool forward)
+    /// @param hooks   Extra passes and last-frame copies, for tests that look inside the frame; null for none.
+    Assets::Image draw(std::string_view scene, bool forward, const DrawHooks* hooks = nullptr)
     {
         Rhi::IRhiDevice& rhi = m_render->device();
         Math::CameraLens lens = sceneLens(m_view->radius());
@@ -375,12 +392,20 @@ protected:
             const Renderer::GraphResource hdr =
                 m_view->gpu().addPasses(graph, slot, nullptr, m_hdr, m_depth, c_sceneClearColor);
             const Renderer::GraphResource target = graph.import(m_target, targetState, "Golden");
+            if (hooks != nullptr && hooks->addPasses)
+            {
+                hooks->addPasses(graph, slot, frame);
+            }
             m_toneMap->addPass(graph, hdr, m_hdr, target, m_target, rhi);
             graph.compile();
             Result<std::vector<Rhi::IRhiCommandList*>> lists = graph.execute(rhi, m_jobs);
             EXPECT_TRUE(lists) << lists.error().message;
             m_view->gpu().endFrame(graph);
             m_sky->endFrame();
+            if (hooks != nullptr && hooks->endFrame)
+            {
+                hooks->endFrame(graph);
+            }
             targetState = graph.finalState(target);
 
             if (frameIndex == c_frames - 1)
@@ -391,6 +416,10 @@ protected:
                 (*last)->barrier(m_target, targetState, Rhi::ResourceState::CopySource);
                 (*last)->copyTextureToBuffer(m_target, m_readback);
                 (*last)->barrier(m_readback, Rhi::ResourceState::CopyTarget, Rhi::ResourceState::HostRead);
+                if (hooks != nullptr && hooks->lastFrame)
+                {
+                    hooks->lastFrame(**last, graph);
+                }
             }
             EXPECT_TRUE(rhi.endFrame(*lists));
         }
@@ -485,4 +514,185 @@ INSTANTIATE_TEST_SUITE_P(Samples, GoldenImageTest, ::testing::ValuesIn(allCases(
                              return std::format("{}_{}{}", info.param.scene, backendName(info.param.backend),
                                                 info.param.forward ? "_forward" : "");
                          });
+} // namespace Meow2::RendererApp
+
+namespace Meow2::RendererApp
+{
+namespace
+{
+/// @brief The deferred path's insides on a simple sample (Box: a red, non-metallic unit cube centred on the origin).
+class DeferredTest : public GoldenImageTest
+{
+protected:
+    /// @brief A readback buffer for a whole c_size × c_size texture.
+    Rhi::BufferHandle readback(std::uint32_t bytesPerPixel, const char* name)
+    {
+        Result<Rhi::BufferHandle> made = m_render->device().createBuffer(
+            {.size = std::uint64_t{c_size} * c_size * bytesPerPixel, .memory = Rhi::RhiMemory::Readback, .name = name});
+        EXPECT_TRUE(made) << made.error().message;
+        m_buffers.push_back(made.value_or(Rhi::BufferHandle{}));
+        return m_buffers.back();
+    }
+
+    /// @brief Copies a texture into a readback buffer and puts it back in its state.
+    static void copy(Rhi::IRhiCommandList& list, Rhi::TextureHandle texture, Rhi::ResourceState state,
+                     Rhi::BufferHandle buffer)
+    {
+        list.barrier(texture, state, Rhi::ResourceState::CopySource);
+        list.copyTextureToBuffer(texture, buffer);
+        list.barrier(texture, Rhi::ResourceState::CopySource, state);
+        list.barrier(buffer, Rhi::ResourceState::CopyTarget, Rhi::ResourceState::HostRead);
+    }
+
+    /// @brief One texel of a readback buffer.
+    template <class T>
+    T texel(Rhi::BufferHandle buffer, std::uint32_t x, std::uint32_t y)
+    {
+        T value{};
+        std::memcpy(&value, m_render->device().mappedMemory(buffer).data() + (std::size_t{y} * c_size + x) * sizeof(T),
+                    sizeof(T));
+        return value;
+    }
+
+    void TearDown() override
+    {
+        if (m_render)
+        {
+            m_render->device().waitIdle();
+            for (const Rhi::BufferHandle buffer : m_buffers)
+            {
+                m_render->device().destroy(buffer);
+            }
+        }
+        GoldenImageTest::TearDown();
+    }
+
+    std::vector<Rhi::BufferHandle> m_buffers;
+};
+
+/// @brief Four 16-bit floats.
+struct Half4
+{
+    std::array<std::uint16_t, 4> bits{};
+};
+
+/// @brief Four bytes.
+struct Byte4
+{
+    std::array<std::uint8_t, 4> bytes{};
+};
+} // namespace
+
+/// @brief Box on every backend this build has.
+std::vector<GoldenCase> boxOnEachBackend()
+{
+    std::vector<GoldenCase> cases{{.scene = "Box", .backend = Rhi::RhiBackend::Vulkan}};
+#if MEOW2_RHI_D3D12
+    cases.push_back({.scene = "Box", .backend = Rhi::RhiBackend::D3D12});
+#endif
+    return cases;
+}
+
+TEST_P(DeferredTest, GBufferHoldsTheSurface)
+{
+    const fs::path file = findSample(MEOW2_SAMPLE_ASSETS_DIR, "Box");
+    if (file.empty())
+    {
+        GTEST_SKIP() << "Box isn't downloaded: cmake -P cmake/FetchGltfSample.cmake Box";
+    }
+    open(GetParam().backend, file);
+    if (HasFatalFailure())
+    {
+        return;
+    }
+    const Rhi::BufferHandle albedo = readback(4, "Albedo readback");
+    const Rhi::BufferHandle normal = readback(8, "Normal readback");
+    const Rhi::BufferHandle material = readback(4, "Material readback");
+    DrawHooks hooks;
+    hooks.lastFrame = [&](Rhi::IRhiCommandList& list, const Renderer::RenderGraph&)
+    {
+        // The G-buffer as the Lighting pass read it.
+        const std::array<Rhi::TextureHandle, 4>& gBuffer = m_view->gpu().gBuffer();
+        copy(list, gBuffer[0], Rhi::ResourceState::ShaderRead, albedo);
+        copy(list, gBuffer[1], Rhi::ResourceState::ShaderRead, normal);
+        copy(list, gBuffer[2], Rhi::ResourceState::ShaderRead, material);
+    };
+    static_cast<void>(draw("Box", false, &hooks));
+    ASSERT_TRUE(m_view->gpu().drewDeferred());
+
+    // The middle of the picture is the cube: red (0.8 linear is 231 in sRGB), not metallic, rough, a unit normal.
+    const Byte4 colour = texel<Byte4>(albedo, c_size / 2, c_size / 2);
+    EXPECT_NEAR(colour.bytes[0], 231, 2);
+    EXPECT_EQ(colour.bytes[1], 0);
+    EXPECT_EQ(colour.bytes[2], 0);
+    const Half4 n = texel<Half4>(normal, c_size / 2, c_size / 2);
+    const float length = std::sqrt(Math::fromHalf(n.bits[0]) * Math::fromHalf(n.bits[0]) +
+                                   Math::fromHalf(n.bits[1]) * Math::fromHalf(n.bits[1]) +
+                                   Math::fromHalf(n.bits[2]) * Math::fromHalf(n.bits[2]));
+    EXPECT_NEAR(length, 1.0F, 0.01F);
+    const Byte4 properties = texel<Byte4>(material, c_size / 2, c_size / 2);
+    EXPECT_EQ(properties.bytes[0], 0) << "metallic";
+    EXPECT_EQ(properties.bytes[1], 255) << "roughness (glTF's default, 1)";
+    // A corner is background: the G-buffer stays cleared there.
+    const Byte4 corner = texel<Byte4>(albedo, 0, 0);
+    EXPECT_EQ(corner.bytes[0] + corner.bytes[1] + corner.bytes[2] + corner.bytes[3], 0);
+}
+
+TEST_P(DeferredTest, PositionFromDepthLiesOnTheSurface)
+{
+    const fs::path file = findSample(MEOW2_SAMPLE_ASSETS_DIR, "Box");
+    if (file.empty())
+    {
+        GTEST_SKIP() << "Box isn't downloaded: cmake -P cmake/FetchGltfSample.cmake Box";
+    }
+    open(GetParam().backend, file);
+    if (HasFatalFailure())
+    {
+        return;
+    }
+    DepthPositionView positions(*m_render, *m_pipelines, assetId("01a1b5e2-3c1d-8000-80a4-7b19d2e6c05e"), m_log);
+    const Rhi::BufferHandle buffer = readback(8, "Position readback");
+    std::optional<Renderer::GraphResource> resource;
+    DrawHooks hooks;
+    hooks.addPasses = [&](Renderer::RenderGraph& graph, std::uint32_t slot, const Shader::FrameConstants& frame)
+    {
+        resource = positions.addPass(graph, slot, frame, m_view->gpu().depthResource(), m_depth, c_size, c_size);
+    };
+    hooks.endFrame = [&](const Renderer::RenderGraph& graph)
+    {
+        positions.endFrame(graph);
+    };
+    hooks.lastFrame = [&](Rhi::IRhiCommandList& list, const Renderer::RenderGraph& graph)
+    {
+        ASSERT_TRUE(resource.has_value());
+        copy(list, positions.texture(), graph.finalState(*resource), buffer);
+    };
+    static_cast<void>(draw("Box", false, &hooks));
+
+    // Every rebuilt position lies on the cube: its largest coordinate is ±0.5 (the cube is centred on the origin, and
+    // the sample's quarter turn about X keeps it the same cube).
+    std::size_t drawn = 0;
+    float worst = 0.0F;
+    for (std::uint32_t y = 0; y < c_size; ++y)
+    {
+        for (std::uint32_t x = 0; x < c_size; ++x)
+        {
+            const Half4 p = texel<Half4>(buffer, x, y);
+            if (Math::fromHalf(p.bits[3]) == 0.0F)
+            {
+                continue; // nothing drawn here
+            }
+            ++drawn;
+            const float largest = std::max({std::abs(Math::fromHalf(p.bits[0])), std::abs(Math::fromHalf(p.bits[1])),
+                                            std::abs(Math::fromHalf(p.bits[2]))});
+            worst = std::max(worst, std::abs(largest - 0.5F));
+        }
+    }
+    EXPECT_GT(drawn, std::size_t{c_size} * c_size / 10) << "the cube covers a good part of the picture";
+    EXPECT_LT(worst, 0.005F) << "the farthest a rebuilt position is from the surface, in metres";
+}
+
+INSTANTIATE_TEST_SUITE_P(Backends, DeferredTest, ::testing::ValuesIn(boxOnEachBackend()),
+                         [](const ::testing::TestParamInfo<GoldenCase>& info)
+                         { return std::string{backendName(info.param.backend)}; });
 } // namespace Meow2::RendererApp

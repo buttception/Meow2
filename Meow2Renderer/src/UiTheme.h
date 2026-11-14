@@ -6,6 +6,7 @@
 #include <imgui.h>
 
 #include <cstddef>
+#include <span>
 #include <vector>
 
 namespace Meow2::RendererApp
@@ -66,4 +67,23 @@ void pushMonoFont(const UiFonts& fonts);
 
 /// @brief Ends pushMonoFont().
 void popMonoFont();
+
+/// @brief Draws a dashed polyline: `dash` pixels on, `dash` off, measured along the whole line so the pattern runs on
+///        across corners. ImGui has no dashed lines. Dashes mark what exists only for debugging (the render graph's
+///        debug passes, a debug view that makes its own buffer).
+/// @param draw      Where to draw.
+/// @param points    The points, in order.
+/// @param colour    The colour.
+/// @param thickness Line width in pixels.
+/// @param dash      Dash and gap length in pixels.
+void dashedPolyline(ImDrawList& draw, std::span<const ImVec2> points, ImU32 colour, float thickness, float dash);
+
+/// @brief Draws a dashed rectangle outline (dashedPolyline() around it).
+/// @param draw      Where to draw.
+/// @param min       Top-left corner.
+/// @param max       Bottom-right corner.
+/// @param colour    The colour.
+/// @param thickness Line width in pixels.
+/// @param dash      Dash and gap length in pixels.
+void dashedRect(ImDrawList& draw, ImVec2 min, ImVec2 max, ImU32 colour, float thickness, float dash);
 } // namespace Meow2::RendererApp

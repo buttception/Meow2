@@ -68,6 +68,26 @@ ImVec4 kindColour(ResourceKind kind)
     return ImVec4{1.0F, 1.0F, 1.0F, 1.0F};
 }
 
+/// @brief A dashed cubic Bézier, as ImDrawList::AddBezierCubic draws a solid one, through 32 points along it.
+void dashedBezier(ImDrawList& draw, const std::array<ImVec2, 4>& control, ImU32 colour, float thickness, float dash)
+{
+    constexpr int c_segments = 32;
+    std::array<ImVec2, c_segments + 1> points{};
+    for (int i = 0; i <= c_segments; ++i)
+    {
+        const float t = static_cast<float>(i) / c_segments;
+        const float u = 1.0F - t;
+        const float w0 = u * u * u;
+        const float w1 = 3.0F * u * u * t;
+        const float w2 = 3.0F * u * t * t;
+        const float w3 = t * t * t;
+        points[static_cast<std::size_t>(i)] =
+            ImVec2{w0 * control[0].x + w1 * control[1].x + w2 * control[2].x + w3 * control[3].x,
+                   w0 * control[0].y + w1 * control[1].y + w2 * control[2].y + w3 * control[3].y};
+    }
+    dashedPolyline(draw, points, colour, thickness, dash);
+}
+
 /// @brief A state's name, as the pin details show it.
 const char* stateName(Rhi::ResourceState state)
 {
@@ -121,7 +141,7 @@ FrameFlow describeGraph(const Renderer::RenderGraph& graph, Rhi::IRhiDevice& dev
     }
     for (const Renderer::GraphPass& pass : graph.passes())
     {
-        FlowPass out{.name = pass.name, .accesses = {}};
+        FlowPass out{.name = pass.name, .accesses = {}, .debug = pass.debug};
         for (const Renderer::GraphAccess& access : pass.accesses)
         {
             out.accesses.push_back({.resource = access.resource.index,
@@ -130,7 +150,29 @@ FrameFlow describeGraph(const Renderer::RenderGraph& graph, Rhi::IRhiDevice& dev
         }
         flow.passes.push_back(std::move(out));
     }
+    markDebugResources(flow);
     return flow;
+}
+
+void markDebugResources(FrameFlow& flow)
+{
+    std::vector<bool> written(flow.resources.size(), false);
+    std::vector<bool> onlyDebug(flow.resources.size(), true);
+    for (const FlowPass& pass : flow.passes)
+    {
+        for (const FlowAccess& access : pass.accesses)
+        {
+            if (access.writes && access.resource < flow.resources.size())
+            {
+                written[access.resource] = true;
+                onlyDebug[access.resource] = onlyDebug[access.resource] && pass.debug;
+            }
+        }
+    }
+    for (std::size_t i = 0; i < flow.resources.size(); ++i)
+    {
+        flow.resources[i].debug = written[i] && onlyDebug[i];
+    }
 }
 
 std::optional<std::uint32_t> writerBefore(const FrameFlow& flow, std::uint32_t resource, std::uint32_t before)
@@ -524,7 +566,8 @@ Renderer::GraphPass FrameInspector::displayPass(std::string name, Renderer::Grap
                 }
                 list.endRendering();
             },
-            .small = true};
+            .small = true,
+            .debug = true};
 }
 
 void FrameInspector::beginFrame(Renderer::RenderGraph& graph, std::uint32_t frameSlot)
@@ -624,7 +667,8 @@ void FrameInspector::afterPasses(Renderer::RenderGraph& graph, std::uint32_t fra
                          }
                          list.endRendering();
                      },
-                     .small = true});
+                     .small = true,
+                     .debug = true});
                 m_snapshots.push_back(std::move(snapshot));
             }
         }
@@ -851,8 +895,20 @@ FrameInspector::FlowClick FrameInspector::drawFlow(const FrameFlow& flow, std::o
                 const ImVec2 from = outputAt(*writer, output);
                 const ImVec2 to = inputAt(pass, input);
                 const float bend = std::max(std::abs(to.x - from.x) * 0.5F, 40.0F * scale);
-                draw->AddBezierCubic(from, ImVec2{from.x + bend, from.y}, ImVec2{to.x - bend, to.y}, to,
-                                     ImGui::GetColorU32(colour), (highlighted ? 3.0F : 1.6F) * scale);
+                // Dashed when only debugging needs it: a debug pass at either end, or a debug-only resource.
+                const bool debugWire =
+                    flow.passes[pass].debug || flow.passes[*writer].debug || flow.resources[resource].debug;
+                const float thickness = (highlighted ? 3.0F : 1.6F) * scale;
+                if (debugWire)
+                {
+                    dashedBezier(*draw, {from, ImVec2{from.x + bend, from.y}, ImVec2{to.x - bend, to.y}, to},
+                                 ImGui::GetColorU32(colour), thickness, 6.0F * scale);
+                }
+                else
+                {
+                    draw->AddBezierCubic(from, ImVec2{from.x + bend, from.y}, ImVec2{to.x - bend, to.y}, to,
+                                         ImGui::GetColorU32(colour), thickness);
+                }
             }
         }
     }
@@ -862,7 +918,7 @@ FrameInspector::FlowClick FrameInspector::drawFlow(const FrameFlow& flow, std::o
     {
         const ResourceKind kind = resourceKind(flow, resource);
         const ImU32 colour = ImGui::GetColorU32(kindColour(kind));
-        if (connected)
+        if (connected && !flow.resources[resource].debug)
         {
             draw->AddCircleFilled(at, dot, colour);
         }
@@ -877,7 +933,8 @@ FrameInspector::FlowClick FrameInspector::drawFlow(const FrameFlow& flow, std::o
         const FlowResource& info = flow.resources[resource];
         const float textWidth = ImGui::CalcTextSize(info.name.c_str()).x;
         const ImVec2 text{output ? at.x - dot * 2.0F - textWidth : at.x + dot * 2.0F, at.y - line * 0.5F};
-        draw->AddText(text, ImGui::GetColorU32(UiColors::c_text), info.name.c_str());
+        // A debug-only resource: a ring and a dimmed name, like its node's dashed outline.
+        draw->AddText(text, ImGui::GetColorU32(info.debug ? UiColors::c_textDim : UiColors::c_text), info.name.c_str());
         const float hitWidth = textWidth + dot * 4.0F;
         ImGui::SetCursorScreenPos(
             ImVec2{output ? at.x - hitWidth + dot * 2.0F : at.x - dot * 2.0F, at.y - pinRow * 0.5F});
@@ -921,8 +978,17 @@ FrameInspector::FlowClick FrameInspector::drawFlow(const FrameFlow& flow, std::o
                             ImGui::GetColorU32(isSelected ? UiColors::c_accent
                                                           : (hovered ? UiColors::c_line : UiColors::c_frameHovered)),
                             rounding, ImDrawFlags_RoundTop);
-        draw->AddRect(min, max, ImGui::GetColorU32(isSelected ? UiColors::c_accentBright : UiColors::c_line), rounding,
-                      isSelected ? 2.0F : 1.0F);
+        const ImU32 border = ImGui::GetColorU32(isSelected ? UiColors::c_accentBright : UiColors::c_line);
+        if (flow.passes[pass].debug)
+        {
+            // A debugging tool's pass: dashed, in the dim text colour so it reads on the dark panel.
+            dashedRect(*draw, min, max, isSelected ? border : ImGui::GetColorU32(UiColors::c_textDim),
+                       isSelected ? 2.0F : 1.0F, 5.0F * scale);
+        }
+        else
+        {
+            draw->AddRect(min, max, border, rounding, isSelected ? 2.0F : 1.0F);
+        }
         draw->PushClipRect(min, ImVec2{max.x, min.y + titleHeight}, true);
         draw->AddText(ImVec2{min.x + pad, min.y + (titleHeight - line) * 0.5F}, ImGui::GetColorU32(UiColors::c_text),
                       titles[pass].c_str());
@@ -972,6 +1038,16 @@ void FrameInspector::drawLegend()
         ImGui::SameLine();
         ImGui::TextColored(UiColors::c_textDim, "%s", resourceKindName(c_kinds[i]));
     }
+    // And what dashes mean.
+    ImGui::SameLine(0.0F, ImGui::GetStyle().ItemSpacing.x * 3.0F);
+    const float height = ImGui::GetTextLineHeight();
+    const ImVec2 at = ImGui::GetCursorScreenPos();
+    dashedRect(*ImGui::GetWindowDrawList(), ImVec2{at.x, at.y + height * 0.2F},
+               ImVec2{at.x + height, at.y + height * 0.8F}, ImGui::GetColorU32(UiColors::c_textDim), 1.0F,
+               height * 0.2F);
+    ImGui::Dummy(ImVec2{height, height});
+    ImGui::SameLine();
+    ImGui::TextColored(UiColors::c_textDim, "Dashed: debug only (not part of the game's frame)");
 }
 
 void FrameInspector::drawPinInfo(const FrameFlow& flow, const FlowPin& pin, const UiFonts& fonts)

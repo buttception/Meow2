@@ -1315,7 +1315,8 @@ void GpuScene::recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipe
 }
 
 void GpuScene::addOverlayPass(RenderGraph& graph, std::string name, const DrawPipelines& pipelines, GraphResource color,
-                              Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot)
+                              Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot,
+                              bool debug)
 {
     Rhi::IRhiDevice& device = m_device.device();
     Shader::PushConstants push{};
@@ -1344,7 +1345,8 @@ void GpuScene::addOverlayPass(RenderGraph& graph, std::string name, const DrawPi
     graph.addPass(
         {.name = std::move(name),
          .accesses = std::move(accesses),
-         .record = [this, used, lists, push, colorTexture, depth, blended = m_blendDraws](Rhi::IRhiCommandList& list)
+         .record =
+             [this, used, lists, push, colorTexture, depth, blended = m_blendDraws](Rhi::IRhiCommandList& list)
          {
              list.beginRendering(Rhi::RenderTargets{.color = colorTexture, .depth = depth});
              if (lists)
@@ -1360,7 +1362,8 @@ void GpuScene::addOverlayPass(RenderGraph& graph, std::string name, const DrawPi
                  list.draw(indexCount);
              }
              list.endRendering();
-         }});
+         },
+         .debug = debug});
 }
 
 bool GpuScene::ensureGBuffer(Rhi::IRhiDevice& device, Rhi::TextureHandle color)
