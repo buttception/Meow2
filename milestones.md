@@ -228,7 +228,7 @@ Planned as four PRs (PR 2, scene files, moved to M7), plus PRs 6, 7 and 8 for th
 
 **Released as `v0.7.0`** once PR #203, M6's last PR (owner decision 2026-11-14: shadows moved into M6), is merged and tagged on its merge commit (with the owner's go-ahead). The version was set to 0.7.0 by PR #195. Every suggested scene matches its reference screenshot except where the reference uses another view or environment; ABeautifulGame's glass (`KHR_materials_transmission`) draws opaque until M12.
 
-**Not in M6** (M12): shadows, skinning, morph targets, Draco and meshopt compression, Basis Universal textures, `KHR_materials_*` extensions. Node animation is played in Renderer only, without an animation system.
+**Not in M6** (M12): skinning, morph targets, Draco and meshopt compression, Basis Universal textures, `KHR_materials_*` extensions. Node animation is played in Renderer only, without an animation system.
 
 ## M7 — Editor 🟨
 **Goal:** a Qt (≥ 6.8) editor with an editor and a game viewport, fully drivable by AI agents over MCP, saving scenes as mergeable, versioned `.m2scene` files (moved here from M6, owner decision 2026-11-09), with the Renderer's debug tools rebuilt in Qt.
@@ -311,7 +311,7 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 **Goal:** what comes after PBR, once the editor is up (owner decision 2026-11-07).
 **Depends on:** M6, M7
 
-- **Shadows** (owner request 2026-11-14, first): cascaded shadow maps for the sun, read by the deferred Lighting pass (and forward), filtered (PCF); a depth-only draw through both the indirect and meshlet paths; later cached shadows for static objects (inferred mobility) or virtual shadow maps
+- **More shadows** (cascaded sun shadows with a static cache are in M6, #203): shadow casters through the meshlet path, hardware comparison samplers, point and spot light shadows (with lights in the editor), virtual shadow maps if needed
 - **Inferred mobility**: static or movable from the components (rigid bodies, animation, scripts that write transforms, a movable parent), a runtime demotion when a "static" object moves anyway (logged in Debug), an optional override; used by every cache (shadows, ray-tracing BVH, baked data)
 - Animation: skinning, morph targets, an animation system (Renderer's M6 player only poses nodes)
 - Compression: Draco and meshopt meshes, Basis Universal textures
@@ -349,4 +349,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-14 — Owner decision: the debug-tool feedback (#196 / PR #197) is M6's last PR, and `v0.7.0` is tagged on its merge.
 - 2026-11-14 — Owner decisions: deferred shading (#198 / PR #199) is M6's last PR instead, with translucent Renderer windows; `v0.7.0` is tagged on its merge.
 - 2026-11-14 — Owner decision: cascaded shadow maps (#202 / PR #203) join M6 as its last PR; `v0.7.0` is tagged on its merge.
-- 2026-11-14 — M7 planned as six PRs with the owner's decisions (JSON, HTTP, TOML scenes, field descriptors, Qt debug tools, two viewports, gizmos, framebuffer picking, an Unreal-style GPU instance buffer); M12 gains shadows (first) and inferred mobility.
+- 2026-11-14 — M7 planned as six PRs with the owner's decisions (JSON, HTTP, TOML scenes, field descriptors, Qt debug tools, two viewports, gizmos, framebuffer picking, an Unreal-style GPU instance buffer); M12 gains inferred mobility and more shadow work.
