@@ -22,15 +22,23 @@
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Log/Logger.h>
 #include <Meow2/Core/Result.h>
+#include <Meow2/Platform/Window/Window.h>
 
 #include <chrono>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Meow2::Platform
 {
-class Window;
+/// @brief One display (monitor) of the desktop. Plain data.
+struct DisplayInfo
+{
+    /// @brief The part of the display windows may use (without the taskbar), in desktop coordinates.
+    WindowRect usable{};
+    bool primary = false; ///< The OS's primary display: where windows open when nothing else is said.
+};
 
 /// @brief How the Platform is set up. Plain data.
 struct PlatformDesc
@@ -95,6 +103,11 @@ public:
     /// @brief The video driver in use, e.g. `"windows"` or `"offscreen"`.
     /// @return The driver's name.
     [[nodiscard]] std::string_view videoDriver() const;
+
+    /// @brief The desktop's displays, in the OS's order. Tests use it to open their windows on a display other than
+    ///        the primary one, out of the way of whoever is using the PC.
+    /// @return Every display; empty only if the OS reports none. The offscreen driver reports one, primary.
+    [[nodiscard]] std::vector<DisplayInfo> displays() const;
 
     /// @brief Backend state, defined by the backend (`src/Platform/Sdl/`).
     struct Impl;

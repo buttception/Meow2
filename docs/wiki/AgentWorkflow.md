@@ -64,6 +64,14 @@ Gotchas:
 - **Visual Studio Installer updates.** While the installer is updating VS, `vcvars64.bat` can be missing for a while ("is not recognized"). Wait for the installer to finish; don't change the build.
 - **"Permission denied" when removing a temporary worktree** right after an MSVC build: the PDB server (`mspdbsrv.exe`) keeps `.pdb` files open for a few seconds. Wait briefly and delete the folder again, then run `git worktree prune`. Don't kill `mspdbsrv`: the owner's Visual Studio may be using it.
 
+### Runs that open windows
+
+The owner uses the PC while agents work, often for games. Windows agents open must not take focus or cover the main screen:
+
+- **Tests:** the RHI GPU tests open their windows unfocusable on a secondary display by themselves ([Window → Testing](Window.md#testing-without-a-desktop)); everything else runs offscreen.
+- **Renderer runs** (screenshot checks): add `--set window.focusable=false` and a position on the second display, e.g. `--set window.x=3472 --set window.y=249` for the owner's second screen (DISPLAY2 starts at 3440, 217). Positions come from `[System.Windows.Forms.Screen]::AllScreens`.
+- **GPU tests** (`MEOW2_GPU_TESTS`) render on the owner's GPU and can make a game hitch; run them when the owner isn't playing, or once right before a PR.
+
 ## The clean check before a PR
 
 Tests must pass on exactly what's committed (AGENTS.md §2.4), not on a working folder that may contain untracked or git-ignored files. Agents check this with a **temporary git worktree** at the branch tip:

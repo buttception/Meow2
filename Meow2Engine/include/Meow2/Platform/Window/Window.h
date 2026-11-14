@@ -64,6 +64,9 @@ struct WindowDesc
     WindowMode mode = WindowMode::Windowed; ///< Windowed or fullscreen.
     bool resizable = true;                  ///< The user can resize the window by its frame.
     bool hidden = false;                    ///< Create it without showing it (tests); show() makes it visible.
+    /// @brief Whether it can take keyboard focus. False shows it without activating it, and clicks don't focus it:
+    ///        for windows tests and agents open while someone uses the PC (config key `window.focusable`).
+    bool focusable = true;
 };
 
 /// @brief What a native window handle refers to, so the RHI knows how to create a surface for it.
@@ -167,6 +170,10 @@ public:
     /// @brief Whether the window is maximized.
     /// @return `true` when maximized (windowed mode).
     [[nodiscard]] bool maximized() const;
+
+    /// @brief Whether the window can take keyboard focus (WindowDesc::focusable).
+    /// @return `false` for a window that's shown without activating it and that clicks don't focus.
+    [[nodiscard]] bool focusable() const;
 
     /// @brief Whether the window is minimized. Nothing should be rendered while it is.
     /// @return `true` when minimized.

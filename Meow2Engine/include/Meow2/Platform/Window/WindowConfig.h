@@ -35,7 +35,8 @@ inline constexpr std::int32_t c_maxConfigWindowSize = 16384;
 ///
 /// Invalid values (a size outside c_minConfigWindowSize..c_maxConfigWindowSize, an unknown mode) are logged as a
 /// warning and replaced by the default, so a bad edit never stops the app from opening a window.
-/// Title, resizable and hidden aren't read from the config; they come from `defaults`.
+/// Title, resizable and hidden aren't read from the config; they come from `defaults`. `window.focusable` is read
+/// (for runs that must not take focus, e.g. `--set window.focusable=false`) but storeWindowState() never writes it.
 /// @param config   The app's settings.
 /// @param defaults What the app uses when a key is missing or invalid.
 /// @param log      Receives the warnings.

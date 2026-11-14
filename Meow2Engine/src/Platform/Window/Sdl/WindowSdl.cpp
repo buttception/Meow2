@@ -235,6 +235,8 @@ Result<Window> Window::create(Platform& platform, Log::Logger& log, const Window
     SDL_SetNumberProperty(properties, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, restored.height);
     SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, desc.resizable);
     SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, desc.hidden);
+    // Not focusable: SDL shows it with SWP_NOACTIVATE (WS_EX_NOACTIVATE on Windows), so it never takes focus.
+    SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_FOCUSABLE_BOOLEAN, desc.focusable);
     SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_MAXIMIZED_BOOLEAN, desc.maximized);
     SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, desc.mode == WindowMode::Fullscreen);
     // Sizes stay in desktop units on high-DPI displays, and the drawable area gets the full pixel resolution.
@@ -311,6 +313,13 @@ std::int32_t Window::pixelHeight() const
 bool Window::maximized() const
 {
     return (m_impl->flags & SDL_WINDOW_MAXIMIZED) != 0;
+}
+
+bool Window::focusable() const
+{
+    // Read from SDL rather than the cached flags: it's set at creation and never changes, so there's no pump to wait
+    // for.
+    return (SDL_GetWindowFlags(m_impl->window) & SDL_WINDOW_NOT_FOCUSABLE) == 0;
 }
 
 bool Window::minimized() const

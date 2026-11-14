@@ -99,6 +99,13 @@ TEST_F(WindowConfigTest, ReadsDesc)
     EXPECT_EQ(desc.mode, WindowMode::Fullscreen);
 }
 
+TEST_F(WindowConfigTest, ReadsFocusable)
+{
+    EXPECT_TRUE(Meow2::Platform::windowDescFromConfig(m_config, {}, m_log).focusable) << "focusable by default";
+    set({"window.focusable=false"});
+    EXPECT_FALSE(Meow2::Platform::windowDescFromConfig(m_config, {}, m_log).focusable);
+}
+
 TEST_F(WindowConfigTest, BadValuesUseDefaults)
 {
     set({"window.width=5", "window.height=100000", "window.mode=huge", "window.x=99999999999"});

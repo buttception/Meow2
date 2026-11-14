@@ -62,10 +62,22 @@ protected:
         return swapchain ? std::move(*swapchain) : nullptr;
     }
 
+    /// @brief Opens a real window (a swapchain needs one) that stays out of the way of whoever is using the PC: it
+    /// never
+    ///        takes focus, and it opens on a display other than the primary one when there is one.
     Platform::Window makeWindow(std::int32_t width = 320, std::int32_t height = 200)
     {
-        Result<Platform::Window> window =
-            Platform::Window::create(*m_platform, m_log, {.title = "RhiGpuTests", .width = width, .height = height});
+        Platform::WindowDesc desc{.title = "RhiGpuTests", .width = width, .height = height, .focusable = false};
+        for (const Platform::DisplayInfo& display : m_platform->displays())
+        {
+            if (!display.primary)
+            {
+                desc.x = display.usable.x + 32;
+                desc.y = display.usable.y + 32;
+                break;
+            }
+        }
+        Result<Platform::Window> window = Platform::Window::create(*m_platform, m_log, desc);
         EXPECT_TRUE(window) << window.error().message;
         return std::move(*window);
     }

@@ -88,6 +88,28 @@ TEST_F(WindowTest, CreatesWithDesc)
     EXPECT_EQ(window.nativeHandle().type, Meow2::Platform::NativeWindowType::None) << "offscreen has no OS window";
 }
 
+TEST_F(WindowTest, ListsDisplays)
+{
+    const std::vector<Meow2::Platform::DisplayInfo> displays = m_platform->displays();
+    ASSERT_FALSE(displays.empty()) << "the offscreen driver has one display";
+    std::size_t primaries = 0;
+    for (const Meow2::Platform::DisplayInfo& display : displays)
+    {
+        primaries += display.primary ? 1U : 0U;
+        EXPECT_GT(display.usable.width, 0);
+        EXPECT_GT(display.usable.height, 0);
+    }
+    EXPECT_EQ(primaries, 1U) << "exactly one primary display";
+}
+
+TEST_F(WindowTest, UnfocusableWindowIsNotFocusable)
+{
+    const Window normal = createWindow({.width = 320, .height = 200, .hidden = true});
+    EXPECT_TRUE(normal.focusable());
+    const Window quiet = createWindow({.width = 320, .height = 200, .hidden = true, .focusable = false});
+    EXPECT_FALSE(quiet.focusable()) << "shown without activating it, so it never takes focus";
+}
+
 TEST_F(WindowTest, RejectsBadSize)
 {
     // 0 means the default share of the display; a negative size is invalid.
