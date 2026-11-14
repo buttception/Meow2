@@ -36,6 +36,7 @@
 #include <format>
 #include <memory>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -199,6 +200,11 @@ protected:
                                     m_render->device().frameSlot());
         }
         sceneGraph.compile();
+        m_lastPasses.clear();
+        for (const GraphPass& pass : sceneGraph.passes())
+        {
+            m_lastPasses.emplace_back(pass.name, pass.skipped);
+        }
         Result<std::vector<Rhi::IRhiCommandList*>> lists = sceneGraph.execute(m_render->device(), m_jobs);
         EXPECT_TRUE(lists) << lists.error().message;
         m_scene->endFrame(sceneGraph);
@@ -284,6 +290,8 @@ protected:
     std::unique_ptr<OffscreenTarget> m_target;
     Rhi::TextureHandle m_depth;
     std::array<std::uint32_t, MEOW2_DRAW_LIST_COUNT> m_lastCounts{}; ///< Per list, from the last runFrame().
+    /// @brief The last runFrame()'s passes: name, and whether it was skipped.
+    std::vector<std::pair<std::string, bool>> m_lastPasses;
 };
 } // namespace
 
@@ -1110,5 +1118,34 @@ TEST_F(GpuSceneTest, StaticShadowsAreCached)
     m_scene->setInstances(instances);
     static_cast<void>(runFrame(frustum));
     EXPECT_EQ(m_scene->staticShadowRedraws(), first + 8U);
+}
+TEST_F(GpuSceneTest, ShadowGraphKeepsItsShape)
+{
+    m_withShadows = true;
+    makeScene(2);
+    m_cameraRotation = c_lookingDown;
+    m_scene->setLighting({.sunDirection = {0.0F, 1.0F, 0.15F}});
+    m_scene->setShadows({.cascades = {.count = 2, .resolution = 256}});
+    m_scene->setInstances(
+        std::vector{placed({0.0F, -1.5F, 6.0F}, {8.0F, 0.1F, 8.0F}), placed({0.0F, 0.0F, 6.0F}, {1.0F, 1.0F, 1.0F})});
+    Math::Frustum frustum;
+
+    // The first frame draws the static cache; the second uses it. The graph has the same passes both times (so the
+    // Renderer's graph view doesn't jump), the second with the static ones kept but skipped.
+    static_cast<void>(runFrame(frustum));
+    const auto drawn = m_lastPasses;
+    static_cast<void>(runFrame(frustum));
+    const auto cached = m_lastPasses;
+    ASSERT_EQ(drawn.size(), cached.size());
+    std::uint32_t staticPasses = 0;
+    for (std::size_t i = 0; i < drawn.size(); ++i)
+    {
+        EXPECT_EQ(drawn[i].first, cached[i].first);
+        EXPECT_FALSE(drawn[i].second) << drawn[i].first << " runs when the cache is stale";
+        const bool isStatic = drawn[i].first.find("Static shadow") != std::string::npos;
+        staticPasses += isStatic ? 1U : 0U;
+        EXPECT_EQ(cached[i].second, isStatic) << cached[i].first;
+    }
+    EXPECT_EQ(staticPasses, 2U * 3U) << "clear, cull and draw per cascade";
 }
 } // namespace Meow2::Renderer

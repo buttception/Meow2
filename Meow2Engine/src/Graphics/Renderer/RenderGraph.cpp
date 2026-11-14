@@ -62,6 +62,20 @@ void RenderGraph::compile()
     m_batches.clear();
     for (std::size_t i = 0; i < m_passes.size(); ++i)
     {
+        if (m_passes[i].skipped)
+        {
+            // Nothing runs, so nothing changes state; it rides along with the list before it rather than getting an
+            // empty one of its own.
+            if (m_batches.empty())
+            {
+                m_batches.push_back({.firstPass = static_cast<std::uint32_t>(i), .passCount = 1});
+            }
+            else
+            {
+                ++m_batches.back().passCount;
+            }
+            continue;
+        }
         for (const GraphAccess& access : m_passes[i].accesses)
         {
             MEOW2_ASSERT(access.resource.index < m_resources.size(), "This resource isn't in this graph");
@@ -104,6 +118,10 @@ void RenderGraph::recordBatch(Rhi::IRhiCommandList& list, const GraphBatch& batc
     for (std::uint32_t i = batch.firstPass; i < batch.firstPass + batch.passCount; ++i)
     {
         const GraphPass& pass = m_passes[i];
+        if (pass.skipped)
+        {
+            continue;
+        }
         const Rhi::ScopedMarker marker{list, pass.name.c_str()};
         for (const GraphBarrier& barrier : m_barriers[i])
         {

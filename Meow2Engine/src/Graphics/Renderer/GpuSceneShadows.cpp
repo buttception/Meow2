@@ -184,14 +184,16 @@ void GpuScene::addShadowPasses(RenderGraph& graph, std::uint32_t frameSlot, cons
     DrawPipelines casters = *m_shadowPipelines;
     casters.hasMeshLists = false;
 
-    // One set of casters into a map: clear the counts, cull against the cascade's box, draw depth only.
+    // One set of casters into a map: clear the counts, cull against the cascade's box, draw depth only. `skipped`
+    // keeps the passes in the graph without running them, so the graph has the same shape every frame.
     const auto drawCasters = [&](std::uint32_t record, GraphResource target, Rhi::TextureHandle texture, bool clear,
-                                 const Shader::PushConstants& castPush, std::string name)
+                                 const Shader::PushConstants& castPush, std::string name, bool skipped)
     {
         graph.addPass({.name = std::format("Clear {} count", name),
                        .accesses = {{m_shadowCountResource, ResourceState::CopyTarget}},
                        .record = [this](Rhi::IRhiCommandList& list) { list.fillBuffer(m_shadowCountBuffer, 0); },
-                       .small = true});
+                       .small = true,
+                       .skipped = skipped});
         graph.addPass({.name = std::format("Cull {}", name),
                        .accesses = {{m_shadowCountResource, ResourceState::ShaderWrite},
                                     {m_shadowDrawResource, ResourceState::ShaderWrite}},
@@ -205,19 +207,22 @@ void GpuScene::addShadowPasses(RenderGraph& graph, std::uint32_t frameSlot, cons
                            list.setPushConstants(cullPush);
                            list.dispatch((instanceCount() + 63) / 64); // [numthreads(64, 1, 1)] in csCull
                        },
-                       .small = true});
+                       .small = true,
+                       .skipped = skipped});
         graph.addPass({.name = std::move(name),
                        .accesses = {{m_shadowCountResource, ResourceState::IndirectArgs},
                                     {m_shadowDrawResource, ResourceState::IndirectArgs},
                                     {target, ResourceState::DepthTarget}},
-                       .record = [this, casters, castPush, texture, clear](Rhi::IRhiCommandList& list)
+                       .record =
+                           [this, casters, castPush, texture, clear](Rhi::IRhiCommandList& list)
                        {
                            // Cleared to 0, the far end of reversed Z: nothing in the way of the sun.
                            list.beginRendering(Rhi::RenderTargets{
                                .depth = texture, .clearDepth = clear ? std::optional{0.0F} : std::nullopt});
                            recordLists(list, casters, castPush, m_shadowDrawBuffer, m_shadowCountBuffer);
                            list.endRendering();
-                       }});
+                       },
+                       .skipped = skipped});
     };
 
     for (std::uint32_t i = 0; i < m_cascades.settings().count; ++i)
@@ -227,11 +232,12 @@ void GpuScene::addShadowPasses(RenderGraph& graph, std::uint32_t frameSlot, cons
         Shader::PushConstants castPush = push; // instances and meshes as for the camera
         castPush.frameBuffer = device.bindlessIndex(m_shadowFrameBuffers[frameSlot][i]);
 
-        // The static casters, only when this cascade's cache is stale.
-        if ((m_staticShadowDirty & (1U << i)) != 0)
+        // The static casters, run only when this cascade's cache is stale; skipped (but still in the graph) otherwise.
+        const bool stale = (m_staticShadowDirty & (1U << i)) != 0;
+        drawCasters(i * 2, m_staticResources[i], m_staticMaps[i], true, castPush, std::format("Static shadow {}", i),
+                    !stale);
+        if (stale)
         {
-            drawCasters(i * 2, m_staticResources[i], m_staticMaps[i], true, castPush,
-                        std::format("Static shadow {}", i));
             m_staticShadowDirty &= ~(1U << i);
             ++m_staticShadowRedraws;
         }
@@ -257,7 +263,7 @@ void GpuScene::addShadowPasses(RenderGraph& graph, std::uint32_t frameSlot, cons
         if (m_hasMovable)
         {
             drawCasters(i * 2 + 1, m_shadowResources[i], m_shadowMaps[i], false, castPush,
-                        std::format("Movable shadow {}", i));
+                        std::format("Movable shadow {}", i), false);
         }
     }
 }

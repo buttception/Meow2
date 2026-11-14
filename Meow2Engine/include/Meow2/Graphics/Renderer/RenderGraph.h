@@ -50,6 +50,11 @@ struct GraphPass
     ///        inspector's copies). Changes nothing in how it runs: frame inspectors draw such passes, and textures only
     ///        they write, apart (dashed).
     bool debug = false;
+    /// @brief Kept in the graph but not run this frame: it records nothing and its accesses place no barriers (the
+    ///        resources keep the states they had). For work that's only needed some frames, such as redrawing a cached
+    ///        shadow map, so the graph has the same passes every frame and frame inspectors don't jump around. It
+    ///        shares the list of the pass before it.
+    bool skipped = false;
 };
 
 /// @brief A barrier the graph decided on. Plain data.

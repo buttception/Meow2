@@ -138,4 +138,20 @@ TEST(RenderGraph, InsertedPassSeesTheOutputInBetween)
     ASSERT_EQ(graph.barriers(2).size(), 1U);
     EXPECT_EQ(graph.barriers(2)[0].to, ResourceState::ColorTarget) << "back to a target for the next writer";
 }
+TEST(RenderGraph, SkippedPassesAreKeptButNotRun)
+{
+    RenderGraph graph;
+    const GraphResource resource = graph.import(buffer(1), ResourceState::ShaderRead);
+    graph.addPass({.name = "Before", .accesses = {{resource, ResourceState::ShaderRead}}});
+    graph.addPass({.name = "Cached", .accesses = {{resource, ResourceState::ShaderWrite}}, .skipped = true});
+    graph.addPass({.name = "After", .accesses = {{resource, ResourceState::ShaderRead}}});
+    graph.compile();
+
+    ASSERT_EQ(graph.passes().size(), 3U) << "kept, so the graph has the same shape every frame";
+    EXPECT_TRUE(graph.barriers(1).empty()) << "a skipped pass places no barriers";
+    EXPECT_TRUE(graph.barriers(2).empty()) << "and changes no state: the resource is still ShaderRead";
+    EXPECT_EQ(graph.finalState(resource), ResourceState::ShaderRead);
+    ASSERT_EQ(graph.batches().size(), 2U) << "it shares the list before it rather than getting an empty one";
+    EXPECT_EQ(graph.batches()[0].passCount, 2U);
+}
 } // namespace Meow2::Renderer

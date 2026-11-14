@@ -247,7 +247,7 @@ The sun casts **cascaded shadow maps** (`GpuScene::setShadows()`, `shaders/Shado
   - it's **25 % larger** than the slice and only moves when the slice leaves it, which keeps the cached map below valid while the camera moves around inside;
   - its depth covers every caster, so things between the sun and the slice cast into it.
 - **Static casters cached, movable ones every frame.** Per cascade:
-  1. **Static shadow N** draws the static casters into a cached map, only when it's stale: the cascade moved, the sun turned, a static instance appeared, went or moved (a fingerprint of the static instances, kept by `setInstances()`), or the settings changed.
+  1. **Static shadow N** draws the static casters into a cached map, only when it's stale: the cascade moved, the sun turned, a static instance appeared, went or moved (a fingerprint of the static instances, kept by `setInstances()`), or the settings changed. On other frames its passes stay in the render graph marked `skipped` (`GraphPass::skipped`: not recorded, no barriers), so the graph has the same passes every frame.
   2. **Shadow map N** copies the cached map texel for texel (`psCopyDepth`, a full-screen pass that writes depth).
   3. **Movable shadow N** draws the movable casters over the copy, every frame.
 
@@ -281,6 +281,8 @@ The sun casts **cascaded shadow maps** (`GpuScene::setShadows()`, `shaders/Shado
 | `Renderer.ShadowCascades.*` | splits rise from the near plane to the shadow distance; every corner of every slice lies in its cascade's box, wherever the camera looks; small camera moves keep a cascade, large ones move it by whole texels, a new sun moves all |
 | `RhiGpu*.GpuSceneTest.BoxShadowsTheGround` | a box over a slab, sun nearly overhead: the slab under the box is darker than beside it, forward and deferred |
 | `RhiGpu*.GpuSceneTest.StaticShadowsAreCached` | static maps drawn once; again only for a new sun or a moved static caster; a movable caster moves its shadow without redrawing them |
+| `RhiGpu*.GpuSceneTest.ShadowGraphKeepsItsShape` | the same passes whether the static cache is drawn or not; skipped while it's valid |
+| `Renderer.RenderGraph.SkippedPassesAreKeptButNotRun` | a skipped pass stays in the graph, places no barriers, changes no state, and shares the list before it |
 | `RhiGpu*.SkyAtmosphereTest.TransmittanceFallsTowardsTheHorizon` | the transmittance LUT: more light gets through straight up than along the horizon, and red more than blue |
 | `RhiGpu*.SkyAtmosphereTest.SkyIsBlueAtNoonAndRedAtSunset` | the sky-view LUT: a blue zenith with the sun overhead; red-orange towards a setting sun |
 | `RhiGpu*.SkyAtmosphereTest.SurvivesABackendSwitch` | after the device is re-created, the LUTs are rebuilt with the same values |

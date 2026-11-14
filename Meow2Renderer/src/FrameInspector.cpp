@@ -141,7 +141,7 @@ FrameFlow describeGraph(const Renderer::RenderGraph& graph, Rhi::IRhiDevice& dev
     }
     for (const Renderer::GraphPass& pass : graph.passes())
     {
-        FlowPass out{.name = pass.name, .accesses = {}, .debug = pass.debug};
+        FlowPass out{.name = pass.name, .accesses = {}, .debug = pass.debug, .skipped = pass.skipped};
         for (const Renderer::GraphAccess& access : pass.accesses)
         {
             out.accesses.push_back({.resource = access.resource.index,
@@ -314,7 +314,9 @@ FlowGeometry placeFlow(const FrameFlow& flow, const FlowMetrics& metrics,
     {
         FlowNode& node = geometry.nodes[pass];
         node.pins = passPins(flow, pass);
-        node.title = std::format("{}  {}", pass, flow.passes[pass].name);
+        // A skipped pass keeps its place (the layout doesn't jump) and says why nothing happened.
+        node.title =
+            std::format("{}  {}{}", pass, flow.passes[pass].name, flow.passes[pass].skipped ? " (cached)" : "");
         const float pinsWidth = widest(node.pins.inputs) + widest(node.pins.outputs) + metrics.dot * 4.0F +
                                 metrics.pad * 2.0F + metrics.sideGap;
         node.width = std::max({metrics.minWidth, textWidth(node.title) + metrics.pad * 2.0F, pinsWidth});
@@ -990,7 +992,8 @@ FrameInspector::FlowClick FrameInspector::drawFlow(const FrameFlow& flow, std::o
             draw->AddRect(min, max, border, rounding, isSelected ? 2.0F : 1.0F);
         }
         draw->PushClipRect(min, ImVec2{max.x, min.y + titleHeight}, true);
-        draw->AddText(ImVec2{min.x + pad, min.y + (titleHeight - line) * 0.5F}, ImGui::GetColorU32(UiColors::c_text),
+        draw->AddText(ImVec2{min.x + pad, min.y + (titleHeight - line) * 0.5F},
+                      ImGui::GetColorU32(flow.passes[pass].skipped ? UiColors::c_textDim : UiColors::c_text),
                       titles[pass].c_str());
         draw->PopClipRect();
         for (std::size_t input = 0; input < pins[pass].inputs.size(); ++input)
