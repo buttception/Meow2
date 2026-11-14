@@ -55,6 +55,7 @@ target_sources(Meow2Engine
         src/Graphics/Renderer/RenderDevice.cpp
         src/Graphics/Renderer/RenderGraph.cpp
         src/Graphics/Renderer/SceneModel.cpp
+        src/Graphics/Renderer/ShadowCascades.cpp
         src/Graphics/Renderer/SkyAtmosphere.cpp
         src/Graphics/Renderer/ToneMapPass.cpp
         src/Graphics/Rhi/RenderDocCapture.cpp
@@ -127,6 +128,7 @@ target_sources(Meow2Engine
             include/Meow2/Graphics/Renderer/RenderDevice.h
             include/Meow2/Graphics/Renderer/RenderGraph.h
             include/Meow2/Graphics/Renderer/SceneModel.h
+            include/Meow2/Graphics/Renderer/ShadowCascades.h
             include/Meow2/Graphics/Renderer/SkyAtmosphere.h
             include/Meow2/Graphics/Renderer/ToneMapPass.h
             include/Meow2/Graphics/Rhi/IRhiCommandList.h

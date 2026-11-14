@@ -105,7 +105,8 @@ meow2_add_test_suite(
     TARGET    Meow2EngineRendererTests
     MODULE    Renderer
     SOURCES   Graphics/Renderer/FramePacketTests.cpp Graphics/Renderer/MeshProcessingTests.cpp
-              Graphics/Renderer/RenderGraphTests.cpp)
+              Graphics/Renderer/RenderGraphTests.cpp
+              Graphics/Renderer/ShadowCascadesTests.cpp)
 
 # RHI: handles and the requirements checks need no GPU, and read the backends' private headers.
 set(meow2RhiTestSources "")
