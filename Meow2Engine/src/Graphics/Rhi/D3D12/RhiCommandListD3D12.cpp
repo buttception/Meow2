@@ -119,7 +119,9 @@ void RhiCommandListD3D12::beginRendering(IRhiSwapchain& swapchain, std::optional
 
 void RhiCommandListD3D12::beginRendering(const RenderTargets& targets)
 {
-    const TextureD3D12 texture = m_device.texture(targets.color);
+    MEOW2_ASSERT(targets.color.isSet() || targets.depth.isSet(), "A pass needs a colour or a depth target");
+    // Without a colour target (a depth-only pass: shadow maps), the size comes from the depth target.
+    const TextureD3D12 texture = m_device.texture(targets.color.isSet() ? targets.color : targets.depth);
     // The first target, then the extra ones up to the first unset handle (a G-buffer).
     std::array<D3D12_CPU_DESCRIPTOR_HANDLE, c_maxColorTargets> colors{};
     std::uint32_t count = 0;
@@ -134,14 +136,17 @@ void RhiCommandListD3D12::beginRendering(const RenderTargets& targets)
         }
         colors[count++] = view;
     };
-    add(targets.color);
-    for (const TextureHandle extra : targets.extraColors)
+    if (targets.color.isSet())
     {
-        if (!extra.isSet())
+        add(targets.color);
+        for (const TextureHandle extra : targets.extraColors)
         {
-            break;
+            if (!extra.isSet())
+            {
+                break;
+            }
+            add(extra);
         }
-        add(extra);
     }
     const std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> bound{colors.data(), count};
     if (targets.depth.isSet())

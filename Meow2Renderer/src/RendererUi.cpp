@@ -246,6 +246,12 @@ StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts, SunCon
         ImGui::Text("Triangles %u of %llu", info.meshlets.trianglesDrawn,
                     static_cast<unsigned long long>(info.meshlets.triangles));
     }
+    if (info.shadowCascades > 0)
+    {
+        // Static casters are drawn only when a cascade moves, the sun turns or the scene changes: this should rarely
+        // rise.
+        ImGui::Text("Shadows: %u cascades, static redrawn %u times", info.shadowCascades, info.staticShadowRedraws);
+    }
     if (info.importMilliseconds > 0.0)
     {
         ImGui::Text("Opened in %.0f ms", info.importMilliseconds);

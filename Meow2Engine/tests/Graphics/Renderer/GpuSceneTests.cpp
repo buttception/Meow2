@@ -93,9 +93,21 @@ protected:
         ASSERT_TRUE(uuid);
         const Result<AssetId> shader = AssetId::fromUuid(*uuid);
         ASSERT_TRUE(shader);
-        Result<std::unique_ptr<GpuScene>> scene = GpuScene::create(
-            *m_render, *m_library,
-            {.shader = *shader, .instanceCapacity = capacity, .colorFormat = OffscreenTarget::format()});
+        // Optional parts: the deferred path (shaders/Deferred.hlsl) and the sun's shadow (shaders/Shadows.hlsl).
+        const auto optional = [](bool wanted, const char* id)
+        {
+            return wanted ? Uuid::parse(id)
+                                .and_then([](const Uuid& u) { return AssetId::fromUuid(u); })
+                                .value_or(AssetId{})
+                          : AssetId{};
+        };
+        Result<std::unique_ptr<GpuScene>> scene =
+            GpuScene::create(*m_render, *m_library,
+                             {.shader = *shader,
+                              .deferredShader = optional(m_withDeferred, "01a1b5e2-3c1c-8000-80a4-7b19d2e6c05d"),
+                              .shadowShader = optional(m_withShadows, "01a1b5e2-3c1e-8000-80a4-7b19d2e6c05f"),
+                              .instanceCapacity = capacity,
+                              .colorFormat = OffscreenTarget::format()});
         ASSERT_TRUE(scene) << scene.error().message;
         m_scene = std::move(*scene);
         m_scene->setMeshlets(m_meshlets);
@@ -248,7 +260,9 @@ protected:
         return pixel;
     }
 
-    bool m_meshlets = false; ///< The meshlet path; off by default, since most tests check the indirect draw counts.
+    bool m_meshlets = false;     ///< The meshlet path; off by default, since most tests check the indirect draw counts.
+    bool m_withShadows = false;  ///< Give the scene the sun's shadow (shaders/Shadows.hlsl).
+    bool m_withDeferred = false; ///< Give the scene the deferred path (shaders/Deferred.hlsl).
     std::array<std::uint32_t, MEOW2_TASK_COUNT_SIZE> m_lastMeshletCounts{}; ///< From the last meshlet-path frame.
     std::uint32_t m_debugView = 0;              ///< FrameConstants::debugView, for the DEBUG_VIEW = 1 pipelines.
     std::optional<Math::Frustum> m_cullFrustum; ///< Culls with this instead of the camera's (frozen culling).
@@ -981,5 +995,120 @@ TEST_F(GpuSceneTest, MeshletViewColoursClusters)
     {
         EXPECT_NEAR(int{centre[c]}, 64, 2) << "channel " << c;
     }
+}
+
+namespace
+{
+/// @brief An instance at a position with a scale (the fixture's cube is 1 m across), optionally movable.
+Shader::InstanceData placed(const Math::Vec3& position, const Math::Vec3& scale, bool movable = false)
+{
+    Math::Transform transform;
+    transform.position = position;
+    transform.scale = scale;
+    Shader::InstanceData instance{};
+    instance.world = Math::toMat4(transform);
+    instance.material = 1;
+    instance.flags = movable ? MEOW2_INSTANCE_MOVABLE : 0U;
+    return instance;
+}
+
+/// @brief The camera the shadow tests use: at the origin, looking ahead and down at the ground.
+const Math::Quat c_lookingDown = Math::lookRotation({0.0F, -0.45F, 1.0F});
+
+/// @brief The pixel a world point lands on, for that camera.
+std::array<std::uint32_t, 2> pixelOf(const Math::Vec3& world)
+{
+    using namespace DirectX;
+    Math::Transform camera;
+    camera.rotation = c_lookingDown;
+    const Math::CameraMatrices matrices = Math::cameraMatrices(camera, Math::CameraLens{}, 1.0F);
+    const XMVECTOR clip =
+        XMVector4Transform(XMVectorSetW(Math::load(world), 1.0F), Math::load(matrices.viewProjection));
+    const float x = XMVectorGetX(clip) / XMVectorGetW(clip);
+    const float y = XMVectorGetY(clip) / XMVectorGetW(clip);
+    return {static_cast<std::uint32_t>((x * 0.5F + 0.5F) * c_size),
+            static_cast<std::uint32_t>((0.5F - y * 0.5F) * c_size)};
+}
+
+/// @brief The ground's top is at y = -1.45: a slab 8 m across, 0.1 m thick, centred 6 m ahead.
+constexpr float c_groundTop = -1.45F;
+} // namespace
+
+TEST_F(GpuSceneTest, BoxShadowsTheGround)
+{
+    m_withShadows = true;
+    m_withDeferred = true;
+    makeScene(2);
+    m_cameraRotation = c_lookingDown;
+    // The sun nearly overhead, a little towards +Z: the box's shadow falls just in front of it.
+    m_scene->setLighting({.sunDirection = {0.0F, 1.0F, 0.15F}});
+    m_scene->setShadows({.cascades = {.count = 4, .resolution = 1024}});
+    m_scene->setInstances(std::vector<Shader::InstanceData>{placed({0.0F, -1.5F, 6.0F}, {8.0F, 0.1F, 8.0F}),
+                                                            placed({0.0F, 0.0F, 6.0F}, {1.0F, 1.0F, 1.0F})});
+    const auto under = pixelOf({0.0F, c_groundTop, 5.6F});  // in the box's shadow
+    const auto beside = pixelOf({2.5F, c_groundTop, 5.6F}); // in the sun
+    for (const bool deferred : {false, true})
+    {
+        m_scene->setDeferred(deferred);
+        Math::Frustum frustum;
+        static_cast<void>(runFrame(frustum));
+        EXPECT_EQ(m_scene->drewDeferred(), deferred);
+        EXPECT_EQ(m_scene->shadowCascades().size(), 4U);
+        const auto shadowed = pixelAt(under[0], under[1]);
+        const auto lit = pixelAt(beside[0], beside[1]);
+        const int shadowedSum = shadowed[0] + shadowed[1] + shadowed[2];
+        const int litSum = lit[0] + lit[1] + lit[2];
+        EXPECT_GT(litSum, 0) << "the ground is drawn";
+        EXPECT_LT(shadowedSum * 10, litSum * 7)
+            << (deferred ? "deferred" : "forward") << ": the ground under the box is darker than beside it";
+    }
+}
+
+TEST_F(GpuSceneTest, StaticShadowsAreCached)
+{
+    m_withShadows = true;
+    makeScene(3);
+    m_cameraRotation = c_lookingDown;
+    m_scene->setLighting({.sunDirection = {0.0F, 1.0F, 0.15F}});
+    m_scene->setShadows({.cascades = {.count = 4, .resolution = 512}});
+    const Shader::InstanceData ground = placed({0.0F, -1.5F, 6.0F}, {8.0F, 0.1F, 8.0F});
+    const Shader::InstanceData box = placed({-1.5F, 0.0F, 6.0F}, {1.0F, 1.0F, 1.0F});
+    std::vector<Shader::InstanceData> instances{ground, box, placed({1.5F, 0.0F, 5.0F}, {1.0F, 1.0F, 1.0F}, true)};
+    m_scene->setInstances(instances);
+    Math::Frustum frustum;
+    const auto darkness = [&](const Math::Vec3& world)
+    {
+        const auto at = pixelOf(world);
+        const auto pixel = pixelAt(at[0], at[1]);
+        return pixel[0] + pixel[1] + pixel[2];
+    };
+
+    static_cast<void>(runFrame(frustum));
+    const std::uint32_t first = m_scene->staticShadowRedraws();
+    EXPECT_EQ(first, 4U) << "every cascade's static casters drawn once";
+    static_cast<void>(runFrame(frustum));
+    EXPECT_EQ(m_scene->staticShadowRedraws(), first) << "nothing changed: the cache is used";
+    const int underMoverBefore = darkness({1.5F, c_groundTop, 4.6F});
+    const int whereItGoes = darkness({1.5F, c_groundTop, 7.6F});
+    EXPECT_LT(underMoverBefore * 10, whereItGoes * 7) << "the movable box shadows the ground under it";
+
+    // The movable box moves: its shadow moves with it, and no static map is drawn again.
+    instances[2] = placed({1.5F, 0.0F, 8.0F}, {1.0F, 1.0F, 1.0F}, true);
+    m_scene->setInstances(instances);
+    static_cast<void>(runFrame(frustum));
+    EXPECT_EQ(m_scene->staticShadowRedraws(), first) << "a movable caster never invalidates the cache";
+    EXPECT_LT(darkness({1.5F, c_groundTop, 7.6F}) * 10, darkness({1.5F, c_groundTop, 4.6F}) * 7)
+        << "the shadow followed the box";
+
+    // The sun turns: every cascade's cache is drawn again.
+    m_scene->setLighting({.sunDirection = {0.1F, 1.0F, 0.2F}});
+    static_cast<void>(runFrame(frustum));
+    EXPECT_EQ(m_scene->staticShadowRedraws(), first + 4U);
+
+    // A static caster moves: every cache again.
+    instances[1] = placed({-1.5F, 0.0F, 6.5F}, {1.0F, 1.0F, 1.0F});
+    m_scene->setInstances(instances);
+    static_cast<void>(runFrame(frustum));
+    EXPECT_EQ(m_scene->staticShadowRedraws(), first + 8U);
 }
 } // namespace Meow2::Renderer

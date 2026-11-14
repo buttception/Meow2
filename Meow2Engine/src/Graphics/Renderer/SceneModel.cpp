@@ -219,6 +219,7 @@ std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshe
             instance.world = world->matrix;
             instance.material = part.material;
             instance.mesh = part.mesh;
+            instance.flags = renderer.movable ? MEOW2_INSTANCE_MOVABLE : 0U;
             out.push_back(instance);
 
             const Math::MinMax box = Math::toMinMax(Math::transformAabb(part.bounds, matrix));

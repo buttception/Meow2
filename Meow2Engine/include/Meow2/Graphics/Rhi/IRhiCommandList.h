@@ -19,7 +19,7 @@ class IRhiSwapchain;
 ///        ResourceState::DepthTarget.
 struct RenderTargets
 {
-    TextureHandle color{}; ///< The (first) colour target.
+    TextureHandle color{}; ///< The (first) colour target; unset for a depth-only pass (`depth` then sets the size).
     /// @brief More colour targets, drawn to at once (a G-buffer): SV_Target1 onwards, in order; an unset handle ends
     /// the
     ///        list. All targets are the first one's size. The pipeline's GraphicsPipelineDesc::extraColorFormats match.

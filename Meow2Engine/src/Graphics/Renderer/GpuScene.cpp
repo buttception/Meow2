@@ -28,6 +28,19 @@ namespace
 constexpr std::uint32_t c_maxMeshes = 4096;
 constexpr std::uint32_t c_maxMaterials = 4096;
 constexpr std::uint32_t c_cullGroupSize = 64; // [numthreads] in GpuDriven.hlsl
+
+/// @brief The box around two boxes.
+Math::Aabb mergeBoxes(const Math::Aabb& a, const Math::Aabb& b)
+{
+    const Math::Vec3 low{std::min(a.center.x - a.extents.x, b.center.x - b.extents.x),
+                         std::min(a.center.y - a.extents.y, b.center.y - b.extents.y),
+                         std::min(a.center.z - a.extents.z, b.center.z - b.extents.z)};
+    const Math::Vec3 high{std::max(a.center.x + a.extents.x, b.center.x + b.extents.x),
+                          std::max(a.center.y + a.extents.y, b.center.y + b.extents.y),
+                          std::max(a.center.z + a.extents.z, b.center.z + b.extents.z)};
+    return Math::aabbFromMinMax(low, high);
+}
+
 // The G-buffer, in the order GpuDriven.hlsl's GBufferOutput writes it: albedo (8-bit sRGB is enough for a colour),
 // normal (16-bit float: 8 bits per axis would band smooth highlights), material (metallic, roughness, occlusion: 8 bits
 // each), emissive (16-bit float: emitted light goes above 1).
@@ -290,6 +303,34 @@ Result<std::unique_ptr<GpuScene>> GpuScene::create(RenderDevice& device, Pipelin
         scene->m_lightingPipeline = *lighting;
     }
 
+    // The sun's shadow: the same draw lists, depth only (no colour target), cutting out alpha-masked materials; the
+    // indirect path only. And the pass that copies a cascade's cached static map into its map each frame.
+    if (desc.shadowShader.isValid())
+    {
+        Result<DrawPipelines> shadows = scene->makeDrawPipelines({.meshlets = false,
+                                                                  .colorFormat = Rhi::RhiFormat::Unknown,
+                                                                  .blended = false,
+                                                                  .pixelEntry = "psShadow",
+                                                                  .name = "Shadow casters"});
+        if (!shadows)
+        {
+            return Unexpected<Error>{shadows.error()};
+        }
+        scene->m_shadowPipelines = *shadows;
+        Result<PipelineId> copy = pipelines.add(GraphicsPipelineRequest{.shader = desc.shadowShader,
+                                                                        .vertexEntry = "vsFullscreen",
+                                                                        .pixelEntry = "psCopyDepth",
+                                                                        .colorFormat = Rhi::RhiFormat::Unknown,
+                                                                        .depthFormat = Rhi::RhiFormat::D32Float,
+                                                                        .depthTest = false,
+                                                                        .name = "Shadow map copy"});
+        if (!copy)
+        {
+            return Unexpected<Error>{copy.error()};
+        }
+        scene->m_copyDepthPipeline = *copy;
+    }
+
     // Registered after the pipeline library, so its pipelines are back before the scene restores.
     GpuScene* const self = scene.get();
     scene->m_deviceUser = device.addUser(
@@ -338,6 +379,11 @@ Result<void> GpuScene::createBuffers(Rhi::IRhiDevice& device)
                      Rhi::RhiMemory::GpuOnly, "Draws"),
           makeBuffer(m_countBuffer, MEOW2_DRAW_LIST_COUNT * sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly,
                      "Draw counts"),
+          // The sun's shadow passes cull into their own lists, reused cascade after cascade.
+          makeBuffer(m_shadowDrawBuffer, capacity * MEOW2_DRAW_LIST_COUNT * sizeof(Shader::IndirectDraw),
+                     Rhi::RhiMemory::GpuOnly, "Shadow draws"),
+          makeBuffer(m_shadowCountBuffer, MEOW2_DRAW_LIST_COUNT * sizeof(std::uint32_t), Rhi::RhiMemory::GpuOnly,
+                     "Shadow draw counts"),
           makeBuffer(m_materialBuffer, std::uint64_t{c_maxMaterials} * sizeof(Shader::MaterialData),
                      Rhi::RhiMemory::Upload, "Materials"),
           // The meshlet path's: made on every GPU (they're small), used only with mesh shaders.
@@ -378,6 +424,29 @@ Result<void> GpuScene::createBuffers(Rhi::IRhiDevice& device)
             !made)
         {
             return made;
+        }
+        // The sun's shadow: its constants, a cull record per cascade and caster set, the casters' frame constants.
+        if (Result<void> made = makeBuffer(m_shadowConstantBuffers[slot], sizeof(Shader::ShadowConstants),
+                                           Rhi::RhiMemory::Upload, "Shadow constants");
+            !made)
+        {
+            return made;
+        }
+        if (Result<void> made =
+                makeBuffer(m_shadowCullBuffers[slot], sizeof(Shader::CullConstants) * 2 * c_maxShadowCascades,
+                           Rhi::RhiMemory::Upload, "Shadow cull constants");
+            !made)
+        {
+            return made;
+        }
+        for (Rhi::BufferHandle& buffer : m_shadowFrameBuffers[slot])
+        {
+            if (Result<void> made = makeBuffer(buffer, sizeof(Shader::FrameConstants), Rhi::RhiMemory::Upload,
+                                               "Shadow frame constants");
+                !made)
+            {
+                return made;
+            }
         }
     }
     return {};
@@ -426,8 +495,9 @@ Result<void> GpuScene::sizeTaskBuffer(Rhi::IRhiDevice& device)
 void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
 {
     // Unset handles are ignored, so this also cleans up after a creation that stopped halfway.
-    for (Rhi::BufferHandle* buffer : {&m_instanceBuffer, &m_meshBuffer, &m_drawBuffer, &m_countBuffer,
-                                      &m_materialBuffer, &m_taskBuffer, &m_taskCountBuffer, &m_taskArgsBuffer})
+    for (Rhi::BufferHandle* buffer :
+         {&m_instanceBuffer, &m_meshBuffer, &m_drawBuffer, &m_countBuffer, &m_materialBuffer, &m_taskBuffer,
+          &m_taskCountBuffer, &m_taskArgsBuffer, &m_shadowDrawBuffer, &m_shadowCountBuffer})
     {
         device.destroy(*buffer);
         *buffer = {};
@@ -439,6 +509,16 @@ void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
         device.destroy(m_countReadback[slot]);
         device.destroy(m_deferredInputs[slot]);
         m_deferredInputs[slot] = {};
+        for (Rhi::BufferHandle* buffer : {&m_shadowConstantBuffers[slot], &m_shadowCullBuffers[slot]})
+        {
+            device.destroy(*buffer);
+            *buffer = {};
+        }
+        for (Rhi::BufferHandle& buffer : m_shadowFrameBuffers[slot])
+        {
+            device.destroy(buffer);
+            buffer = {};
+        }
         m_frameBuffers[slot] = {};
         m_cullBuffers[slot] = {};
         m_countReadback[slot] = {};
@@ -476,6 +556,22 @@ void GpuScene::destroyBuffers(Rhi::IRhiDevice& device)
     m_gBufferWidth = 0;
     m_gBufferHeight = 0;
     m_gBufferState = Rhi::ResourceState::Undefined;
+    // The shadow maps are made again at the next frame with shadows, and every cache drawn again.
+    for (std::size_t i = 0; i < c_maxShadowCascades; ++i)
+    {
+        device.destroy(m_staticMaps[i]);
+        device.destroy(m_shadowMaps[i]);
+        m_staticMaps[i] = {};
+        m_shadowMaps[i] = {};
+        m_staticStates[i] = Rhi::ResourceState::Undefined;
+        m_shadowStates[i] = Rhi::ResourceState::Undefined;
+    }
+    m_shadowMapResolution = 0;
+    m_shadowMapCount = 0;
+    m_shadowDrawState = Rhi::ResourceState::Undefined;
+    m_shadowCountState = Rhi::ResourceState::Undefined;
+    m_staticShadowDirty = ~0U;
+    m_frameShadows = false;
 }
 
 Result<void> GpuScene::restoreBuffers(Rhi::IRhiDevice& device)
@@ -751,17 +847,48 @@ void GpuScene::setInstances(std::span<const Shader::InstanceData> instances)
     m_instances.assign(instances.begin(), instances.end()); // kept for the next device, after a backend switch
     m_blended.clear();
     m_blendOrder.clear(); // its indices were into the old instances; the next setView() sorts the new ones
+    // For the sun's shadow: a box around every caster, whether any moves, and a fingerprint of the static ones (FNV-1a
+    // over their placement, mesh and material), so their cached shadow maps are drawn again only when they change.
+    std::optional<Math::Aabb> bounds;
+    std::uint64_t staticHash = 14695981039346656037ULL;
+    m_hasMovable = false;
     for (std::uint32_t i = 0; i < m_instances.size(); ++i)
     {
         Shader::InstanceData& instance = m_instances[i];
         // A negative determinant mirrors the mesh, which reverses its triangles' winding on screen.
         const DirectX::XMMATRIX world = DirectX::XMLoadFloat4x4(&instance.world);
         const bool mirrored = DirectX::XMVectorGetX(DirectX::XMMatrixDeterminant(world)) < 0.0F;
-        instance.flags = mirrored ? MEOW2_INSTANCE_MIRRORED : 0U;
+        const bool movable = (instance.flags & MEOW2_INSTANCE_MOVABLE) != 0; // the caller's; the rest is ours
+        instance.flags = (mirrored ? MEOW2_INSTANCE_MIRRORED : 0U) | (movable ? MEOW2_INSTANCE_MOVABLE : 0U);
+        m_hasMovable = m_hasMovable || movable;
+        if (instance.mesh < m_meshes.size())
+        {
+            const Math::Aabb box = Math::transformAabb(m_meshes[instance.mesh].bounds, world);
+            bounds = bounds ? mergeBoxes(*bounds, box) : box;
+        }
+        if (!movable)
+        {
+            const auto* bytes = reinterpret_cast<const unsigned char*>(&instance);
+            for (std::size_t b = 0; b < sizeof(Shader::InstanceData); ++b)
+            {
+                staticHash = (staticHash ^ bytes[b]) * 1099511628211ULL;
+            }
+        }
         if (instance.material < m_materials.size() && m_materials[instance.material].blend)
         {
             m_blended.push_back(i);
         }
+    }
+    if (bounds)
+    {
+        const float radius = std::sqrt(bounds->extents.x * bounds->extents.x + bounds->extents.y * bounds->extents.y +
+                                       bounds->extents.z * bounds->extents.z);
+        m_casters = Math::Sphere{.center = bounds->center, .radius = std::max(radius, 1e-3F)};
+    }
+    if (staticHash != m_staticHash)
+    {
+        m_staticHash = staticHash;
+        m_staticShadowDirty = ~0U; // a static caster appeared, went or moved: every cached map is stale
     }
     std::memcpy(m_device.device().mappedMemory(m_instanceBuffer).data(), m_instances.data(),
                 m_instances.size() * sizeof(Shader::InstanceData));
@@ -824,6 +951,7 @@ void GpuScene::setView(std::uint32_t frameSlot, const Shader::FrameConstants& fr
         constants.environmentSampler = inputs.environmentSampler;
         constants.groundColor.w = m_sky->settings().cameraAltitudeKm;
     }
+    writeShadows(frameSlot, sun, constants); // the cascades, and where lighting finds them
     std::memcpy(m_device.device().mappedMemory(m_frameBuffers[frameSlot]).data(), &constants, sizeof(constants));
 
     // Blended instances are drawn farthest first, so each mixes with what's behind it, by the distance from the
@@ -1015,6 +1143,14 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
         {
             accesses.push_back({colorResource, ResourceState::ColorTarget});
         }
+        if (m_frameShadows)
+        {
+            // Everything that shades reads the sun's shadow maps (harmless for the G-buffer pass, which doesn't).
+            for (std::uint32_t i = 0; i < m_cascades.settings().count; ++i)
+            {
+                accesses.push_back({m_shadowResources[i], ResourceState::ShaderRead});
+            }
+        }
         return accesses;
     };
     // Starts drawing into the targets: cleared for the first pass, kept for the others.
@@ -1040,6 +1176,10 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
     push.frameBuffer = device.bindlessIndex(m_frameBuffers[frameSlot]);
     push.instanceBuffer = device.bindlessIndex(m_instanceBuffer);
     push.userData = device.bindlessIndex(m_meshBuffer);
+    if (m_frameShadows)
+    {
+        addShadowPasses(graph, frameSlot, push); // before anything that shades
+    }
 
     // This frame's pipelines for each list, on its path.
     DrawPipelines current{};
@@ -1100,6 +1240,13 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
         lightingPush.userData = device.bindlessIndex(m_deferredInputs[frameSlot]);
         std::vector<GraphAccess> lightingAccesses{{m_depthResource, ResourceState::ShaderRead},
                                                   {colorResource, ResourceState::ColorTarget}};
+        if (m_frameShadows)
+        {
+            for (std::uint32_t i = 0; i < m_cascades.settings().count; ++i)
+            {
+                lightingAccesses.push_back({m_shadowResources[i], ResourceState::ShaderRead});
+            }
+        }
         for (const GraphResource resource : m_gBufferResources)
         {
             lightingAccesses.push_back({resource, ResourceState::ShaderRead});
@@ -1210,6 +1357,7 @@ Result<DrawPipelines> GpuScene::makeDrawPipelines(const DrawPipelineOptions& opt
         Result<PipelineId> draw =
             m_pipelines.add(GraphicsPipelineRequest{.shader = m_desc.shader,
                                                     .options = options.options,
+                                                    .pixelEntry = options.pixelEntry,
                                                     .colorFormat = options.colorFormat.value_or(m_desc.colorFormat),
                                                     .extraColorFormats = options.extraColorFormats,
                                                     .depthFormat = Rhi::RhiFormat::D32Float,
@@ -1233,6 +1381,7 @@ Result<DrawPipelines> GpuScene::makeDrawPipelines(const DrawPipelineOptions& opt
                  .shader = m_desc.shader,
                  .options = options.options,
                  .vertexEntry = "vsBlend",
+                 .pixelEntry = options.pixelEntry,
                  .colorFormat = options.colorFormat.value_or(m_desc.colorFormat),
                  .extraColorFormats = options.extraColorFormats,
                  .depthFormat = Rhi::RhiFormat::D32Float,
@@ -1269,6 +1418,7 @@ Result<void> GpuScene::addMeshPipelines(const DrawPipelineOptions& options, Draw
                                     .options = options.options,
                                     .taskEntry = "asMain",
                                     .meshEntry = "msMain",
+                                    .pixelEntry = options.pixelEntry,
                                     .colorFormat = options.colorFormat.value_or(m_desc.colorFormat),
                                     .extraColorFormats = options.extraColorFormats,
                                     .depthFormat = Rhi::RhiFormat::D32Float,
@@ -1291,6 +1441,12 @@ Result<void> GpuScene::addMeshPipelines(const DrawPipelineOptions& options, Draw
 void GpuScene::recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipelines,
                            const Shader::PushConstants& push) const
 {
+    recordLists(list, pipelines, push, m_drawBuffer, m_countBuffer);
+}
+
+void GpuScene::recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipelines,
+                           const Shader::PushConstants& push, Rhi::BufferHandle draws, Rhi::BufferHandle counts) const
+{
     if (pipelines.hasMeshLists)
     {
         // One mesh dispatch per list, sized by csTaskArgs; the task shader learns its list from g_push.instance.
@@ -1309,7 +1465,7 @@ void GpuScene::recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipe
     {
         list.setPipeline(m_pipelines.get(pipelines.lists[drawList]));
         list.setPushConstants(push);
-        list.drawIndirectCount(m_drawBuffer, m_countBuffer, m_desc.instanceCapacity, drawList * listBytes,
+        list.drawIndirectCount(draws, counts, m_desc.instanceCapacity, drawList * listBytes,
                                drawList * sizeof(std::uint32_t));
     }
 }
@@ -1408,6 +1564,16 @@ void GpuScene::endFrame(const RenderGraph& graph)
     m_drawState = graph.finalState(m_drawResource);
     m_countState = graph.finalState(m_countResource);
     m_depthState = graph.finalState(m_depthResource);
+    if (m_frameShadows)
+    {
+        for (std::uint32_t i = 0; i < m_cascades.settings().count; ++i)
+        {
+            m_staticStates[i] = graph.finalState(m_staticResources[i]);
+            m_shadowStates[i] = graph.finalState(m_shadowResources[i]);
+        }
+        m_shadowDrawState = graph.finalState(m_shadowDrawResource);
+        m_shadowCountState = graph.finalState(m_shadowCountResource);
+    }
     if (m_frameDeferred)
     {
         m_gBufferState = graph.finalState(m_gBufferResources[0]); // all four end where Lighting read them

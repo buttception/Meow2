@@ -29,7 +29,9 @@ using float4x4 = Math::Mat4;
 
 // C++'s half of the size checks; shaders/Common.hlsli has the HLSL half.
 static_assert(sizeof(PushConstants) == 16, "16 bytes: Vulkan guarantees 128, and D3D12 root constants are costly");
-static_assert(sizeof(FrameConstants) == 400);
+static_assert(sizeof(FrameConstants) == 416);
+static_assert(sizeof(ShadowCascadeData) == 80);
+static_assert(sizeof(ShadowConstants) == 336);
 static_assert(sizeof(InstanceData) == 80);
 static_assert(sizeof(IndirectDraw) == 32);
 static_assert(offsetof(IndirectDraw, instance) == 0, "D3D12's command signature writes it first");

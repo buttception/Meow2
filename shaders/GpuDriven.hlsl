@@ -54,12 +54,18 @@ float3 worldNormal(InstanceData instance, float3 normal)
 [numthreads(64, 1, 1)]
 void csCull(uint3 id : SV_DispatchThreadID)
 {
-    const CullConstants cull = loadElement<CullConstants>(g_push.userData, 0);
+    // g_push.instance picks the record: the camera's is 0; the sun's shadow passes keep one per cascade and caster set.
+    const CullConstants cull = loadElement<CullConstants>(g_push.userData, g_push.instance);
     if (id.x >= cull.instanceCount)
     {
         return;
     }
     const InstanceData instance = loadElement<InstanceData>(cull.instanceBuffer, id.x);
+    const bool movable = (instance.flags & MEOW2_INSTANCE_MOVABLE) != 0;
+    if ((cull.mobility == 1 && movable) || (cull.mobility == 2 && !movable))
+    {
+        return; // not in the caster set this pass draws (the static shadow cache, or the movable casters)
+    }
     const MeshDraw mesh = loadElement<MeshDraw>(cull.meshBuffer, instance.mesh);
 
     const float3 center = mul(float4(mesh.boundsCenter.xyz, 1.0), MEOW2_ROWS(instance, world)).xyz;
@@ -410,6 +416,31 @@ float3 hashColor(uint value)
 }
 #endif
 
+/// The sun's shadow casters (depth only, no colour target): only alpha-masked materials need a pixel shader, to cut out
+/// what their alpha says is empty, so leaves and fences cast the shadow of their shape, not of their quads.
+void psShadow(VertexOutput input)
+{
+    const FrameConstants frame = frameConstants();
+    if (input.material >= frame.materialCount)
+    {
+        return;
+    }
+    const MaterialData material = loadElement<MaterialData>(frame.materialBuffer, input.material);
+    if ((material.flags & MEOW2_MATERIAL_ALPHA_MASK) == 0)
+    {
+        return;
+    }
+    const float alpha = input.color.a * material.baseColorFactor.a *
+                        sampleMaterial(material.baseColorTexture, material.baseColorSampler,
+                                       transformUv(material.baseColorUv0, material.baseColorUv1, input.uv),
+                                       float4(1, 1, 1, 1))
+                            .a;
+    if (alpha < material.parameters.x)
+    {
+        discard;
+    }
+}
+
 #if GBUFFER
 /// The G-buffer variant's targets (GpuScene's G-buffer textures, in this order).
 struct GBufferOutput
@@ -610,6 +641,19 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
             return float4((terms.sunDiffuse + terms.ambientDiffuse) * frame.sunColor.w, 1.0);
         case MEOW2_DEBUG_VIEW_SPECULAR:
             return float4((terms.sunSpecular + terms.ambientSpecular) * frame.sunColor.w, 1.0);
+        case MEOW2_DEBUG_VIEW_CASCADES:
+        {
+            if (frame.shadowBuffer == 0)
+            {
+                return float4(0.25, 0.25, 0.25, 1.0); // no shadows
+            }
+            const ShadowConstants shadows = loadElement<ShadowConstants>(frame.shadowBuffer, 0);
+            const float3 colors[5] = {float3(1.0, 0.25, 0.2), float3(0.3, 0.9, 0.3), float3(0.3, 0.5, 1.0),
+                                      float3(1.0, 0.9, 0.2), float3(0.4, 0.4, 0.4)};
+            const uint index = min(shadowCascadeIndex(frame, shadows, input.worldPosition), 4u);
+            const float lit = sunShadow(frame, input.worldPosition, normal);
+            return float4(colors[index] * (0.35 + 0.65 * lit), 1.0); // grey past the last cascade
+        }
         case MEOW2_DEBUG_VIEW_BLACK:
             return float4(0.0, 0.0, 0.0, 1.0);
         default:

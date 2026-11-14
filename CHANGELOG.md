@@ -11,6 +11,8 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [0.7.0] — 2026-11-14
 
 ### Added
+- Shadows from the sun: cascaded shadow maps (four cascades, 2048 × 2048 each) with soft edges, in both forward and deferred shading. Objects that never move are drawn into a cached shadow map only when something changes (the sun turns, the camera travels far, a static object moves); moving objects, such as what a glTF animation drives, are drawn every frame. Meow2Renderer has a SHADOWS setting, a Cascades debug view, and counts cache redraws in its Stats window; the golden images now include shadows (#203).
+- RHI: depth-only passes and pipelines, with no colour target (#203).
 - Deferred shading: opaque surfaces are drawn into a G-buffer (albedo, normal, material, emissive) and lit once per pixel by a Lighting pass that rebuilds each pixel's position from depth. It's the default; DEFERRED in Meow2Renderer's Settings switches back to forward shading, and both draw the same image (the golden images check both) (#199).
 - Meow2Renderer: a Position debug view, the positions deferred lighting rebuilds from depth as 1 m colour bands, made by a debug-only pass that runs only while it's shown; its button has a dotted outline (#199).
 - Meow2Renderer's Render graph marks debugging passes and the textures only they make with dashed lines, so what belongs to the game's frame stands apart (#199).

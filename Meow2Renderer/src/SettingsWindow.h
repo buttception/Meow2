@@ -84,16 +84,24 @@ inline constexpr BoolSetting c_deferredSetting{"renderer.deferred", "DEFERRED",
                                                "give the same image.",
                                                true, SettingEffect::Now};
 
+/// @brief `renderer.shadows`: the sun casts shadows (cascaded shadow maps). `renderer.shadowResolution` (2048) and
+///        `renderer.shadowDistance` (200 m) set their size and greatest reach, read at start.
+inline constexpr BoolSetting c_shadowsSetting{"renderer.shadows", "SHADOWS",
+                                              "The sun casts shadows: four cascades, static objects cached, moving "
+                                              "ones drawn every frame.",
+                                              true, SettingEffect::Now};
+
 /// @brief Every setting the window shows, in its order.
-inline constexpr std::array<BoolSetting, 9> c_boolSettings{c_validationSetting,
-                                                           c_vsyncSetting,
-                                                           c_renderDocSetting,
-                                                           c_renderDocWindowSetting,
-                                                           c_compressTexturesSetting,
-                                                           c_skySetting,
-                                                           c_meshletsSetting,
-                                                           c_deferredSetting,
-                                                           c_gridSetting};
+inline constexpr std::array<BoolSetting, 10> c_boolSettings{c_validationSetting,
+                                                            c_vsyncSetting,
+                                                            c_renderDocSetting,
+                                                            c_renderDocWindowSetting,
+                                                            c_compressTexturesSetting,
+                                                            c_skySetting,
+                                                            c_meshletsSetting,
+                                                            c_deferredSetting,
+                                                            c_gridSetting,
+                                                            c_shadowsSetting};
 
 /// @brief Where ImGui's window layout is kept in the config (ImGuiLayer::loadLayout(), takeLayoutChange()).
 inline constexpr std::string_view c_uiLayoutKey = "renderer.uiLayout";

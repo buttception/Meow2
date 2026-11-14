@@ -52,6 +52,10 @@ struct FrameConstants
     uint cullBuffer;         ///< Heap index of this frame's CullConstants: the task shader culls with its planes.
     MEOW2_MATRIX(inverseViewProjection); ///< Clip space → the instances' space: rebuilds positions from depth (deferred
                                          ///< lighting). Set by GpuScene::setView().
+    uint shadowBuffer;       ///< Heap index of the sun's ShadowConstants; 0 without shadows. Set by GpuScene::setView().
+    uint shadowPadding0;     ///< Pads to 16 bytes.
+    uint shadowPadding1;     ///< Pads to 16 bytes.
+    uint shadowPadding2;     ///< Pads to 16 bytes.
 };
 
 /// One drawn object, in a buffer the GPU reads and compute culling can edit.
@@ -66,6 +70,8 @@ struct InstanceData
 
 /// Bits of InstanceData::flags.
 #define MEOW2_INSTANCE_MIRRORED 1u ///< The world matrix has a negative determinant: the winding is reversed.
+#define MEOW2_INSTANCE_MOVABLE 2u  ///< Moves at runtime (Renderer::MeshRenderer::movable): casts into the sun's shadow every
+                                   ///< frame, not into its cached map of static casters.
 
 /// One indirect draw, written by culling. The four fields from vertexCount on are the layout VkDrawIndirectCommand and
 /// D3D12_DRAW_ARGUMENTS require. `instance` comes first because D3D12's SV_InstanceID leaves out the draw's first
@@ -168,7 +174,9 @@ struct UiDraw
 #define MEOW2_DEBUG_VIEW_MESHLETS 20u       ///< A colour per meshlet (meshlet path); grey where the indirect path drew.
 #define MEOW2_DEBUG_VIEW_POSITION 21u       ///< The position rebuilt from depth, as 1 m bands: drawn by Meow2Renderer's
                                             ///< DepthPositionView (a debug-only pass), not by GpuDriven.hlsl.
-#define MEOW2_DEBUG_VIEW_COUNT 22u          ///< How many.
+#define MEOW2_DEBUG_VIEW_CASCADES 22u       ///< Which shadow cascade covers each pixel (red, green, blue, yellow), darkened where
+                                            ///< it's in shadow.
+#define MEOW2_DEBUG_VIEW_COUNT 23u          ///< How many.
 
 /// One metallic-roughness material, in a buffer shaders read by index. Linear colours. A texture index of 0 means no
 /// texture (white, or a flat normal); each texture has its own sampler.
@@ -298,9 +306,32 @@ struct CullConstants
     uint taskCounts;     ///< Writable heap index of the meshlet path's counters (MEOW2_TASK_COUNT_*).
     uint taskCapacity;   ///< TaskItems each list has room for.
     uint taskArguments;  ///< Writable heap index of the mesh dispatches' group counts: x, y, z and a pad per list.
-    uint padding0;       ///< Pads to 16 bytes.
+    uint mobility;       ///< Which instances: 0 all, 1 only static ones, 2 only movable ones (MEOW2_INSTANCE_MOVABLE).
     uint padding1;       ///< Pads to 16 bytes.
     uint padding2;       ///< Pads to 16 bytes.
+};
+
+/// The most cascades a sun shadow has (Renderer::c_maxShadowCascades).
+#define MEOW2_MAX_SHADOW_CASCADES 4
+
+/// One cascade of the sun's shadow, as lighting reads it.
+struct ShadowCascadeData
+{
+    MEOW2_MATRIX(viewProjection); ///< World → the cascade's clip space (reversed Z: nearer the sun is larger).
+    float splitNear;              ///< View distance where the cascade starts.
+    float splitFar;               ///< View distance where it ends.
+    float texelSize;              ///< World size of one texel: how far receivers are pushed along their normal.
+    uint depthTexture;            ///< Heap index of the cascade's map (static and movable casters combined).
+};
+
+/// The sun's shadow: its cascades, written by GpuScene once per frame.
+struct ShadowConstants
+{
+    ShadowCascadeData cascades[MEOW2_MAX_SHADOW_CASCADES]; ///< The first `count` are used.
+    uint count;       ///< Cascades.
+    uint resolution;  ///< Texels per side of each map.
+    float blend;      ///< Fraction of each cascade, at its far end, blended into the next.
+    float depthBias;  ///< Constant bias, in depth units, against shadow acne.
 };
 
 /// The indirect draw lists culling fills, one pipeline each. Blended instances aren't in any: they're drawn sorted.

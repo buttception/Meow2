@@ -15,3 +15,7 @@ stage = "vertex"
 [[entry]]
 name = "psFourTargets"
 stage = "pixel"
+
+[[entry]]
+name = "psDepthOnly"
+stage = "pixel"

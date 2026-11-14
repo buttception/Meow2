@@ -12,7 +12,7 @@ namespace Meow2::RendererApp
 {
 namespace
 {
-constexpr std::array<DebugViewEntry, 22> c_views{{
+constexpr std::array<DebugViewEntry, 23> c_views{{
     {-1, "Shaded", "Scene"},
     {MEOW2_DEBUG_VIEW_TRIANGLES, "Triangles", "Geometry"},
     {MEOW2_DEBUG_VIEW_MESHLETS, "Meshlets", "Geometry"},
@@ -35,6 +35,7 @@ constexpr std::array<DebugViewEntry, 22> c_views{{
     {MEOW2_DEBUG_VIEW_LIGHTING, "Lighting only", "Lighting"},
     {MEOW2_DEBUG_VIEW_DIFFUSE, "Diffuse only", "Lighting"},
     {MEOW2_DEBUG_VIEW_SPECULAR, "Specular only", "Lighting"},
+    {MEOW2_DEBUG_VIEW_CASCADES, "Cascades", "Lighting"},
 }};
 
 } // namespace
@@ -320,6 +321,11 @@ void RenderDebug::drawWindow(const UiFonts& fonts)
     else if (m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_TRIANGLES))
     {
         ImGui::TextColored(UiColors::c_textDim, "Drawn through the indirect path.");
+    }
+    else if (m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_CASCADES))
+    {
+        ImGui::TextColored(UiColors::c_textDim, "The sun's shadow cascades, nearest first: red,\ngreen, blue, yellow; "
+                                                "grey past the last.\nDarker where in shadow.");
     }
     else if (m_state.view == static_cast<int>(MEOW2_DEBUG_VIEW_POSITION))
     {

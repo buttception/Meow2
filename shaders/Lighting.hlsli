@@ -94,6 +94,90 @@ float3 skyIrradiance(uint buffer, float3 n)
     return max(irradiance, 0.0);
 }
 
+/// How much of a cascade's map at a point is lit (1) or in shadow (0), filtered over the texels around it.
+///
+/// The point is pushed out along its normal by about a texel first (normal-offset bias): a surface facing the sun at
+/// a grazing angle would otherwise shadow itself in stripes (shadow acne), since its own depth is stored at the
+/// map's coarser resolution. Then a 3 × 3 tent filter over 4 × 4 texels: each texel is compared with the point's
+/// depth (reversed Z: a caster nearer the sun has the larger depth), and the comparisons are weighted so the edge is
+/// smooth and moves smoothly as the point does.
+float sampleShadowCascade(ShadowConstants shadows, uint index, float3 position, float3 normal)
+{
+    const ShadowCascadeData cascade = shadows.cascades[index];
+    const float3 offset = position + normal * cascade.texelSize * 1.5;
+    const float4 clip = mul(float4(offset, 1.0), MEOW2_ROWS(cascade, viewProjection));
+    const float2 uv = float2(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
+    if (any(uv < 0.0) || any(uv > 1.0))
+    {
+        return 1.0; // outside the cascade's box: nothing known, lit
+    }
+    const float depth = clip.z + shadows.depthBias;
+    const Texture2D<float> map = ResourceDescriptorHeap[NonUniformResourceIndex(cascade.depthTexture)];
+    const float size = float(shadows.resolution);
+    const float2 texel = uv * size - 0.5;
+    const int2 base = int2(floor(texel)) - 1;
+    const float2 f = frac(texel);
+    // Tent weights along each axis for the 4 texels: (1 − f, 1, 1, f) / 3.
+    const float4 wx = float4(1.0 - f.x, 1.0, 1.0, f.x) / 3.0;
+    const float4 wy = float4(1.0 - f.y, 1.0, 1.0, f.y) / 3.0;
+    float lit = 0.0;
+    [unroll]
+    for (int y = 0; y < 4; ++y)
+    {
+        [unroll]
+        for (int x = 0; x < 4; ++x)
+        {
+            const int2 at = clamp(base + int2(x, y), 0, int(shadows.resolution) - 1);
+            const float stored = map.Load(int3(at, 0));
+            lit += (depth >= stored ? 1.0 : 0.0) * wx[x] * wy[y];
+        }
+    }
+    return lit;
+}
+
+/// Which cascade covers a point: the first whose far split is beyond the point's view distance; count when none does.
+uint shadowCascadeIndex(FrameConstants frame, ShadowConstants shadows, float3 position)
+{
+    const float viewZ = mul(float4(position, 1.0), MEOW2_ROWS(frame, view)).z;
+    for (uint i = 0; i < shadows.count; ++i)
+    {
+        if (viewZ < shadows.cascades[i].splitFar)
+        {
+            return i;
+        }
+    }
+    return shadows.count;
+}
+
+/// How much sunlight reaches a point: 1 lit, 0 in the sun's shadow. The cascade is picked by the point's distance from
+/// the camera; near a cascade's far end it blends into the next, so the change of resolution doesn't show as a line;
+/// past the last, the shadow fades out.
+float sunShadow(FrameConstants frame, float3 position, float3 normal)
+{
+    if (frame.shadowBuffer == 0)
+    {
+        return 1.0;
+    }
+    const ShadowConstants shadows = loadElement<ShadowConstants>(frame.shadowBuffer, 0);
+    const uint index = shadowCascadeIndex(frame, shadows, position);
+    if (index >= shadows.count)
+    {
+        return 1.0;
+    }
+    const ShadowCascadeData cascade = shadows.cascades[index];
+    const float viewZ = mul(float4(position, 1.0), MEOW2_ROWS(frame, view)).z;
+    const float band = (cascade.splitFar - cascade.splitNear) * shadows.blend;
+    const float toEnd = (cascade.splitFar - viewZ) / max(band, 1e-4);
+    float shadow = sampleShadowCascade(shadows, index, position, normal);
+    if (toEnd < 1.0)
+    {
+        // The last few percent of the cascade: mix in the next one, or, after the last, no shadow at all.
+        const float next = index + 1 < shadows.count ? sampleShadowCascade(shadows, index + 1, position, normal) : 1.0;
+        shadow = lerp(next, shadow, saturate(toEnd));
+    }
+    return shadow;
+}
+
 /// Lights a surface: Cook-Torrance, Lambert diffuse for the light that enters the surface, GGX specular for what
 /// reflects off it. Metals have no diffuse and tint their reflection; dielectrics reflect 4 % at normal incidence.
 LightTerms lightSurface(FrameConstants frame, Surface surface)
@@ -124,6 +208,7 @@ LightTerms lightSurface(FrameConstants frame, Surface surface)
         terms.sun *= sampleTransmittance(frame.transmittanceLut, frame.environmentSampler,
                                          viewHeightFromAltitude(frame.groundColor.w), light.y);
     }
+    terms.sun *= sunShadow(frame, surface.position, normal); // the sun's cascaded shadow maps
     terms.sunDiffuse = diffuse * terms.sun * terms.nDotL;
     terms.sunSpecular = specular * terms.sun * terms.nDotL;
 

@@ -719,11 +719,12 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
     }
 
     // The first colour target, then the extra ones up to the first Unknown (a G-buffer).
+    // No colour format: a depth-only pipeline (shadow maps), with no colour targets at all.
     std::array<VkFormat, c_maxColorTargets> colorFormats{vulkanFormat(desc.colorFormat)};
-    std::uint32_t colorCount = 1;
+    std::uint32_t colorCount = desc.colorFormat == RhiFormat::Unknown ? 0U : 1U;
     for (const RhiFormat extra : desc.extraColorFormats)
     {
-        if (extra == RhiFormat::Unknown)
+        if (colorCount == 0 || extra == RhiFormat::Unknown)
         {
             break;
         }

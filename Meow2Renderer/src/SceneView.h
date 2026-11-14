@@ -38,6 +38,7 @@ struct SceneViewDeps
     Log::Logger& log;                             ///< Receives import warnings.
     AssetId shader;                               ///< `shaders/GpuDriven.hlsl`.
     AssetId deferredShader;                       ///< `shaders/Deferred.hlsl`: the deferred path (DEFERRED setting).
+    AssetId shadowShader;                         ///< `shaders/Shadows.hlsl`: the sun's shadow (SHADOWS setting).
     Rhi::RhiFormat colorFormat;                   ///< The swapchain's format.
     const Renderer::SkyAtmosphere* sky = nullptr; ///< Lights every view and is drawn behind it; null for none.
     Renderer::TextureCooking textures{};          ///< How models' textures are cooked (BC7/BC5, the cache).

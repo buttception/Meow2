@@ -460,6 +460,7 @@ int main(int argc, char** argv)
                                               .log = appLog,
                                               .shader = assetId("01a1b5e2-3c12-8000-80a4-7b19d2e6c053"),
                                               .deferredShader = assetId("01a1b5e2-3c1c-8000-80a4-7b19d2e6c05d"),
+                                              .shadowShader = assetId("01a1b5e2-3c1e-8000-80a4-7b19d2e6c05f"),
                                               .colorFormat = c_sceneFormat,
                                               .sky = sky.get(),
                                               .textures = {.compress = compressTextures,
@@ -739,6 +740,8 @@ int main(int argc, char** argv)
                     {
                         stats.meshlets = view->gpu().meshletStats();
                     }
+                    stats.shadowCascades = static_cast<std::uint32_t>(view->gpu().shadowCascades().size());
+                    stats.staticShadowRedraws = view->gpu().staticShadowRedraws();
                     stats.importMilliseconds = view->importMilliseconds();
                 }
                 const Meow2::RendererApp::StatsActions actions =
@@ -900,6 +903,15 @@ int main(int argc, char** argv)
                 view->gpu().setMeshlets(
                     Meow2::RendererApp::readSetting(config, Meow2::RendererApp::c_meshletsSetting)); // read each frame
                 view->gpu().setDeferred(Meow2::RendererApp::readSetting(config, Meow2::RendererApp::c_deferredSetting));
+                // The sun's shadow: SHADOWS each frame; size and reach from the config (renderer.shadowResolution,
+                // .shadowDistance).
+                view->gpu().setShadows(
+                    {.enabled = Meow2::RendererApp::readSetting(config, Meow2::RendererApp::c_shadowsSetting),
+                     .cascades = {.count = 4,
+                                  .resolution = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+                                      config.getInt("renderer.shadowResolution", 2048), 256, 8192))},
+                     .maxDistance = static_cast<float>(
+                         std::clamp(config.getFloat("renderer.shadowDistance", 200.0), 1.0, 100000.0))});
                 view->gpu().setLighting(
                     {.sunDirection = sunDirection, .sunIntensity = sun.intensity, .exposure = sun.exposure});
                 if (sky)

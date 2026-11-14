@@ -901,6 +901,48 @@ TEST_F(RhiStatesTest, DrawsToFourTargets)
     m_device->destroy(*pipeline);
 }
 
+TEST_F(RhiStatesTest, DrawsDepthOnly)
+{
+    // No colour target at all: a pass and a pipeline that only write depth, as shadow maps are drawn.
+    const std::vector<std::byte> vertex = bytecode(c_statesShader, "vsMain");
+    const std::vector<std::byte> pixel = bytecode(c_statesShader, "psDepthOnly");
+    Result<PipelineHandle> pipeline = m_device->createGraphicsPipeline({.vertexCode = vertex,
+                                                                        .pixelCode = pixel,
+                                                                        .pixelEntry = "psDepthOnly",
+                                                                        .colorFormat = RhiFormat::Unknown,
+                                                                        .depthFormat = RhiFormat::D32Float,
+                                                                        .name = "Depth only"});
+    ASSERT_TRUE(pipeline) << pipeline.error().message;
+    Result<TextureHandle> depth = m_device->createTexture({.width = c_targetSize,
+                                                           .height = c_targetSize,
+                                                           .format = RhiFormat::D32Float,
+                                                           .renderTarget = true,
+                                                           .name = "Depth only"});
+    ASSERT_TRUE(depth) << depth.error().message;
+    const BufferHandle readback = makeBuffer(4 * c_targetSize * c_targetSize, RhiMemory::Readback);
+    runFrame(
+        [&](IRhiCommandList& list)
+        {
+            list.barrier(*depth, ResourceState::Undefined, ResourceState::DepthTarget);
+            list.beginRendering(RenderTargets{.depth = *depth, .clearDepth = 0.0F});
+            list.setPipeline(*pipeline);
+            list.draw(3); // the full-screen triangle, at depth 0.5
+            list.endRendering();
+            list.barrier(*depth, ResourceState::DepthTarget, ResourceState::CopySource);
+            list.copyTextureToBuffer(*depth, readback);
+            list.barrier(readback, ResourceState::CopyTarget, ResourceState::HostRead);
+        });
+    float value = 0.0F;
+    std::memcpy(&value,
+                m_device->mappedMemory(readback).data() +
+                    (std::size_t{c_targetSize / 2} * c_targetSize + c_targetSize / 2) * 4,
+                sizeof(value));
+    EXPECT_FLOAT_EQ(value, 0.5F) << "the triangle's depth, written with no colour target";
+    m_device->destroy(*pipeline);
+    m_device->destroy(*depth);
+    m_device->destroy(readback);
+}
+
 /// @brief A PipelineLibrary over a private copy of the cooked triangle, so a test can damage it.
 class PipelineLibraryTest : public RhiDrawTest
 {
