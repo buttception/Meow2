@@ -48,6 +48,7 @@ struct FlowPass
     std::string name{};                 ///< Its name.
     std::vector<FlowAccess> accesses{}; ///< What it reads and writes.
     bool debug = false;                 ///< Renderer::GraphPass::debug: a debugging tool's pass.
+    bool skipped = false;               ///< Renderer::GraphPass::skipped: in the graph, but not run this frame.
 };
 
 /// @brief A frame's render graph as plain data: passes in the order they run and the resources between them. Plain
