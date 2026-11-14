@@ -855,7 +855,12 @@ protected:
     void SetUp() override
     {
         RhiDrawTest::SetUp();
-        m_folder = fs::temp_directory_path() / std::format("meow2-pipelines-{}", c_configName);
+        // One folder per configuration, backend and test: ctest runs the Vulkan and D3D12 executables (and each test
+        // in its own process) in parallel, and a shared folder made one test delete another's while it was in use.
+        m_folder =
+            fs::temp_directory_path() / std::format("meow2-pipelines-{}-{}-{}", c_configName,
+                                                    c_testBackend == RhiBackend::D3D12 ? "d3d12" : "vulkan",
+                                                    ::testing::UnitTest::GetInstance()->current_test_info()->name());
         fs::remove_all(m_folder);
         fs::create_directories(m_folder / "shaders");
         const std::string file =
