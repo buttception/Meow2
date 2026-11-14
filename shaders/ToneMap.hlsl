@@ -3,7 +3,8 @@
 /// g_push.instance is the heap index of the HDR texture; it's read texel for texel (same size), so no sampler.
 ///
 /// DEBUG_OUTPUT = 1 is Meow2Renderer's debug present (games never build it): g_push.userData 0 shows debug-view
-/// colours as they are (no tone curve), 1 turns an overdraw count into a heat map.
+/// colours as they are (no tone curve), 1 turns an overdraw count into a heat map, 2 shows a position texture as
+/// 1-metre colour bands (the fraction of each axis: x red, y green, z blue), black where its alpha is 0 (nothing drawn).
 
 #include "Common.hlsli"
 #include "Atmosphere.hlsli" // toneMapNeutral
@@ -37,8 +38,13 @@ float3 heat(float count)
 float4 psMain(VertexOutput input) : SV_Target
 {
     const Texture2D<float4> hdr = ResourceDescriptorHeap[g_push.instance];
-    const float3 color = hdr.Load(int3(input.position.xy, 0)).rgb;
+    const float4 texel = hdr.Load(int3(input.position.xy, 0));
+    const float3 color = texel.rgb;
 #if DEBUG_OUTPUT
+    if (g_push.userData == 2)
+    {
+        return float4(texel.a > 0.0 ? frac(color) : float3(0.0, 0.0, 0.0), 1.0);
+    }
     return float4(g_push.userData == 1 ? heat(color.r * 16.0) : saturate(color), 1.0); // overdraw adds 1/16 a layer
 #else
     return float4(toneMapNeutral(max(color, 0.0)), 1.0);

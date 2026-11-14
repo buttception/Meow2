@@ -90,15 +90,15 @@ RhiCommandListVulkan::RhiCommandListVulkan(RhiDeviceVulkan& device)
 {
 }
 
-void RhiCommandListVulkan::startRendering(const VkRenderingAttachmentInfo& color,
+void RhiCommandListVulkan::startRendering(std::span<const VkRenderingAttachmentInfo> colors,
                                           const VkRenderingAttachmentInfo* depth, VkExtent2D extent)
 {
     MEOW2_ASSERT(!m_rendering, "endRendering() wasn't called");
     const VkRenderingInfo rendering{.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
                                     .renderArea = {.offset = {0, 0}, .extent = extent},
                                     .layerCount = 1,
-                                    .colorAttachmentCount = 1,
-                                    .pColorAttachments = &color,
+                                    .colorAttachmentCount = static_cast<std::uint32_t>(colors.size()),
+                                    .pColorAttachments = colors.data(),
                                     .pDepthAttachment = depth};
     vkCmdBeginRendering(m_commandBuffer, &rendering);
     m_rendering = true;
@@ -144,21 +144,37 @@ void RhiCommandListVulkan::beginRendering(IRhiSwapchain& swapchain, std::optiona
                            .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
         depthAttachment.clearValue.depthStencil = {.depth = clearDepth.value_or(0.0F), .stencil = 0};
     }
-    startRendering(attachment, depth.isSet() ? &depthAttachment : nullptr, target.extent());
+    startRendering({&attachment, 1}, depth.isSet() ? &depthAttachment : nullptr, target.extent());
 }
 
 void RhiCommandListVulkan::beginRendering(const RenderTargets& targets)
 {
     const TextureVulkan color = m_device.texture(targets.color);
-    VkRenderingAttachmentInfo attachment{.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                                         .imageView = color.view,
-                                         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                         .loadOp = loadOp(targets.clearColor.has_value()),
-                                         .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
-    if (targets.clearColor)
+    // The first target, then the extra ones up to the first unset handle (a G-buffer).
+    std::array<VkRenderingAttachmentInfo, c_maxColorTargets> attachments{};
+    std::uint32_t count = 0;
+    const auto add = [&](TextureHandle texture)
     {
-        const Math::Color& clear = *targets.clearColor;
-        attachment.clearValue.color = {{clear.r, clear.g, clear.b, clear.a}};
+        VkRenderingAttachmentInfo& attachment = attachments[count++];
+        attachment = {.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                      .imageView = m_device.texture(texture).view,
+                      .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                      .loadOp = loadOp(targets.clearColor.has_value()),
+                      .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
+        if (targets.clearColor)
+        {
+            const Math::Color& clear = *targets.clearColor;
+            attachment.clearValue.color = {{clear.r, clear.g, clear.b, clear.a}};
+        }
+    };
+    add(targets.color);
+    for (const TextureHandle extra : targets.extraColors)
+    {
+        if (!extra.isSet())
+        {
+            break;
+        }
+        add(extra);
     }
     VkRenderingAttachmentInfo depth{};
     if (targets.depth.isSet())
@@ -170,7 +186,7 @@ void RhiCommandListVulkan::beginRendering(const RenderTargets& targets)
                  .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
         depth.clearValue.depthStencil = {.depth = targets.clearDepth.value_or(0.0F), .stencil = 0};
     }
-    startRendering(attachment, targets.depth.isSet() ? &depth : nullptr, color.extent);
+    startRendering({attachments.data(), count}, targets.depth.isSet() ? &depth : nullptr, color.extent);
 }
 
 void RhiCommandListVulkan::endRendering()
@@ -371,5 +387,53 @@ void RhiCommandListVulkan::copyTextureToBuffer(TextureHandle source, BufferHandl
                                         .regionCount = 1,
                                         .pRegions = &region};
     vkCmdCopyImageToBuffer2(m_commandBuffer, &copy);
+}
+
+void RhiCommandListVulkan::copySwapchainToBuffer(IRhiSwapchain& swapchain, BufferHandle target)
+{
+    MEOW2_ASSERT(!m_rendering, "Copies go between passes");
+    auto& source = static_cast<RhiSwapchainVulkan&>(swapchain);
+    MEOW2_ASSERT(source.isAcquired(), "acquire() must return true before reading a swapchain");
+    const VkImageSubresourceRange range{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1};
+    // Out of the colour-attachment layout for the copy, and back, so the frame goes on (and gets presented) as usual.
+    const auto transition = [&](VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkImageLayout oldLayout,
+                                VkPipelineStageFlags2 dstStage, VkAccessFlags2 dstAccess, VkImageLayout newLayout)
+    {
+        const VkImageMemoryBarrier2 barrier{.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                                            .srcStageMask = srcStage,
+                                            .srcAccessMask = srcAccess,
+                                            .dstStageMask = dstStage,
+                                            .dstAccessMask = dstAccess,
+                                            .oldLayout = oldLayout,
+                                            .newLayout = newLayout,
+                                            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                            .image = source.image(),
+                                            .subresourceRange = range};
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
+        vkCmdPipelineBarrier2(m_commandBuffer, &dependency);
+    };
+    transition(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+               VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
+               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    const VkExtent2D extent = source.extent();
+    const VkBufferImageCopy2 region{.sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
+                                    .bufferOffset = 0,
+                                    .bufferRowLength = 0, // tightly packed
+                                    .bufferImageHeight = 0,
+                                    .imageSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .layerCount = 1},
+                                    .imageExtent = {extent.width, extent.height, 1}};
+    const VkCopyImageToBufferInfo2 copy{.sType = VK_STRUCTURE_TYPE_COPY_IMAGE_TO_BUFFER_INFO_2,
+                                        .srcImage = source.image(),
+                                        .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                        .dstBuffer = m_device.buffer(target).buffer,
+                                        .regionCount = 1,
+                                        .pRegions = &region};
+    vkCmdCopyImageToBuffer2(m_commandBuffer, &copy);
+    transition(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+               VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+               VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+               VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 }
 } // namespace Meow2::Rhi

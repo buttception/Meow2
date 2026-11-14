@@ -6,6 +6,7 @@
 #include <imgui.h>
 
 #include <cstddef>
+#include <span>
 #include <vector>
 
 namespace Meow2::RendererApp
@@ -13,8 +14,11 @@ namespace Meow2::RendererApp
 /// @brief The palette, shared with Meow2Editor's Qt theme (docs/wiki/Theme.md). Linear 0..1 RGBA, as ImGui takes it.
 namespace UiColors
 {
-inline constexpr ImVec4 c_base{0.0F, 0.0F, 0.0F, 1.0F};               ///< #000000: backgrounds.
-inline constexpr ImVec4 c_panel{0.047F, 0.047F, 0.051F, 0.94F};       ///< #0C0C0D: windows, a little see-through.
+inline constexpr ImVec4 c_base{0.0F, 0.0F, 0.0F, 1.0F};         ///< #000000: backgrounds.
+inline constexpr ImVec4 c_panel{0.047F, 0.047F, 0.051F, 0.94F}; ///< #0C0C0D: windows, a little see-through.
+/// @brief How opaque Meow2Renderer's windows are: the scene shows through them (about a fifth of it), while text
+///        and controls stay readable even over a bright sky. Popups and controls stay nearly opaque.
+inline constexpr float c_windowAlpha = 0.78F;
 inline constexpr ImVec4 c_frame{0.094F, 0.094F, 0.106F, 1.0F};        ///< #18181B: fields and buttons.
 inline constexpr ImVec4 c_frameHovered{0.133F, 0.133F, 0.149F, 1.0F}; ///< #222226: a field under the mouse.
 inline constexpr ImVec4 c_line{0.204F, 0.204F, 0.227F, 1.0F};         ///< #34343A: borders and separators.
@@ -66,4 +70,23 @@ void pushMonoFont(const UiFonts& fonts);
 
 /// @brief Ends pushMonoFont().
 void popMonoFont();
+
+/// @brief Draws a dashed polyline: `dash` pixels on, `dash` off, measured along the whole line so the pattern runs on
+///        across corners. ImGui has no dashed lines. Dashes mark what exists only for debugging (the render graph's
+///        debug passes, a debug view that makes its own buffer).
+/// @param draw      Where to draw.
+/// @param points    The points, in order.
+/// @param colour    The colour.
+/// @param thickness Line width in pixels.
+/// @param dash      Dash and gap length in pixels.
+void dashedPolyline(ImDrawList& draw, std::span<const ImVec2> points, ImU32 colour, float thickness, float dash);
+
+/// @brief Draws a dashed rectangle outline (dashedPolyline() around it).
+/// @param draw      Where to draw.
+/// @param min       Top-left corner.
+/// @param max       Bottom-right corner.
+/// @param colour    The colour.
+/// @param thickness Line width in pixels.
+/// @param dash      Dash and gap length in pixels.
+void dashedRect(ImDrawList& draw, ImVec2 min, ImVec2 max, ImU32 colour, float thickness, float dash);
 } // namespace Meow2::RendererApp

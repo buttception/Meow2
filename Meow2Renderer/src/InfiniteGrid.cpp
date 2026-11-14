@@ -154,7 +154,8 @@ void InfiniteGrid::addPasses(Renderer::RenderGraph& graph, std::uint32_t frameSl
                        list.setPushConstants(push);
                        list.dispatch((width + 7) / 8, (height + 7) / 8); // 8 × 8 threads per group
                    },
-                   .small = true});
+                   .small = true,
+                   .debug = true});
     graph.addPass({.name = "Grid composite",
                    .accesses = {{layer, Rhi::ResourceState::ShaderRead}, {color, Rhi::ResourceState::ColorTarget}},
                    .record =
@@ -166,6 +167,7 @@ void InfiniteGrid::addPasses(Renderer::RenderGraph& graph, std::uint32_t frameSl
                        list.draw(3);
                        list.endRendering();
                    },
-                   .small = true});
+                   .small = true,
+                   .debug = true});
 }
 } // namespace Meow2::RendererApp

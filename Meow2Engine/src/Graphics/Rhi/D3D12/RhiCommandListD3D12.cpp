@@ -60,11 +60,12 @@ RhiCommandListD3D12::RhiCommandListD3D12(RhiDeviceD3D12& device)
 {
 }
 
-void RhiCommandListD3D12::startRendering(D3D12_CPU_DESCRIPTOR_HANDLE color, const D3D12_CPU_DESCRIPTOR_HANDLE* depth,
-                                         std::uint32_t width, std::uint32_t height)
+void RhiCommandListD3D12::startRendering(std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors,
+                                         const D3D12_CPU_DESCRIPTOR_HANDLE* depth, std::uint32_t width,
+                                         std::uint32_t height)
 {
     MEOW2_ASSERT(!m_rendering, "endRendering() wasn't called");
-    m_list->OMSetRenderTargets(1, &color, FALSE, depth);
+    m_list->OMSetRenderTargets(static_cast<UINT>(colors.size()), colors.data(), FALSE, depth);
     // D3D12's Y points down in the viewport already, so no flip: the same matrices as Vulkan's flipped viewport.
     const D3D12_VIEWPORT viewport{.TopLeftX = 0.0F,
                                   .TopLeftY = 0.0F,
@@ -108,32 +109,49 @@ void RhiCommandListD3D12::beginRendering(IRhiSwapchain& swapchain, std::optional
     if (depth.isSet())
     {
         const D3D12_CPU_DESCRIPTOR_HANDLE depthView = prepareDepth(depth, clearDepth);
-        startRendering(color, &depthView, target.width(), target.height());
+        startRendering({&color, 1}, &depthView, target.width(), target.height());
     }
     else
     {
-        startRendering(color, nullptr, target.width(), target.height());
+        startRendering({&color, 1}, nullptr, target.width(), target.height());
     }
 }
 
 void RhiCommandListD3D12::beginRendering(const RenderTargets& targets)
 {
     const TextureD3D12 texture = m_device.texture(targets.color);
-    const D3D12_CPU_DESCRIPTOR_HANDLE color = m_device.rtvHeap().cpu(texture.targetIndex);
-    if (targets.clearColor)
+    // The first target, then the extra ones up to the first unset handle (a G-buffer).
+    std::array<D3D12_CPU_DESCRIPTOR_HANDLE, c_maxColorTargets> colors{};
+    std::uint32_t count = 0;
+    const auto add = [&](TextureHandle handle)
     {
-        const Math::Color& clear = *targets.clearColor;
-        const std::array<float, 4> values{clear.r, clear.g, clear.b, clear.a};
-        m_list->ClearRenderTargetView(color, values.data(), 0, nullptr);
+        const D3D12_CPU_DESCRIPTOR_HANDLE view = m_device.rtvHeap().cpu(m_device.texture(handle).targetIndex);
+        if (targets.clearColor)
+        {
+            const Math::Color& clear = *targets.clearColor;
+            const std::array<float, 4> values{clear.r, clear.g, clear.b, clear.a};
+            m_list->ClearRenderTargetView(view, values.data(), 0, nullptr);
+        }
+        colors[count++] = view;
+    };
+    add(targets.color);
+    for (const TextureHandle extra : targets.extraColors)
+    {
+        if (!extra.isSet())
+        {
+            break;
+        }
+        add(extra);
     }
+    const std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> bound{colors.data(), count};
     if (targets.depth.isSet())
     {
         const D3D12_CPU_DESCRIPTOR_HANDLE depthView = prepareDepth(targets.depth, targets.clearDepth);
-        startRendering(color, &depthView, texture.width, texture.height);
+        startRendering(bound, &depthView, texture.width, texture.height);
     }
     else
     {
-        startRendering(color, nullptr, texture.width, texture.height);
+        startRendering(bound, nullptr, texture.width, texture.height);
     }
 }
 
@@ -354,5 +372,49 @@ void RhiCommandListD3D12::copyTextureToBuffer(TextureHandle source, BufferHandle
         .pResource = texture.resource, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = 0};
     const D3D12_TEXTURE_COPY_LOCATION to = bufferFootprint(texture, m_device.buffer(target).resource, 0, 0);
     m_list->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
+}
+
+void RhiCommandListD3D12::copySwapchainToBuffer(IRhiSwapchain& swapchain, BufferHandle target)
+{
+    MEOW2_ASSERT(!m_rendering, "Copies go between passes");
+    auto& source = static_cast<RhiSwapchainD3D12&>(swapchain);
+    MEOW2_ASSERT(source.isAcquired(), "acquire() must return true before reading a swapchain");
+    ID3D12Resource* image = source.image();
+    // Out of the render-target layout for the copy, and back, so the frame goes on (and gets presented) as usual.
+    const auto transition = [&](D3D12_BARRIER_SYNC syncBefore, D3D12_BARRIER_ACCESS accessBefore,
+                                D3D12_BARRIER_LAYOUT layoutBefore, D3D12_BARRIER_SYNC syncAfter,
+                                D3D12_BARRIER_ACCESS accessAfter, D3D12_BARRIER_LAYOUT layoutAfter)
+    {
+        const D3D12_TEXTURE_BARRIER barrier{.SyncBefore = syncBefore,
+                                            .SyncAfter = syncAfter,
+                                            .AccessBefore = accessBefore,
+                                            .AccessAfter = accessAfter,
+                                            .LayoutBefore = layoutBefore,
+                                            .LayoutAfter = layoutAfter,
+                                            .pResource = image,
+                                            .Subresources = {.IndexOrFirstMipLevel = 0xFFFFFFFF},
+                                            .Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE};
+        const D3D12_BARRIER_GROUP group{
+            .Type = D3D12_BARRIER_TYPE_TEXTURE, .NumBarriers = 1, .pTextureBarriers = &barrier};
+        m_list->Barrier(1, &group);
+    };
+    transition(D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+               D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE, D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+    const D3D12_RESOURCE_DESC desc = image->GetDesc();
+    const auto width = static_cast<std::uint32_t>(desc.Width);
+    const D3D12_TEXTURE_COPY_LOCATION from{
+        .pResource = image, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = 0};
+    // Tightly packed rows, as on Vulkan (the unrestricted copy pitch, as in bufferFootprint()).
+    const D3D12_TEXTURE_COPY_LOCATION to{
+        .pResource = m_device.buffer(target).resource,
+        .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+        .PlacedFootprint = {
+            .Offset = 0,
+            .Footprint = {
+                .Format = desc.Format, .Width = width, .Height = desc.Height, .Depth = 1, .RowPitch = width * 4}}};
+    m_list->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
+    transition(D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE, D3D12_BARRIER_LAYOUT_COPY_SOURCE,
+               D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_ACCESS_RENDER_TARGET,
+               D3D12_BARRIER_LAYOUT_RENDER_TARGET);
 }
 } // namespace Meow2::Rhi

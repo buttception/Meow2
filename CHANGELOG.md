@@ -11,6 +11,11 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [0.7.0] — 2026-11-14
 
 ### Added
+- Deferred shading: opaque surfaces are drawn into a G-buffer (albedo, normal, material, emissive) and lit once per pixel by a Lighting pass that rebuilds each pixel's position from depth. It's the default; DEFERRED in Meow2Renderer's Settings switches back to forward shading, and both draw the same image (the golden images check both) (#199).
+- Meow2Renderer: a Position debug view, the positions deferred lighting rebuilds from depth as 1 m colour bands, made by a debug-only pass that runs only while it's shown; its button has a dotted outline (#199).
+- Meow2Renderer's Render graph marks debugging passes and the textures only they make with dashed lines, so what belongs to the game's frame stands apart (#199).
+- Meow2Renderer screenshots: PrintScreen (or `renderer.screenshotAtFrame`) writes the window's own pixels to a PNG, read back from the GPU (#199).
+- RHI: up to four colour targets in one pass, and reading back a swapchain image, on Vulkan and D3D12 (#199).
 - Meow2Renderer draws an infinite grid on the ground (y = 0), worked out in a compute pass: the X axis red, the Z axis blue, cells in powers of ten that follow the camera's height, hidden behind geometry and faded far away. GRID in the Settings window turns it off (#197).
 - Meow2Renderer: freezing culling also draws the frozen camera's view volume in yellow lines through the scene, so flying out shows what it sees; SHOW FRUSTUM hides it (#197).
 - RHI: line-list pipelines (`PrimitiveTopology::Lines`) on Vulkan and D3D12, for debug lines (#197).
@@ -31,6 +36,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - glTF 2.0 import: `.gltf` and `.glb` files open in Meow2Renderer (`--set renderer.scene=Duck`, or a path) with their node tree, meshes and base colour textures, converted to the engine's left-handed space, on Vulkan and D3D12. `cmake -P cmake/FetchGltfSample.cmake <Model>` downloads Khronos sample models on demand (#170).
 
 ### Changed
+- Meow2Renderer's windows are translucent: the scene shows through them, and text stays readable (#199).
 - Meow2Renderer's Render graph window is a node graph: each pass a node with its inputs and outputs as labelled pins, wires between pins coloured by kind (colour texture, depth, buffer, indirect arguments), ordered so wires cross less. Labels no longer overlap, also with the wireframe overlay on. Clicking a texture's pin shows it in the Pass window; clicking a buffer's lists every pass that writes and reads it. Right-drag pans. The Frame capture window uses the same graph (#197).
 - Meow2Renderer's Debug window shows every view as a button, grouped, with the active one highlighted, instead of a drop-down (#197).
 - The scene is drawn in high dynamic range and tone mapped in its own pass, before the UI; opaque surfaces, the sky and transparent ones are separate passes (#191).

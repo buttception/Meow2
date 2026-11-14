@@ -2,6 +2,7 @@
 /// @brief The debug overlays' maths, on the CPU: the frustum's lines and the grid's constants.
 
 #include "DebugLines.h"
+#include "FrameScreenshot.h"
 #include "InfiniteGrid.h"
 
 #include <Meow2/Math/Camera.h>
@@ -86,5 +87,26 @@ TEST(DebugOverlays, GridConstantsInvertTheCamera)
             EXPECT_NEAR(identity.m[row][column], row == column ? 1.0F : 0.0F, 1e-4F) << row << ", " << column;
         }
     }
+}
+} // namespace Meow2::RendererApp
+
+namespace Meow2::RendererApp
+{
+TEST(FrameScreenshot, SwapsBgraAndMakesItOpaque)
+{
+    // Two pixels as a BGRA swapchain holds them: blue-green-red-alpha.
+    const std::array<std::byte, 8> bgra{std::byte{10}, std::byte{20}, std::byte{30}, std::byte{0},
+                                        std::byte{40}, std::byte{50}, std::byte{60}, std::byte{128}};
+    const Assets::Image image = swapchainToImage(bgra, 2, 1, Rhi::RhiFormat::Bgra8Srgb);
+    ASSERT_EQ(image.pixels.size(), 8U);
+    EXPECT_EQ(image.pixels[0], std::byte{30}) << "red first";
+    EXPECT_EQ(image.pixels[1], std::byte{20});
+    EXPECT_EQ(image.pixels[2], std::byte{10});
+    EXPECT_EQ(image.pixels[3], std::byte{255}) << "opaque";
+    EXPECT_EQ(image.pixels[4], std::byte{60});
+    EXPECT_EQ(image.pixels[7], std::byte{255});
+
+    const Assets::Image rgba = swapchainToImage(bgra, 2, 1, Rhi::RhiFormat::Rgba8Srgb);
+    EXPECT_EQ(rgba.pixels[0], std::byte{10}) << "RGBA swapchains are kept as they are";
 }
 } // namespace Meow2::RendererApp

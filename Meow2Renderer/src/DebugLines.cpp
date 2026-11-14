@@ -151,6 +151,7 @@ void DebugLines::addPass(Renderer::RenderGraph& graph, std::uint32_t frameSlot, 
                        list.draw(vertexCount);
                        list.endRendering();
                    },
-                   .small = true});
+                   .small = true,
+                   .debug = true});
 }
 } // namespace Meow2::RendererApp

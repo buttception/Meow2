@@ -20,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -192,14 +193,15 @@ public:
     void copyBufferToTexture(BufferHandle source, TextureHandle target, std::uint32_t mipLevel,
                              std::uint64_t sourceOffset) override;
     void copyTextureToBuffer(TextureHandle source, BufferHandle target) override;
+    void copySwapchainToBuffer(IRhiSwapchain& swapchain, BufferHandle target) override;
 
 private:
     /// @brief Binds the targets and sets the viewport and scissor to their size.
-    /// @param color  The colour target's RTV.
+    /// @param colors The colour targets' RTVs, in order (one, or several for a G-buffer).
     /// @param depth  The depth target's DSV, or null.
     /// @param width  Width in pixels.
     /// @param height Height in pixels.
-    void startRendering(D3D12_CPU_DESCRIPTOR_HANDLE color, const D3D12_CPU_DESCRIPTOR_HANDLE* depth,
+    void startRendering(std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors, const D3D12_CPU_DESCRIPTOR_HANDLE* depth,
                         std::uint32_t width, std::uint32_t height);
 
     /// @brief Clears the depth target if asked to.

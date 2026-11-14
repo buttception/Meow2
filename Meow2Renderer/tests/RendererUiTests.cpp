@@ -217,3 +217,17 @@ TEST(SunControls, DirectionFromAngles)
     EXPECT_NEAR(any.x * any.x + any.y * any.y + any.z * any.z, 1.0F, 1e-5F) << "a unit vector";
 }
 } // namespace Meow2::RendererApp
+
+namespace Meow2::RendererApp
+{
+TEST(UiTheme, WindowsAreTranslucent)
+{
+    ImGuiStyle style;
+    applyUiTheme(style, 1.0F);
+    // The scene shows through windows, but they stay dark enough to read; popups stay nearly opaque.
+    EXPECT_FLOAT_EQ(style.Colors[ImGuiCol_WindowBg].w, UiColors::c_windowAlpha);
+    EXPECT_GT(UiColors::c_windowAlpha, 0.6F);
+    EXPECT_LT(UiColors::c_windowAlpha, 0.9F);
+    EXPECT_GT(style.Colors[ImGuiCol_PopupBg].w, 0.95F);
+}
+} // namespace Meow2::RendererApp

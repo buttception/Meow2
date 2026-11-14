@@ -38,10 +38,33 @@ Each texture slot names its own sampler (`-1`: linear, repeating, mipmapped).
 
 ### The frame
 
-The scene isn't drawn into the swapchain any more but into **Scene colour**, an RGBA16F texture in linear light with the exposure applied, in three passes: **Opaque** (the three indirect lists, clearing colour and depth), **Sky** (behind everything, where depth is still far) and **Blended** (sorted, over both). **Tone map** (`ToneMapPass`, `ToneMap.hlsl`) then applies the Khronos PBR Neutral curve while writing the swapchain, whose sRGB view encodes the result.
+The scene isn't drawn into the swapchain any more but into **Scene colour**, an RGBA16F texture in linear light with the exposure applied: the opaque surfaces (**G-buffer** then **Lighting**, deferred, or one **Opaque** pass, forward; see [Deferred shading](#deferred-shading)), **Sky** (behind everything, where depth is still far) and **Blended** (sorted, over both). **Tone map** (`ToneMapPass`, `ToneMap.hlsl`) then applies the Khronos PBR Neutral curve while writing the swapchain, whose sRGB view encodes the result.
 
 Why: every step's output is now a texture of the render graph, which the Renderer's inspector can show ([Renderer](Renderer.md#frame-and-debugging)), and post-processing (bloom, exposure control) has an HDR image to work on. It costs one full-screen pass.
 
+
+### Deferred shading
+
+Opaque surfaces are drawn **deferred** by default (`GpuScene::setDeferred()`, Meow2Renderer's DEFERRED setting); forward stays available, and both give the same image (the golden images run on both paths against the same goldens).
+
+- **Forward** (the **Opaque** pass) shades every pixel as it rasterises it. A pixel covered by five overlapping surfaces is shaded five times, though only the nearest is seen, and every light would have to be evaluated in every draw.
+- **Deferred** splits that in two:
+  1. **G-buffer**: the same draw lists, culling and pipelines per list (the `GBUFFER = 1` variant of `GpuDriven.hlsl`), but instead of shading, `psMain` writes what shading needs into four targets at once (multiple render targets, [Rhi](Rhi.md#several-colour-targets)), plus depth:
+
+     | Target | Format | Holds |
+     |---|---|---|
+     | G-buffer albedo | RGBA8 sRGB | base colour (8-bit sRGB is enough for a colour) |
+     | G-buffer normal | RGBA16F | the shading normal (8 bits per axis would band smooth highlights) |
+     | G-buffer material | RGBA8 | metallic, roughness, occlusion |
+     | G-buffer emissive | RGBA16F | emitted light (goes above 1) |
+     | Depth | D32F | the scene's depth, as before |
+
+  2. **Lighting** (`Deferred.hlsl`'s `psLighting`): one full-screen triangle reads the G-buffer and shades each pixel exactly once. Pixels nothing covered (depth 0, the far end of reversed Z) are skipped, and the **Sky** pass fills them afterwards. **Blended** surfaces are always forward: a G-buffer holds one surface per pixel, and blending needs the one behind too.
+- **One lighting function for both paths:** `shaders/Lighting.hlsli` holds `lightSurface()` / `shadeSurface()` (the BRDF, sun, sky light) on a `Surface` struct. Forward's `psMain` fills a `Surface` from the material and calls it; deferred fills it from the G-buffer. So the two paths can't drift apart.
+- **The position isn't stored.** A G-buffer could hold each pixel's position, but that's 8–16 more bytes per pixel to write and read every frame, and depth already says where the pixel is. `positionFromDepth()` (in `Lighting.hlsli`) takes the pixel's centre in clip space (`x`, `y` from its coordinates, `z` its depth) back through `FrameConstants::inverseViewProjection` and divides by `w`. With reversed infinite Z this is exact up to float precision.
+- **Debug views** (other than Position) still draw forward: they're a variant of the forward shader. The Position view is the exception; [Renderer](Renderer.md#frame-and-debugging) explains it.
+- **Why deferred now, with one light?** The sun alone doesn't need it: deferred pays off with many lights (each touches only the pixels it reaches, once) and with screen-space effects that read normals and depth (SSAO, SSR). The G-buffer is the base for both (M12).
+- **Pitfalls avoided:** the G-buffer is cleared to zero each frame, so background pixels hold nothing a later pass could mistake for a surface; its state is carried between frames (where Lighting left it), so the next frame's writes wait for the last frame's reads; it's remade at the scene's size and freed on a backend switch (GpuScene's device user).
 ### Meshes for the GPU: optimisation and meshlets
 
 `MeshProcessing.h` runs a mesh through [meshoptimizer](https://github.com/zeux/meshoptimizer) between import and upload:
@@ -226,6 +249,9 @@ The PBR shader then uses `skyIrradiance(normal) / π` for diffuse ambient light,
 
 | Test | What it checks |
 |---|---|
+| `Visual.Backends/DeferredTest.GBufferHoldsTheSurface/*` | on the Box sample, the G-buffer holds its red albedo, a unit normal, metallic 0 and roughness 1, and stays empty in the background |
+| `Visual.Backends/DeferredTest.PositionFromDepthLiesOnTheSurface/*` | every position rebuilt from depth lies on the Box's surface (within 5 mm) |
+| `Visual.Samples/GoldenImageTest.MatchesGolden/*`, `*_forward` | the 25 samples match the same goldens deferred and forward |
 | `RhiGpu*.SkyAtmosphereTest.TransmittanceFallsTowardsTheHorizon` | the transmittance LUT: more light gets through straight up than along the horizon, and red more than blue |
 | `RhiGpu*.SkyAtmosphereTest.SkyIsBlueAtNoonAndRedAtSunset` | the sky-view LUT: a blue zenith with the sun overhead; red-orange towards a setting sun |
 | `RhiGpu*.SkyAtmosphereTest.SurvivesABackendSwitch` | after the device is re-created, the LUTs are rebuilt with the same values |

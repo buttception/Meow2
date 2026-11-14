@@ -718,10 +718,20 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
                           .pName = stage.entry->c_str()});
     }
 
-    const VkFormat colorFormat = vulkanFormat(desc.colorFormat);
+    // The first colour target, then the extra ones up to the first Unknown (a G-buffer).
+    std::array<VkFormat, c_maxColorTargets> colorFormats{vulkanFormat(desc.colorFormat)};
+    std::uint32_t colorCount = 1;
+    for (const RhiFormat extra : desc.extraColorFormats)
+    {
+        if (extra == RhiFormat::Unknown)
+        {
+            break;
+        }
+        colorFormats[colorCount++] = vulkanFormat(extra);
+    }
     const VkPipelineRenderingCreateInfo rendering{.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-                                                  .colorAttachmentCount = 1,
-                                                  .pColorAttachmentFormats = &colorFormat,
+                                                  .colorAttachmentCount = colorCount,
+                                                  .pColorAttachmentFormats = colorFormats.data(),
                                                   .depthAttachmentFormat = vulkanFormat(desc.depthFormat)};
     const VkPipelineVertexInputStateCreateInfo vertexInput{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO}; // shaders pull their own vertices
@@ -764,9 +774,11 @@ Result<PipelineHandle> RhiDeviceVulkan::createGraphicsPipeline(const GraphicsPip
         .alphaBlendOp = VK_BLEND_OP_ADD,
         .colorWriteMask =
             VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT};
+    std::array<VkPipelineColorBlendAttachmentState, c_maxColorTargets> blendAttachments{};
+    blendAttachments.fill(blendAttachment); // every target blends the same way
     const VkPipelineColorBlendStateCreateInfo blend{.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-                                                    .attachmentCount = 1,
-                                                    .pAttachments = &blendAttachment};
+                                                    .attachmentCount = colorCount,
+                                                    .pAttachments = blendAttachments.data()};
     const std::array<VkDynamicState, 2> dynamicStates{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     const VkPipelineDynamicStateCreateInfo dynamic{.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
                                                    .dynamicStateCount =

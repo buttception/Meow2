@@ -3,6 +3,7 @@
 
 #include "ConsoleWindow.h"
 #include "SettingsWindow.h"
+#include "UiTheme.h"
 
 #include <Meow2/Core/Config/Config.h>
 #include <Meow2/Core/Log/ConsoleBuffer.h>
@@ -12,6 +13,7 @@
 #include <gtest/gtest.h>
 #include <imgui.h>
 
+#include <array>
 #include <filesystem>
 #include <format>
 #include <string>
@@ -198,5 +200,40 @@ TEST(ImGuiLayout, RoundTripsThroughTheConfig)
     ImGui::DestroyContext(context);
     EXPECT_FLOAT_EQ(position.x, 123.0F);
     EXPECT_FLOAT_EQ(position.y, 45.0F);
+}
+} // namespace Meow2::RendererApp
+
+namespace Meow2::RendererApp
+{
+TEST(UiTheme, DashedLinesFinishAndAlternate)
+{
+    ImGuiContext* context = ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+    io.DisplaySize = ImVec2{1280.0F, 720.0F};
+    io.DeltaTime = 1.0F / 60.0F;
+    ImGui::NewFrame();
+    ImGui::Begin("Dashes");
+    {
+        ImDrawList& draw = *ImGui::GetWindowDrawList();
+        // Many sizes and dash lengths, odd fractions included: the first version could loop forever when float
+        // rounding met a dash's end (the Render graph's legend hung the Renderer).
+        for (int i = 1; i < 400; ++i)
+        {
+            const float size = 0.37F * static_cast<float>(i);
+            dashedRect(draw, ImVec2{1000.0F + size, 2000.0F}, ImVec2{1000.0F + size * 2.0F, 2000.0F + size * 0.6F},
+                       IM_COL32_WHITE, 1.0F, size * 0.2F);
+        }
+        // A 10-pixel line in 2-pixel dashes: on, off, on, off, on.
+        const std::array<ImVec2, 2> line{ImVec2{0.0F, 0.0F}, ImVec2{10.0F, 0.0F}};
+        const unsigned int before = draw.CmdBuffer.back().ElemCount;
+        dashedPolyline(draw, line, IM_COL32_WHITE, 1.0F, 2.0F);
+        const unsigned int added = draw.CmdBuffer.back().ElemCount - before;
+        EXPECT_EQ(added, 3U * 6U) << "three dashes, six indices each";
+    }
+    ImGui::End();
+    ImGui::EndFrame();
+    ImGui::DestroyContext(context);
 }
 } // namespace Meow2::RendererApp

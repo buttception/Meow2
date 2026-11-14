@@ -11,3 +11,7 @@ stage = "pixel"
 [[entry]]
 name = "vsLine"
 stage = "vertex"
+
+[[entry]]
+name = "psFourTargets"
+stage = "pixel"

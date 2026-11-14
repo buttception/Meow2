@@ -744,8 +744,18 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     const bool lines = desc.topology == PrimitiveTopology::Lines && desc.meshCode.empty();
     pipelineDesc.PrimitiveTopologyType =
         lines ? D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE : D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    // The first colour target, then the extra ones up to the first Unknown (a G-buffer); each blends the same way.
     pipelineDesc.NumRenderTargets = 1;
     pipelineDesc.RTVFormats[0] = d3d12Format(desc.colorFormat);
+    for (const RhiFormat extra : desc.extraColorFormats)
+    {
+        if (extra == RhiFormat::Unknown)
+        {
+            break;
+        }
+        pipelineDesc.BlendState.RenderTarget[pipelineDesc.NumRenderTargets] = pipelineDesc.BlendState.RenderTarget[0];
+        pipelineDesc.RTVFormats[pipelineDesc.NumRenderTargets++] = d3d12Format(extra);
+    }
     pipelineDesc.DSVFormat = hasDepth ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_UNKNOWN;
     pipelineDesc.SampleDesc = {.Count = 1, .Quality = 0};
 
@@ -760,7 +770,11 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     key.add(desc.taskCode);
     key.add(desc.meshCode);
     key.add(desc.pixelCode);
-    key.addValue(pipelineDesc.RTVFormats[0]);
+    key.addValue(pipelineDesc.NumRenderTargets);
+    for (UINT i = 0; i < pipelineDesc.NumRenderTargets; ++i)
+    {
+        key.addValue(pipelineDesc.RTVFormats[i]);
+    }
     key.addValue(pipelineDesc.DSVFormat);
     key.addValue(pipelineDesc.RasterizerState.CullMode);
     key.addValue(pipelineDesc.DepthStencilState.DepthWriteMask);
@@ -791,7 +805,7 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
         meshDesc.DepthStencilState = pipelineDesc.DepthStencilState;
         meshDesc.PrimitiveTopologyType = pipelineDesc.PrimitiveTopologyType;
         meshDesc.NumRenderTargets = pipelineDesc.NumRenderTargets;
-        meshDesc.RTVFormats[0] = pipelineDesc.RTVFormats[0];
+        std::ranges::copy(pipelineDesc.RTVFormats, std::begin(meshDesc.RTVFormats));
         meshDesc.DSVFormat = pipelineDesc.DSVFormat;
         meshDesc.SampleDesc = pipelineDesc.SampleDesc;
         CD3DX12_PIPELINE_MESH_STATE_STREAM stream{meshDesc};

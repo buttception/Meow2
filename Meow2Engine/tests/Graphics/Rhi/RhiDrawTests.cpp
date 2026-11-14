@@ -848,6 +848,59 @@ TEST_F(RhiStatesTest, LinesDrawOnePixelWide)
     EXPECT_EQ(m_device->validationErrorCount(), 0U);
 }
 
+TEST_F(RhiStatesTest, DrawsToFourTargets)
+{
+    const std::vector<std::byte> vertex = bytecode(c_statesShader, "vsMain");
+    const std::vector<std::byte> pixel = bytecode(c_statesShader, "psFourTargets");
+    Result<PipelineHandle> pipeline = m_device->createGraphicsPipeline(
+        {.vertexCode = vertex,
+         .pixelCode = pixel,
+         .pixelEntry = "psFourTargets",
+         .colorFormat = RhiFormat::Rgba8Unorm,
+         .extraColorFormats = {RhiFormat::Rgba8Unorm, RhiFormat::Rgba8Unorm, RhiFormat::Rgba8Unorm},
+         .name = "Four targets"});
+    ASSERT_TRUE(pipeline) << pipeline.error().message;
+    std::array<TextureHandle, 4> targets{};
+    std::array<BufferHandle, 4> readbacks{};
+    for (std::size_t i = 0; i < targets.size(); ++i)
+    {
+        targets[i] = makeTarget();
+        readbacks[i] = makeBuffer(sizeof(Pixel) * c_targetSize * c_targetSize, RhiMemory::Readback);
+    }
+    runFrame(
+        [&](IRhiCommandList& list)
+        {
+            for (const TextureHandle target : targets)
+            {
+                list.barrier(target, ResourceState::Undefined, ResourceState::ColorTarget);
+            }
+            list.beginRendering(RenderTargets{.color = targets[0],
+                                              .extraColors = {targets[1], targets[2], targets[3]},
+                                              .clearColor = Math::Color{.a = 1.0F}});
+            list.setPipeline(*pipeline);
+            list.draw(3);
+            list.endRendering();
+            for (std::size_t i = 0; i < targets.size(); ++i)
+            {
+                list.barrier(targets[i], ResourceState::ColorTarget, ResourceState::CopySource);
+                list.copyTextureToBuffer(targets[i], readbacks[i]);
+                list.barrier(readbacks[i], ResourceState::CopyTarget, ResourceState::HostRead);
+            }
+        });
+
+    constexpr std::array<std::array<int, 3>, 4> c_expected{{{255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255}}};
+    for (std::size_t i = 0; i < targets.size(); ++i)
+    {
+        const Pixel written = pixelAt(readbacks[i], c_targetSize / 2, c_targetSize / 2);
+        EXPECT_EQ(written.r, c_expected[i][0]) << "target " << i;
+        EXPECT_EQ(written.g, c_expected[i][1]) << "target " << i;
+        EXPECT_EQ(written.b, c_expected[i][2]) << "target " << i;
+        m_device->destroy(targets[i]);
+        m_device->destroy(readbacks[i]);
+    }
+    m_device->destroy(*pipeline);
+}
+
 /// @brief A PipelineLibrary over a private copy of the cooked triangle, so a test can damage it.
 class PipelineLibraryTest : public RhiDrawTest
 {

@@ -12,6 +12,7 @@
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Rhi/IRhiDevice.h>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -28,7 +29,9 @@ struct GraphicsPipelineRequest
     std::string taskEntry{};                              ///< Task (amplification) entry point; empty for none.
     std::string meshEntry{};                              ///< Mesh entry point; empty for a vertex pipeline.
     std::string pixelEntry = "psMain";                    ///< Pixel entry point.
-    Rhi::RhiFormat colorFormat = Rhi::RhiFormat::Unknown; ///< Format of the colour target.
+    Rhi::RhiFormat colorFormat = Rhi::RhiFormat::Unknown; ///< Format of the (first) colour target.
+    /// @brief More colour targets' formats (a G-buffer), as Rhi::GraphicsPipelineDesc::extraColorFormats.
+    std::array<Rhi::RhiFormat, Rhi::c_maxColorTargets - 1> extraColorFormats{};
     Rhi::RhiFormat depthFormat = Rhi::RhiFormat::Unknown; ///< Format of the depth target; Unknown for none.
     bool depthTest = true;                                ///< Whether depth is tested (when there's a depth target).
     bool depthWrite = true;                               ///< Whether drawing updates depth.

@@ -35,3 +35,22 @@ VertexOutput vsLine(uint vertexId : SV_VertexID)
     output.color = float4(packed & 255, (packed >> 8) & 255, (packed >> 16) & 255, packed >> 24) / 255.0;
     return output;
 }
+
+/// Four colour targets at once (a G-buffer's shape): red, green, blue and white, one to each.
+struct FourTargets
+{
+    float4 target0 : SV_Target0;
+    float4 target1 : SV_Target1;
+    float4 target2 : SV_Target2;
+    float4 target3 : SV_Target3;
+};
+
+FourTargets psFourTargets(VertexOutput input)
+{
+    FourTargets output;
+    output.target0 = float4(1.0, 0.0, 0.0, 1.0);
+    output.target1 = float4(0.0, 1.0, 0.0, 1.0);
+    output.target2 = float4(0.0, 0.0, 1.0, 1.0);
+    output.target3 = float4(1.0, 1.0, 1.0, 1.0);
+    return output;
+}
