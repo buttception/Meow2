@@ -166,19 +166,31 @@ void popMonoFont()
 
 void dashedPolyline(ImDrawList& draw, std::span<const ImVec2> points, ImU32 colour, float thickness, float dash)
 {
-    float travelled = 0.0F; // along the whole line, so the pattern runs on across corners
+    if (dash <= 0.0F)
+    {
+        for (std::size_t i = 1; i < points.size(); ++i)
+        {
+            draw.AddLine(points[i - 1], points[i], colour, thickness);
+        }
+        return;
+    }
+    // The pattern carries on across corners: whether a dash is being drawn, and how much of it (or of the gap) is left.
+    // Counting down what's left, rather than taking the distance travelled modulo the pattern, always moves on by a
+    // real amount: with fmod, float rounding near a dash's end could make each step vanishingly small, and the loop
+    // never ended.
+    dash = std::max(dash, 0.5F); // finer than half a pixel can't be seen, and would only take longer
+    bool on = true;
+    float left = dash;
     for (std::size_t i = 1; i < points.size(); ++i)
     {
         const ImVec2 a = points[i - 1];
         const ImVec2 b = points[i];
         const float length = std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
         float along = 0.0F;
-        while (along < length)
+        while (length - along > 1e-3F)
         {
-            // Where in the pattern this point is: 0..dash on, dash..2 dash off; step to the next change or the end.
-            const float phase = std::fmod(travelled, dash * 2.0F);
-            const float step = std::min(length - along, (phase < dash ? dash : dash * 2.0F) - phase);
-            if (phase < dash)
+            const float step = std::min(left, length - along);
+            if (on)
             {
                 const float t0 = along / length;
                 const float t1 = (along + step) / length;
@@ -186,7 +198,12 @@ void dashedPolyline(ImDrawList& draw, std::span<const ImVec2> points, ImU32 colo
                              ImVec2{a.x + (b.x - a.x) * t1, a.y + (b.y - a.y) * t1}, colour, thickness);
             }
             along += step;
-            travelled += step;
+            left -= step;
+            if (left <= 1e-3F)
+            {
+                on = !on;
+                left = dash;
+            }
         }
     }
 }

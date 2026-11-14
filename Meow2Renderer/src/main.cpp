@@ -7,6 +7,7 @@
 #include "DebugLines.h"
 #include "DepthPositionView.h"
 #include "FrameInspector.h"
+#include "FrameScreenshot.h"
 #include "ImGuiLayer.h"
 #include "InfiniteGrid.h"
 #include "RenderDebug.h"
@@ -300,6 +301,7 @@ int main(int argc, char** argv)
     std::unique_ptr<Meow2::RendererApp::InfiniteGrid> grid;              // the ground grid (renderer.grid)
     std::unique_ptr<Meow2::RendererApp::DebugLines> debugLines;          // the frozen camera's frustum
     std::unique_ptr<Meow2::RendererApp::DepthPositionView> positionView; // the Position debug view's texture
+    std::unique_ptr<Meow2::RendererApp::FrameScreenshot> screenshot;     // PrintScreen: the window's pixels to a PNG
     // The starting sun: renderer.sunElevation and renderer.sunDirection, in degrees (the Stats window's sliders).
     Meow2::RendererApp::SunControls sun;
     sun.elevationDegrees =
@@ -425,6 +427,7 @@ int main(int argc, char** argv)
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c1a-8000-80a4-7b19d2e6c05b"), c_sceneFormat, appLog);
             positionView = std::make_unique<Meow2::RendererApp::DepthPositionView>(
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c1d-8000-80a4-7b19d2e6c05e"), appLog);
+            screenshot = std::make_unique<Meow2::RendererApp::FrameScreenshot>(*renderDevice, appLog);
             renderDebug = std::make_unique<Meow2::RendererApp::RenderDebug>(
                 *pipelines, assetId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058"), colorFormat, appLog);
             // renderer.debugView (a MEOW2_DEBUG_VIEW_* number, -1 shaded) and renderer.wireframe (off, overlay, only):
@@ -505,11 +508,16 @@ int main(int argc, char** argv)
     // F10 switches between Vulkan and D3D12 at the next frame boundary. rhi.swapAtFrame switches once with no keyboard.
     std::optional<Meow2::Rhi::RhiBackend> pendingSwap;
     const Meow2::Events::Subscription onSwapKey = events.subscribe<Meow2::Input::KeyPressed>(
-        [&pendingSwap, &renderDevice, &inspector](const Meow2::Input::KeyPressed& e)
+        [&pendingSwap, &renderDevice, &inspector, &screenshot, &logDirectory, &clock](const Meow2::Input::KeyPressed& e)
         {
             if (e.key == Meow2::Input::Key::F9 && !e.repeat && inspector)
             {
                 inspector->requestCapture(); // the engine's frame capture (F11 is RenderDoc's)
+            }
+            if (e.key == Meow2::Input::Key::PrintScreen && !e.repeat && screenshot)
+            {
+                screenshot->request(logDirectory / "screenshots" /
+                                    std::format("Meow2Renderer_frame{}.png", clock.frameCount())); // the next frame
             }
             if (e.key == Meow2::Input::Key::F10 && !e.repeat && renderDevice)
             {
@@ -519,6 +527,10 @@ int main(int argc, char** argv)
             }
         });
     const std::int64_t swapAtFrame = config.getInt("rhi.swapAtFrame", 0);
+    // renderer.screenshotAtFrame: a screenshot of that frame (as PrintScreen), into renderer.screenshotPath, or by
+    // default <log folder>/screenshots/Meow2Renderer_frame<N>.png. For checks without the keyboard.
+    const std::int64_t screenshotAtFrame = config.getInt("renderer.screenshotAtFrame", 0);
+    const std::string screenshotPath = config.getString("renderer.screenshotPath", "");
     // renderer.captureAtFrame: the engine's frame capture (F9) once at that frame, for checks without the keyboard.
     const std::int64_t captureAtFrame = config.getInt("renderer.captureAtFrame", 0);
     // renderer.switchSceneAtFrame opens renderer.switchScene (a sample name) once at that frame, like picking it in the
@@ -603,10 +615,11 @@ int main(int argc, char** argv)
     };
     const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &view, &viewDeps, &ui, &sky, &sun, &jobs,
                               &depthTexture, &sceneColor, &toneMap, &renderDebug, &inspector, &grid, &debugLines,
-                              &positionView, &makeDepth, &renderDoc, &clock, &pendingSwap, &pendingScene, &sceneError,
-                              &scenesWindow, &consoleWindow, &settingsWindow, &config, &orbit, &fly, &cameraState,
-                              &startCamera, &cameraScene, &posedAnimation, &input, &frameTimes, &showUi, &sampleRoot,
-                              &switchScene, captureFrame, captureAtFrame, swapAtFrame, switchSceneAtFrame,
+                              &positionView, &screenshot, &logDirectory, &makeDepth, &renderDoc, &clock, &pendingSwap,
+                              &pendingScene, &sceneError, &scenesWindow, &consoleWindow, &settingsWindow, &config,
+                              &orbit, &fly, &cameraState, &startCamera, &cameraScene, &posedAnimation, &input,
+                              &frameTimes, &showUi, &sampleRoot, &switchScene, captureFrame, captureAtFrame,
+                              swapAtFrame, switchSceneAtFrame, screenshotAtFrame, screenshotPath,
                               cubeCount = static_cast<std::uint32_t>(
                                   std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000))]
     {
@@ -1010,10 +1023,27 @@ int main(int argc, char** argv)
         {
             ui->skipFrame();
         }
+        // A screenshot (PrintScreen, renderer.screenshotAtFrame): the swapchain's pixels once the UI is drawn, read
+        // back by the GPU; never a capture of the desktop.
+        const auto frame = static_cast<std::int64_t>(clock.frameCount());
+        if (screenshot && screenshotAtFrame > 0 && frame == screenshotAtFrame)
+        {
+            screenshot->request(screenshotPath.empty()
+                                    ? logDirectory / "screenshots" / std::format("Meow2Renderer_frame{}.png", frame)
+                                    : std::filesystem::path{screenshotPath});
+        }
+        if (screenshot && screenshot->requested() && !lists.empty())
+        {
+            screenshot->record(*swapchain, lists);
+        }
         if (const Meow2::Result<void> ended = device.endFrame(lists); !ended)
         {
             MEOW2_LOG_ERROR(appLog, "Can't finish a frame: {}", ended.error());
             return false;
+        }
+        if (screenshot)
+        {
+            screenshot->finish();
         }
         return true;
     };

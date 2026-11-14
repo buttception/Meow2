@@ -163,6 +163,7 @@ public:
     void copyBufferToTexture(BufferHandle source, TextureHandle target, std::uint32_t mipLevel,
                              std::uint64_t sourceOffset) override;
     void copyTextureToBuffer(TextureHandle source, BufferHandle target) override;
+    void copySwapchainToBuffer(IRhiSwapchain& swapchain, BufferHandle target) override;
 
 private:
     /// @brief Starts rendering and sets the viewport and scissor to the target's size.

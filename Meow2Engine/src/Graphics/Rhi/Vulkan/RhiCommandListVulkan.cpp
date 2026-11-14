@@ -388,4 +388,52 @@ void RhiCommandListVulkan::copyTextureToBuffer(TextureHandle source, BufferHandl
                                         .pRegions = &region};
     vkCmdCopyImageToBuffer2(m_commandBuffer, &copy);
 }
+
+void RhiCommandListVulkan::copySwapchainToBuffer(IRhiSwapchain& swapchain, BufferHandle target)
+{
+    MEOW2_ASSERT(!m_rendering, "Copies go between passes");
+    auto& source = static_cast<RhiSwapchainVulkan&>(swapchain);
+    MEOW2_ASSERT(source.isAcquired(), "acquire() must return true before reading a swapchain");
+    const VkImageSubresourceRange range{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1};
+    // Out of the colour-attachment layout for the copy, and back, so the frame goes on (and gets presented) as usual.
+    const auto transition = [&](VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkImageLayout oldLayout,
+                                VkPipelineStageFlags2 dstStage, VkAccessFlags2 dstAccess, VkImageLayout newLayout)
+    {
+        const VkImageMemoryBarrier2 barrier{.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                                            .srcStageMask = srcStage,
+                                            .srcAccessMask = srcAccess,
+                                            .dstStageMask = dstStage,
+                                            .dstAccessMask = dstAccess,
+                                            .oldLayout = oldLayout,
+                                            .newLayout = newLayout,
+                                            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                            .image = source.image(),
+                                            .subresourceRange = range};
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
+        vkCmdPipelineBarrier2(m_commandBuffer, &dependency);
+    };
+    transition(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+               VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
+               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    const VkExtent2D extent = source.extent();
+    const VkBufferImageCopy2 region{.sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
+                                    .bufferOffset = 0,
+                                    .bufferRowLength = 0, // tightly packed
+                                    .bufferImageHeight = 0,
+                                    .imageSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .layerCount = 1},
+                                    .imageExtent = {extent.width, extent.height, 1}};
+    const VkCopyImageToBufferInfo2 copy{.sType = VK_STRUCTURE_TYPE_COPY_IMAGE_TO_BUFFER_INFO_2,
+                                        .srcImage = source.image(),
+                                        .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                        .dstBuffer = m_device.buffer(target).buffer,
+                                        .regionCount = 1,
+                                        .pRegions = &region};
+    vkCmdCopyImageToBuffer2(m_commandBuffer, &copy);
+    transition(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+               VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+               VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+               VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+}
 } // namespace Meow2::Rhi

@@ -12,6 +12,8 @@ add_library(Meow2RendererCore STATIC
     src/DepthPositionView.h
     src/FrameInspector.cpp
     src/FrameInspector.h
+    src/FrameScreenshot.cpp
+    src/FrameScreenshot.h
     src/ImGuiLayer.cpp
     src/ImGuiLayer.h
     src/InfiniteGrid.cpp

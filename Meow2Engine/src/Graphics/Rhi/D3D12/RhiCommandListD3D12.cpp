@@ -373,4 +373,48 @@ void RhiCommandListD3D12::copyTextureToBuffer(TextureHandle source, BufferHandle
     const D3D12_TEXTURE_COPY_LOCATION to = bufferFootprint(texture, m_device.buffer(target).resource, 0, 0);
     m_list->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
 }
+
+void RhiCommandListD3D12::copySwapchainToBuffer(IRhiSwapchain& swapchain, BufferHandle target)
+{
+    MEOW2_ASSERT(!m_rendering, "Copies go between passes");
+    auto& source = static_cast<RhiSwapchainD3D12&>(swapchain);
+    MEOW2_ASSERT(source.isAcquired(), "acquire() must return true before reading a swapchain");
+    ID3D12Resource* image = source.image();
+    // Out of the render-target layout for the copy, and back, so the frame goes on (and gets presented) as usual.
+    const auto transition = [&](D3D12_BARRIER_SYNC syncBefore, D3D12_BARRIER_ACCESS accessBefore,
+                                D3D12_BARRIER_LAYOUT layoutBefore, D3D12_BARRIER_SYNC syncAfter,
+                                D3D12_BARRIER_ACCESS accessAfter, D3D12_BARRIER_LAYOUT layoutAfter)
+    {
+        const D3D12_TEXTURE_BARRIER barrier{.SyncBefore = syncBefore,
+                                            .SyncAfter = syncAfter,
+                                            .AccessBefore = accessBefore,
+                                            .AccessAfter = accessAfter,
+                                            .LayoutBefore = layoutBefore,
+                                            .LayoutAfter = layoutAfter,
+                                            .pResource = image,
+                                            .Subresources = {.IndexOrFirstMipLevel = 0xFFFFFFFF},
+                                            .Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE};
+        const D3D12_BARRIER_GROUP group{
+            .Type = D3D12_BARRIER_TYPE_TEXTURE, .NumBarriers = 1, .pTextureBarriers = &barrier};
+        m_list->Barrier(1, &group);
+    };
+    transition(D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_ACCESS_RENDER_TARGET, D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+               D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE, D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+    const D3D12_RESOURCE_DESC desc = image->GetDesc();
+    const auto width = static_cast<std::uint32_t>(desc.Width);
+    const D3D12_TEXTURE_COPY_LOCATION from{
+        .pResource = image, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = 0};
+    // Tightly packed rows, as on Vulkan (the unrestricted copy pitch, as in bufferFootprint()).
+    const D3D12_TEXTURE_COPY_LOCATION to{
+        .pResource = m_device.buffer(target).resource,
+        .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+        .PlacedFootprint = {
+            .Offset = 0,
+            .Footprint = {
+                .Format = desc.Format, .Width = width, .Height = desc.Height, .Depth = 1, .RowPitch = width * 4}}};
+    m_list->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
+    transition(D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE, D3D12_BARRIER_LAYOUT_COPY_SOURCE,
+               D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_ACCESS_RENDER_TARGET,
+               D3D12_BARRIER_LAYOUT_RENDER_TARGET);
+}
 } // namespace Meow2::Rhi

@@ -172,6 +172,15 @@ public:
     /// @param target Written to; in ResourceState::CopyTarget.
     virtual void copyTextureToBuffer(TextureHandle source, BufferHandle target) = 0;
 
+    /// @brief Copies a swapchain's current image to a buffer, tightly packed: what the window shows, UI included, for
+    ///        screenshots. 4 bytes per pixel in the swapchain's format (IRhiSwapchain::format(): BGRA8 sRGB on
+    ///        Windows).
+    /// @param swapchain The swapchain, acquired; its image stays ResourceState::ColorTarget before and after (the copy
+    ///                  moves it to a copy source and back).
+    /// @param target    Written to; in ResourceState::CopyTarget, at least width × height × 4 bytes.
+    /// @pre Between passes (not inside beginRendering()).
+    virtual void copySwapchainToBuffer(IRhiSwapchain& swapchain, BufferHandle target) = 0;
+
 protected:
     /// @brief Only backends create command lists.
     IRhiCommandList() = default;
