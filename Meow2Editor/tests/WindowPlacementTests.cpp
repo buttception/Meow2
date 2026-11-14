@@ -1,13 +1,13 @@
 /// @file
 /// @brief Tests for WindowPlacement: engine window settings applied to and read from a Qt main window.
 
-#include "EditorMainWindow.h"
 #include "QtTestApplication.h"
 #include "WindowPlacement.h"
 
 #include <Meow2/Core/Config/Config.h>
 
 #include <QGuiApplication>
+#include <QMainWindow>
 #include <QScreen>
 #include <string>
 
@@ -26,7 +26,7 @@ protected:
     }
 
     Meow2::Config::Config m_config;
-    Meow2::Editor::EditorMainWindow m_window;
+    QMainWindow m_window; // placement works on any top-level widget
 };
 } // namespace
 

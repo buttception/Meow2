@@ -1,8 +1,8 @@
 /// @file
 /// @brief Tests for ViewportWidget, the editor's native viewport.
 
-#include "EditorMainWindow.h"
-#include "QtTestApplication.h"
+#include "EditorTestRig.h"
+#include "ViewportWidget.h"
 
 #include <array>
 #include <QApplication>
@@ -10,12 +10,12 @@
 
 namespace
 {
-using ViewportTest = Meow2::Tests::QtTest;
+using ViewportTest = Meow2::Tests::EditorTest;
 } // namespace
 
 TEST_F(ViewportTest, IsTheCentralWidget)
 {
-    Meow2::Editor::EditorMainWindow window;
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
     EXPECT_EQ(window.centralWidget(), &window.viewport());
     EXPECT_TRUE(window.viewport().testAttribute(Qt::WA_NativeWindow));
     EXPECT_EQ(window.viewport().paintEngine(), nullptr) << "Qt never paints over the swapchain";
@@ -23,7 +23,7 @@ TEST_F(ViewportTest, IsTheCentralWidget)
 
 TEST_F(ViewportTest, NativeHandleOffscreen)
 {
-    Meow2::Editor::EditorMainWindow window;
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
     window.show();
     EXPECT_EQ(window.viewport().nativeHandle().type, Meow2::Platform::NativeWindowType::None)
         << "the offscreen platform has no OS window to present to";
@@ -39,8 +39,9 @@ TEST(ViewportWin32, NativeHandle)
     QApplication application{argumentCount, arguments.data()};
     ASSERT_EQ(QGuiApplication::platformName().toStdString(), "windows");
 
-    Meow2::Editor::EditorMainWindow window;
-    const Meow2::Platform::NativeWindowHandle handle = window.viewport().nativeHandle();
+    QWidget window; // the viewport inside a top-level window, as in the editor
+    auto* viewport = new Meow2::Editor::ViewportWidget(&window); // owned by the window
+    const Meow2::Platform::NativeWindowHandle handle = viewport->nativeHandle();
     EXPECT_EQ(handle.type, Meow2::Platform::NativeWindowType::Win32);
     EXPECT_NE(handle.window, nullptr);
     EXPECT_NE(handle.window, reinterpret_cast<void*>(window.winId())) << "the viewport has its own OS window";

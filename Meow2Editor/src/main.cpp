@@ -2,6 +2,10 @@
 /// @brief Meow2Editor entry point (composition root). Sets up logging, crash dumps and settings, prints its name and
 ///        the engine version (checked by the smoke tests) and runs the Qt main window.
 
+#include "Commands/EditorCommandRegistry.h"
+#include "Commands/EditorCommands.h"
+#include "Commands/EditorSettings.h"
+#include "Commands/UndoStack.h"
 #include "EditorMainWindow.h"
 #include "EditorTheme.h"
 #include "WindowPlacement.h"
@@ -12,6 +16,7 @@
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/AssertLogging.h>
+#include <Meow2/Core/Log/ConsoleBuffer.h>
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Memory/LeakCheck.h>
@@ -53,7 +58,9 @@ int main(int argc, char** argv)
     // Composition root (techstack.md §18): everything is created here, in dependency order.
     const std::filesystem::path logDirectory =
         Meow2::Log::logDirectoryFromArguments(argc, argv).value_or(Meow2::Log::defaultLogDirectory());
-    Meow2::Log::LogSystem logSystem{{.appName = "Editor", .directory = logDirectory}};
+    // The last log lines, for the console dock. Declared first: every logger writes into it until it's destroyed.
+    Meow2::Log::ConsoleBuffer consoleLines{2000};
+    Meow2::Log::LogSystem logSystem{{.appName = "Editor", .directory = logDirectory, .consoleBuffer = &consoleLines}};
     Meow2::Log::Logger engineLog = logSystem.createLogger("Engine");
     Meow2::Log::Logger appLog = logSystem.createLogger("Editor");
     const Meow2::Log::ScopedAssertLogging assertLogging{engineLog};
@@ -97,7 +104,19 @@ int main(int argc, char** argv)
     // The Meow2 theme (docs/wiki/Theme.md): black, red accent, Barlow from fonts/ next to the exe.
     Meow2::Editor::applyEditorTheme(application, Meow2::executablePath().parent_path() / "fonts", engineLog);
 
-    Meow2::Editor::EditorMainWindow window;
+    // Every editor action is a command (techstack.md §20): menus, toolbar, shortcuts and (later) MCP run them here.
+    Meow2::Editor::EditorSettings settings{config};
+    Meow2::Editor::UndoStack history{static_cast<std::size_t>(settings.intValue(Meow2::Editor::c_undoLimitKey))};
+    Meow2::Editor::EditorCommandRegistry commands{history, appLog};
+    if (const Meow2::Result<void> registered = Meow2::Editor::registerEditorCommands(
+            {.commands = commands, .history = history, .settings = settings, .console = consoleLines});
+        !registered)
+    {
+        MEOW2_LOG_ERROR(appLog, "Editor commands not registered: {}", registered.error());
+    }
+
+    Meow2::Editor::EditorMainWindow window{
+        {.commands = commands, .settings = settings, .console = consoleLines, .log = appLog}};
     Meow2::Editor::showWithDesc(
         window, Meow2::Platform::windowDescFromConfig(config, {.title = "Meow2Editor"}, engineLog), engineLog);
 
@@ -117,6 +136,7 @@ int main(int argc, char** argv)
                      [&]
                      {
                          loop.tick();
+                         window.tick(); // console lines, toolbar state
                          if (quitAfterFrames > 0 && static_cast<std::int64_t>(clock.frameCount()) >= quitAfterFrames)
                          {
                              QApplication::quit();

@@ -3,8 +3,15 @@ meow2_add_test_suite(
     TARGET    Meow2EditorTests
     MODULE    Editor
     SOURCES
+        ConsoleDockTests.cpp
+        EditorCommandRegistryTests.cpp
+        EditorCommandsTests.cpp
+        EditorTestRig.h
         EditorThemeTests.cpp
+        MainWindowTests.cpp
         QtTestApplication.h
+        SettingsDialogTests.cpp
+        UndoStackTests.cpp
         ViewportWidgetTests.cpp
         WindowPlacementTests.cpp
     LIBRARIES Meow2EditorCore)

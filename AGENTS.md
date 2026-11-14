@@ -99,7 +99,7 @@ The PR description must contain:
    - links to good references (official docs/specs) for further reading.
 5. **Files changed** — short list with one-line purpose each.
 6. **Tests** — the test table and the actual `ctest` output summary (passed/failed/not run + why).
-7. **Wiki / docs** — page(s) added/updated in `docs/wiki/`; feature status updated in `milestones.md`.
+7. **Wiki / docs** — page(s) added/updated in `docs/wiki/`; `milestones.md` updated as §4 says.
 8. **Follow-ups** — anything deliberately left out.
 
 Every PR also adds its line(s) to **`CHANGELOG.md`** under `[Unreleased]` (group `Added`/`Changed`/`Fixed`/…, ending with the PR number), written for someone reading the release notes.
@@ -171,7 +171,7 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
   The pages are written as user/developer docs: what the feature does, how to use it, and how it works.
   `docs/wiki/` is the source of truth. It is published to the GitHub wiki (`Meow2.wiki.git`) when the agent has repo access; otherwise the owner publishes it.
 - **techstack.md** — decisions and rules only. Update it when a stack decision changes, and add a Changelog line. What was built and how it works goes in the wiki page, not here: this file loads into every session, so it stays short. When picking up a module, start from the index in `docs/wiki/Home.md`.
-- **milestones.md** — the roadmap. Update a feature's status and issue/PR link in every PR.
+- **milestones.md** — the roadmap. **From M7 on, progress is tracked in GitHub issues** (one per PR, labelled `milestone:M<n>`, with the test cases), and milestones.md keeps only the map: a PR updates it when it completes one of the milestone's planned PRs (marked ✅ with its issue and PR) or changes the plan. M0–M6 keep their feature tables as a record.
 - **CHANGELOG.md** — user-facing changes per version ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format). Every PR adds to `[Unreleased]`; each release's notes come from it (§2.7).
 
 ## 5. Environments
@@ -221,3 +221,4 @@ Fix NEEDS CHANGES items before handing to the owner. The owner then approves and
 - 2026-11-06 — §2: fewer, larger PRs: one PR holds a group of related features instead of one small feature, because CI runs in full per PR; avoid long stacks (owner decision).
 - 2026-11-07 — §4: techstack.md keeps decisions and rules; implementation detail lives in the wiki, read on demand.
 - 2026-11-14 — §5: agent builds pinned to CCD1 of the owner's 9950X3D (affinity `FFFF0000`, 16 jobs, below-normal priority); CCD0 is the owner's (owner request).
+- 2026-11-14 — §4/§2.5: from M7 on, progress lives in GitHub issues; milestones.md keeps only the map and is updated when a planned PR completes or the plan changes (owner decision 2026-11-09, M7 PR 1).

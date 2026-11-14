@@ -34,10 +34,24 @@ endfunction()
 
 # Everything but main(), so the tests can use the same code.
 add_library(Meow2EditorCore STATIC
+    src/Commands/CommandSchema.cpp
+    src/Commands/CommandSchema.h
+    src/Commands/EditorCommandRegistry.cpp
+    src/Commands/EditorCommandRegistry.h
+    src/Commands/EditorCommands.cpp
+    src/Commands/EditorCommands.h
+    src/Commands/EditorSettings.cpp
+    src/Commands/EditorSettings.h
+    src/Commands/UndoStack.cpp
+    src/Commands/UndoStack.h
     src/EditorMainWindow.cpp
     src/EditorMainWindow.h
     src/EditorTheme.cpp
     src/EditorTheme.h
+    src/Panels/ConsoleDock.cpp
+    src/Panels/ConsoleDock.h
+    src/Panels/SettingsDialog.cpp
+    src/Panels/SettingsDialog.h
     src/ViewportWidget.cpp
     src/ViewportWidget.h
     src/WindowPlacement.cpp

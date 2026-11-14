@@ -42,7 +42,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Input (keys, mouse, gamepads, events, SDL sources) | [Input](Input.md) | ✅ M2 |
 | File system (virtual paths, mounts) | [FileSystem](FileSystem.md) | ✅ M2 |
 | Window (SDL3, settings in the config) | [Window](Window.md) | ✅ M2 |
-| Editor (Qt main window, viewport) | [Editor](Editor.md) | 🟨 M7 (main window only) |
+| Editor (Qt main window, viewport, commands and undo, console, settings) | [Editor](Editor.md) | 🟨 M7 (foundation) |
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |
 | Events (`EventBus`) | [Events](Events.md) | ✅ M1 |
 | IDs (128-bit, kind tag, lock-free generator) | [Ids](Ids.md) | ✅ M2 |
