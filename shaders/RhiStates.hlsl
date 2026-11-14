@@ -54,3 +54,8 @@ FourTargets psFourTargets(VertexOutput input)
     output.target3 = float4(1.0, 1.0, 1.0, 1.0);
     return output;
 }
+
+/// A pixel shader with no outputs: for depth-only pipelines (no colour target), which only write depth.
+void psDepthOnly(VertexOutput input)
+{
+}

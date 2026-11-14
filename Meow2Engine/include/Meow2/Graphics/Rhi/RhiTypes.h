@@ -262,7 +262,7 @@ struct GraphicsPipelineDesc
     std::string meshEntry = "msMain";           ///< Its entry point.
     std::span<const std::byte> pixelCode{};     ///< Pixel shader bytecode.
     std::string pixelEntry = "psMain";          ///< Its entry point.
-    RhiFormat colorFormat = RhiFormat::Unknown; ///< Format of the (first) colour target.
+    RhiFormat colorFormat = RhiFormat::Unknown; ///< Format of the (first) colour target; Unknown for none (depth only).
     /// @brief Formats of more colour targets drawn at once (a G-buffer), in order after the first; Unknown ends the
     ///        list. Every target gets the same blending.
     std::array<RhiFormat, c_maxColorTargets - 1> extraColorFormats{};

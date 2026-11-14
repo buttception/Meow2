@@ -149,7 +149,9 @@ void RhiCommandListVulkan::beginRendering(IRhiSwapchain& swapchain, std::optiona
 
 void RhiCommandListVulkan::beginRendering(const RenderTargets& targets)
 {
-    const TextureVulkan color = m_device.texture(targets.color);
+    MEOW2_ASSERT(targets.color.isSet() || targets.depth.isSet(), "A pass needs a colour or a depth target");
+    // Without a colour target (a depth-only pass: shadow maps), the size comes from the depth target.
+    const VkExtent2D extent = m_device.texture(targets.color.isSet() ? targets.color : targets.depth).extent;
     // The first target, then the extra ones up to the first unset handle (a G-buffer).
     std::array<VkRenderingAttachmentInfo, c_maxColorTargets> attachments{};
     std::uint32_t count = 0;
@@ -167,14 +169,17 @@ void RhiCommandListVulkan::beginRendering(const RenderTargets& targets)
             attachment.clearValue.color = {{clear.r, clear.g, clear.b, clear.a}};
         }
     };
-    add(targets.color);
-    for (const TextureHandle extra : targets.extraColors)
+    if (targets.color.isSet())
     {
-        if (!extra.isSet())
+        add(targets.color);
+        for (const TextureHandle extra : targets.extraColors)
         {
-            break;
+            if (!extra.isSet())
+            {
+                break;
+            }
+            add(extra);
         }
-        add(extra);
     }
     VkRenderingAttachmentInfo depth{};
     if (targets.depth.isSet())
@@ -186,7 +191,7 @@ void RhiCommandListVulkan::beginRendering(const RenderTargets& targets)
                  .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
         depth.clearValue.depthStencil = {.depth = targets.clearDepth.value_or(0.0F), .stencil = 0};
     }
-    startRendering({attachments.data(), count}, targets.depth.isSet() ? &depth : nullptr, color.extent);
+    startRendering({attachments.data(), count}, targets.depth.isSet() ? &depth : nullptr, extent);
 }
 
 void RhiCommandListVulkan::endRendering()

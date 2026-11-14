@@ -745,11 +745,12 @@ Result<PipelineHandle> RhiDeviceD3D12::createGraphicsPipeline(const GraphicsPipe
     pipelineDesc.PrimitiveTopologyType =
         lines ? D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE : D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     // The first colour target, then the extra ones up to the first Unknown (a G-buffer); each blends the same way.
-    pipelineDesc.NumRenderTargets = 1;
+    // No colour format: a depth-only pipeline (shadow maps), with no render targets at all.
+    pipelineDesc.NumRenderTargets = desc.colorFormat == RhiFormat::Unknown ? 0U : 1U;
     pipelineDesc.RTVFormats[0] = d3d12Format(desc.colorFormat);
     for (const RhiFormat extra : desc.extraColorFormats)
     {
-        if (extra == RhiFormat::Unknown)
+        if (pipelineDesc.NumRenderTargets == 0 || extra == RhiFormat::Unknown)
         {
             break;
         }
