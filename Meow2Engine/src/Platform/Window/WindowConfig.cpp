@@ -59,6 +59,8 @@ WindowDesc windowDescFromConfig(const Config::Config& config, const WindowDesc& 
     desc.x = readPosition(config, "window.x", defaults.x, log);
     desc.y = readPosition(config, "window.y", defaults.y, log);
     desc.maximized = config.getBool("window.maximized", defaults.maximized);
+    // Read only, never written back: it's for runs set up on the command line (tests, agents), not a user choice.
+    desc.focusable = config.getBool("window.focusable", defaults.focusable);
 
     const std::string_view defaultMode = defaults.mode == WindowMode::Fullscreen ? c_fullscreenName : c_windowedName;
     const std::string mode = config.getString("window.mode", defaultMode);

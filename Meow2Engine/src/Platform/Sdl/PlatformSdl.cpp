@@ -222,4 +222,27 @@ std::string_view Platform::videoDriver() const
 {
     return m_impl->videoDriver;
 }
+
+std::vector<DisplayInfo> Platform::displays() const
+{
+    std::vector<DisplayInfo> result;
+    int count = 0;
+    SDL_DisplayID* ids = SDL_GetDisplays(&count);
+    if (ids == nullptr)
+    {
+        return result;
+    }
+    const SDL_DisplayID primary = SDL_GetPrimaryDisplay();
+    for (int i = 0; i < count; ++i)
+    {
+        SDL_Rect usable{};
+        if (SDL_GetDisplayUsableBounds(ids[i], &usable))
+        {
+            result.push_back({.usable = {.x = usable.x, .y = usable.y, .width = usable.w, .height = usable.h},
+                              .primary = ids[i] == primary});
+        }
+    }
+    SDL_free(ids);
+    return result;
+}
 } // namespace Meow2::Platform

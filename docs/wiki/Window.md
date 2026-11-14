@@ -23,6 +23,7 @@ x = 200               # left/top edge; centred when missing or off every display
 y = 120
 maximized = false
 mode = "windowed"     # or "fullscreen" (borderless, desktop resolution)
+focusable = true      # false: shown without taking focus (tests, agents); read only, never saved
 
 [platform]
 videoDriver = ""      # empty = the OS default; "offscreen" = no visible window (tests, CI)
@@ -126,6 +127,8 @@ Meow2Renderer.exe --set platform.videoDriver=offscreen --set app.quitAfterFrames
 ```
 
 So the Linux CI job runs the same tests without X11 or Wayland. It still installs their development packages, because SDL's build needs them. A Windows-only test (`Platform.WindowWin32.NativeHandle`) opens a hidden real window and checks its `HWND`.
+
+**Tests that need a real window** (the RHI GPU tests: a swapchain needs one) open it without taking focus (`WindowDesc::focusable = false`, so SDL shows it with `SWP_NOACTIVATE`) and, when the PC has more than one display, on the first one that isn't primary (`Platform::displays()`, each display's usable area and which is primary). Whoever is using the PC keeps their keyboard focus and their main screen. The same works for any app run: `--set window.focusable=false --set window.x=<x> --set window.y=<y>` (a position on the second display).
 
 ## Limits (for now)
 
