@@ -144,7 +144,7 @@ The maths is in plain functions over plain structs (`updateOrbit`, `updateFly`, 
 
 **glTF cameras** look along their node's −Z with +X right. The importer mirrors X ([Gltf](Gltf.md#right-handed-to-left-handed)), so in the engine the node's −Z is still the view direction and its −X is right: `sceneCameraTransform` adds a half turn about the node's Y, which makes it an engine camera (+Z forward, +X right). The aspect ratio is the window's, not the file's; `zfar` is ignored for perspective cameras (infinite depth).
 
-**Animations** are posed on the `Scene`: each frame an animation is chosen, every node's `LocalTransform` is set from `Assets::animatedTransform` (its rest transform where nothing animates it), the hierarchy updates, and the instances are gathered again. That's a few microseconds for sample scenes; a real animation system (blending, skinning, only the animated nodes) is M12's.
+**Animations** are posed on the `Scene`: each frame an animation is chosen, every node's `LocalTransform` is set from `Assets::animatedTransform` (its rest transform where nothing animates it), the hierarchy updates, and the instances are gathered again. That's a few microseconds for sample scenes; a real animation system (blending, skinning, only the animated nodes) is M13's.
 
 ## Tests
 

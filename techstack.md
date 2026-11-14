@@ -79,6 +79,7 @@ Engine code is grouped by **subsystem**, then **module**, then (in `src/` only) 
 | `Graphics` | `Rhi`, `Shader`, `Renderer` | `Vulkan`, `D3D12` (Rhi), `Dxc` (Shader) |
 | `Assets` | files directly in `Assets/` (asset core), `Shader`, `Texture`, `Gltf` | — |
 | `Physics` | files directly in `Physics/` | one per library (`Box3D`, `Jolt`, `PhysX`; §14) |
+| `Audio` | files directly in `Audio/` (planned, M10) | one per library |
 | `GameUi` | files directly in `GameUi/` | — |
 | `Packaging` | files directly in `Packaging/` | — |
 
@@ -150,6 +151,7 @@ ctest --preset windows-msvc-debug -L unit
 | Physics | `PhysicsWorld`, `RigidBody`, `Shape`, `PhysicsDebugDraw` | **⚠ OPEN**: Box3D, Jolt or PhysX | selected at build time, or `None` (§14) |
 | GameUI | `UiContext`, widgets | in-house, drawn via Renderer | Used by `Meow2Player` |
 | Packaging | `GamePackager` | in-house | Editor export |
+| Audio | `AudioSystem`, `AudioSource`, `AudioListener` | **⚠ OPEN** (M10): miniaudio considered | selected at build time; mixing off the main thread, `MemTag::Audio` |
 
 **Interface policy — build-time selection everywhere, except the graphics API**
 
@@ -338,12 +340,12 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
   5. A switch that fails (no device, or an owner can't restore) goes back to the old backend, so the app keeps running.
   - Rule this implies: nothing above the RHI may cache backend-native handles or pointers. Only engine handles, which are re-bound after the swap.
   - It costs a hitch of seconds, not a seamless switch. That is fine for comparing backends in Meow2Renderer.
-- **Bindless and GPU-driven** (owner decision 2026-11-06): one global descriptor heap and one fixed binding layout (Vulkan: set 0, binding 0 the sampler heap, binding 1 the mutable resource heap, passed to DXC explicitly); shaders get indices through push constants and index `ResourceDescriptorHeap`. On Vulkan DXC emulates that with descriptor indexing and `VK_EXT_mutable_descriptor_type`; on D3D12 it needs SM 6.6. Drawing is indirect with a count buffer, vertices are pulled from buffers, culling runs in compute. Older GPUs and Android need a check before M13.
+- **Bindless and GPU-driven** (owner decision 2026-11-06): one global descriptor heap and one fixed binding layout (Vulkan: set 0, binding 0 the sampler heap, binding 1 the mutable resource heap, passed to DXC explicitly); shaders get indices through push constants and index `ResourceDescriptorHeap`. On Vulkan DXC emulates that with descriptor indexing and `VK_EXT_mutable_descriptor_type`; on D3D12 it needs SM 6.6. Drawing is indirect with a count buffer, vertices are pulled from buffers, culling runs in compute. Older GPUs and Android need a check before M14.
 - **Deferred shading** (owner request 2026-11-14): opaque surfaces go through a G-buffer (albedo RGBA8 sRGB, normal RGBA16F, material RGBA8, emissive RGBA16F) and one lighting pass that rebuilds positions from depth; forward stays as a setting, and both share one lighting function and must match the same golden images. Blended surfaces stay forward. Up to four colour targets per pass (`c_maxColorTargets`).
-- **GPU instance buffer** (owner request, M7): Unreal's GPU Scene model. A persistent instance buffer with stable slots; each frame only changed transforms go through the upload ring, and a compute scatter pass writes them before culling, so cost follows what moved, not the scene's size. Transforms are 3×4 with the previous frame's beside them; mesh and material indices sit in a separate, rarely changing buffer; the camera is subtracted on the GPU (so moving the camera changes no instance). Static or movable is inferred from components with a runtime safety net and an optional override (M12), and only matters for caches (shadows, ray tracing, baked data).
+- **GPU instance buffer** (owner request, M7): Unreal's GPU Scene model. A persistent instance buffer with stable slots; each frame only changed transforms go through the upload ring, and a compute scatter pass writes them before culling, so cost follows what moved, not the scene's size. Transforms are 3×4 with the previous frame's beside them; mesh and material indices sit in a separate, rarely changing buffer; the camera is subtracted on the GPU (so moving the camera changes no instance). Static or movable is inferred from components with a runtime safety net and an optional override (M13), and only matters for caches (shadows, ray tracing, baked data).
 - **Meshlets** (owner request, M6): meshes are optimised and split into meshlets (≤ 64 vertices, ≤ 124 triangles, with a sphere and a normal cone) by meshoptimizer at import. Where the GPU has mesh shaders (optional: Vulkan's `VK_EXT_mesh_shader`, D3D12's mesh shader tier 1), opaque surfaces are drawn through task shaders that cull meshlets by frustum and normal cone and mesh shaders that draw the rest; elsewhere, and for blended surfaces, the indirect path stays. Both draw the same image.
 - **Pipeline cache** and up-front pipeline creation: the driver compiles DXIL/SPIR-V to machine code for the exact GPU when a pipeline is created, so that result is cached on disk, once per GPU and driver version.
-- **Shadows** (owner request 2026-11-14, M6): the sun casts cascaded shadow maps (up to four, reversed Z, stable: a slice sphere and texel snapping), read by the shared lighting function with a normal-offset bias and PCF. Static casters are drawn into a cached map per cascade only when it goes stale (the cascade moved, the sun turned, a static instance changed); movable casters (`MEOW2_INSTANCE_MOVABLE`) are drawn every frame over a copy of it, so lighting reads one combined map. Until mobility is inferred from components (M12), the app marks what moves. Point and spot light shadows come with lights in the editor.
+- **Shadows** (owner request 2026-11-14, M6): the sun casts cascaded shadow maps (up to four, reversed Z, stable: a slice sphere and texel snapping), read by the shared lighting function with a normal-offset bias and PCF. Static casters are drawn into a cached map per cascade only when it goes stale (the cascade moved, the sun turned, a static instance changed); movable casters (`MEOW2_INSTANCE_MOVABLE`) are drawn every frame over a copy of it, so lighting reads one combined map. Until mobility is inferred from components (M13), the app marks what moves. Point and spot light shadows come with lights in the editor.
 - Resources are referenced by handles owned by the device (32-bit index + generation). **GPU resources don't get UUIDs** (§24): they exist only while the program runs, are recreated on every hot swap and are looked up every frame, so a 128-bit key would cost hashing for nothing. A resource may record the `AssetId` it was loaded from, for debugging and Tracy names.
 - **D3D12** (M5): one root signature (the push constants as root constants at b0, heaps indexed directly), **enhanced barriers** (the same stages, accesses and layouts as Vulkan's synchronization2, so `ResourceState` maps one to one), and buffer ↔ texture copies with tightly packed rows. A GPU without them is refused with a message, as on Vulkan. Shaders that write a buffer use a second heap slot (`bindlessStorageIndex`), because D3D12 keeps read and write views apart.
 - Debug: validation layers / D3D12 debug layer, object names, validation messages routed to the `RHI` logger.
@@ -545,7 +547,7 @@ Requirement: **anything a user can do in the editor, an AI agent can do through 
 
 | Part | Changes when | Who |
 |---|---|---|
-| MAJOR | stays **0** until the public API and the game package format are promised stable (M11, export, at the earliest). Under 0.x, any MINOR may break things. | owner decides |
+| MAJOR | stays **0** until the public API and the game package format are promised stable (M12, export, at the earliest). Under 0.x, any MINOR may break things. | owner decides |
 | MINOR | **once per milestone.** The PR that closes a milestone sets `0.<milestone+1>.0`: M0 → 0.1.0, M1 → 0.2.0, M2 → 0.3.0, … | the milestone-closing PR |
 | PATCH | **only for a fix to an already-tagged release**, e.g. a bug in `v0.2.0` shipped as 0.2.1 before the next milestone is done. Normal feature PRs never touch it. | a `fix/` PR on a release branch |
 
@@ -759,3 +761,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-14 — §11: deferred shading as the main opaque path (owner request, M6's last PR), forward kept as a setting; up to four colour targets per pass.
 - 2026-11-14 — §11: cascaded shadow maps for the sun, static casters cached and movable casters drawn every frame (owner request, M6's last PR); RHI depth-only passes.
 - 2026-11-14 — §10: quaternions stored, Euler shown; §11: GPU instance buffer with a scatter pass (M7), inferred mobility (M12); §20: `QJsonDocument` and cpp-httplib chosen; `.m2scene` is TOML (milestones.md M7).
+- 2026-11-14 — Roadmap: Audio is M10 (owner decision), later milestones renumbered (Game UI M11, Export M12, Advanced rendering M13, Platforms M14); §2/§3: an `Audio` subsystem, library open.

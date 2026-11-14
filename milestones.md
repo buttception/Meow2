@@ -68,7 +68,7 @@ Rough order: asserts → logging → crash dumps → config → clock → memory
 
 **Done when:** an app logs to file and console, writes a `.dmp` on a forced crash in every config, reports leaks by tag at exit, runs jobs on all cores visible in Tracy, and the ASan/UBSan/TSan CI jobs are green.
 
-**Released as `v0.2.1`.** `v0.2.0` was tagged on the merge of PR #79 (with the owner's go-ahead), but its release run stopped on a workflow bug after building the zip (#84), so the first GitHub Release is the patch `v0.2.1` from `release/0.2` (same engine). Crash dumps are Windows-only for now (Linux with M13). "Jobs visible in Tracy" needs the Tracy viewer, which the owner checks once by connecting it to a Debug build.
+**Released as `v0.2.1`.** `v0.2.0` was tagged on the merge of PR #79 (with the owner's go-ahead), but its release run stopped on a workflow bug after building the zip (#84), so the first GitHub Release is the patch `v0.2.1` from `release/0.2` (same engine). Crash dumps are Windows-only for now (Linux with M14). "Jobs visible in Tracy" needs the Tracy viewer, which the owner checks once by connecting it to a Debug build.
 
 ## M2 — Platform & scene foundation ✅
 **Goal:** a window on screen, a real game loop and input, shared by Renderer and Player (the editor feeds the same input system from Qt in M7), plus the IDs and the entity/component store everything after it builds on.
@@ -187,10 +187,10 @@ Planned as six PRs, each a group of related rows (AGENTS.md §2). New submodules
 
 **Released as `v0.6.0`** once PR #168 is merged and tagged (with the owner's go-ahead).
 
-**Not in M5:** mesh shaders and meshlets, ray tracing, HZB occlusion culling, HDR output, async compute (mesh shaders and meshlets in M6, the rest in M12).
+**Not in M5:** mesh shaders and meshlets, ray tracing, HZB occlusion culling, HDR output, async compute (mesh shaders and meshlets in M6, the rest in M13).
 
 ## M6 — glTF scenes and Meow2Renderer ✅
-**Goal:** open the Khronos glTF 2.0 sample scenes in Meow2Renderer through the same `Scene` the editor and player use, draw them with metallic-roughness PBR on both backends, catch regressions with golden images, and give Renderer its ImGui shell. The old M7 was merged in (owner decision 2026-11-07); scene files moved to M7, the Editor (owner decision 2026-11-09); the rest of advanced rendering is M12.
+**Goal:** open the Khronos glTF 2.0 sample scenes in Meow2Renderer through the same `Scene` the editor and player use, draw them with metallic-roughness PBR on both backends, catch regressions with golden images, and give Renderer its ImGui shell. The old M7 was merged in (owner decision 2026-11-07); scene files moved to M7, the Editor (owner decision 2026-11-09); the rest of advanced rendering is M13.
 **Depends on:** M5
 
 Planned as four PRs (PR 2, scene files, moved to M7), plus PRs 6, 7 and 8 for the owner's feedback on the debug tools, deferred shading and shadows. glTF is an import source, never the scene format: the engine's own `.m2scene` holds scenes (M7).
@@ -214,7 +214,7 @@ Planned as four PRs (PR 2, scene files, moved to M7), plus PRs 6, 7 and 8 for th
 | 4 | Rendering debug tools (owner request): the scene in HDR with a tone-map pass and separate opaque/sky/blended passes; a live render-graph view with a pass view; in-memory frame capture (F9); debug views, wireframe, overdraw, frozen culling; windows docked as tabs. Only in Renderer (and later the editor), never in games | §11 | ✅ | #190 / PR #191 |
 | 4 | Window sizes in logical units (follow display scaling), first-run size 80 % of the display (owner decision 2026-11-10) | §9 | ✅ | #190 / PR #191 |
 | 5 Verification, meshlets and close | **meshoptimizer** (submodule, owner-approved 2026-11-09): vertex cache and overdraw optimisation at import | §4 | ✅ | #192 / PR #193 |
-| 5 | **Meshlets** (owner request, pulled forward from M12): clusters from meshoptimizer, culled per cluster, drawn with mesh shaders where the GPU has them; the indirect path stays for the rest; tested on a glTF sample scene | §11 | ✅ | #192 / PR #193 |
+| 5 | **Meshlets** (owner request, pulled forward from M13): clusters from meshoptimizer, culled per cluster, drawn with mesh shaders where the GPU has them; the indirect path stays for the rest; tested on a glTF sample scene | §11 | ✅ | #192 / PR #193 |
 | 5 | Golden-image tests per backend (label `visual`), from fixed glTF cameras; new goldens only with the owner's sign-off | §13 | ✅ | #194 / PR #195 |
 | 5 | The 25 suggested scenes: test scenes first, then the showcase ones (DamagedHelmet the first goal) | §13 | ✅ | #194 / PR #195 |
 | 5 | Closing PR bumps the version to **0.7.0** | §21 | ✅ | #194 / PR #195 |
@@ -226,9 +226,9 @@ Planned as four PRs (PR 2, scene files, moved to M7), plus PRs 6, 7 and 8 for th
 
 **Done when:** the suggested scenes open in Renderer on both backends with validation clean and match their golden images; a meshlet-drawn sample scene matches the indirect path.
 
-**Released as `v0.7.0`** once PR #203, M6's last PR (owner decision 2026-11-14: shadows moved into M6), is merged and tagged on its merge commit (with the owner's go-ahead). The version was set to 0.7.0 by PR #195. Every suggested scene matches its reference screenshot except where the reference uses another view or environment; ABeautifulGame's glass (`KHR_materials_transmission`) draws opaque until M12.
+**Released as `v0.7.0`** once PR #203, M6's last PR (owner decision 2026-11-14: shadows moved into M6), is merged and tagged on its merge commit (with the owner's go-ahead). The version was set to 0.7.0 by PR #195. Every suggested scene matches its reference screenshot except where the reference uses another view or environment; ABeautifulGame's glass (`KHR_materials_transmission`) draws opaque until M13.
 
-**Not in M6** (M12): skinning, morph targets, Draco and meshopt compression, Basis Universal textures, `KHR_materials_*` extensions. Node animation is played in Renderer only, without an animation system.
+**Not in M6** (M13): skinning, morph targets, Draco and meshopt compression, Basis Universal textures, `KHR_materials_*` extensions. Node animation is played in Renderer only, without an animation system.
 
 ## M7 — Editor 🟨
 **Goal:** a Qt (≥ 6.8) editor with an editor and a game viewport, fully drivable by AI agents over MCP, saving scenes as mergeable, versioned `.m2scene` files (moved here from M6, owner decision 2026-11-09), with the Renderer's debug tools rebuilt in Qt.
@@ -254,7 +254,7 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
   - **Scene files** (§25): `.m2scene` in TOML (toml++ parses, our writer keeps the order), one text file per scene, entities sorted by `EntityId`, deterministic saving so git merges edits to different entities; a format version and one per component, up and down migrations, unknown components kept, renames through aliases; each app registers the components it knows and skips the rest (Renderer ignores scripts)
   - Components describe their fields once (field-descriptor registry): files, the inspector and MCP schemas all come from it
   - Rotations: quaternions stored and used everywhere; the inspector shows Euler angles and keeps the ones the user typed as a display hint, so values don't jump between equivalent angles
-  - Transform mobility field reserved (`Auto`, `Static`, `Movable`; inferred from components in M8/M12), so files need no migration later
+  - Transform mobility field reserved (`Auto`, `Static`, `Movable`; inferred from components in M8/M13), so files need no migration later
   - A project folder (mounted through the VFS) and an asset browser dock on the `.meta` `AssetId`s, scene files first: double-click opens one; new, open, save, save-as, recent files, unsaved-changes marker and prompt
   - glTF import writes assets with `.meta` sidecars and a prefab, so re-importing keeps edits (and textures are cooked at import)
   - Scene environment (sun, sky, exposure) saved with the scene
@@ -293,21 +293,31 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - Hot reload; errors with file and line in the console
 - Editor: attach, edit and reload scripts; MCP commands for them
 
-## M10 — Game UI ⬜
+## M10 — Audio ⬜
+**Goal:** sound in games: music, effects and 3D sound sources on entities, played from scripts and placed in the editor (owner decision 2026-11-14: after scripting, before export).
+**Depends on:** M1 (jobs, memory), M2 (scene), M4 (assets), M7, M9
+
+- **⚠ OPEN:** the library, selected at build time behind an engine `AudioSystem` (techstack §3); miniaudio considered (one file, public domain or MIT-0, decoding, mixing and 3D on Windows, Linux and Android); SDL3 audio, OpenAL Soft, FMOD and Wwise the alternatives
+- Sound assets: imported and cooked through the asset core, with an `AssetId` and a `.meta` (streamed music, decoded effects)
+- Components: `AudioSource` and `AudioListener` (usually on the camera); 3D position from the world transform, attenuation, Doppler later
+- Mixing on its own thread or job, never in the frame; buses (music, effects, UI) with volume in the config; memory under `MemTag::Audio`
+- Script and event access (play, stop, fade); editor: place sources, preview sounds, as commands over MCP
+
+## M11 — Game UI ⬜
 **Goal:** the built-in UI used by exported games.
 **Depends on:** M5
 
 - Layout, text rendering, basic widgets, input focus
 
-## M11 — Export ⬜
+## M12 — Export ⬜
 **Goal:** the editor produces a standalone game.
-**Depends on:** M7, M9, M10
+**Depends on:** M7, M9, M10, M11
 
-- Package format + cooker
+- Package format + cooker (scenes, meshes, textures, shaders, sounds)
 - `Meow2Player` mounts the package and runs the start scene
 - Editor export command
 
-## M12 — Advanced rendering ⬜
+## M13 — Advanced rendering ⬜
 **Goal:** what comes after PBR, once the editor is up (owner decision 2026-11-07).
 **Depends on:** M6, M7
 
@@ -318,7 +328,7 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - `KHR_materials_*` extensions (clearcoat, transmission, sheen, …)
 - HZB occlusion culling, HDR output, async compute, ray tracing (PIX and Nsight for the ray-tracing pipeline)
 
-## M13 — Platforms ⬜
+## M14 — Platforms ⬜
 **Goal:** Linux and Android.
 **Depends on:** M5 (Vulkan)
 
@@ -350,3 +360,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-14 — Owner decisions: deferred shading (#198 / PR #199) is M6's last PR instead, with translucent Renderer windows; `v0.7.0` is tagged on its merge.
 - 2026-11-14 — Owner decision: cascaded shadow maps (#202 / PR #203) join M6 as its last PR; `v0.7.0` is tagged on its merge.
 - 2026-11-14 — M7 planned as six PRs with the owner's decisions (JSON, HTTP, TOML scenes, field descriptors, Qt debug tools, two viewports, gizmos, framebuffer picking, an Unreal-style GPU instance buffer); M12 gains inferred mobility and more shadow work.
+- 2026-11-14 — Owner decision: Audio is M10, after Scripting; Game UI, Export, Advanced rendering and Platforms renumbered M11–M14.

@@ -116,7 +116,7 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
     }
     // What the file's animations move casts into the sun's shadow every frame; the rest is cached. A node moves if a
     // channel drives it or any of its parents (parents come first, so one pass settles it). The editor will infer this
-    // from components instead (M12).
+    // from components instead (M13).
     std::vector<bool> movable(model->nodes.size(), false);
     for (const Assets::ImportedAnimation& animation : model->animations)
     {

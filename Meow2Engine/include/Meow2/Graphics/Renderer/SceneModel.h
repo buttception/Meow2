@@ -32,7 +32,7 @@ struct MeshRenderer
     AssetId mesh{}; ///< Which mesh; looked up in RenderMeshes.
     bool movable =
         false; ///< Moves at runtime (animated): casts into the sun's shadow every frame rather than into
-               ///< the cached map of static casters (MEOW2_INSTANCE_MOVABLE). Until the editor infers it (M12).
+               ///< the cached map of static casters (MEOW2_INSTANCE_MOVABLE). Until the editor infers it (M13).
 };
 
 /// @brief One part of a mesh on the GPU: a GpuScene mesh and the material it's drawn with. Plain data.
