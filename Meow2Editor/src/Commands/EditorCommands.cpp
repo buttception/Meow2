@@ -137,23 +137,25 @@ Result<void> addHistory(const EditorCommandsDeps& deps)
 Result<void> addLog(const EditorCommandsDeps& deps)
 {
     const Log::ConsoleBuffer& console = deps.console;
-    QJsonObject levels = propertySchema(u"array"_s, u"Only these levels; all if left out."_s);
-    levels.insert(u"items", QJsonObject{{u"type"_s, u"string"_s}, {u"enum"_s, levelNameArray()}});
-    QJsonObject since = propertySchema(u"integer"_s, u"The first sequence to return: 0, or `next` of the last call."_s);
-    since.insert(u"minimum", 0);
-    QJsonObject limit = propertySchema(u"integer"_s, u"The most lines to return (the newest); 200 if left out."_s);
-    limit.insert(u"minimum", 1);
-    limit.insert(u"maximum", static_cast<double>(c_maxLogLines));
+    QJsonObject levelsSchema = propertySchema(u"array"_s, u"Only these levels; all if left out."_s);
+    levelsSchema.insert(u"items", QJsonObject{{u"type"_s, u"string"_s}, {u"enum"_s, levelNameArray()}});
+    QJsonObject sinceSchema =
+        propertySchema(u"integer"_s, u"The first sequence to return: 0, or `next` of the last call."_s);
+    sinceSchema.insert(u"minimum", 0);
+    QJsonObject limitSchema =
+        propertySchema(u"integer"_s, u"The most lines to return (the newest); 200 if left out."_s);
+    limitSchema.insert(u"minimum", 1);
+    limitSchema.insert(u"maximum", static_cast<double>(c_maxLogLines));
     return deps.commands.add(
         {.name = u"log.lines"_s,
          .description = u"Recent log lines, oldest first, with the sequence to pass as `since` next time."_s,
          .kind = CommandKind::Query,
          .parameters = objectSchema(
-             {{.name = u"since"_s, .schema = since},
-              {.name = u"levels"_s, .schema = levels},
+             {{.name = u"since"_s, .schema = sinceSchema},
+              {.name = u"levels"_s, .schema = levelsSchema},
               {.name = u"text"_s,
                .schema = propertySchema(u"string"_s, u"Only lines whose message or logger contain it (any case)."_s)},
-              {.name = u"limit"_s, .schema = limit}})},
+              {.name = u"limit"_s, .schema = limitSchema}})},
         [&console](const QJsonObject& parameters) -> Result<CommandOutcome>
         {
             std::vector<Log::LogLine> lines;

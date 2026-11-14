@@ -43,7 +43,7 @@ TEST_F(EditorCommandsTest, SettingsSetValidatesAndSaves)
     const Meow2::Result<QJsonValue> unknown = setSetting(m_commands, u"editor.colour"_s, 1);
     ASSERT_FALSE(unknown);
     EXPECT_EQ(unknown.error().code, Meow2::ErrorCode::NotFound);
-    for (const QJsonValue bad : {QJsonValue{999}, QJsonValue{1.5}, QJsonValue{u"4"_s}})
+    for (const QJsonValue& bad : {QJsonValue{999}, QJsonValue{1.5}, QJsonValue{u"4"_s}})
     {
         const Meow2::Result<QJsonValue> refused = setSetting(m_commands, u"jobs.threadCount"_s, bad);
         ASSERT_FALSE(refused);
