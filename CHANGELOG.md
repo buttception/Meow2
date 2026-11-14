@@ -8,6 +8,10 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+- `MEOW2_MSVC_MP`: compile with MSVC's `/MP` in Visual Studio solutions, so each project's files build in parallel (off by default) (#207).
+- The Windows CI and release builds can be kept on some of the PC's processors: set `MEOW2_CPU_AFFINITY` (a hex mask, e.g. `FFFF0000`) in the runner's `.env` file (#207).
+
 ### Changed
 - The roadmap: M7, the Editor, is planned in six steps (commands and undo, an editor and a game viewport with a faster GPU scene, scene files and an asset browser, gizmos and picking, the Renderer's debug tools in Qt, MCP for AI agents), M13 gains inferred static or movable objects, and Audio becomes M10, after Scripting; Game UI, Export, Advanced rendering and Platforms move to M11–M14 (#201).
 

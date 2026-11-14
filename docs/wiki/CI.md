@@ -119,6 +119,30 @@ Configure downloads DXC and the Agility SDK ([Building → Downloads](Building.m
 
 GitHub-hosted Linux jobs start from a fresh machine, so they rely on the retries alone.
 
+## CPU pinning
+
+The owner's PC has a Ryzen 9 9950X3D: two CCDs of 8 cores. CCD0 (logical processors 0–15) has the 96 MB V-Cache and is kept for the owner's own work; builds go to CCD1 (16–31). The Windows steps of `ci.yml` and `release.yml` read one optional variable:
+
+| Variable | Example | Effect |
+|---|---|---|
+| `MEOW2_CPU_AFFINITY` | `FFFF0000` | The build and tests run through `start "" /b /wait /belownormal /affinity <mask>`: only on the processors the hex mask names, at below-normal priority. Every process the build starts (ninja, `cl.exe`, the linker, ctest, the tests) inherits both. Unset, the step runs as before |
+| `CMAKE_BUILD_PARALLEL_LEVEL` | `16` | Ninja's job count; match it to the mask (16 logical processors) |
+| `CTEST_PARALLEL_LEVEL` | `16` | How many tests ctest runs at once |
+
+**Setting them (once, by the owner):** the runner reads a `.env` file in its own folder (`C:ctions-runner.env`) when it starts and gives every job those variables. One `NAME=value` per line, no quotes:
+
+```
+MEOW2_CPU_AFFINITY=FFFF0000
+CMAKE_BUILD_PARALLEL_LEVEL=16
+CTEST_PARALLEL_LEVEL=16
+```
+
+Then restart the service (`Restart-Service "actions.runner.*"`, as administrator). The values live only on the PC, never in the repository, so a fork or a GitHub-hosted runner can't set or see them, and changing the CPU means editing one file. The job log shows `Build pinned to CPU affinity mask FFFF0000` when it's on.
+
+**Why in the step, not on the service:** Windows has no affinity setting for a service. A startup script could set it on the running `Runner.Listener`, but the runner restarts and updates itself, and the setting would quietly be lost. `start /affinity` in the step pins every build, every time, with Windows' own tool.
+
+**Checking it:** while a job builds, `Get-Process cl | Select-Object Id, ProcessorAffinity` (as the runner's account or an administrator) shows `4294901760` (0xFFFF0000) for each compiler.
+
 ## How the Windows job finds Visual Studio
 
 The step runs as a **batch (`cmd`) script**: `vswhere.exe` (always installed with Visual Studio) finds the newest VS 2022 with the x64 C++ tools, and `vcvars64.bat` loads its developer environment (`cl`, `cmake`, `ninja` on PATH), exactly like a *Developer Command Prompt for VS 2022*. Then it runs `cmake --workflow --preset windows-msvc-<config>`.
