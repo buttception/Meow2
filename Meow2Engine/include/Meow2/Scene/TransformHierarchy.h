@@ -33,12 +33,22 @@ class JobSystem;
 
 namespace Meow2::Scene
 {
+/// @brief Whether an entity moves at runtime, for caches that treat static things differently (cached shadows, later
+///        ray-tracing structures and baked data). Saved in scene files now; inferred from components later (M13).
+enum class Mobility : std::uint8_t
+{
+    Auto,    ///< Decided by the engine (today: static unless something marks it movable).
+    Static,  ///< Never moves while the game runs; caches may keep it.
+    Movable, ///< May move every frame.
+};
+
 /// @brief An entity's transform relative to its parent (or the world, for a root). Plain data.
 ///
 /// Write it through TransformHierarchy::setLocal(), or write it directly and call TransformHierarchy::markDirty().
 struct LocalTransform
 {
-    Math::Transform value; ///< Position, rotation and scale relative to the parent.
+    Math::Transform value;              ///< Position, rotation and scale relative to the parent.
+    Mobility mobility = Mobility::Auto; ///< Whether it moves at runtime (reserved: not used by the renderer yet).
 };
 
 /// @brief An entity's transform in the world: the product of its local transform and all its ancestors'. Plain data.
@@ -108,6 +118,11 @@ public:
     /// @param local  Its transform relative to the parent (or the world).
     /// @param parent The parent, or `entt::null` for a root. Must have a transform (asserted).
     void add(entt::entity entity, const Math::Transform& local = {}, entt::entity parent = entt::null);
+
+    /// @brief Takes in an entity that already has a LocalTransform (and maybe a Parent), such as one loaded from a
+    ///        scene file: gives it the world transforms and state the hierarchy keeps, so update() places it.
+    /// @param entity The entity; must have a LocalTransform (asserted). Calling it again resets its world transform.
+    void attach(entt::entity entity);
 
     /// @brief Sets an entity's local transform and marks it dirty.
     /// @param entity The entity (with a transform).

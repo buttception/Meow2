@@ -308,6 +308,8 @@ protected:
             SceneView::openModel({.device = *m_render,
                                   .pipelines = *m_pipelines,
                                   .files = m_files,
+                                  .assets = m_assets,
+                                  .components = m_components,
                                   .ids = m_ids,
                                   .jobs = m_jobs,
                                   .log = m_log,
@@ -442,6 +444,14 @@ protected:
     UuidGenerator m_ids;
     Assets::AssetManager m_assets;
     Jobs::JobSystem m_jobs;
+    /// @brief What scene files save: the engine's and the renderer's components.
+    Scene::ComponentRegistry m_components = []
+    {
+        Scene::ComponentRegistry registry;
+        Scene::registerSceneComponents(registry);
+        Renderer::registerRenderComponents(registry);
+        return registry;
+    }();
     std::unique_ptr<Renderer::RenderDevice> m_render;
     std::unique_ptr<Renderer::PipelineLibrary> m_pipelines;
     std::unique_ptr<Renderer::SkyAtmosphere> m_sky; ///< Before the view, which refers to it.

@@ -12,6 +12,7 @@ target_sources(Meow2Engine
         src/Assets/Gltf/GltfAnimation.cpp
         src/Assets/Gltf/GltfImporter.cpp
         src/Assets/LibraryMemory.h
+        src/Assets/SceneFile.cpp
         src/Assets/Shader/ShaderAsset.cpp
         src/Assets/Shader/ShaderMeta.cpp
         src/Assets/Texture/BlockCompression.h
@@ -73,6 +74,8 @@ target_sources(Meow2Engine
         src/Platform/Window/Sdl/WindowSdl.cpp
         src/Platform/Window/WindowConfig.cpp
         src/Scene/Camera.cpp
+        src/Scene/ComponentRegistry.cpp
+        src/Scene/Environment.cpp
         src/Scene/Scene.cpp
         src/Scene/TransformHierarchy.cpp
     PUBLIC
@@ -85,6 +88,7 @@ target_sources(Meow2Engine
         FILES
             include/Meow2/Assets/AssetManager.h
             include/Meow2/Assets/Gltf/GltfImporter.h
+            include/Meow2/Assets/SceneFile.h
             include/Meow2/Assets/Shader/ShaderAsset.h
             include/Meow2/Assets/Shader/ShaderCooker.h
             include/Meow2/Assets/Shader/ShaderHotReload.h
@@ -168,6 +172,8 @@ target_sources(Meow2Engine
             include/Meow2/Platform/Window/WindowConfig.h
             include/Meow2/Platform/Window/WindowEvents.h
             include/Meow2/Scene/Camera.h
+            include/Meow2/Scene/ComponentRegistry.h
+            include/Meow2/Scene/Environment.h
             include/Meow2/Scene/Scene.h
             include/Meow2/Scene/TransformHierarchy.h
             "${meow2GeneratedDir}/Meow2/Core/Version.h")

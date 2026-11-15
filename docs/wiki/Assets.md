@@ -38,10 +38,11 @@ assets.reload<Texture>(*id);                                  // every handle se
 - **Copied `.meta` files are errors:** two files with one ID would make references ambiguous, so `scan()` returns `AlreadyExists`.
 - **Threads:** any thread may load. Nothing is locked during file reads. Two threads loading one asset may both build it, and the first to finish wins.
 - **Memory:** loads run under `MemTag::Assets`.
+- **Parts with IDs of their own:** a model's meshes get stable IDs listed in its `.meta` (`meshes = [...]`): `meshIds(model, count)` makes the missing ones once and returns the same ones from then on, and `findSubAsset(meshId)` says which model and mesh an ID names. Scene files refer to meshes by these IDs ([Scene files](SceneFiles.md#meshes-stable-ids-in-the-models-meta)).
 
 ## Tests
 
-`Assets.AssetManagerTest.*`: `.meta` creation, nested scans, moves keep IDs, bad and duplicate `.meta` files, loading once, reloads, and jobs loading at once.
+`Assets.AssetManagerTest.*`: `.meta` creation, nested scans, moves keep IDs, bad and duplicate `.meta` files, loading once, reloads, and jobs loading at once; `MeshIdsAreStable`: mesh IDs kept in the `.meta` and found again by a new scan.
 
 See also: techstack.md §13a, §24.
 

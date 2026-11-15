@@ -7,6 +7,7 @@ meow2_add_test_suite(
         DebugOverlaysTests.cpp
         FrameInspectorTests.cpp
         RendererUiTests.cpp
+        SceneFilesTests.cpp
         ShellWindowsTests.cpp
     LIBRARIES Meow2RendererCore)
 

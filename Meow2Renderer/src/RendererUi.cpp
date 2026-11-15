@@ -179,6 +179,24 @@ Math::Vec3 sunDirection(const SunControls& sun)
     return {std::cos(elevation) * std::sin(azimuth), std::sin(elevation), std::cos(elevation) * std::cos(azimuth)};
 }
 
+Scene::Environment environmentFrom(const SunControls& sun)
+{
+    Scene::Environment environment;
+    environment.sunElevation = sun.elevationDegrees;
+    environment.sunAzimuth = sun.azimuthDegrees;
+    environment.sunIntensity = sun.intensity;
+    environment.exposure = sun.exposure;
+    return environment;
+}
+
+void applyEnvironment(const Scene::Environment& environment, SunControls& sun)
+{
+    sun.elevationDegrees = environment.sunElevation;
+    sun.azimuthDegrees = environment.sunAzimuth;
+    sun.intensity = environment.sunIntensity;
+    sun.exposure = environment.exposure;
+}
+
 StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts, SunControls* sun)
 {
     StatsActions actions;
@@ -365,7 +383,8 @@ void dockWindows()
     ImGui::DockSpaceOverViewport(dockSpace, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
 }
 
-std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::string_view error, const UiFonts& fonts)
+std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::string_view error,
+                                               std::string_view status, const UiFonts& fonts)
 {
     std::optional<SceneRequest> request;
 
@@ -408,6 +427,19 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
         ImGui::TextWrapped("%.*s", static_cast<int>(error.size()), error.data());
         ImGui::PopStyleColor();
     }
+    if (!status.empty())
+    {
+        pushMonoFont(fonts);
+        ImGui::TextWrapped("%.*s", static_cast<int>(status.size()), status.data());
+        popMonoFont();
+    }
+    // The open model or scene file as .m2scene: next to the model, or over the scene file (the sun is saved too).
+    ImGui::BeginDisabled(current.empty());
+    if (ImGui::Button("SAVE AS .M2SCENE"))
+    {
+        request = SceneRequest{.file = {}, .save = true};
+    }
+    ImGui::EndDisabled();
 
     // The sample list, by group. A grey name isn't downloaded yet (FETCH below). A downloaded one has a button per
     // version beside it: .GLTF (JSON with separate buffers and images) or .GLB (one binary file).
@@ -444,7 +476,7 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
                 m_selected = i;
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && sample.downloaded)
                 {
-                    request = SceneRequest{.file = findSample(m_sampleRoot, sample.name)};
+                    request = SceneRequest{.file = findSample(m_sampleRoot, sample.name), .save = false};
                 }
             }
             if (!sample.downloaded)
@@ -460,7 +492,8 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
                     if (ImGui::SmallButton(text))
                     {
                         m_selected = i;
-                        request = SceneRequest{.file = findSampleFile(m_sampleRoot, sample.name, binary)};
+                        request =
+                            SceneRequest{.file = findSampleFile(m_sampleRoot, sample.name, binary), .save = false};
                     }
                     ImGui::EndDisabled();
                 };
@@ -503,7 +536,8 @@ std::optional<SceneRequest> ScenesWindow::draw(std::string_view current, std::st
     if ((ImGui::Button("OPEN##path") || entered) && m_path[0] != '\0')
     {
         // UTF-8 from ImGui: as a char8_t string, so non-ASCII paths work on Windows too.
-        request = SceneRequest{.file = std::filesystem::path{reinterpret_cast<const char8_t*>(m_path.data())}};
+        request =
+            SceneRequest{.file = std::filesystem::path{reinterpret_cast<const char8_t*>(m_path.data())}, .save = false};
     }
     pushMonoFont(fonts);
     ImGui::TextDisabled("%s", m_sampleRoot.string().c_str());
