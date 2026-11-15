@@ -29,6 +29,9 @@ class QMenu;
 namespace Meow2::Editor
 {
 class AssetsDock;
+class HierarchyDock;
+class InspectorDock;
+class SceneEditor;
 class ConsoleDock;
 class GameViewportDock;
 class QtInputSource;
@@ -54,6 +57,7 @@ struct EditorMainWindowDeps
     EditorWorld& world;                ///< The scene the viewports show.
     Input::InputSystem& input;         ///< Fed by the viewports' keyboard and mouse (QtInputSource).
     SceneDocument& document; ///< The project folder and the scene file: titles, recent files, the Assets dock.
+    SceneEditor& editor;     ///< The selection and the edit commands: the Hierarchy and Inspector docks.
     EditorRenderer* renderer = nullptr; ///< Draws the viewports; null without a GPU (offscreen platform, tests).
 };
 
@@ -127,6 +131,14 @@ public:
     /// @brief The Assets dock.
     /// @return It.
     [[nodiscard]] AssetsDock& assetsDock();
+
+    /// @brief The Hierarchy dock.
+    /// @return It.
+    [[nodiscard]] HierarchyDock& hierarchyDock();
+
+    /// @brief The Inspector dock.
+    /// @return It.
+    [[nodiscard]] InspectorDock& inspectorDock();
 
     /// @brief Starts a new scene, asking about unsaved changes first (File → New).
     /// @return True if a new scene was started.
@@ -214,6 +226,11 @@ private:
     QAction* m_consoleAction = nullptr;                  ///< Checked while the console dock is shown.
     std::uint64_t m_historyRevision = ~std::uint64_t{0}; ///< The history's revision the labels show.
     SceneDocument& m_document;
+    SceneEditor& m_editor;
+    HierarchyDock* m_hierarchyDock = nullptr;    ///< Owned by Qt.
+    InspectorDock* m_inspectorDock = nullptr;    ///< Owned by Qt.
+    QAction* m_hierarchyAction = nullptr;        ///< Checked while the Hierarchy dock is shown.
+    QAction* m_inspectorAction = nullptr;        ///< Checked while the Inspector dock is shown.
     AssetsDock* m_assetsDock = nullptr;          ///< Owned by Qt, never null after construction.
     QAction* m_assetsAction = nullptr;           ///< Checked while the Assets dock is shown.
     QMenu* m_recentMenu = nullptr;               ///< File → Open Recent.

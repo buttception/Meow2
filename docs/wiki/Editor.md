@@ -8,7 +8,7 @@ Meow2Editor is a **Qt** application: a main window with an **editor viewport** i
   - `Meow2Editor/src/Panels/`: `ConsoleDock`, `SettingsDialog`;
   - built as the `Meow2EditorCore` library plus the exe, so the tests use the same code.
 - Requirements: Qt ≥ 6.8 (Widgets), tested with 6.12.0. Installing Qt and pointing CMake at it is on the [Building → Qt](Building.md#qt) page.
-- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222).
+- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222); the Hierarchy and Inspector docks and the edit commands (#224).
 - **Window size:** in logical units like every app ([Window](Window.md#settings)): 80 % of the screen the first time, and shrunk to fit when a saved size is too big for the screen (Qt sizes follow display scaling, so 1920 × 1080 at 150 % would be 2880 × 1620 real pixels).
 
 ## Settings
@@ -75,7 +75,7 @@ commands.execute(u"scene.rename", {{u"entity"_s, id}, {u"name"_s, u"Lamp"_s}});
 
 ## Menus and toolbar
 
-- **File:** New scene, Open scene…, Open recent, Save, Save as…, Open project folder…, Import model… ([Project and scenes](#project-and-scenes)), Settings… (Ctrl+,). **Edit:** Undo (Ctrl+Z), Redo (Ctrl+Y). **Window:** Console, Game view, Assets.
+- **File:** New scene, Open scene…, Open recent, Save, Save as…, Open project folder…, Import model… ([Project and scenes](#project-and-scenes)), Settings… (Ctrl+,). **Edit:** Undo (Ctrl+Z), Redo (Ctrl+Y). **Window:** Console, Game view, Assets, Hierarchy, Inspector. **Edit** also has Create entity, Duplicate (Ctrl+D) and Delete (Del).
 - **Toolbar:** Save, Undo, Redo, Settings.
 - Each action is bound to a command name. `EditorMainWindow::tick()`, every frame, enables an action exactly when its command exists and is enabled. File actions that may ask first (unsaved changes, a file name) ask, then run their command. Undo and Redo name their step: "Undo Set position".
 
@@ -112,6 +112,7 @@ The editor works on a **project folder**: the scenes, models and their `.meta` f
 - **Recent scenes** (`editor.recentScenes`): the last 8 opened or saved, newest first; File → Open recent. They're paths in the project, so switching project clears them.
 - **The Assets dock** (Window → Assets; left side at first): the project's scene files and models in their folders. Double-click a scene to open it, a model to bring it into the scene.
 - **Importing a model** (`asset.importModel`): a `.gltf` or `.glb` of the project comes in under a root entity named after the file, with its nodes, transforms and meshes. Its meshes get stable IDs in its `.meta` the first time, so the scene saves and reopens with them. Undo removes what the import made; redo imports again.
+- **A model outside the project** (File → Import model… on a file elsewhere, such as the Khronos samples in `assets/gltf-sample-assets`) is first copied into `Models/<model name>/` with the rest of its folder (its `.bin` and textures), then imported; a second import reuses the copy. Only the window does this, for a file you picked: commands never read outside the project, so an agent works with what's in it.
 
 ### Project and scene commands
 
@@ -131,6 +132,48 @@ The editor works on a **project folder**: the scenes, models and their `.meta` f
 - **Paths are relative to the project** (`Levels/Main.m2scene`, any case of the extension). Absolute paths, drive letters and `..` are refused, so a command can't read or write outside the project (techstack §20).
 - **Nothing is dropped silently:** `scene.new`, `scene.open` and `project.open` fail while there are unsaved changes unless `discard` is true. The window asks the user and then passes it; an agent has to say so.
 - **Opening is all or nothing:** a file that can't be read leaves the current scene, its GPU meshes and its history as they were. Only once the file has been read is the GPU scene emptied (`EditorRenderer::resetScene()`, keeping every viewport's view) and refilled with the scene's models.
+
+## Hierarchy and Inspector
+
+- **Hierarchy dock** (left): the scene's entities as a tree, children under their parent. Click to select (Ctrl/Shift for several), F2 or a double-click to rename, drag an entity onto another to hang it under it (onto empty space: to the root), Create for a new entity (under the selected one). The tree follows the scene: a change made by a command, undo or an agent shows at the next frame.
+- **Inspector dock** (right, under the game view): the selected entity's name and components, an editor per field made from the component registry ([Scene files → Components describe their fields once](SceneFiles.md#components-describe-their-fields-once)):
+
+  | Field type | Editor |
+  |---|---|
+  | bool | check box |
+  | int, float | spin box |
+  | vec3, color | 3 or 4 spin boxes |
+  | quat (rotations) | Euler angles in degrees: X pitch, Y yaw, Z roll |
+  | enum | drop-down |
+  | string, asset, entity | text (an asset picker comes later) |
+
+  An edit counts when it's finished (Enter, or leaving the box), so typing a number records one step, not one per key. Each component has Remove; Add component lists those the entity doesn't have. Components kept from a scene file but unknown here are named at the bottom.
+- **Rotations:** stored as quaternions, shown as Euler angles. Several angle sets give the same rotation, so angles worked out from the quaternion could jump to another set; the inspector keeps the angles you typed while they still give the stored rotation, and shows those (techstack §10).
+- **Edit menu:** Create entity, Duplicate (Ctrl+D), Delete (Del), on the selection.
+- **Undo** brings back exactly what was there: a deleted entity returns with the same ID, components and children, so steps further back still find it.
+
+### Edit commands
+
+`SceneEditor` (`Meow2Editor/src/Editing/`) registers them; the docks, menus and (with PR 6) MCP all use them. Entities are named by their `EntityId` text.
+
+| Command | Kind | Parameters | What it does |
+|---|---|---|---|
+| `entity.create` | action | `name`, `parent` | A new entity with a transform, at the root or under `parent`; returns its `id` |
+| `entity.delete` | action | `id` | Deletes it and everything under it |
+| `entity.duplicate` | action | `id` | Copies it and everything under it with new IDs, under the same parent; returns the copy's `id` |
+| `entity.rename` | action | `id`, `name` | Renames it |
+| `entity.setParent` | action | `id`, `parent` ("" for the root) | Moves it; its local transform is kept. Making an entity its own ancestor is refused |
+| `component.add` | action | `id`, `component` | Adds a component with defaults (`Parent` goes through `entity.setParent`) |
+| `component.remove` | action | `id`, `component` | Removes it (a transform with a parent or children stays) |
+| `component.setField` | action | `id`, `component`, `field`, `value` | Sets one field: a number, true/false, text, or an array of 3 or 4 numbers |
+| `selection.set` | action, not recorded | `ids` | Selects entities |
+| `selection.get` | query | — | The selected IDs |
+| `scene.hierarchy` | query | — | The entities as a tree of `{id, name, children}` |
+| `entity.get` | query | `id` | Name, parent, every component's field values, unknown components |
+| `component.list` | query | — | Every component's fields with their types (and an enum's values): the schema for the inspector and agents |
+
+- **Snapshots:** deleting records each entity of the subtree as it was (`EntitySnapshot`: ID, name, every registered component's fields, kept unknown components); undo makes them again, parents first, and attaches them to the transform hierarchy. Duplicating uses the same snapshot with new IDs, and points references inside the copy (the children's parents) at the copy.
+- **The world's revision** (`EditorWorld::revision()`) goes up with every change; the docks rebuild only when it moved, so they cost nothing while nothing changes.
 
 ## Viewports
 
@@ -225,11 +268,13 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `EditorGpu.EditorRendererWindowTest.WindowViewportResizes`: a window viewport resized between frames (#216). `EditorGpu.EditorRendererTest.OpensASavedScene`: a scene with a model, saved and opened again, is drawn from an emptied GPU scene with only its model, in both viewports.
 - `Editor.SceneDocumentTest.*`: save and open round trip; unsaved changes need `discard`, saving marks clean, opening clears the history; paths outside the project refused; recent scenes (order, no repeats, at most 8, reopened at start); importing a model with stable mesh IDs, undo and redo.
 - `Editor.MainWindowTest.UnsavedChangesAsk`, `AssetsDockOpensScenes`: Save / Discard / Cancel before a new or opened scene, the `*` in the title; a double-click in the Assets dock opens a scene.
+- `Editor.SceneEditorTest.*`: create, delete and undo keep IDs, components and parents; duplicate copies the subtree with new IDs; rename and re-parent (cycles refused); add, remove and set fields with undo, wrong shapes refused; the queries. `Editor.SceneDocumentTest.ModelsOutsideTheProjectAreCopiedIn`.
+- `Editor.HierarchyDockTest.FollowsTheScene`, `Editor.InspectorDockTest.EditsIssueCommands`: the tree nests, selects, renames and re-parents through commands and follows changes; finished edits run `component.setField` once; Euler angles stay as typed.
 - `Smoke.Editor.Runs` and `Smoke.Editor.OpensWindow`: the app runs 3 frames offscreen and exits 0.
 
 ## Not yet
 
-- Scene hierarchy, inspector, selection and gizmos (M7 PR 4).
+- GPU picking in the viewport, the selection outline and gizmos (M7 PR 4, second half); an asset picker for mesh fields; editing several entities at once.
 - The MCP server (M7 PR 6).
 - Prefabs: a model as one asset whose instances keep their edits when it's re-imported; textures cooked into the project at import.
 - Renaming, moving and deleting assets in the Assets dock (each needs its `.meta` kept with it).

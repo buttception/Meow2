@@ -44,6 +44,8 @@ add_library(Meow2EditorCore STATIC
     src/Commands/EditorSettings.h
     src/Commands/UndoStack.cpp
     src/Commands/UndoStack.h
+    src/Editing/SceneEditor.cpp
+    src/Editing/SceneEditor.h
     src/EditorMainWindow.cpp
     src/EditorMainWindow.h
     src/EditorTheme.cpp
@@ -52,6 +54,10 @@ add_library(Meow2EditorCore STATIC
     src/Panels/AssetsDock.h
     src/Panels/ConsoleDock.cpp
     src/Panels/ConsoleDock.h
+    src/Panels/HierarchyDock.cpp
+    src/Panels/HierarchyDock.h
+    src/Panels/InspectorDock.cpp
+    src/Panels/InspectorDock.h
     src/Panels/SettingsDialog.cpp
     src/Panels/SettingsDialog.h
     src/Project/SceneDocument.cpp

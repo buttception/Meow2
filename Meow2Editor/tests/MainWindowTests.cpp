@@ -50,8 +50,8 @@ TEST_F(MainWindowTest, PanelsShowThroughCommands)
         EXPECT_FALSE(window.console().isVisible());
         ASSERT_TRUE(m_commands.execute(u"view.showPanel", {{u"panel"_s, u"settings"_s}, {u"visible"_s, true}}));
         EXPECT_TRUE(window.settingsDialog().isVisible());
-        EXPECT_FALSE(m_commands.execute(u"view.showPanel", {{u"panel"_s, u"hierarchy"_s}, {u"visible"_s, true}}))
-            << "not a panel (yet)";
+        EXPECT_FALSE(m_commands.execute(u"view.showPanel", {{u"panel"_s, u"timeline"_s}, {u"visible"_s, true}}))
+            << "not a panel";
 
         m_console.add(Meow2::Log::LogLevel::Info, "10:00:00.000", "Editor", "Hello");
         window.tick();

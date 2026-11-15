@@ -18,6 +18,7 @@
 #include <Meow2/Scene/Scene.h>
 #include <Meow2/Scene/TransformHierarchy.h>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -95,6 +96,27 @@ public:
     /// @param gpu The GPU scene; null to update the transforms only.
     void update(Renderer::GpuScene* gpu);
 
+    /// @brief A number that changes whenever the scene does (a new or opened scene, an import, an edit command), so
+    ///        panels rebuild only when there's something new to show.
+    /// @return The revision.
+    [[nodiscard]] std::uint64_t revision() const
+    {
+        return m_revision;
+    }
+
+    /// @brief A new entity ID from the editor's generator (for copies made from snapshots).
+    /// @return The ID.
+    [[nodiscard]] EntityId newEntityId()
+    {
+        return m_deps.ids.next<IdKind::Entity>();
+    }
+
+    /// @brief Says the scene changed (edit commands call it).
+    void markChanged()
+    {
+        ++m_revision;
+    }
+
     /// @brief The scene's Environment, if it has one.
     /// @return A copy, or nothing.
     [[nodiscard]] std::optional<Scene::Environment> environment() const;
@@ -139,5 +161,6 @@ private:
     Renderer::RenderMeshes m_meshes;                        ///< Mesh AssetId → GPU mesh and material.
     std::vector<Renderer::InstanceDesc> m_instances;        ///< Reused each update.
     Math::Sphere m_bounds{.center = {0.0F, 0.0F, 0.0F}, .radius = 5.0F};
+    std::uint64_t m_revision = 0; ///< revision().
 };
 } // namespace Meow2::Editor

@@ -37,6 +37,7 @@ void EditorWorld::adopt(Fresh fresh)
     m_meshes = {};
     m_instances.clear();
     m_bounds = {.center = {0.0F, 0.0F, 0.0F}, .radius = 5.0F};
+    ++m_revision;
 }
 
 Result<void> EditorWorld::buildDefaultScene(Renderer::GpuScene* gpu)
@@ -216,11 +217,13 @@ Result<std::vector<entt::entity>> EditorWorld::importModel(std::string_view sour
     std::vector<entt::entity> entities{root};
     const std::vector<entt::entity> nodes = Renderer::instantiateModel(*m_scene, *m_hierarchy, *model, *meshIds, root);
     entities.insert(entities.end(), nodes.begin(), nodes.end());
+    ++m_revision;
     return entities;
 }
 
 void EditorWorld::destroyEntities(std::span<const entt::entity> entities)
 {
+    ++m_revision;
     // Last first: nodes come after their parents, so children go before the entities they hang under.
     for (auto entity = entities.rbegin(); entity != entities.rend(); ++entity)
     {

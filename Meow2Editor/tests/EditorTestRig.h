@@ -9,6 +9,7 @@
 #include "Commands/EditorCommands.h"
 #include "Commands/EditorSettings.h"
 #include "Commands/UndoStack.h"
+#include "Editing/SceneEditor.h"
 #include "EditorMainWindow.h"
 #include "Project/SceneDocument.h"
 #include "QtTestApplication.h"
@@ -70,6 +71,7 @@ protected:
                 .world = m_world,
                 .input = m_input,
                 .document = *m_document,
+                .editor = m_sceneEditor,
                 .renderer = nullptr};
     }
 
@@ -109,6 +111,9 @@ protected:
     /// @brief Without a GPU: entities and cameras only.
     Editor::EditorWorld m_world{
         {.ids = m_ids, .jobs = m_jobs, .components = m_components, .assets = m_assets, .log = m_log}};
+    /// @brief The edit commands, as the editor makes them.
+    Editor::SceneEditor m_sceneEditor{
+        {.commands = m_commands, .world = m_world, .components = m_components, .log = m_log}};
     std::filesystem::path m_project;                   ///< The project folder (temporary, per test).
     std::unique_ptr<Editor::SceneDocument> m_document; ///< Made in the constructor, after the project is set.
 
