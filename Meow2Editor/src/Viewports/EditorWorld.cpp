@@ -61,7 +61,8 @@ Result<void> EditorWorld::buildDefaultScene(Renderer::GpuScene* gpu)
     {
         return Unexpected<Error>{ground.error()};
     }
-    static_cast<void>(spawn("Ground", {.position = {0.0F, -0.55F, 0.0F}, .scale = {12.0F, 0.1F, 12.0F}}, *ground));
+    static_cast<void>(
+        spawn("Ground", {.position = {0.0F, -0.55F, 0.0F}, .rotation = {}, .scale = {12.0F, 0.1F, 12.0F}}, *ground));
     constexpr std::array<Math::Color, 5> c_colors{Math::Color{0.9F, 0.15F, 0.2F, 1.0F},
                                                   {0.95F, 0.6F, 0.1F, 1.0F},
                                                   {0.2F, 0.75F, 0.3F, 1.0F},
@@ -75,7 +76,8 @@ Result<void> EditorWorld::buildDefaultScene(Renderer::GpuScene* gpu)
             return Unexpected<Error>{cube.error()};
         }
         const float x = (static_cast<float>(i) - 2.0F) * 2.0F;
-        static_cast<void>(spawn("Cube", {.position = {x, 0.0F, 0.0F}}, *cube));
+        static_cast<void>(
+            spawn("Cube", {.position = {x, 0.0F, 0.0F}, .rotation = {}, .scale = {1.0F, 1.0F, 1.0F}}, *cube));
     }
 
     // The game's main camera: 8 m back on -Z, a little up, looking at the cubes.
