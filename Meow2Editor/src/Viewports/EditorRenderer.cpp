@@ -24,7 +24,6 @@ AssetId shaderId(std::string_view text)
 
 constexpr Rhi::RhiFormat c_sceneFormat = Rhi::RhiFormat::Rgba16Float; ///< The scene's HDR colour.
 constexpr Math::Color c_clear{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
-constexpr Math::Vec3 c_sunDirection{0.4F, 0.8F, -0.6F}; ///< Behind the default camera (on -Z), lighting what it sees.
 } // namespace
 
 EditorRenderer::EditorRenderer(const EditorRendererDeps& deps, const EditorRendererDesc& desc)
@@ -61,25 +60,68 @@ Result<std::unique_ptr<EditorRenderer>> EditorRenderer::create(const EditorRende
         return Unexpected<Error>{sky.error()};
     }
     renderer->m_sky = std::move(*sky);
-    Result<std::unique_ptr<Renderer::GpuScene>> scene =
-        Renderer::GpuScene::create(*renderer->m_device, *renderer->m_pipelines,
-                                   {.shader = shaderId("01a1b5e2-3c12-8000-80a4-7b19d2e6c053"),
-                                    .deferredShader = shaderId("01a1b5e2-3c1c-8000-80a4-7b19d2e6c05d"),
-                                    .shadowShader = shaderId("01a1b5e2-3c1e-8000-80a4-7b19d2e6c05f"),
-                                    .instanceCapacity = desc.instanceCapacity,
-                                    .colorFormat = c_sceneFormat});
+    Result<std::unique_ptr<Renderer::GpuScene>> scene = renderer->makeScene();
     if (!scene)
     {
         return Unexpected<Error>{scene.error()};
     }
     renderer->m_scene = std::move(*scene);
-    renderer->m_scene->setSky(renderer->m_sky.get());
-    renderer->m_scene->setDeferred(true);
-    // 1024 per cascade: each view has its own maps (two maps a cascade), so two viewports at 2048 would take 256 MB.
-    renderer->m_scene->setShadows({.enabled = true, .cascades = {.count = 4, .resolution = 1024}});
-    renderer->m_scene->setLighting({.sunDirection = c_sunDirection});
     renderer->m_toneMapShader = shaderId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058");
     return renderer;
+}
+
+Result<std::unique_ptr<Renderer::GpuScene>> EditorRenderer::makeScene() const
+{
+    Result<std::unique_ptr<Renderer::GpuScene>> scene =
+        Renderer::GpuScene::create(*m_device, *m_pipelines,
+                                   {.shader = shaderId("01a1b5e2-3c12-8000-80a4-7b19d2e6c053"),
+                                    .deferredShader = shaderId("01a1b5e2-3c1c-8000-80a4-7b19d2e6c05d"),
+                                    .shadowShader = shaderId("01a1b5e2-3c1e-8000-80a4-7b19d2e6c05f"),
+                                    .instanceCapacity = m_desc.instanceCapacity,
+                                    .colorFormat = c_sceneFormat});
+    if (!scene)
+    {
+        return Unexpected<Error>{scene.error()};
+    }
+    (*scene)->setSky(m_sky.get());
+    (*scene)->setDeferred(true);
+    // 1024 per cascade: each view has its own maps (two maps a cascade), so two viewports at 2048 would take 256 MB.
+    (*scene)->setShadows({.enabled = true, .cascades = {.count = 4, .resolution = 1024}});
+    (*scene)->setLighting({.sunDirection = m_sunDirection, .sunIntensity = m_sunIntensity, .exposure = m_exposure});
+    return scene;
+}
+
+Result<void> EditorRenderer::resetScene()
+{
+    Result<std::unique_ptr<Renderer::GpuScene>> fresh = makeScene();
+    if (!fresh)
+    {
+        return Unexpected<Error>{fresh.error()};
+    }
+    // The old scene's buffers may still be in use by frames in flight; its destructor hands them to the device's
+    // deferred destruction. Views are per scene, so each viewport after the first gets a view in the new one.
+    m_scene = std::move(*fresh);
+    for (std::size_t i = 1; i < m_viewports.size(); ++i)
+    {
+        Result<Renderer::ViewId> view = m_scene->addView();
+        if (!view)
+        {
+            return Unexpected<Error>{view.error()};
+        }
+        m_viewports[i].view = *view;
+    }
+    return {};
+}
+
+void EditorRenderer::setEnvironment(const Scene::Environment& environment)
+{
+    m_sunDirection = Scene::sunDirection(environment);
+    m_sunIntensity = environment.sunIntensity;
+    m_exposure = environment.exposure;
+    m_scene->setLighting({.sunDirection = m_sunDirection,
+                          .sunColor = environment.sunColor,
+                          .sunIntensity = m_sunIntensity,
+                          .exposure = m_exposure});
 }
 
 EditorRenderer::~EditorRenderer()
@@ -334,7 +376,8 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
             // The sky's lookup tables depend only on the camera's altitude, so one update serves every view; each
             // view's own matrix turns them into its sky.
             m_sky->setView(slot,
-                           {.sunDirection = c_sunDirection,
+                           {.sunDirection = m_sunDirection,
+                            .sunIlluminance = {m_sunIntensity, m_sunIntensity, m_sunIntensity, 1.0F},
                             .cameraAltitudeKm = 0.05F + std::max(camera.transform.position.y, 0.0F) * 0.001F},
                            matrices.viewProjection);
             m_sky->addPasses(graph, slot);

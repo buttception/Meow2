@@ -92,6 +92,13 @@ void ViewportController::tick(float deltaSeconds)
 
     EditorRenderer* const renderer = m_deps.renderer;
     m_deps.world.update(renderer != nullptr ? &renderer->scene() : nullptr);
+    if (renderer != nullptr)
+    {
+        if (const std::optional<Scene::Environment> environment = m_deps.world.environment())
+        {
+            renderer->setEnvironment(*environment); // the scene's sun and exposure
+        }
+    }
     if (renderer == nullptr)
     {
         return;

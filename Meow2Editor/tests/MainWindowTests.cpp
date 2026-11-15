@@ -2,6 +2,7 @@
 /// @brief Tests for EditorMainWindow's menus, toolbar and panels.
 
 #include "EditorTestRig.h"
+#include "Panels/AssetsDock.h"
 #include "Panels/ConsoleDock.h"
 #include "Panels/SettingsDialog.h"
 #include "Viewports/GameViewportDock.h"
@@ -20,12 +21,9 @@ TEST_F(MainWindowTest, ActionsIssueCommands)
     Meow2::Editor::EditorMainWindow window{windowDeps()};
     QAction* undo = window.actionFor(u"edit.undo"_s);
     QAction* redo = window.actionFor(u"edit.redo"_s);
-    QAction* save = window.actionFor(u"scene.save"_s);
     ASSERT_NE(undo, nullptr);
     ASSERT_NE(redo, nullptr);
-    ASSERT_NE(save, nullptr);
     EXPECT_FALSE(undo->isEnabled()) << "nothing to undo";
-    EXPECT_FALSE(save->isEnabled()) << "scene.save doesn't exist until scenes do";
     EXPECT_EQ(undo->shortcut(), QKeySequence{QKeySequence::Undo});
 
     pushValueStep(0, 9);
@@ -39,13 +37,6 @@ TEST_F(MainWindowTest, ActionsIssueCommands)
     EXPECT_TRUE(redo->isEnabled());
     redo->trigger();
     EXPECT_EQ(m_value, 9);
-
-    // Save lights up as soon as the command exists: buttons follow the registry, not a hard-coded list.
-    ASSERT_TRUE(m_commands.add({.name = u"scene.save"_s},
-                               [](const QJsonObject&) -> Meow2::Result<Meow2::Editor::CommandOutcome>
-                               { return Meow2::Editor::CommandOutcome{}; }));
-    window.tick();
-    EXPECT_TRUE(save->isEnabled());
 }
 
 TEST_F(MainWindowTest, PanelsShowThroughCommands)
@@ -85,4 +76,53 @@ TEST_F(MainWindowTest, LayoutRoundTrips)
     again.show();
     EXPECT_FALSE(again.gameDock().isVisible()) << "hidden as it was left";
     EXPECT_TRUE(again.console().isVisible());
+}
+
+TEST_F(MainWindowTest, UnsavedChangesAsk)
+{
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    int asked = 0;
+    Meow2::Editor::UnsavedAnswer answer = Meow2::Editor::UnsavedAnswer::Cancel;
+    window.setUnsavedPrompt(
+        [&]
+        {
+            ++asked;
+            return answer;
+        });
+    window.setSaveAsPrompt([] { return u"Asked.m2scene"_s; });
+    window.tick();
+    EXPECT_TRUE(window.windowTitle().startsWith(u"Untitled — "_s)) << window.windowTitle().toStdString();
+    EXPECT_TRUE(window.newScene()) << "nothing unsaved: no question";
+    EXPECT_EQ(asked, 0);
+
+    pushValueStep(0, 1);
+    window.tick();
+    EXPECT_TRUE(window.windowTitle().startsWith(u"Untitled* — "_s)) << "a * while there are unsaved changes";
+    EXPECT_FALSE(window.newScene()) << "Cancel keeps the scene";
+    EXPECT_EQ(asked, 1);
+    EXPECT_TRUE(m_history.canUndo());
+
+    answer = Meow2::Editor::UnsavedAnswer::Save; // untitled: saving asks for a file first
+    EXPECT_TRUE(window.newScene());
+    EXPECT_TRUE(std::filesystem::exists(m_project / "Asked.m2scene")) << "saved before the new scene";
+    EXPECT_TRUE(m_document->scenePath().isEmpty()) << "and then a new, untitled scene";
+
+    pushValueStep(1, 2);
+    answer = Meow2::Editor::UnsavedAnswer::Discard;
+    EXPECT_TRUE(window.openScene(u"Asked.m2scene"_s));
+    EXPECT_FALSE(m_history.canUndo()) << "discarded";
+    window.tick();
+    EXPECT_TRUE(window.windowTitle().startsWith(u"Asked.m2scene — "_s));
+}
+
+TEST_F(MainWindowTest, AssetsDockOpensScenes)
+{
+    ASSERT_TRUE(m_commands.execute(u"scene.saveAs", {{u"path"_s, u"Levels/Dock.m2scene"_s}}));
+    ASSERT_TRUE(m_commands.execute(u"scene.new"));
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    EXPECT_EQ(window.assetsDock().project().toStdString(), m_document->projectFolder().string());
+    window.assetsDock().activate(QString::fromStdString((m_project / "Levels" / "Dock.m2scene").string()));
+    EXPECT_EQ(m_document->scenePath(), u"Levels/Dock.m2scene"_s) << "a double-click opens the scene";
+    ASSERT_TRUE(m_commands.execute(u"view.showPanel", {{u"panel"_s, u"assets"_s}, {u"visible"_s, false}}));
+    EXPECT_FALSE(window.assetsDock().isVisible());
 }

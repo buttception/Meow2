@@ -48,10 +48,14 @@ add_library(Meow2EditorCore STATIC
     src/EditorMainWindow.h
     src/EditorTheme.cpp
     src/EditorTheme.h
+    src/Panels/AssetsDock.cpp
+    src/Panels/AssetsDock.h
     src/Panels/ConsoleDock.cpp
     src/Panels/ConsoleDock.h
     src/Panels/SettingsDialog.cpp
     src/Panels/SettingsDialog.h
+    src/Project/SceneDocument.cpp
+    src/Project/SceneDocument.h
     src/ViewportWidget.cpp
     src/ViewportWidget.h
     src/Viewports/EditorCamera.cpp

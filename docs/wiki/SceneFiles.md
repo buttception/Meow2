@@ -3,7 +3,7 @@
 A scene's saved entities and components, as a text file that merges in git, carries versions, and survives being opened by an app that doesn't know every component in it.
 
 - Code: `Meow2/Assets/SceneFile.h` (reading and writing), `Meow2/Scene/ComponentRegistry.h` (what components look like), `Meow2/Scene/Environment.h`.
-- Status: 🟨 M7 PR 3, engine half (#218). Meow2Renderer opens and saves them; the editor's file commands come with the editor half.
+- Status: 🟨 M7 PR 3, engine half (#218). Meow2Renderer opens and saves them; so does the editor (#222).
 
 ## What a file looks like
 
@@ -118,6 +118,10 @@ A `MeshRenderer` names a mesh by `AssetId`. For that to mean the same mesh next 
 - **Save:** SAVE AS .M2SCENE in the Scenes window. A model saves next to its file (`Duck.gltf` → `Duck.m2scene`); a scene file saves over itself. The Stats window's sun and exposure are saved in the scene's `Environment`, and opening a scene sets them back.
 - Each folder Meow2Renderer opens from gets a read-write mount of its own, so a model's `.meta` can be written next to it. A folder that can't be written still opens, but can't be saved as a scene (its mesh IDs wouldn't last).
 - Not saved yet: glTF animations and cameras (a scene file opens without them).
+
+## In the editor
+
+The editor opens, edits and saves scene files of its project folder (File → New, Open, Save, Save as; the Assets dock), with an unsaved-changes prompt and recent scenes, all through commands an agent can use too: see [Editor → Project and scenes](Editor.md#project-and-scenes). Importing a model there gives its meshes stable IDs the same way, so a scene saved in the editor opens in Meow2Renderer and the other way round.
 
 ## Tests
 

@@ -10,6 +10,7 @@
 #include "Commands/EditorSettings.h"
 #include "Commands/UndoStack.h"
 #include "EditorMainWindow.h"
+#include "Project/SceneDocument.h"
 #include "QtTestApplication.h"
 #include "Viewports/EditorWorld.h"
 
@@ -20,12 +21,16 @@
 #include <Meow2/Core/Log/ConsoleBuffer.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Platform.h>
+#include <Meow2/Graphics/Renderer/SceneModel.h>
+#include <Meow2/Platform/FileSystem/FileSystem.h>
 #include <Meow2/Platform/Input/InputSystem.h>
+#include <Meow2/Scene/ComponentRegistry.h>
 
 #include <gtest/gtest.h>
 
 #include <filesystem>
 #include <format>
+#include <memory>
 #include <system_error>
 
 namespace Meow2::Tests
@@ -42,6 +47,17 @@ protected:
         const Result<void> registered = Editor::registerEditorCommands(
             {.commands = m_commands, .history = m_history, .settings = m_settings, .console = m_console});
         EXPECT_TRUE(registered) << registered.error().message;
+        // A project folder of its own, next to the test's settings file, before the document opens it.
+        m_project = m_config.path().parent_path() / "project";
+        m_config.setString(Editor::c_projectKey, m_project.string());
+        m_document = std::make_unique<Editor::SceneDocument>(Editor::SceneDocumentDeps{.commands = m_commands,
+                                                                                       .history = m_history,
+                                                                                       .config = m_config,
+                                                                                       .world = m_world,
+                                                                                       .renderer = nullptr,
+                                                                                       .files = m_files,
+                                                                                       .assets = m_assets,
+                                                                                       .log = m_log});
     }
 
     /// @brief What the main window needs, made from the members.
@@ -53,6 +69,7 @@ protected:
                 .log = m_log,
                 .world = m_world,
                 .input = m_input,
+                .document = *m_document,
                 .renderer = nullptr};
     }
 
@@ -79,7 +96,21 @@ protected:
     Input::InputSystem m_input{m_events};
     Jobs::JobSystem m_jobs{{.threadCount = 2}, m_log};
     UuidGenerator m_ids;
-    Editor::EditorWorld m_world{m_ids, m_jobs}; ///< Without a GPU: entities and cameras only.
+    FileSystem::FileSystem m_files{m_log};
+    Assets::AssetManager m_assets{m_files, m_ids, m_log};
+    /// @brief The engine's and the renderer's components, as the editor registers them.
+    Scene::ComponentRegistry m_components = []
+    {
+        Scene::ComponentRegistry registry;
+        Scene::registerSceneComponents(registry);
+        Renderer::registerRenderComponents(registry);
+        return registry;
+    }();
+    /// @brief Without a GPU: entities and cameras only.
+    Editor::EditorWorld m_world{
+        {.ids = m_ids, .jobs = m_jobs, .components = m_components, .assets = m_assets, .log = m_log}};
+    std::filesystem::path m_project;                   ///< The project folder (temporary, per test).
+    std::unique_ptr<Editor::SceneDocument> m_document; ///< Made in the constructor, after the project is set.
 
 private:
     /// @brief A settings file in a fresh folder per test.

@@ -17,6 +17,7 @@
 #include <Meow2/Math/Camera.h>
 #include <Meow2/Math/Transform.h>
 #include <Meow2/Platform/Window/Window.h>
+#include <Meow2/Scene/Environment.h>
 
 #include <cstdint>
 #include <map>
@@ -151,6 +152,15 @@ public:
 
     /// @brief The GPU scene every viewport draws.
     /// @return It.
+    /// @brief Replaces the GPU scene with an empty one (its meshes, materials, textures and instances gone), keeping
+    ///        every viewport and its view: for opening another scene.
+    /// @return Nothing, or the error from creating the new scene (the old one is kept then).
+    [[nodiscard]] Result<void> resetScene();
+
+    /// @brief The scene's light from its Environment: the sun for shading, shadows and the sky, and the exposure.
+    /// @param environment The scene's Environment.
+    void setEnvironment(const Scene::Environment& environment);
+
     [[nodiscard]] Renderer::GpuScene& scene()
     {
         return *m_scene;
@@ -187,6 +197,10 @@ private:
     /// @return False if a texture couldn't be made (the viewport is skipped this frame).
     bool ensureSceneTextures(Viewport& viewport);
 
+    /// @brief A new, empty GPU scene with the editor's settings (deferred, shadows, the sky, the current light).
+    /// @return It, or the error.
+    [[nodiscard]] Result<std::unique_ptr<Renderer::GpuScene>> makeScene() const;
+
     /// @brief The tone-map pass for a target format, made on first use (a swapchain's format and RGBA8 differ).
     /// @return The pass, or null if its pipeline couldn't be built.
     Renderer::ToneMapPass* toneMapFor(Rhi::RhiFormat format);
@@ -199,6 +213,9 @@ private:
     std::unique_ptr<Renderer::GpuScene> m_scene;
     std::map<Rhi::RhiFormat, std::unique_ptr<Renderer::ToneMapPass>> m_toneMaps; ///< By target format.
     AssetId m_toneMapShader{};
-    std::vector<Viewport> m_viewports; ///< By ViewportId.
+    Math::Vec3 m_sunDirection{0.4F, 0.8F, -0.6F}; ///< Towards the sun (setEnvironment()).
+    float m_sunIntensity = 3.0F;                  ///< The sun's illuminance.
+    float m_exposure = 1.0F;                      ///< Before the tone curve.
+    std::vector<Viewport> m_viewports;            ///< By ViewportId.
 };
 } // namespace Meow2::Editor

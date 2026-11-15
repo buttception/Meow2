@@ -11,18 +11,24 @@
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
+#include <Meow2/Core/Platform.h>
 #include <Meow2/Math/CameraRig.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
 #include <Meow2/Platform/Platform.h>
 #include <Meow2/Platform/Window/Window.h>
 #include <Meow2/Scene/Camera.h>
+#include <Meow2/Scene/ComponentRegistry.h>
 
 #include <gtest/gtest.h>
 
 #include <array>
 #include <cstdint>
+#include <cstring>
+#include <filesystem>
+#include <format>
 #include <memory>
 #include <optional>
+#include <QByteArray>
 
 namespace
 {
@@ -105,7 +111,16 @@ protected:
     Meow2::UuidGenerator m_ids;
     Meow2::Assets::AssetManager m_assets{m_files, m_ids, m_log};
     Meow2::Jobs::JobSystem m_jobs{{.threadCount = 2}, m_log};
-    Meow2::Editor::EditorWorld m_world{m_ids, m_jobs};
+    /// @brief The engine's and the renderer's components.
+    Meow2::Scene::ComponentRegistry m_components = []
+    {
+        Meow2::Scene::ComponentRegistry registry;
+        Meow2::Scene::registerSceneComponents(registry);
+        Meow2::Renderer::registerRenderComponents(registry);
+        return registry;
+    }();
+    Meow2::Editor::EditorWorld m_world{
+        {.ids = m_ids, .jobs = m_jobs, .components = m_components, .assets = m_assets, .log = m_log}};
     std::unique_ptr<Meow2::Editor::EditorRenderer> m_renderer;
     ViewportId m_editor = 0;
     ViewportId m_game = 0;
@@ -199,4 +214,46 @@ TEST_F(EditorRendererWindowTest, WindowViewportResizes)
     m_renderer->device().device().waitIdle();
     EXPECT_EQ(m_renderer->device().device().validationErrorCount(), 0U);
     m_renderer.reset(); // its swapchain goes before the window
+}
+
+// #222: a scene with a model, saved and opened again, is drawn from a fresh GPU scene through the model's stable mesh
+// IDs.
+TEST_F(EditorRendererTest, OpensASavedScene)
+{
+    const std::filesystem::path folder =
+        std::filesystem::temp_directory_path() / std::format("meow2-editor-scene-{}", Meow2::c_configName);
+    std::error_code ignored;
+    std::filesystem::remove_all(folder, ignored);
+    std::filesystem::create_directories(folder);
+    ASSERT_TRUE(m_files.mountDirectory("project", folder, Meow2::FileSystem::MountAccess::ReadWrite).has_value());
+    const std::array<float, 9> positions{0.0F, 0.0F, 3.0F, 1.0F, 0.0F, 3.0F, 0.0F, 1.0F, 3.0F};
+    const std::array<std::uint16_t, 3> indices{0, 1, 2};
+    QByteArray buffer(42, '\0');
+    std::memcpy(buffer.data(), positions.data(), sizeof(positions));
+    std::memcpy(buffer.data() + sizeof(positions), indices.data(), sizeof(indices));
+    ASSERT_TRUE(m_files
+                    .writeText("project/Triangle.gltf", std::format(R"({{"asset": {{"version": "2.0"}},
+  "buffers": [{{"byteLength": 42, "uri": "data:application/octet-stream;base64,{}"}}],
+  "bufferViews": [{{"buffer": 0, "byteOffset": 0, "byteLength": 36}}, {{"buffer": 0, "byteOffset": 36, "byteLength": 6}}],
+  "accessors": [{{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0, 0, 3], "max": [1, 1, 3]}},
+                {{"bufferView": 1, "componentType": 5123, "count": 3, "type": "SCALAR"}}],
+  "meshes": [{{"primitives": [{{"attributes": {{"POSITION": 0}}, "indices": 1}}]}}],
+  "nodes": [{{"name": "Child", "mesh": 0}}], "scenes": [{{"nodes": [0]}}], "scene": 0}})",
+                                                                    buffer.toBase64().toStdString()))
+                    .has_value());
+
+    // A new scene with the model in it, saved.
+    m_world.newScene([this] { return m_renderer->resetScene() ? &m_renderer->scene() : nullptr; });
+    ASSERT_TRUE(m_world.importModel("project/Triangle.gltf", &m_renderer->scene()));
+    ASSERT_TRUE(m_world.saveScene("project/Main.m2scene"));
+
+    // Opened again: an empty GPU scene, filled with the model the scene's mesh IDs point to.
+    ASSERT_TRUE(m_world.openScene("project/Main.m2scene",
+                                  [this] { return m_renderer->resetScene() ? &m_renderer->scene() : nullptr; }));
+    EXPECT_EQ(m_renderer->scene().meshCount(), 1U) << "only the opened scene's model";
+    runFrame();
+    EXPECT_EQ(m_renderer->scene().instanceCount(), 1U) << "the triangle is drawn";
+    EXPECT_TRUE(m_renderer->wasDrawn(m_editor));
+    EXPECT_TRUE(m_renderer->wasDrawn(m_game)) << "both viewports have a view in the new GPU scene";
+    std::filesystem::remove_all(folder, ignored);
 }
