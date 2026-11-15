@@ -54,6 +54,18 @@ add_library(Meow2EditorCore STATIC
     src/Panels/SettingsDialog.h
     src/ViewportWidget.cpp
     src/ViewportWidget.h
+    src/Viewports/EditorCamera.cpp
+    src/Viewports/EditorCamera.h
+    src/Viewports/EditorRenderer.cpp
+    src/Viewports/EditorRenderer.h
+    src/Viewports/EditorWorld.cpp
+    src/Viewports/EditorWorld.h
+    src/Viewports/GameViewportDock.cpp
+    src/Viewports/GameViewportDock.h
+    src/Viewports/QtInputSource.cpp
+    src/Viewports/QtInputSource.h
+    src/Viewports/ViewportController.cpp
+    src/Viewports/ViewportController.h
     src/WindowPlacement.cpp
     src/WindowPlacement.h)
 target_include_directories(Meow2EditorCore PUBLIC src)
@@ -70,6 +82,9 @@ set_target_properties(Meow2Editor PROPERTIES FOLDER "Apps")
 # our exe allocated (a parent widget deletes its children), so a replaced operator new would mix allocators and
 # corrupt the heap. The editor uses the normal heap; library allocator hooks are still tracked (techstack.md §6).
 meow2_deploy_qt(Meow2Editor)
+if(TARGET Meow2Shaders)
+    add_dependencies(Meow2Editor Meow2Shaders) # the viewports draw with the cooked shaders next to the exe
+endif()
 if(MEOW2_RHI_D3D12)
     meow2_use_agility(Meow2Editor) # the D3D12 runtime in D3D12/ next to the exe
 endif()

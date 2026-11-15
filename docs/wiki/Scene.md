@@ -103,6 +103,24 @@ const Math::Mat4 world = transforms.interpolatedWorld(wheel, alpha);
 - **Destroying a parent** turns its children into roots. They keep their local transform, which is now relative to the world. To remove a whole subtree, destroy it child-first.
 - **Reparenting** keeps the local transform (the entity moves with its new parent). Making an entity its own ancestor asserts.
 
+## Cameras
+
+`#include <Meow2/Scene/Camera.h>`: a `Camera` component makes an entity a camera. It looks along its entity's +Z from its world transform, and holds a `Math::CameraLens` (field of view, near plane, or orthographic) and a `main` flag: the camera the game draws from.
+
+```cpp
+scene.registerComponent<Meow2::Scene::Camera>();
+scene.registry().emplace<Meow2::Scene::Camera>(entity, Meow2::Scene::Camera{.main = true});
+
+if (const std::optional<entt::entity> main = Meow2::Scene::findMainCamera(scene))
+{
+    const std::optional<Math::Transform> view = Meow2::Scene::cameraTransform(scene, *main);
+}
+```
+
+- `findMainCamera` returns the camera marked `main`, else the first camera, else nothing. A scene with no main camera still shows something.
+- `cameraTransform` reads the entity's `WorldTransform` (so a camera parented to a moving object follows it) and drops the scale, which a view matrix has no use for; nothing without a world transform.
+- The editor's game viewport draws from it ([Editor → Viewports](Editor.md#viewports)).
+
 ## Rules
 
 - **Components are plain data structs** (no behaviour, no invariants), like events.
@@ -120,7 +138,7 @@ The test `Scene.SceneMemory.CountedUnderSceneTag` creates 1000 entities against 
 
 ## Tests
 
-`Scene.SceneTest.*`: IDs and names on create, find by ID, destroy, loading with saved IDs (duplicates and invalid IDs rejected), views, pools that exist before first use. `Scene.SceneMemory.CountedUnderSceneTag`. `Core.TaggedResource.CountsUnderTag` checks the memory resource. Part 2: `Scene.SceneTest.TransientHasNoId`, `RegistryDestroyKeepsMapInSync`, `RemovingIdMakesEntityTransient`, `IsRegistered`; `Scene.SceneCommandsTest.*` (spawn appears on apply, destroy/emplace/remove in order, stale handles skipped); `Scene.SceneCommandsJobs.JobsRecordInParallel` (4 job threads record changes for 10,000 entities at once; TSan checks it in CI). Transforms: `Scene.TransformHierarchyTest.*` (world = local × parent world, dirty propagation, reparenting and cycles, orphans of destroyed parents, render interpolation, and 100,000 entities updated on 4 job threads matching a single-threaded reference; TSan in CI).
+`Scene.SceneTest.*`: IDs and names on create, find by ID, destroy, loading with saved IDs (duplicates and invalid IDs rejected), views, pools that exist before first use. `Scene.SceneMemory.CountedUnderSceneTag`. `Core.TaggedResource.CountsUnderTag` checks the memory resource. Part 2: `Scene.SceneTest.TransientHasNoId`, `RegistryDestroyKeepsMapInSync`, `RemovingIdMakesEntityTransient`, `IsRegistered`; `Scene.SceneCommandsTest.*` (spawn appears on apply, destroy/emplace/remove in order, stale handles skipped); `Scene.SceneCommandsJobs.JobsRecordInParallel` (4 job threads record changes for 10,000 entities at once; TSan checks it in CI). Transforms: `Scene.TransformHierarchyTest.*` (world = local × parent world, dirty propagation, reparenting and cycles, orphans of destroyed parents, render interpolation, and 100,000 entities updated on 4 job threads matching a single-threaded reference; TSan in CI). Cameras: `Scene.CameraTest.FindsTheMainCamera`, `LooksAlongItsEntitysZ`.
 
 See also: techstack.md §25, [Ids](Ids.md), [Memory](Memory.md), EnTT's [ECS docs](https://github.com/skypjack/entt/wiki/Entity-Component-System).
 

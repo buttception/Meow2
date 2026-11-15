@@ -65,7 +65,7 @@ Visual Studio then asks to **reload** the changed projects. (A normal build also
 
 **Logs, crash dumps and leaks:** every app writes `logs/Meow2<App>_<date>_<time>.log` next to its `.exe`. Release builds open no console window; Debug and RelWithDebInfo also print the log to a console. In Debug and RelWithDebInfo its last line says "No memory leaks" or lists what leaked, per subsystem ([Memory](docs/wiki/Memory.md)). Started from Visual Studio, logs go to the repository's `logs/` folder instead. If a program crashes, a `.dmp` with the same name appears next to its log (open it in Visual Studio; see [Crash dumps](docs/wiki/CrashDumps.md)). See [Logging](docs/wiki/Logging.md).
 
-**Windows:** Meow2Renderer and Meow2Player open an SDL window, Meow2Editor a Qt main window with an (empty) viewport. Each runs until you close it, and its size, position, maximized state and fullscreen mode are remembered in the settings file. See [Window](docs/wiki/Window.md) and [Editor](docs/wiki/Editor.md).
+**Windows:** Meow2Renderer and Meow2Player open an SDL window, Meow2Editor a Qt main window with an editor viewport (orbit or fly with the mouse, F to frame) and a Game dock showing a test scene. Each runs until you close it, and its size, position, maximized state and fullscreen mode are remembered in the settings file. See [Window](docs/wiki/Window.md) and [Editor](docs/wiki/Editor.md).
 
 **Settings:** each app reads `Meow2<App>.toml` next to its `.exe` (from Visual Studio: the repository's git-ignored `config/` folder; `--config <path>` to choose another). Override any setting for one run with `--set key=value`, e.g. `--set window.width=800`. See [Config](docs/wiki/Config.md).
 

@@ -330,6 +330,29 @@ const Vec3 onNearPlane = screenToWorld({mouseX, mouseY, 1.0F}, m, viewport);
 
 The camera's **frustum** (for culling) comes with the bounding-volume functions.
 
+## Camera rigs
+
+`#include <Meow2/Math/CameraRig.h>`: the two interactive cameras the editor and Meow2Renderer share. Each is plain data plus free functions: an app fills a `CameraInput` from its input (mouse delta, wheel, buttons, WASD/QE, Shift), updates the rig with the frame's delta time, and draws from the transform the rig gives.
+
+| Rig | State | Controls |
+|---|---|---|
+| `OrbitCamera` | target, yaw, pitch, distance, `spin` | left drag turns around the target, middle drag pans, the wheel zooms (a fraction of the distance, so it feels the same near and far) |
+| `FlyCamera` | position, yaw, pitch, speed | right drag looks around, WASD/QE moves, Shift is four times as fast, the wheel changes the speed |
+
+```cpp
+OrbitCamera orbit = frameScene(bounds.center, bounds.radius);  // the whole scene in view
+updateOrbit(orbit, input, deltaSeconds);
+const Transform camera = orbitTransform(orbit);
+const CameraLens lens = sceneLens(bounds.radius);              // near plane scaled to the scene
+
+FlyCamera fly = flyFrom(camera, 2.0F);                         // take over from where the orbit was
+OrbitCamera back = orbitFrom(flyTransform(fly), orbit.distance); // orbit the point ahead of the flight
+```
+
+- **Switching never jumps:** `flyFrom` and `orbitFrom` start one rig exactly where the other's camera is, so the view doesn't move at the hand-over (`Math.CameraRig.SwitchingRigsDoesntJump`). The editor uses that for "right drag flies, let go to orbit again".
+- **Pitch stops at ±1.5 rad** (86°), short of straight up or down, where yaw would lose its meaning.
+- They were Meow2Renderer's own cameras until M7; they moved into the engine so the editor uses the same code.
+
 ## Bounding volumes and culling
 
 `#include <Meow2/Math/Bounds.h>`: cheap stand-ins for complex shapes. If a mesh's box is outside the camera's view, none of its triangles can be visible, so it isn't drawn (**frustum culling**). The same tests serve picking, triggers and physics broad phases.

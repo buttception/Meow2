@@ -135,7 +135,8 @@ endif()
 # RhiGpuD3D12.* on D3D12.
 set(meow2RhiGpuTestSources
     Graphics/Renderer/FrameResourcesTests.cpp Graphics/Renderer/GpuSceneTests.cpp
-    Graphics/Renderer/RenderDeviceTests.cpp Graphics/Renderer/SkyAtmosphereTests.cpp Graphics/Rhi/RhiDrawTests.cpp
+    Graphics/Renderer/RenderDeviceTests.cpp Graphics/Renderer/SkyAtmosphereTests.cpp
+    Graphics/Renderer/ToneMapPassTests.cpp Graphics/Rhi/RhiDrawTests.cpp
     Graphics/Rhi/RhiGpuTests.cpp)
 if(MEOW2_RHI_VULKAN AND MEOW2_GPU_TESTS AND MEOW2_SHADER_TOOLS)
     meow2_add_test_suite(
@@ -211,6 +212,7 @@ meow2_add_test_suite(
     SOURCES
         Math/BatchTests.cpp
         Math/BoundsTests.cpp
+        Math/CameraRigTests.cpp
         Math/CameraTests.cpp
         Math/ColorTests.cpp
         Math/EasingTests.cpp
@@ -230,5 +232,6 @@ meow2_add_test_suite(
     TARGET    Meow2EngineSceneTests
     MODULE    Scene
     SOURCES
+        Scene/CameraTests.cpp
         Scene/SceneTests.cpp
         Scene/TransformHierarchyTests.cpp)

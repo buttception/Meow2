@@ -1363,4 +1363,29 @@ TEST_F(GpuSceneTest, PreviousTransformFollows)
     transform = readTransform();
     EXPECT_FLOAT_EQ(transform.previous0.w, 1.0F) << "a frame later it hasn't moved since";
 }
+
+TEST_F(GpuSceneTest, FreedSlotsAreReusedLowestFirst)
+{
+    makeScene(8);
+    for (int i = 0; i < 5; ++i)
+    {
+        ASSERT_TRUE(m_scene->addInstance(behindTheCamera(1).front()));
+    }
+    m_scene->removeInstance(3);
+    m_scene->removeInstance(1);
+    const Result<std::uint32_t> first = m_scene->addInstance(behindTheCamera(1).front());
+    const Result<std::uint32_t> second = m_scene->addInstance(behindTheCamera(1).front());
+    const Result<std::uint32_t> third = m_scene->addInstance(behindTheCamera(1).front());
+    ASSERT_TRUE(first && second && third);
+    EXPECT_EQ(*first, 1U) << "the lowest free slot first";
+    EXPECT_EQ(*second, 3U);
+    EXPECT_EQ(*third, 5U) << "then past the end";
+
+    m_scene->removeInstance(5); // the last slot: dropped from the end, its stale heap entry skipped later
+    m_scene->removeInstance(2);
+    const Result<std::uint32_t> again = m_scene->addInstance(behindTheCamera(1).front());
+    ASSERT_TRUE(again);
+    EXPECT_EQ(*again, 2U);
+    EXPECT_EQ(m_scene->instanceCount(), 5U);
+}
 } // namespace Meow2::Renderer

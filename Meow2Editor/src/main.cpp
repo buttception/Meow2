@@ -8,12 +8,16 @@
 #include "Commands/UndoStack.h"
 #include "EditorMainWindow.h"
 #include "EditorTheme.h"
+#include "Viewports/EditorRenderer.h"
+#include "Viewports/EditorWorld.h"
 #include "WindowPlacement.h"
 
+#include <Meow2/Assets/AssetManager.h>
 #include <Meow2/Core/Config/Config.h>
 #include <Meow2/Core/CpuFeatures.h>
 #include <Meow2/Core/Crash/CrashHandler.h>
 #include <Meow2/Core/Events/EventBus.h>
+#include <Meow2/Core/Id/UuidGenerator.h>
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/AssertLogging.h>
 #include <Meow2/Core/Log/ConsoleBuffer.h>
@@ -27,11 +31,14 @@
 #include <Meow2/Core/Time/GameLoop.h>
 #include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
+#include <Meow2/Platform/FileSystem/FileSystem.h>
+#include <Meow2/Platform/Input/InputSystem.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
 #include <QApplication>
 #include <QTimer>
 #include <string>
@@ -115,8 +122,48 @@ int main(int argc, char** argv)
         MEOW2_LOG_ERROR(appLog, "Editor commands not registered: {}", registered.error());
     }
 
-    Meow2::Editor::EditorMainWindow window{
-        {.commands = commands, .settings = settings, .console = consoleLines, .log = appLog}};
+    // The viewports' world and renderer. The renderer needs native windows: on the offscreen platform (tests, CI) the
+    // editor runs without one, and the viewports stay empty.
+    Meow2::Input::InputSystem input{events};
+    Meow2::UuidGenerator ids;
+    Meow2::FileSystem::FileSystem files{engineLog};
+    if (const Meow2::Result<void> cooked =
+            files.mountDirectory("cooked", Meow2::executablePath().parent_path() / "cooked");
+        !cooked)
+    {
+        MEOW2_LOG_WARN(appLog, "No cooked shaders: {}", cooked.error());
+    }
+    Meow2::Assets::AssetManager assets{files, ids, engineLog};
+    Meow2::Editor::EditorWorld world{ids, jobs};
+    std::unique_ptr<Meow2::Editor::EditorRenderer> renderer;
+    if (QGuiApplication::platformName() != u"offscreen" && config.getBool("editor.render", true))
+    {
+        const std::string backend = config.getString("rhi.backend", "vulkan");
+        Meow2::Result<std::unique_ptr<Meow2::Editor::EditorRenderer>> made = Meow2::Editor::EditorRenderer::create(
+            {.assets = assets, .events = events, .jobs = jobs, .log = engineLog},
+            {.backend = backend == "d3d12" ? Meow2::Rhi::RhiBackend::D3D12 : Meow2::Rhi::RhiBackend::Vulkan,
+             .validation = config.getBool("rhi.validation", false)});
+        if (made)
+        {
+            renderer = std::move(*made);
+        }
+        else
+        {
+            MEOW2_LOG_ERROR(appLog, "The viewports can't draw: {}", made.error());
+        }
+    }
+    if (const Meow2::Result<void> built = world.buildDefaultScene(renderer ? &renderer->scene() : nullptr); !built)
+    {
+        MEOW2_LOG_ERROR(appLog, "The test scene wasn't built: {}", built.error());
+    }
+
+    Meow2::Editor::EditorMainWindow window{{.commands = commands,
+                                            .settings = settings,
+                                            .console = consoleLines,
+                                            .log = appLog,
+                                            .world = world,
+                                            .input = input,
+                                            .renderer = renderer.get()}};
     Meow2::Editor::showWithDesc(
         window, Meow2::Platform::windowDescFromConfig(config, {.title = "Meow2Editor"}, engineLog), engineLog);
 
@@ -136,7 +183,7 @@ int main(int argc, char** argv)
                      [&]
                      {
                          loop.tick();
-                         window.tick(); // console lines, toolbar state
+                         window.tick(clock.deltaSecondsFloat()); // console, viewports, toolbar state
                          if (quitAfterFrames > 0 && static_cast<std::int64_t>(clock.frameCount()) >= quitAfterFrames)
                          {
                              QApplication::quit();
@@ -150,6 +197,7 @@ int main(int argc, char** argv)
     MEOW2_LOG_INFO(appLog, "Ran {} frames ({} fixed steps) in {:.2f} s", clock.frameCount(), loop.fixedStepCount(),
                    clock.totalSeconds());
     Meow2::Editor::storeWindowState(config, window); // reopen where the user left it
+    window.saveLayout();                             // and the docks where they were
     if (const Meow2::Result<void> saved = config.save(); !saved)
     {
         MEOW2_LOG_WARN(appLog, "Settings not saved: {}", saved.error());

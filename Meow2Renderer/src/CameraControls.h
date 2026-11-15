@@ -1,6 +1,6 @@
 /// @file
-/// @brief Meow2Renderer's cameras until the editor's camera rigs exist: orbit around the scene, fly through it
-///        (noclip), or look through one of the glTF file's cameras, optionally moved by one of its animations.
+/// @brief Meow2Renderer's cameras: orbit around the scene or fly through it (the engine's rigs, Math/CameraRig.h), or
+///        look through one of the glTF file's cameras, optionally moved by one of its animations.
 
 #pragma once
 
@@ -8,6 +8,7 @@
 
 #include <Meow2/Assets/Gltf/GltfImporter.h>
 #include <Meow2/Math/Camera.h>
+#include <Meow2/Math/CameraRig.h>
 #include <Meow2/Math/Transform.h>
 #include <Meow2/Math/Types.h>
 
@@ -25,77 +26,17 @@ enum class CameraMode : std::uint8_t
     SceneCamera ///< One of the glTF file's cameras.
 };
 
-/// @brief What the user did this frame, from the input system. Plain data, so the cameras can be tested without it.
-struct CameraInput
-{
-    Math::Vec2 mouseDelta{0.0F, 0.0F}; ///< Pixels the mouse moved (+x right, +y down).
-    float wheel = 0.0F;                ///< Wheel notches (+ away from the user).
-    bool leftDrag = false;             ///< Left button held: orbit turns.
-    bool middleDrag = false;           ///< Middle button held: orbit pans.
-    bool rightDrag = false;            ///< Right button held: fly looks around.
-    Math::Vec3 move{0.0F, 0.0F, 0.0F}; ///< Fly: -1..1 per axis: x right, y up, z forward (WASD, E/Q).
-    bool fast = false;                 ///< Shift: fly four times as fast.
-};
-
-/// @brief An orbiting camera. Plain data.
-struct OrbitCamera
-{
-    Math::Vec3 target{0.0F, 0.0F, 0.0F}; ///< What it circles and looks at.
-    float yaw = 3.14159265F;             ///< Radians around +Y of the direction it looks in; π looks towards −Z.
-    float pitch = -0.245F;               ///< Radians above (+) or below (−) the horizon it looks; ±1.5 at most.
-    float distance = 5.0F;               ///< From the target, in world units.
-    bool spin = true;                    ///< Turns by itself, slowly.
-};
-
-/// @brief A free-flying camera. Plain data.
-struct FlyCamera
-{
-    Math::Vec3 position{0.0F, 0.0F, -5.0F}; ///< Where it is.
-    float yaw = 0.0F;                       ///< Radians around +Y of the direction it looks in; 0 looks towards +Z.
-    float pitch = 0.0F;                     ///< Radians above (+) or below (−) the horizon; ±1.5 at most.
-    float speed = 2.0F;                     ///< World units per second (four times this with Shift).
-};
-
-/// @brief The unit direction for a yaw and pitch (left-handed: yaw 0 is +Z, π/2 is +X; positive pitch looks up).
-/// @param yaw   Radians around +Y.
-/// @param pitch Radians above the horizon.
-/// @return The direction.
-[[nodiscard]] Math::Vec3 lookDirection(float yaw, float pitch);
-
-/// @brief Applies a frame's input to an orbiting camera (and its spin).
-/// @param camera       The camera.
-/// @param input        The frame's input.
-/// @param deltaSeconds The frame's length.
-void updateOrbit(OrbitCamera& camera, const CameraInput& input, float deltaSeconds);
-
-/// @brief Where an orbiting camera is and which way it looks.
-/// @param camera The camera.
-/// @return Its transform (scale 1).
-[[nodiscard]] Math::Transform orbitTransform(const OrbitCamera& camera);
-
-/// @brief The orbit a scene opens with: around its centre from +Z (glTF models face +Z, so this is the front),
-///        far enough to see all of it. Golden images use it too, so they show what the Renderer shows first.
-/// @param center The centre of a sphere around the scene.
-/// @param radius Its radius; > 0.
-/// @return The orbit, spinning.
-[[nodiscard]] OrbitCamera frameScene(const Math::Vec3& center, float radius);
-
-/// @brief The lens for a scene of a given size: the near plane follows it, so small models aren't clipped and big
-///        ones keep depth precision.
-/// @param radius The radius of a sphere around the scene.
-/// @return The default lens with that near plane.
-[[nodiscard]] Math::CameraLens sceneLens(float radius);
-
-/// @brief Applies a frame's input to a flying camera.
-/// @param camera       The camera.
-/// @param input        The frame's input.
-/// @param deltaSeconds The frame's length.
-void updateFly(FlyCamera& camera, const CameraInput& input, float deltaSeconds);
-
-/// @brief Where a flying camera is and which way it looks.
-/// @param camera The camera.
-/// @return Its transform (scale 1).
-[[nodiscard]] Math::Transform flyTransform(const FlyCamera& camera);
+// The orbit and fly rigs live in the engine (Meow2/Math/CameraRig.h), shared with the editor's viewport.
+using Math::CameraInput;
+using Math::FlyCamera;
+using Math::flyTransform;
+using Math::frameScene;
+using Math::lookDirection;
+using Math::OrbitCamera;
+using Math::orbitTransform;
+using Math::sceneLens;
+using Math::updateFly;
+using Math::updateOrbit;
 
 /// @brief The pose of a glTF camera from its node's world matrix.
 ///

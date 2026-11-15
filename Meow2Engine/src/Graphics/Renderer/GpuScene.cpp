@@ -987,10 +987,10 @@ void GpuScene::setInstances(std::span<const InstanceDesc> instances)
     }
     if (count < m_instances.size())
     {
-        m_instances.resize(count);
         m_derivedStale = true;
     }
     m_instances.resize(count); // new slots start free, so storeInstance() uploads them
+    m_freeSlots = {};          // every slot below `count` is in use now
     for (std::uint32_t slot = 0; slot < count; ++slot)
     {
         storeInstance(slot, instances[slot]);
@@ -999,10 +999,18 @@ void GpuScene::setInstances(std::span<const InstanceDesc> instances)
 
 Result<std::uint32_t> GpuScene::addInstance(const InstanceDesc& instance)
 {
-    std::uint32_t slot = 0;
-    while (slot < m_instances.size() && (m_instances[slot].flags & MEOW2_INSTANCE_FREE) == 0)
+    // The lowest free slot, from a min-heap; entries can be stale (the slot was dropped from the end, or reused by
+    // setInstances()), so they're checked as they come out.
+    auto slot = static_cast<std::uint32_t>(m_instances.size());
+    while (!m_freeSlots.empty())
     {
-        ++slot;
+        const std::uint32_t candidate = m_freeSlots.top();
+        m_freeSlots.pop();
+        if (candidate < m_instances.size() && (m_instances[candidate].flags & MEOW2_INSTANCE_FREE) != 0)
+        {
+            slot = candidate;
+            break;
+        }
     }
     if (slot == m_instances.size())
     {
@@ -1033,6 +1041,7 @@ void GpuScene::removeInstance(std::uint32_t slot)
     InstanceRecord& record = m_instances[slot];
     record.flags = MEOW2_INSTANCE_FREE;
     --m_liveInstances;
+    m_freeSlots.push(slot);
     m_derivedStale = true;
     if (!record.dirty)
     {

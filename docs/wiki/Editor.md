@@ -1,6 +1,6 @@
 # Editor
 
-Meow2Editor is a **Qt** application: a main window with a native viewport, a log console dock, a settings window, menus and a toolbar. **Every editor action is a command** with a JSON parameter schema, run through one registry with one undo history (techstack.md §20), so the MCP server (M7 PR 6) can drive everything the UI can. The RHI renders into the viewport from M7 PR 2. Like the Player and Renderer, it remembers its window size, position, maximized state and fullscreen mode in its [config file](Config.md).
+Meow2Editor is a **Qt** application: a main window with an **editor viewport** in the middle and a **game viewport** dock, both drawn by the engine's renderer, plus a log console dock, a settings window, menus and a toolbar. **Every editor action is a command** with a JSON parameter schema, run through one registry with one undo history (techstack.md §20), so the MCP server (M7 PR 6) can drive everything the UI can. Like the Player and Renderer, it remembers its window size, position, maximized state and fullscreen mode in its [config file](Config.md).
 
 - Code:
   - `Meow2Editor/src/`: `EditorMainWindow`, `ViewportWidget`, `WindowPlacement`, `EditorTheme`, `main.cpp`;
@@ -8,7 +8,7 @@ Meow2Editor is a **Qt** application: a main window with a native viewport, a log
   - `Meow2Editor/src/Panels/`: `ConsoleDock`, `SettingsDialog`;
   - built as the `Meow2EditorCore` library plus the exe, so the tests use the same code.
 - Requirements: Qt ≥ 6.8 (Widgets), tested with 6.12.0. Installing Qt and pointing CMake at it is on the [Building → Qt](Building.md#qt) page.
-- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210).
+- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214).
 - **Window size:** in logical units like every app ([Window](Window.md#settings)): 80 % of the screen the first time, and shrunk to fit when a saved size is too big for the screen (Qt sizes follow display scaling, so 1920 × 1080 at 150 % would be 2880 × 1620 real pixels).
 
 ## Settings
@@ -95,16 +95,61 @@ Edit → Settings…: one field per editor setting. A change runs `settings.set`
 | Key | Default | Range | |
 |---|---|---|---|
 | `editor.undoLimit` | 200 | 10–10000 | applies at once |
+| `editor.gameRenderScale` | 100 | 25–100 (%) | applies at once; also the Game dock's drop-down |
 | `editor.console.followNewest` | true | | restart |
 | `jobs.threadCount` | 0 (one per hardware thread) | 0–256 | restart |
 | `loop.fixedStepHz` | 60 | 1–1000 | restart |
 | `loop.maxFixedSteps` | 8 | 1–64 | restart |
+
+## Viewports
+
+The **editor viewport** (the window's centre) shows the scene through the editor's own camera; the **game viewport** (the Game dock, on the right at first) shows it through the scene's main `Camera` entity, as the game will. Each is a native child window with its own swapchain and its own `GpuScene` view, so the two can look at the same scene from different places in the same frame ([Rendering → Several views per frame](Rendering.md#several-views-per-frame)).
+
+- **Moving the editor camera** (while the editor viewport has focus; a click gives it focus):
+
+  | Input | Orbit mode (default) | Fly mode |
+  |---|---|---|
+  | Left drag | turn around the point in front | — |
+  | Middle drag | pan | — |
+  | Wheel | zoom | change speed |
+  | Right drag | fly while held (look around, WASD/QE move, Shift faster); let go to orbit again | look around |
+  | WASD / QE | (while flying) | move, down/up |
+  | F | frame the scene (`viewport.focus`) | frame the scene |
+
+  The rigs are the engine's ([Math → Camera rigs](Math.md#camera-rigs)), shared with Meow2Renderer. Switching between them never jumps: the fly camera starts where the orbit was, and the orbit picks up around the point ahead of where the flight ended.
+- **Render scale** (the Game dock's drop-down: 100, 75, 50, 25 %; `editor.gameRenderScale`): the game view's scene is drawn at that share of the viewport's size and scaled up by the tone-map pass, which samples the smaller image with linear filtering. At 50 % that's a quarter of the pixels to shade. The editor viewport always draws at full size.
+- **A viewport that can't be seen draws nothing:** a hidden dock, a tab behind another, or a zero size. `ViewportController` checks each widget every frame (`isVisible()` and a non-empty visible region) before the renderer culls or draws anything for it.
+- **The dock layout** (where the Game and Console docks are, their sizes, which are hidden) is saved in `editor.layout` at exit and restored at the next start.
+- **The scene**, until scene files arrive (M7 PR 3), is a test scene built by `EditorWorld`: a ground slab, five coloured cubes and a main camera behind them. Each frame the world's transforms are updated and handed to `GpuScene::setInstances()`, which uploads only what moved.
+- **Without a GPU** (the offscreen platform in tests and CI, or a GPU that can't start), the editor runs without its renderer: the viewports stay empty, and every command still works.
+
+### Input: QtInputSource
+
+The engine's `InputSystem` is fed by `QtInputSource`, an event filter on both viewport widgets ([Input → The Qt source](Input.md#the-qt-source)):
+
+- keys, text, mouse buttons, motion and the wheel reach the `InputSystem` **only while that viewport has focus**, so typing in the console's filter never moves the camera;
+- keys are the **physical** key, from Qt's native scan code (Windows scan code set 1, X11's evdev codes), so WASD stays WASD on an AZERTY layout; where there's no native code (the offscreen platform), the Qt key is the fallback;
+- losing focus releases every key and button still held, so nothing stays stuck down;
+- events aren't consumed: Qt's shortcuts (Ctrl+Z, F) still fire, and editor actions stay commands, never input (techstack.md §9).
+
+### Viewport commands
+
+| Command | Kind | Parameters | What it does |
+|---|---|---|---|
+| `viewport.focus` | action | — | Frames the whole scene in the editor viewport (F). |
+| `viewport.setCameraMode` | action | `mode` (`orbit`, `fly`) | The editor camera's mode (View menu). |
+| `viewport.setRenderScale` | action | `percent` (25–100) | The game view's render scale; saved as `editor.gameRenderScale`. |
+| `viewport.info` | query | — | Each viewport's size, visibility, whether it drew, its scene size; the camera mode and position; the render scale. |
+
+None is recorded in the undo history: they change how the scene is *viewed*, not the scene. `view.showPanel` also takes `game` now.
 
 ## How it works
 
 - **Startup order.** `main` builds the engine infrastructure first: logging, crash handler, leak check, config. Then it creates the `QApplication`, then the main window, which is placed with `showWithDesc(window, windowDescFromConfig(config, …), log)`.
 - **Then the commands.** After the `QApplication`: `EditorSettings` over the config, the `UndoStack` (limit from `editor.undoLimit`), the `EditorCommandRegistry`, `registerEditorCommands()`, and then the main window, which gets them through `EditorMainWindowDeps`.
 - **Qt owns the event loop.** `QApplication::exec()` runs until the window is closed. A `QTimer` (16 ms) is the frame tick: it runs the engine's game loop `tick()` (techstack.md §23), then the window's `tick()` (console lines, action states). `app.quitAfterFrames` ends smoke runs.
+- **The viewports draw from the window's tick.** `ViewportController::tick()` begins the input frame, moves the editor camera (only while the editor viewport has focus), updates the world's transforms and GPU instances, checks each viewport's size and visibility, takes the game camera from the scene's main `Camera`, and calls `EditorRenderer::renderFrame()`, which draws every visible viewport in one render graph: per viewport a `GpuScene` view and a tone-map pass into its swapchain.
+- **`EditorRenderer` owns the GPU side:** the device, the pipeline library, the sky and one `GpuScene` (deferred, with shadows) shared by both viewports. It's made only on a real platform with `editor.render` on (`rhi.backend` and `rhi.validation` as in Renderer); otherwise the editor runs without it.
 - **The viewport is a native window.** Qt normally paints all widgets of a window into one shared surface. A swapchain needs an OS window of its own (an `HWND`, an X11 window) that nothing else paints. `ViewportWidget` asks for one (`Qt::WA_NativeWindow`) and turns Qt's painting off for it (`WA_PaintOnScreen`, no paint engine).
   - `nativeHandle()` returns the same `Platform::NativeWindowHandle` as an SDL window, so the RHI won't care which kind of window it renders into.
   - Wayland and offscreen return `None` for now.
@@ -141,15 +186,21 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.SettingsDialogTest.ChangeIssuesCommand`, `Editor.MainWindowTest.*`: fields and actions run commands; actions follow the registry; panels open through `view.showPanel`.
 - `Editor.ViewportTest.*`: the viewport is the native central widget; offscreen has no OS handle.
 - `Editor.ViewportWin32.NativeHandle` (Windows only): with the real platform, the viewport has its own `HWND`.
+- `Editor.QtInputSourceTest.*`: keys, mouse and wheel reach the `InputSystem` only from the focused viewport, and losing focus releases them; `Editor.QtInputSourceKeys.MapsNativeScanCodes`: the Windows and evdev tables.
+- `Editor.EditorCameraTest.*`: right drag flies and letting go orbits without a jump; Fly mode; focus frames the bounds and stops the spin.
+- `Editor.ViewportCommandsTest.*`: `viewport.setRenderScale` saves the setting and updates the drop-down, out-of-range values are refused, `viewport.setCameraMode` and `viewport.info`; the test scene has a main camera.
+- `Editor.MainWindowTest.LayoutRoundTrips`: the dock layout saved in `editor.layout` is restored by the next window.
+- `EditorGpu.EditorRendererTest.TwoViewportsAndRenderScale` (label `gpu`): an editor and a game viewport drawn offscreen in one frame, both filled; at 50 % the game scene is half size and still fills its viewport; a hidden viewport isn't drawn.
 - `Smoke.Editor.Runs` and `Smoke.Editor.OpensWindow`: the app runs 3 frames offscreen and exits 0.
 
 ## Not yet
 
-- Dock layout saved between runs, scene hierarchy, inspector (M7 PR 2–4).
+- Scene hierarchy, inspector, selection and gizmos (M7 PR 4).
 - The MCP server (M7 PR 6).
 - Saving scenes, which brings `scene.save` and the clean mark into use (M7 PR 3).
-- `QtInputSource`.
-- Rendering into the viewport.
+- Opening glTF files or scenes in the viewports (M7 PR 3); until then the editor shows a built-in test scene.
+- Switching the graphics backend in the editor (the viewports would need to be a `RenderDevice` user); the Renderer's debug tools (M7 PR 5).
+- Mouse capture while flying (the cursor stays visible and can leave the viewport).
 - Routing Qt's own messages (`qWarning`, …) to the engine log.
 - Qt and its plugins in the release zip.
 

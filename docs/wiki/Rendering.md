@@ -42,6 +42,8 @@ The scene isn't drawn into the swapchain any more but into **Scene colour**, an 
 
 Why: every step's output is now a texture of the render graph, which the Renderer's inspector can show ([Renderer](Renderer.md#frame-and-debugging)), and post-processing (bloom, exposure control) has an HDR image to work on. It costs one full-screen pass.
 
+**Render scale.** When the HDR image is smaller than the target (the editor's game viewport drawn at 75, 50 or 25 %), Tone map scales it up: the push constants carry the target's size and the linear sampler, and the shader samples at the pixel's place in the source, clamped half a texel from the edges, instead of loading one texel per pixel. The scene's passes then shade a quarter of the pixels at 50 %, and only this pass runs at full size. `ToneMapTest.ScalesUpASmallerImage` checks a half-red, half-blue image twice the size.
+
 ### Instances: a persistent GPU buffer
 
 Unreal's "GPU Scene" model: instances live in GPU buffers with **stable slots**, and only what changed is uploaded each frame.
@@ -62,7 +64,7 @@ gpuScene.removeInstance(slot);
 - **Each frame**, the first view's `addPasses()` writes the changed slots as `InstanceUpdate` records (112 bytes: slot, info, transform and previous transform) into an upload buffer of that frame slot, and an **Update instances** pass (`csScatter`, one thread per record) copies them into place before anything culls. With nothing changed the pass stays in the graph, skipped, so the graph view doesn't flicker.
 - **What changed:** `setInstances()` compares each slot with what the GPU already has, so calling it every frame with a whole scene uploads only the moved objects; `instanceUploads()` says how many records the last frame sent. Slot *i* is instance *i*, so a stable order (EnTT's storage order in `gatherInstances()`) keeps every object in its slot.
 - **Previous transforms:** each record carries the transform the GPU should keep as "previous". A slot that moved is sent once more the next frame with previous = current, so for every slot "previous" means last frame's. A new instance starts with previous = current.
-- **Free slots:** `removeInstance()` marks a slot `MEOW2_INSTANCE_FREE` and culling skips it; `addInstance()` reuses the lowest free slot. Free slots at the end are dropped, since culling runs up to the last slot in use.
+- **Free slots:** `removeInstance()` marks a slot `MEOW2_INSTANCE_FREE` and culling skips it; `addInstance()` reuses the lowest free slot, found in a min-heap of freed slots (stale entries, for slots already reused or dropped, are skipped when popped), so adding and removing cost `O(log n)` rather than a scan. Free slots at the end are dropped, since culling runs up to the last slot in use.
 - **No idle GPU needed:** every write goes through the frame's upload buffer, which the GPU finished reading when that frame slot was last used. The old `setInstances()` wrote a buffer the GPU might still be reading.
 - **The camera is subtracted on the GPU:** the vertex and mesh shaders project `world - cameraPosition` with `FrameConstants::viewProjectionRelative` (worked out by `setView()`: the camera's translation put back, then the view-projection). Moving the camera changes no instance, and the large numbers of a far position never go through the projection. A high/low split of positions, for worlds of hundreds of kilometres, can come later on top of this.
 
@@ -260,7 +262,7 @@ The trick is a few small lookup textures (LUTs), so the expensive integrals aren
 
 All three are compute shaders in `shaders/Sky.hlsl`, with the physics in `shaders/Atmosphere.hlsli`. Each sky-view texel marches 30 steps along its ray: the sun's light (from the transmittance LUT, unless the planet shadows it) scattered by the Rayleigh and Mie phase functions, plus the multiple-scattering LUT, integrated per step the energy-conserving way (Hillaire's equation 7).
 
-**The sky behind the scene** is one full-screen triangle at depth 0, which is infinitely far with reversed Z. It's drawn after the opaque geometry with depth tested but not written, so it only fills pixels nothing else covered. Each pixel looks up the sky-view LUT in its view direction and adds the sun's disc where the ground isn't in the way. The direction comes from two points along the pixel's ray, so it's right whether or not the view matrix moves the camera away from the origin.
+**The sky behind the scene** is one full-screen triangle at depth 0, which is infinitely far with reversed Z. It's drawn after the opaque geometry with depth tested but not written, so it only fills pixels nothing else covered. Each pixel looks up the sky-view LUT in its view direction and adds the sun's disc where the ground isn't in the way. The direction comes from two points along the pixel's ray, so it's right whether or not the view matrix moves the camera away from the origin. Each view uses its own `FrameConstants::inverseViewProjection`, so two viewports looking different ways each get their own sky from the shared lookup tables.
 
 **Image-based lighting**, recomputed each frame after the sky-view LUT:
 
@@ -323,6 +325,8 @@ The sun casts **cascaded shadow maps** (`GpuScene::setShadows()`, `shaders/Shado
 | `RhiGpu*.GpuSceneTest.MovingOneInstanceUploadsOne` | 1000 instances: the first frame uploads all, an unchanged scene nothing, one moved object one record (and one more to settle), drawn where it moved |
 | `RhiGpu*.GpuSceneTest.InstanceSlotsAreStable` | slots handed out in order, a removed one not drawn and reused first, the others untouched |
 | `RhiGpu*.GpuSceneTest.TwoViewsInOneFrame` | two cameras, front and back, drawn in one frame into their own targets: each sees its own cube |
+| `RhiGpu*.GpuSceneTest.FreedSlotsAreReusedLowestFirst` | slots freed in any order come back lowest first, and a dropped tail slot isn't handed out twice |
+| `RhiGpu*.ToneMapTest.ScalesUpASmallerImage` | a 32 × 32 image tone-mapped into 64 × 64 fills it, with its halves where they belong |
 | `RhiGpu*.GpuSceneTest.PreviousTransformFollows` | read back from the GPU: a moved instance has last frame's transform as previous, and its new one a frame later |
 | `Shader.BindlessLayout.InstanceRecordsMatchTheShaders` | the instance records' sizes and offsets, as the shaders expect |
 | `Renderer.RenderGraph.SkippedPassesAreKeptButNotRun` | a skipped pass stays in the graph, places no barriers, changes no state, and shares the list before it |

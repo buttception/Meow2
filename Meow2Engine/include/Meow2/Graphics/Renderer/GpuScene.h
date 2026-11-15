@@ -18,8 +18,10 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <span>
 #include <string>
 #include <utility>
@@ -722,11 +724,13 @@ private:
     // Instances: the CPU's copy of every slot, and the GPU's two buffers, written only by csScatter.
     std::vector<InstanceRecord> m_instances; ///< One per slot up to the highest used; free ones are FREE.
     std::vector<std::uint32_t> m_dirty;      ///< Slots to upload at the next frame (each once).
-    std::uint32_t m_liveInstances = 0;       ///< Slots in use.
-    std::uint32_t m_lastUploads = 0;         ///< instanceUploads().
-    bool m_derivedStale = true;              ///< refreshDerived() must run before the next view.
-    Rhi::BufferHandle m_transformBuffer;     ///< InstanceTransform per slot; GPU only.
-    Rhi::BufferHandle m_infoBuffer;          ///< InstanceInfo per slot; GPU only.
+    /// Free slots below the last one in use, lowest on top (addInstance() takes the lowest); may hold stale entries.
+    std::priority_queue<std::uint32_t, std::vector<std::uint32_t>, std::greater<>> m_freeSlots;
+    std::uint32_t m_liveInstances = 0;   ///< Slots in use.
+    std::uint32_t m_lastUploads = 0;     ///< instanceUploads().
+    bool m_derivedStale = true;          ///< refreshDerived() must run before the next view.
+    Rhi::BufferHandle m_transformBuffer; ///< InstanceTransform per slot; GPU only.
+    Rhi::BufferHandle m_infoBuffer;      ///< InstanceInfo per slot; GPU only.
     Rhi::ResourceState m_transformState = Rhi::ResourceState::Undefined;
     Rhi::ResourceState m_infoState = Rhi::ResourceState::Undefined;
     GraphResource m_transformResource; ///< This frame's, imported by the first addPasses().

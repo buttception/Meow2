@@ -1,6 +1,8 @@
 /// The last step of the frame before the UI: the scene's HDR colour (linear light, exposure already applied) through
 /// the Khronos PBR Neutral tone curve, into the swapchain, whose sRGB view encodes the result.
-/// g_push.instance is the heap index of the HDR texture; it's read texel for texel (same size), so no sampler.
+/// g_push.instance is the heap index of the HDR texture. At the same size it's read texel for texel; when it's smaller (a
+/// lower render scale), g_push.frameBuffer holds the target's size (16 bits each) and g_push.instanceBuffer a linear
+/// sampler, and the image is sampled up to fill the target.
 ///
 /// DEBUG_OUTPUT = 1 is Meow2Renderer's debug present (games never build it): g_push.userData 0 shows debug-view
 /// colours as they are (no tone curve), 1 turns an overdraw count into a heat map, 2 shows a position texture as
@@ -38,7 +40,23 @@ float3 heat(float count)
 float4 psMain(VertexOutput input) : SV_Target
 {
     const Texture2D<float4> hdr = ResourceDescriptorHeap[g_push.instance];
-    const float4 texel = hdr.Load(int3(input.position.xy, 0));
+    float4 texel;
+    if (g_push.frameBuffer != 0)
+    {
+        // Scaled: the pixel's place in the target, sampled from the source; kept half a texel inside it, so the
+        // sampler's wrapping never reaches across to the other edge.
+        const float2 target = float2(g_push.frameBuffer & 0xFFFF, g_push.frameBuffer >> 16);
+        uint width = 0;
+        uint height = 0;
+        hdr.GetDimensions(width, height);
+        const float2 halfTexel = 0.5 / float2(width, height);
+        const float2 uv = clamp(input.position.xy / target, halfTexel, 1.0 - halfTexel);
+        texel = hdr.SampleLevel(heapSampler(g_push.instanceBuffer), uv, 0.0);
+    }
+    else
+    {
+        texel = hdr.Load(int3(input.position.xy, 0));
+    }
     const float3 color = texel.rgb;
 #if DEBUG_OUTPUT
     if (g_push.userData == 2)

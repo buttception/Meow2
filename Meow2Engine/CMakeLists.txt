@@ -61,6 +61,7 @@ target_sources(Meow2Engine
         src/Graphics/Renderer/ToneMapPass.cpp
         src/Graphics/Rhi/RenderDocCapture.cpp
         src/Graphics/Rhi/RhiDevice.cpp
+        src/Math/CameraRig.cpp
         src/Math/SplinePath.cpp
         src/Platform/FileSystem/FileSystem.cpp
         src/Platform/Input/InputSystem.cpp
@@ -71,6 +72,7 @@ target_sources(Meow2Engine
         src/Platform/Window/Sdl/WindowImplSdl.h
         src/Platform/Window/Sdl/WindowSdl.cpp
         src/Platform/Window/WindowConfig.cpp
+        src/Scene/Camera.cpp
         src/Scene/Scene.cpp
         src/Scene/TransformHierarchy.cpp
     PUBLIC
@@ -143,6 +145,7 @@ target_sources(Meow2Engine
             include/Meow2/Math/Batch.h
             include/Meow2/Math/Bounds.h
             include/Meow2/Math/Camera.h
+            include/Meow2/Math/CameraRig.h
             include/Meow2/Math/Color.h
             include/Meow2/Math/Easing.h
             include/Meow2/Math/Packing.h
@@ -164,6 +167,7 @@ target_sources(Meow2Engine
             include/Meow2/Platform/Window/Window.h
             include/Meow2/Platform/Window/WindowConfig.h
             include/Meow2/Platform/Window/WindowEvents.h
+            include/Meow2/Scene/Camera.h
             include/Meow2/Scene/Scene.h
             include/Meow2/Scene/TransformHierarchy.h
             "${meow2GeneratedDir}/Meow2/Core/Version.h")
