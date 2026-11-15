@@ -106,15 +106,16 @@ struct FlowPins
 /// @brief The flow view's spacing, in pixels (already scaled for the display). Plain data.
 struct FlowMetrics
 {
-    float pad = 8.0F;          ///< Inside a node, around its text.
-    float titleHeight = 22.0F; ///< A node's title bar.
-    float pinRow = 20.0F;      ///< One pin's row.
-    float dot = 4.5F;          ///< A pin's radius.
-    float columnGap = 90.0F;   ///< Between columns, where the wires run.
-    float rowGap = 24.0F;      ///< Between nodes in a column.
-    float margin = 16.0F;      ///< Around everything.
-    float minWidth = 140.0F;   ///< The narrowest node.
-    float sideGap = 24.0F;     ///< Between a node's input labels and its output labels.
+    float pad = 8.0F;             ///< Inside a node, around its text.
+    float titleHeight = 22.0F;    ///< A node's title bar.
+    float pinRow = 20.0F;         ///< One pin's row.
+    float dot = 4.5F;             ///< A pin's radius.
+    float levelGap = 70.0F;       ///< Between one level's band and the next one down, where the wires run.
+    float nodeGap = 60.0F;        ///< Between nodes side by side in a band (wires pass there too).
+    float maxBandWidth = 1400.0F; ///< A band wider than this wraps onto another line (at least one node per line).
+    float margin = 16.0F;         ///< Around everything.
+    float minWidth = 140.0F;      ///< The narrowest node.
+    float sideGap = 24.0F;        ///< Between a node's input labels and its output labels.
 };
 
 /// @brief One node of the flow view: where it is, its size and pins. Plain data.
@@ -136,8 +137,13 @@ struct FlowGeometry
     float height = 0.0F;           ///< Ditto.
 };
 
-/// @brief Places a flow's nodes: columns from layoutFlow(), each as wide as its widest node, nodes stacked in each
-///        column in row order with a gap, each node wide enough for its title and its input and output labels.
+/// @brief Places a flow's nodes top to bottom: each level of layoutFlow() (its `column`) is a band, the bands stack
+///        downwards, and a level's passes sit side by side in their `row` order, wrapping onto another line when the
+///        band gets wider than FlowMetrics::maxBandWidth. Each node is wide enough for its title and its input and
+///        output labels.
+///
+/// A frame's dependency chain is long (shadow cascades alone add a dozen levels) but each level holds few passes, so
+/// stacking levels keeps the view a column you scroll down, rather than a strip far wider than the window.
 /// @param flow      The flow.
 /// @param metrics   The spacing.
 /// @param textWidth How wide a text is drawn, in pixels.
@@ -168,10 +174,10 @@ void markDebugResources(FrameFlow& flow);
 /// @return The flow.
 [[nodiscard]] FrameFlow describeGraph(const Renderer::RenderGraph& graph, Rhi::IRhiDevice& device);
 
-/// @brief Lays a flow out in columns: a pass that reads what another wrote goes to its right, so independent passes
-///        (the sky's lookup tables beside the culling) stand side by side instead of in one long line. Within a
-///        column, passes are ordered by where their inputs come from (the average row of their writers), so wires
-///        cross less; passes with no inputs keep their order.
+/// @brief Lays a flow out in levels (`column`): a pass that reads what another wrote goes one level after it, so
+///        independent passes (the sky's lookup tables beside the culling) share a level. placeFlow() draws levels as
+///        bands from top to bottom. Within a level, passes are ordered by where their inputs come from (the average
+///        row of their writers), so wires cross less; passes with no inputs keep their order.
 /// @param flow The flow.
 /// @return The layout.
 [[nodiscard]] FlowLayout layoutFlow(const FrameFlow& flow);

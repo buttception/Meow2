@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include <format>
+
 namespace Meow2::RendererApp
 {
 namespace
@@ -160,5 +162,57 @@ TEST(FrameInspector, ResourcesOnlyDebugPassesWriteAreDebug)
     EXPECT_TRUE(flow.resources[1].debug) << "only a debug pass writes it";
     EXPECT_FALSE(flow.resources[2].debug) << "a debug pass draws over it, but the frame wrote it first";
     EXPECT_FALSE(flow.resources[3].debug) << "imported, written by no one";
+}
+
+// #220: a long chain of passes (shadow cascades add a dozen levels) goes down the view, not across it.
+TEST(FrameInspector, LevelsStackTopToBottom)
+{
+    FrameFlow flow;
+    for (std::uint32_t i = 0; i < 6; ++i)
+    {
+        flow.resources.push_back({.name = std::format("r{}", i)});
+    }
+    flow.passes.push_back({.name = "First", .accesses = {writes(0)}});
+    for (std::uint32_t i = 1; i < 6; ++i)
+    {
+        flow.passes.push_back({.name = std::format("Pass {}", i), .accesses = {reads(i - 1), writes(i)}});
+    }
+    const FlowGeometry geometry =
+        placeFlow(flow, FlowMetrics{}, [](std::string_view text) { return 7.0F * static_cast<float>(text.size()); });
+    for (std::size_t i = 1; i < geometry.nodes.size(); ++i)
+    {
+        const FlowNode& above = geometry.nodes[i - 1];
+        EXPECT_GE(geometry.nodes[i].y, above.y + above.height) << "each level below the one it reads from";
+        EXPECT_FLOAT_EQ(geometry.nodes[i].x, above.x) << "a chain stays in one column";
+    }
+    EXPECT_GT(geometry.height, geometry.width) << "tall, not long";
+}
+
+TEST(FrameInspector, WideLevelsWrap)
+{
+    // Ten independent passes are one level; with room for about three nodes per line, the band wraps.
+    FrameFlow flow;
+    for (std::uint32_t i = 0; i < 10; ++i)
+    {
+        flow.resources.push_back({.name = std::format("r{}", i)});
+        flow.passes.push_back({.name = std::format("Pass {}", i), .accesses = {writes(i)}});
+    }
+    FlowMetrics metrics;
+    metrics.maxBandWidth = 3.0F * metrics.minWidth + 2.0F * metrics.nodeGap;
+    const FlowGeometry geometry =
+        placeFlow(flow, metrics, [](std::string_view text) { return 7.0F * static_cast<float>(text.size()); });
+    for (std::size_t i = 0; i < geometry.nodes.size(); ++i)
+    {
+        const FlowNode& node = geometry.nodes[i];
+        EXPECT_LE(node.x + node.width, metrics.margin + metrics.maxBandWidth) << node.title << " stays in the band";
+        for (std::size_t j = i + 1; j < geometry.nodes.size(); ++j)
+        {
+            const FlowNode& other = geometry.nodes[j];
+            const bool apart = node.x + node.width <= other.x || other.x + other.width <= node.x ||
+                               node.y + node.height <= other.y || other.y + other.height <= node.y;
+            EXPECT_TRUE(apart) << node.title << " overlaps " << other.title;
+        }
+    }
+    EXPECT_GT(geometry.nodes[9].y, geometry.nodes[0].y) << "later passes of the level wrap onto lower lines";
 }
 } // namespace Meow2::RendererApp

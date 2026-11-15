@@ -325,17 +325,9 @@ FlowGeometry placeFlow(const FrameFlow& flow, const FlowMetrics& metrics,
         node.height = metrics.titleHeight + rows * metrics.pinRow + metrics.pad * 0.5F;
     }
 
-    // Columns as wide as their widest node; nodes stacked in each column in the layout's row order.
-    std::vector<float> columnWidth(layout.columns, 0.0F);
-    for (std::uint32_t pass = 0; pass < passCount; ++pass)
-    {
-        columnWidth[layout.column[pass]] = std::max(columnWidth[layout.column[pass]], geometry.nodes[pass].width);
-    }
-    std::vector<float> columnX(layout.columns, metrics.margin);
-    for (std::uint32_t column = 1; column < layout.columns; ++column)
-    {
-        columnX[column] = columnX[column - 1] + columnWidth[column - 1] + metrics.columnGap;
-    }
+    // Levels (the layout's columns) as bands from top to bottom; a level's passes side by side in its row order. A
+    // line of a band ends before it would pass maxBandWidth, and the band goes on below; every line holds at least one
+    // node, however wide.
     std::vector<std::uint32_t> order(passCount);
     for (std::uint32_t pass = 0; pass < passCount; ++pass)
     {
@@ -344,18 +336,38 @@ FlowGeometry placeFlow(const FrameFlow& flow, const FlowMetrics& metrics,
     std::ranges::sort(
         order, [&](std::uint32_t a, std::uint32_t b)
         { return std::pair{layout.column[a], layout.row[a]} < std::pair{layout.column[b], layout.row[b]}; });
-    std::vector<float> columnBottom(layout.columns, metrics.margin);
+    float lineTop = metrics.margin;    // where the current line starts
+    float lineBottom = metrics.margin; // its tallest node's bottom so far
+    float x = metrics.margin;
+    float right = metrics.margin; // the widest line's right edge
+    std::optional<std::uint32_t> level;
     for (const std::uint32_t pass : order)
     {
-        const std::uint32_t column = layout.column[pass];
-        geometry.nodes[pass].x = columnX[column];
-        geometry.nodes[pass].y = columnBottom[column];
-        columnBottom[column] += geometry.nodes[pass].height + metrics.rowGap;
+        FlowNode& node = geometry.nodes[pass];
+        const bool newLevel = level != layout.column[pass];
+        const bool full = !newLevel && x > metrics.margin && x + node.width > metrics.margin + metrics.maxBandWidth;
+        if (newLevel || full)
+        {
+            if (level)
+            {
+                // Below the last line: the gap between levels leaves room for the wires going down; a wrapped line
+                // of the same level only needs the node gap.
+                lineTop = lineBottom + (newLevel ? metrics.levelGap : metrics.nodeGap * 0.5F);
+            }
+            lineBottom = lineTop;
+            x = metrics.margin;
+            level = layout.column[pass];
+        }
+        node.x = x;
+        node.y = lineTop;
+        x += node.width + metrics.nodeGap;
+        right = std::max(right, node.x + node.width);
+        lineBottom = std::max(lineBottom, node.y + node.height);
     }
-    if (layout.columns > 0)
+    if (passCount > 0)
     {
-        geometry.width = columnX.back() + columnWidth.back() + metrics.margin;
-        geometry.height = *std::ranges::max_element(columnBottom) - metrics.rowGap + metrics.margin;
+        geometry.width = right + metrics.margin;
+        geometry.height = lineBottom + metrics.margin;
     }
     return geometry;
 }
@@ -813,8 +825,9 @@ FrameInspector::FlowClick FrameInspector::drawFlow(const FrameFlow& flow, std::o
                               .titleHeight = line + 8.0F * scale,
                               .pinRow = line + 6.0F * scale,
                               .dot = 4.5F * scale,
-                              .columnGap = 90.0F * scale,
-                              .rowGap = 24.0F * scale,
+                              .levelGap = 70.0F * scale,
+                              .nodeGap = 60.0F * scale,
+                              .maxBandWidth = 1400.0F * scale,
                               .margin = 16.0F * scale,
                               .minWidth = 140.0F * scale,
                               .sideGap = 24.0F * scale};
@@ -896,7 +909,10 @@ FrameInspector::FlowClick FrameInspector::drawFlow(const FrameFlow& flow, std::o
                 colour.w = highlighted ? 1.0F : 0.5F;
                 const ImVec2 from = outputAt(*writer, output);
                 const ImVec2 to = inputAt(pass, input);
-                const float bend = std::max(std::abs(to.x - from.x) * 0.5F, 40.0F * scale);
+                // Pins are on the sides, so wires leave and arrive sideways; a wire going down a long way bends wider,
+                // so it clears the nodes it starts and ends at.
+                const float bend =
+                    std::max({std::abs(to.x - from.x) * 0.5F, std::abs(to.y - from.y) * 0.35F, 40.0F * scale});
                 // Dashed when only debugging needs it: a debug pass at either end, or a debug-only resource.
                 const bool debugWire =
                     flow.passes[pass].debug || flow.passes[*writer].debug || flow.resources[resource].debug;
