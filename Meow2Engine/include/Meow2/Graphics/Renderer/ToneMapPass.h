@@ -43,7 +43,8 @@ public:
     /// @param graph     The frame's graph, after every pass that writes `hdr`.
     /// @param hdr       The scene's colour in the graph.
     /// @param texture   The same texture (its heap index is read by the shader).
-    /// @param swapchain The acquired swapchain; the same size as `texture`.
+    /// @param swapchain The acquired swapchain; when bigger than `texture` (a lower render scale), the image is scaled
+    ///                  up with linear filtering.
     /// @param device    For the texture's heap index.
     void addPass(RenderGraph& graph, GraphResource hdr, Rhi::TextureHandle texture, Rhi::IRhiSwapchain& swapchain,
                  Rhi::IRhiDevice& device);
@@ -53,7 +54,7 @@ public:
     /// @param hdr           The scene's colour in the graph.
     /// @param texture       The same texture (its heap index is read by the shader).
     /// @param target        The texture to write, in the graph; in the format the pass was created for.
-    /// @param targetTexture The same texture; the same size as `texture`.
+    /// @param targetTexture The same texture; when bigger than `texture`, the image is scaled up.
     /// @param device        For the texture's heap index.
     void addPass(RenderGraph& graph, GraphResource hdr, Rhi::TextureHandle texture, GraphResource target,
                  Rhi::TextureHandle targetTexture, Rhi::IRhiDevice& device);

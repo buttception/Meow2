@@ -32,11 +32,30 @@ ToneMapPass::ToneMapPass(PipelineLibrary& pipelines, PipelineId pipeline)
 {
 }
 
-void ToneMapPass::addPass(RenderGraph& graph, GraphResource hdr, Rhi::TextureHandle texture,
-                          Rhi::IRhiSwapchain& swapchain, Rhi::IRhiDevice& device)
+namespace
+{
+/// @brief The pass's push constants: the HDR texture, and when the target is a different size, its size and a linear
+///        sampler, so the shader scales the image (a game view drawn at a lower render scale).
+Shader::PushConstants tonePush(Rhi::IRhiDevice& device, Rhi::TextureHandle texture, std::uint32_t targetWidth,
+                               std::uint32_t targetHeight)
 {
     Shader::PushConstants push{};
     push.instance = device.bindlessIndex(texture);
+    const Rhi::TextureInfo source = device.textureInfo(texture);
+    if (source.width != targetWidth || source.height != targetHeight)
+    {
+        // frameBuffer = the target's size (16 bits each), instanceBuffer = the sampler; 0 means "same size".
+        push.frameBuffer = (targetWidth & 0xFFFFU) | (targetHeight << 16U);
+        push.instanceBuffer = Rhi::c_defaultSamplerIndex;
+    }
+    return push;
+}
+} // namespace
+
+void ToneMapPass::addPass(RenderGraph& graph, GraphResource hdr, Rhi::TextureHandle texture,
+                          Rhi::IRhiSwapchain& swapchain, Rhi::IRhiDevice& device)
+{
+    const Shader::PushConstants push = tonePush(device, texture, swapchain.width(), swapchain.height());
     graph.addPass({.name = "Tone map",
                    .accesses = {{hdr, Rhi::ResourceState::ShaderRead}},
                    .record =
@@ -55,8 +74,8 @@ void ToneMapPass::addPass(RenderGraph& graph, GraphResource hdr, Rhi::TextureHan
 void ToneMapPass::addPass(RenderGraph& graph, GraphResource hdr, Rhi::TextureHandle texture, GraphResource target,
                           Rhi::TextureHandle targetTexture, Rhi::IRhiDevice& device)
 {
-    Shader::PushConstants push{};
-    push.instance = device.bindlessIndex(texture);
+    const Rhi::TextureInfo targetInfo = device.textureInfo(targetTexture);
+    const Shader::PushConstants push = tonePush(device, texture, targetInfo.width, targetInfo.height);
     graph.addPass({.name = "Tone map",
                    .accesses = {{hdr, Rhi::ResourceState::ShaderRead}, {target, Rhi::ResourceState::ColorTarget}},
                    .record =

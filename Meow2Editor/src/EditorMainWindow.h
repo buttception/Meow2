@@ -5,12 +5,16 @@
 
 #include "Commands/EditorCommandRegistry.h"
 #include "Commands/EditorSettings.h"
+#include "Viewports/EditorRenderer.h"
+#include "Viewports/EditorWorld.h"
 #include "ViewportWidget.h"
 
 #include <Meow2/Core/Log/ConsoleBuffer.h>
 #include <Meow2/Core/Log/Logger.h>
+#include <Meow2/Platform/Input/InputSystem.h>
 
 #include <cstdint>
+#include <memory>
 #include <QJsonObject>
 #include <QMainWindow>
 #include <QString>
@@ -21,26 +25,34 @@ class QAction;
 namespace Meow2::Editor
 {
 class ConsoleDock;
+class GameViewportDock;
+class QtInputSource;
 class SettingsDialog;
+class ViewportController;
 
 /// @brief What the main window works with. Plain data (references), filled by the composition root.
 struct EditorMainWindowDeps
 {
-    EditorCommandRegistry& commands;   ///< Every menu item, toolbar button and shortcut runs a command here.
-    EditorSettings& settings;          ///< Shown by the settings window.
-    const Log::ConsoleBuffer& console; ///< Shown by the console dock.
-    Log::Logger& log;                  ///< Receives commands that fail when the user triggers them.
+    EditorCommandRegistry& commands;    ///< Every menu item, toolbar button and shortcut runs a command here.
+    EditorSettings& settings;           ///< Shown by the settings window.
+    const Log::ConsoleBuffer& console;  ///< Shown by the console dock.
+    Log::Logger& log;                   ///< Receives commands that fail when the user triggers them.
+    EditorWorld& world;                 ///< The scene the viewports show.
+    Input::InputSystem& input;          ///< Fed by the viewports' keyboard and mouse (QtInputSource).
+    EditorRenderer* renderer = nullptr; ///< Draws the viewports; null without a GPU (offscreen platform, tests).
 };
 
-/// @brief The editor's main window: the viewport in the middle, the console dock, menus and a toolbar.
+/// @brief The editor's main window: the editor viewport in the middle, the game viewport and console docks, menus
+///        and a toolbar.
 ///
 /// **It never changes editor state itself** (techstack.md §20): every menu item, toolbar button and shortcut runs a
 /// command through the EditorCommandRegistry, so an agent can do the same over MCP. A button is enabled exactly when
 /// its command exists and its isEnabled() says yes; tick() refreshes that every frame, so the Save button lights up by
 /// itself once `scene.save` exists (PR 3).
 ///
-/// It registers one command of its own, `view.showPanel {panel, visible}` (the console dock, the settings window),
-/// and removes it when destroyed.
+/// It registers `view.showPanel {panel, visible}` (the console and game docks, the settings window), and its
+/// ViewportController the `viewport.*` commands; both are removed when it's destroyed. The dock layout is restored
+/// from `editor.layout` and saved there by saveLayout().
 /// @par Thread safety
 /// Not thread-safe; GUI thread only, like every QWidget.
 /// @par Lifetime
@@ -60,9 +72,21 @@ public:
     EditorMainWindow(const EditorMainWindow&) = delete;            ///< A window isn't copied.
     EditorMainWindow& operator=(const EditorMainWindow&) = delete; ///< A window isn't copied.
 
-    /// @brief Once per frame (the editor's frame timer): new console lines, and the actions' enabled state and
-    ///        labels.
-    void tick();
+    /// @brief Once per frame (the editor's frame timer): new console lines, the viewports (camera, scene, drawing),
+    ///        and the actions' state.
+    /// @param deltaSeconds The frame's length, for the camera.
+    void tick(float deltaSeconds = 0.0F);
+
+    /// @brief Stores the dock layout in the settings (`editor.layout`), to restore at the next start.
+    void saveLayout();
+
+    /// @brief The game viewport's dock.
+    /// @return The dock, owned by this window.
+    [[nodiscard]] GameViewportDock& gameDock();
+
+    /// @brief The viewports' controller (camera, drawing, `viewport.*` commands).
+    /// @return It, owned by this window.
+    [[nodiscard]] ViewportController& viewports();
 
     /// @brief The viewport in the middle of the window.
     /// @return The viewport, owned by this window.
@@ -101,11 +125,21 @@ private:
     /// @brief Registers `view.showPanel`.
     void registerViewCommands();
 
+    /// @brief Refreshes the actions: enabled state, Undo/Redo labels, checked panels and camera mode, the render scale.
+    void refreshActions();
+
     EditorCommandRegistry& m_commands;
     Log::Logger& m_log;
-    ViewportWidget* m_viewport;                          ///< Owned by Qt (parent–child), never null.
-    ConsoleDock* m_console;                              ///< Owned by Qt, never null.
-    SettingsDialog* m_settingsDialog;                    ///< Owned by Qt, never null.
+    ViewportWidget* m_viewport;       ///< Owned by Qt (parent–child), never null.
+    ConsoleDock* m_console;           ///< Owned by Qt, never null.
+    SettingsDialog* m_settingsDialog; ///< Owned by Qt, never null.
+    GameViewportDock* m_gameDock;     ///< Owned by Qt, never null.
+    QtInputSource* m_inputSource;     ///< Owned by Qt, never null.
+    EditorSettings& m_settings;
+    std::unique_ptr<ViewportController> m_viewports;     ///< After the widgets it drives.
+    QAction* m_gameAction = nullptr;                     ///< Checked while the game dock is shown.
+    QAction* m_orbitAction = nullptr;                    ///< Checked in Orbit mode.
+    QAction* m_flyAction = nullptr;                      ///< Checked in Fly mode.
     std::vector<CommandAction> m_commandActions;         ///< Every action bound to a command.
     QAction* m_undoAction = nullptr;                     ///< Its text names the step it undoes.
     QAction* m_redoAction = nullptr;                     ///< Its text names the step it redoes.

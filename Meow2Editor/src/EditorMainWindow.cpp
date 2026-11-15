@@ -6,15 +6,23 @@
 #include "Commands/CommandSchema.h"
 #include "Panels/ConsoleDock.h"
 #include "Panels/SettingsDialog.h"
+#include "Viewports/GameViewportDock.h"
+#include "Viewports/QtInputSource.h"
+#include "Viewports/ViewportController.h"
 
 #include <Meow2/Core/Assert.h>
 
 #include <QAction>
+#include <QActionGroup>
+#include <QByteArray>
+#include <QComboBox>
 #include <QJsonArray>
 #include <QKeySequence>
 #include <QMenu>
 #include <QMenuBar>
 #include <QToolBar>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace Meow2::Editor
@@ -26,6 +34,9 @@ namespace
 /// @brief `view.showPanel`'s panel names.
 constexpr QLatin1StringView c_consolePanel{"console"};
 constexpr QLatin1StringView c_settingsPanel{"settings"};
+constexpr QLatin1StringView c_gamePanel{"game"};
+/// @brief Where the dock layout is kept (QMainWindow::saveState(), base64).
+constexpr std::string_view c_layoutKey = "editor.layout";
 } // namespace
 
 EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* parent)
@@ -35,27 +46,77 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     , m_viewport(new ViewportWidget(this)) // Qt parent–child: the window deletes them
     , m_console(new ConsoleDock(deps.console, deps.settings.value(u"editor.console.followNewest"_s).toBool(), this))
     , m_settingsDialog(new SettingsDialog(deps.commands, deps.settings, this))
+    , m_gameDock(new GameViewportDock(this))
+    , m_inputSource(new QtInputSource(deps.input, this))
+    , m_settings(deps.settings)
 {
+    m_viewport->setObjectName(u"EditorViewport"_s);
     setCentralWidget(m_viewport);
+    addDockWidget(Qt::RightDockWidgetArea, m_gameDock);
     addDockWidget(Qt::BottomDockWidgetArea, m_console);
+    // A saved layout puts the docks back where the user left them; the defaults above are the first run's.
+    if (const std::string layout = deps.settings.config().getString(c_layoutKey, ""); !layout.empty())
+    {
+        restoreState(QByteArray::fromBase64(QByteArray::fromStdString(layout)));
+    }
+    m_inputSource->watch(m_viewport);
+    m_inputSource->watch(&m_gameDock->viewport());
+    m_viewports = std::make_unique<ViewportController>(ViewportControllerDeps{.commands = deps.commands,
+                                                                              .settings = deps.settings,
+                                                                              .world = deps.world,
+                                                                              .input = deps.input,
+                                                                              .inputSource = *m_inputSource,
+                                                                              .renderer = deps.renderer,
+                                                                              .editorViewport = *m_viewport,
+                                                                              .gameViewport = m_gameDock->viewport(),
+                                                                              .log = deps.log});
+    connect(
+        &m_gameDock->renderScaleBox(), &QComboBox::activated, this, [this](int index)
+        { run(u"viewport.setRenderScale"_s, {{u"percent"_s, m_gameDock->renderScaleBox().itemData(index).toInt()}}); });
     registerViewCommands();
     createMenusAndToolbar();
-    tick();
+    refreshActions();
 }
 
 EditorMainWindow::~EditorMainWindow()
 {
+    m_viewports.reset(); // removes its commands while the widgets it uses still exist
     m_commands.remove(u"view.showPanel");
 }
 
-void EditorMainWindow::tick()
+void EditorMainWindow::tick(float deltaSeconds)
 {
     m_console->tick();
+    m_viewports->tick(deltaSeconds);
+    refreshActions();
+}
+
+void EditorMainWindow::saveLayout()
+{
+    m_settings.config().setString(c_layoutKey, saveState().toBase64().toStdString());
+}
+
+GameViewportDock& EditorMainWindow::gameDock()
+{
+    return *m_gameDock;
+}
+
+ViewportController& EditorMainWindow::viewports()
+{
+    return *m_viewports;
+}
+
+void EditorMainWindow::refreshActions()
+{
     for (const CommandAction& bound : m_commandActions)
     {
         bound.action->setEnabled(m_commands.isEnabled(bound.command));
     }
     m_consoleAction->setChecked(m_console->isVisible());
+    m_gameAction->setChecked(m_gameDock->isVisible());
+    m_orbitAction->setChecked(m_viewports->camera().mode() == CameraMode::Orbit);
+    m_flyAction->setChecked(m_viewports->camera().mode() == CameraMode::Fly);
+    m_gameDock->showRenderScale(m_viewports->renderScalePercent());
 
     // The labels name the next step: "Undo Set position". Only rebuilt when the history changed.
     const UndoStack& history = m_commands.history();
@@ -110,7 +171,7 @@ void EditorMainWindow::run(const QString& command, const QJsonObject& parameters
     {
         MEOW2_LOG_WARN(m_log, "{}: {}", command.toStdString(), ran.error());
     }
-    tick(); // show the effect (labels, enabled state) at once, not a frame later
+    refreshActions(); // show the effect (labels, enabled state) at once, not a frame later
 }
 
 void EditorMainWindow::createMenusAndToolbar()
@@ -130,6 +191,24 @@ void EditorMainWindow::createMenusAndToolbar()
     m_consoleAction->setCheckable(true);
     connect(m_consoleAction, &QAction::triggered, this,
             [this](bool shown) { run(u"view.showPanel"_s, {{u"panel"_s, c_consolePanel}, {u"visible"_s, shown}}); });
+    m_gameAction = new QAction(u"Game view"_s, this);
+    m_gameAction->setCheckable(true);
+    connect(m_gameAction, &QAction::triggered, this,
+            [this](bool shown) { run(u"view.showPanel"_s, {{u"panel"_s, c_gamePanel}, {u"visible"_s, shown}}); });
+
+    // F frames the scene, but only while the editor viewport has focus: typed into a dock, F is just a letter.
+    QAction* focus = addCommandAction(u"Frame scene"_s, u"viewport.focus"_s);
+    focus->setShortcut(QKeySequence{Qt::Key_F});
+    focus->setShortcutContext(Qt::WidgetShortcut);
+    m_viewport->addAction(focus);
+    m_orbitAction = addCommandAction(u"Orbit camera"_s, u"viewport.setCameraMode"_s, {{u"mode"_s, u"orbit"_s}});
+    m_flyAction = addCommandAction(u"Fly camera"_s, u"viewport.setCameraMode"_s, {{u"mode"_s, u"fly"_s}});
+    auto* modes = new QActionGroup(this);
+    for (QAction* mode : {m_orbitAction, m_flyAction})
+    {
+        mode->setCheckable(true);
+        modes->addAction(mode);
+    }
 
     QMenu* file = menuBar()->addMenu(u"&File"_s);
     file->addAction(save);
@@ -138,8 +217,14 @@ void EditorMainWindow::createMenusAndToolbar()
     QMenu* edit = menuBar()->addMenu(u"&Edit"_s);
     edit->addAction(m_undoAction);
     edit->addAction(m_redoAction);
+    QMenu* view = menuBar()->addMenu(u"&View"_s);
+    view->addAction(focus);
+    view->addSeparator();
+    view->addAction(m_orbitAction);
+    view->addAction(m_flyAction);
     QMenu* window = menuBar()->addMenu(u"&Window"_s);
     window->addAction(m_consoleAction);
+    window->addAction(m_gameAction);
 
     QToolBar* toolbar = addToolBar(u"Main"_s);
     toolbar->setObjectName(u"MainToolbar"_s);
@@ -155,10 +240,10 @@ void EditorMainWindow::createMenusAndToolbar()
 void EditorMainWindow::registerViewCommands()
 {
     QJsonObject panel = propertySchema(u"string"_s, u"Which panel."_s);
-    panel.insert(u"enum", QJsonArray{c_consolePanel, c_settingsPanel});
+    panel.insert(u"enum", QJsonArray{c_consolePanel, c_gamePanel, c_settingsPanel});
     [[maybe_unused]] const Result<void> added = m_commands.add(
         {.name = u"view.showPanel"_s,
-         .description = u"Shows or hides a panel: the console dock or the settings window."_s,
+         .description = u"Shows or hides a panel: the console dock, the game view dock or the settings window."_s,
          .parameters = objectSchema({{.name = u"panel"_s, .schema = panel, .required = true},
                                      {.name = u"visible"_s,
                                       .schema = propertySchema(u"boolean"_s, u"Shown or hidden."_s),
@@ -166,9 +251,10 @@ void EditorMainWindow::registerViewCommands()
         [this](const QJsonObject& parameters) -> Result<CommandOutcome>
         {
             const bool visible = parameters.value(u"visible").toBool();
-            QWidget* widget = parameters.value(u"panel").toString() == c_consolePanel
-                                  ? static_cast<QWidget*>(m_console)
-                                  : static_cast<QWidget*>(m_settingsDialog);
+            const QString name = parameters.value(u"panel").toString();
+            QWidget* widget = name == c_consolePanel ? static_cast<QWidget*>(m_console)
+                              : name == c_gamePanel  ? static_cast<QWidget*>(m_gameDock)
+                                                     : static_cast<QWidget*>(m_settingsDialog);
             if (widget == m_settingsDialog && visible)
             {
                 m_settingsDialog->refresh(); // an agent may have changed a setting since it was last open

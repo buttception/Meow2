@@ -2,7 +2,8 @@
 
 /// @file
 /// @brief Test fixture with everything the editor's commands and windows need: a settings file in a fresh folder,
-///        the settings, the history, the registry with the built-in commands, and a console buffer.
+///        the settings, the history, the registry with the built-in commands, a console buffer, an input system and a
+///        world without a GPU.
 
 #include "Commands/EditorCommandRegistry.h"
 #include "Commands/EditorCommands.h"
@@ -10,10 +11,16 @@
 #include "Commands/UndoStack.h"
 #include "EditorMainWindow.h"
 #include "QtTestApplication.h"
+#include "Viewports/EditorWorld.h"
 
 #include <Meow2/Core/Config/Config.h>
+#include <Meow2/Core/Events/EventBus.h>
+#include <Meow2/Core/Id/UuidGenerator.h>
+#include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/ConsoleBuffer.h>
+#include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Platform.h>
+#include <Meow2/Platform/Input/InputSystem.h>
 
 #include <gtest/gtest.h>
 
@@ -40,7 +47,13 @@ protected:
     /// @brief What the main window needs, made from the members.
     Editor::EditorMainWindowDeps windowDeps()
     {
-        return {.commands = m_commands, .settings = m_settings, .console = m_console, .log = m_log};
+        return {.commands = m_commands,
+                .settings = m_settings,
+                .console = m_console,
+                .log = m_log,
+                .world = m_world,
+                .input = m_input,
+                .renderer = nullptr};
     }
 
     /// @brief Records a step that sets `m_value` from `from` to `to`, as a command would.
@@ -62,6 +75,11 @@ protected:
     Editor::UndoStack m_history;
     Editor::EditorCommandRegistry m_commands;
     int m_value = 0; ///< What pushValueStep() changes.
+    Events::EventBus m_events{Memory::globalTracker()};
+    Input::InputSystem m_input{m_events};
+    Jobs::JobSystem m_jobs{{.threadCount = 2}, m_log};
+    UuidGenerator m_ids;
+    Editor::EditorWorld m_world{m_ids, m_jobs}; ///< Without a GPU: entities and cameras only.
 
 private:
     /// @brief A settings file in a fresh folder per test.

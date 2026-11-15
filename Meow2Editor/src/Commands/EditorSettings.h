@@ -79,6 +79,14 @@ public:
     ///         out of range (nothing is stored then), or the save's IoError (the value is still set for this run).
     Result<void> set(const QString& key, const QJsonValue& value);
 
+    /// @brief The settings file underneath, for what the editor keeps that isn't a preference of the settings
+    ///        window (the dock layout).
+    /// @return The config.
+    [[nodiscard]] Config::Config& config()
+    {
+        return m_config;
+    }
+
     /// @brief A setting as JSON: key, label, description, type, value, default, range, needsRestart. For the
     ///        `settings.list` query.
     /// @param info The setting.

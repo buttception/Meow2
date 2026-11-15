@@ -4,6 +4,7 @@
 #include "EditorTestRig.h"
 #include "Panels/ConsoleDock.h"
 #include "Panels/SettingsDialog.h"
+#include "Viewports/GameViewportDock.h"
 
 #include <QAction>
 #include <QPlainTextEdit>
@@ -67,4 +68,21 @@ TEST_F(MainWindowTest, PanelsShowThroughCommands)
             << "the window's tick feeds the console";
     }
     EXPECT_EQ(m_commands.find(u"view.showPanel"), nullptr) << "removed with the window";
+}
+
+TEST_F(MainWindowTest, LayoutRoundTrips)
+{
+    {
+        Meow2::Editor::EditorMainWindow window{windowDeps()};
+        window.show();
+        EXPECT_TRUE(window.gameDock().isVisible()) << "the game view is docked and shown by default";
+        ASSERT_TRUE(m_commands.execute(u"view.showPanel", {{u"panel"_s, u"game"_s}, {u"visible"_s, false}}));
+        window.saveLayout();
+    }
+    EXPECT_FALSE(m_config.getString("editor.layout", "").empty());
+
+    Meow2::Editor::EditorMainWindow again{windowDeps()};
+    again.show();
+    EXPECT_FALSE(again.gameDock().isVisible()) << "hidden as it was left";
+    EXPECT_TRUE(again.console().isVisible());
 }

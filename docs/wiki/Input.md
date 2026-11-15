@@ -8,11 +8,11 @@
   - `#include <Meow2/Platform/Input/InputEvents.h>`: what sources submit, and the bus events
   - `#include <Meow2/Platform/Input/SdlInputSource.h>`, `SdlGamepadSource.h`: the SDL sources
 - Namespace: `Meow2::Input`.
-- Status: ✅ M2 (#89, SDL sources #91). Player and Renderer get keyboard, mouse and gamepads from SDL. The editor's viewport input (`QtInputSource`) comes with M7.
+- Status: ✅ M2 (#89, SDL sources #91). Player and Renderer get keyboard, mouse and gamepads from SDL. The editor's viewports get keyboard and mouse from Qt (`QtInputSource`, #214).
 
 ```
 Player / Renderer:   SDL events ───► SdlInputSource   ─┐
-Editor viewport:     Qt events  ───► QtInputSource    ─┼─► InputSystem::submit(InputEvent)   (QtInputSource: M7)
+Editor viewport:     Qt events  ───► QtInputSource    ─┼─► InputSystem::submit(InputEvent)
 Player / Renderer:   SDL gamepads ─► SdlGamepadSource ─┘            │
                                                                     ├─► polling: isDown, wasPressed, mouseDelta, axis, …
                                                                     └─► bus events: KeyPressed, MouseMoved, GamepadConnected, …
@@ -113,13 +113,30 @@ Meow2::Time::GameLoop loop{clock, events, loopDesc,
 - **Destroy the sources before the Platform** (it asserts that no source is still registered). Declaring them after it in `main` does that.
 - **Tests** push SDL events by hand (`SDL_PushEvent`) and attach an **SDL virtual gamepad** (`SDL_AttachVirtualJoystick`), so the gamepad path is tested without hardware, on CI too. A real pad plugged into the test machine shows up as well; the test looks for its virtual pad by id.
 
+## The Qt source
+
+The editor feeds the same `InputSystem` from Qt: `QtInputSource` (editor code, `Meow2Editor/src/Viewports/`; Qt never enters the engine) is an event filter on the editor's two viewport widgets ([Editor → Viewports](Editor.md#viewports)).
+
+| Qt | Engine |
+|---|---|
+| `KeyPress`/`KeyRelease` (`nativeScanCode()`, `isAutoRepeat()`) | `KeyInput`: the **physical** key from the native scan code: Windows scan code set 1 (`keyFromWindowsScanCode`, 0x100 marks the E0-prefixed keys), X11's evdev codes + 8 (`keyFromEvdevCode`); the Qt key only where there's no native code (`keyFromQt`) |
+| the key event's `text()` | `TextInput` |
+| `MouseMove` | `MouseMotionInput`, the delta from the last position |
+| `MouseButtonPress`/`Release` | `MouseButtonInput`: Left, Middle, Right, X1, X2 |
+| `Wheel` | `MouseWheelInput`, `angleDelta / 120` (one notch = 1) |
+
+- **Only while a viewport has focus.** A click focuses it; events for an unfocused viewport are ignored, so typing in a dock never moves the camera. `activeViewport()` says which viewport's camera the input drives.
+- **Focus lost → everything released.** Every key and button still held gets a release, so a key held while clicking a dock doesn't stay down.
+- **Events go on to Qt** (the filter returns false), so Qt shortcuts still fire. Editor actions (undo, F to frame) are Qt shortcuts that issue commands and never read the `InputSystem` (techstack.md §9).
+- **Tests** send Qt events to a viewport on the offscreen platform (`Editor.QtInputSourceTest.*`) and check the scan-code tables (`Editor.QtInputSourceKeys.MapsNativeScanCodes`).
+
 ## Not yet
 
-- `QtInputSource` for the editor viewport (M7); gamepads in the editor (it has no Platform yet).
+- Gamepads in the editor (it has no Platform yet).
 - Switching text input on (`SDL_StartTextInput`), mouse capture (relative mode), rumble, an action layer ("Jump" = Space or A) with bindings in the config.
 
 See also: techstack.md §9, [GameLoop](GameLoop.md), [Events](Events.md), [Window](Window.md).
 
 ## Implementation summary
 
-- `SdlInputSource` (keyboard, mouse, text) and `SdlGamepadSource` (`create()` → `Result`, opens pads on `GAMEPAD_ADDED`, `GamepadId` = SDL joystick id) in `src/Platform/Input/Sdl/`; `Platform::pumpEvents()` passes non-window SDL events to registered handlers. Player and Renderer only (the editor gets `QtInputSource` in M7). Tested with pushed SDL events and an SDL virtual gamepad.
+- `SdlInputSource` (keyboard, mouse, text) and `SdlGamepadSource` (`create()` → `Result`, opens pads on `GAMEPAD_ADDED`, `GamepadId` = SDL joystick id) in `src/Platform/Input/Sdl/`; `Platform::pumpEvents()` passes non-window SDL events to registered handlers. Player and Renderer only. Tested with pushed SDL events and an SDL virtual gamepad.

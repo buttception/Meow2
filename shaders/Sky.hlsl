@@ -367,8 +367,10 @@ float4 psSky(SkyVertex input) : SV_Target
     const SkyConstants sky = skyConstants();
     const FrameConstants frame = frameConstants();
     // Two points along the pixel's ray (depth 1 is the near plane in reversed Z, 0.5 further out): their difference
-    // is the view direction, whether or not the view matrix moves the camera away from the origin.
-    const float4x4 inverseViewProjection = MEOW2_ROWS(sky, inverseViewProjection);
+    // is the view direction, whether or not the view matrix moves the camera away from the origin. The view's own
+    // matrix (its frame constants), so several views drawn in one frame each get their own sky; the LUTs, which only
+    // depend on the camera's altitude, are shared.
+    const float4x4 inverseViewProjection = MEOW2_ROWS(frame, inverseViewProjection);
     const float4 nearPoint = mul(float4(input.clip, 1.0, 1.0), inverseViewProjection);
     const float4 farPoint = mul(float4(input.clip, 0.5, 1.0), inverseViewProjection);
     const float3 direction = normalize(farPoint.xyz / farPoint.w - nearPoint.xyz / nearPoint.w);
