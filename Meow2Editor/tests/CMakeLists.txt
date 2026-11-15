@@ -12,6 +12,7 @@ meow2_add_test_suite(
         MainWindowTests.cpp
         QtInputSourceTests.cpp
         QtTestApplication.h
+        SceneDocumentTests.cpp
         SettingsDialogTests.cpp
         UndoStackTests.cpp
         ViewportCommandsTests.cpp

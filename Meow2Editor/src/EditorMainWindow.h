@@ -14,31 +14,46 @@
 #include <Meow2/Platform/Input/InputSystem.h>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <QJsonObject>
 #include <QMainWindow>
 #include <QString>
+#include <QStringList>
 #include <vector>
 
 class QAction;
+class QCloseEvent;
+class QMenu;
 
 namespace Meow2::Editor
 {
+class AssetsDock;
 class ConsoleDock;
 class GameViewportDock;
 class QtInputSource;
+class SceneDocument;
 class SettingsDialog;
 class ViewportController;
+
+/// @brief The answer to "save the changes?": what the window asks before dropping unsaved changes.
+enum class UnsavedAnswer
+{
+    Save,    ///< Save first (asking for a file if the scene is untitled), then go on.
+    Discard, ///< Drop the changes and go on.
+    Cancel,  ///< Don't go on.
+};
 
 /// @brief What the main window works with. Plain data (references), filled by the composition root.
 struct EditorMainWindowDeps
 {
-    EditorCommandRegistry& commands;    ///< Every menu item, toolbar button and shortcut runs a command here.
-    EditorSettings& settings;           ///< Shown by the settings window.
-    const Log::ConsoleBuffer& console;  ///< Shown by the console dock.
-    Log::Logger& log;                   ///< Receives commands that fail when the user triggers them.
-    EditorWorld& world;                 ///< The scene the viewports show.
-    Input::InputSystem& input;          ///< Fed by the viewports' keyboard and mouse (QtInputSource).
+    EditorCommandRegistry& commands;   ///< Every menu item, toolbar button and shortcut runs a command here.
+    EditorSettings& settings;          ///< Shown by the settings window.
+    const Log::ConsoleBuffer& console; ///< Shown by the console dock.
+    Log::Logger& log;                  ///< Receives commands that fail when the user triggers them.
+    EditorWorld& world;                ///< The scene the viewports show.
+    Input::InputSystem& input;         ///< Fed by the viewports' keyboard and mouse (QtInputSource).
+    SceneDocument& document; ///< The project folder and the scene file: titles, recent files, the Assets dock.
     EditorRenderer* renderer = nullptr; ///< Draws the viewports; null without a GPU (offscreen platform, tests).
 };
 
@@ -49,6 +64,10 @@ struct EditorMainWindowDeps
 /// command through the EditorCommandRegistry, so an agent can do the same over MCP. A button is enabled exactly when
 /// its command exists and its isEnabled() says yes; tick() refreshes that every frame, so the Save button lights up by
 /// itself once `scene.save` exists (PR 3).
+///
+/// File → New, Open, Open Recent, Save, Save As, Open Project and Import Model run the SceneDocument's commands; before
+/// dropping unsaved changes (New, Open, a double-click in the Assets dock, closing) it asks Save / Discard / Cancel.
+/// The title shows the scene's file and a `*` while it has unsaved changes.
 ///
 /// It registers `view.showPanel {panel, visible}` (the console and game docks, the settings window), and its
 /// ViewportController the `viewport.*` commands; both are removed when it's destroyed. The dock layout is restored
@@ -105,7 +124,56 @@ public:
     /// @return The first menu or toolbar action bound to it, or null.
     [[nodiscard]] QAction* actionFor(const QString& command) const;
 
+    /// @brief The Assets dock.
+    /// @return It.
+    [[nodiscard]] AssetsDock& assetsDock();
+
+    /// @brief Starts a new scene, asking about unsaved changes first (File → New).
+    /// @return True if a new scene was started.
+    bool newScene();
+
+    /// @brief Opens a scene file, asking about unsaved changes first (File → Open, the Assets dock).
+    /// @param path Relative to the project.
+    /// @return True if it opened.
+    bool openScene(const QString& path);
+
+    /// @brief Saves the scene (File → Save): to its file, or to one picked in a dialog when it's untitled.
+    /// @return True if it was saved.
+    bool saveScene();
+
+    /// @brief Replaces how the window asks about unsaved changes (a message box by default); tests answer directly.
+    /// @param ask Returns the answer.
+    void setUnsavedPrompt(std::function<UnsavedAnswer()> ask)
+    {
+        m_askUnsaved = std::move(ask);
+    }
+
+    /// @brief Replaces how the window picks a file to save to (a file dialog by default); tests answer directly.
+    /// @param pick Returns a path relative to the project, or empty for cancelled.
+    void setSaveAsPrompt(std::function<QString()> pick)
+    {
+        m_pickSaveAs = std::move(pick);
+    }
+
+protected:
+    /// @brief Asks about unsaved changes before the window closes; Cancel keeps it open.
+    /// @param event The close event.
+    void closeEvent(QCloseEvent* event) override;
+
 private:
+    /// @brief If there are unsaved changes, asks what to do and saves if told to.
+    /// @return True to go on (saved, discarded or nothing to save); false for Cancel or a failed save.
+    bool resolveUnsaved();
+
+    /// @brief Runs a command; true if it succeeded (a failure is logged).
+    bool tryRun(const QString& command, const QJsonObject& parameters = {});
+
+    /// @brief What a double-click in the Assets dock does with a file: opens a scene, imports a model.
+    void activateAsset(const QString& nativePath);
+
+    /// @brief Rebuilds File → Open Recent from the document's list.
+    void refreshRecent();
+
     /// @brief A menu or toolbar action and the command it runs.
     struct CommandAction
     {
@@ -145,5 +213,12 @@ private:
     QAction* m_redoAction = nullptr;                     ///< Its text names the step it redoes.
     QAction* m_consoleAction = nullptr;                  ///< Checked while the console dock is shown.
     std::uint64_t m_historyRevision = ~std::uint64_t{0}; ///< The history's revision the labels show.
+    SceneDocument& m_document;
+    AssetsDock* m_assetsDock = nullptr;          ///< Owned by Qt, never null after construction.
+    QAction* m_assetsAction = nullptr;           ///< Checked while the Assets dock is shown.
+    QMenu* m_recentMenu = nullptr;               ///< File → Open Recent.
+    QStringList m_recentShown;                   ///< What m_recentMenu lists.
+    std::function<UnsavedAnswer()> m_askUnsaved; ///< setUnsavedPrompt().
+    std::function<QString()> m_pickSaveAs;       ///< setSaveAsPrompt().
 };
 } // namespace Meow2::Editor

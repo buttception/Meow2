@@ -8,6 +8,7 @@
 #include "Commands/UndoStack.h"
 #include "EditorMainWindow.h"
 #include "EditorTheme.h"
+#include "Project/SceneDocument.h"
 #include "Viewports/EditorRenderer.h"
 #include "Viewports/EditorWorld.h"
 #include "WindowPlacement.h"
@@ -134,7 +135,12 @@ int main(int argc, char** argv)
         MEOW2_LOG_WARN(appLog, "No cooked shaders: {}", cooked.error());
     }
     Meow2::Assets::AssetManager assets{files, ids, engineLog};
-    Meow2::Editor::EditorWorld world{ids, jobs};
+    // What scene files save and load in the editor: the engine's and the renderer's components.
+    Meow2::Scene::ComponentRegistry components;
+    Meow2::Scene::registerSceneComponents(components);
+    Meow2::Renderer::registerRenderComponents(components);
+    Meow2::Editor::EditorWorld world{
+        {.ids = ids, .jobs = jobs, .components = components, .assets = assets, .log = engineLog}};
     std::unique_ptr<Meow2::Editor::EditorRenderer> renderer;
     if (QGuiApplication::platformName() != u"offscreen" && config.getBool("editor.render", true))
     {
@@ -152,10 +158,15 @@ int main(int argc, char** argv)
             MEOW2_LOG_ERROR(appLog, "The viewports can't draw: {}", made.error());
         }
     }
-    if (const Meow2::Result<void> built = world.buildDefaultScene(renderer ? &renderer->scene() : nullptr); !built)
-    {
-        MEOW2_LOG_ERROR(appLog, "The test scene wasn't built: {}", built.error());
-    }
+    // The project folder (editor.project) and its scene: the most recent one, or a new one.
+    Meow2::Editor::SceneDocument document{{.commands = commands,
+                                           .history = history,
+                                           .config = config,
+                                           .world = world,
+                                           .renderer = renderer.get(),
+                                           .files = files,
+                                           .assets = assets,
+                                           .log = appLog}};
 
     Meow2::Editor::EditorMainWindow window{{.commands = commands,
                                             .settings = settings,
@@ -163,6 +174,7 @@ int main(int argc, char** argv)
                                             .log = appLog,
                                             .world = world,
                                             .input = input,
+                                            .document = document,
                                             .renderer = renderer.get()}};
     Meow2::Editor::showWithDesc(
         window, Meow2::Platform::windowDescFromConfig(config, {.title = "Meow2Editor"}, engineLog), engineLog);

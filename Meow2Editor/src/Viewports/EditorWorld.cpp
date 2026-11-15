@@ -3,23 +3,40 @@
 
 #include "Viewports/EditorWorld.h"
 
+#include <Meow2/Assets/Gltf/GltfImporter.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Math/Quaternion.h>
 #include <Meow2/Scene/Camera.h>
 
 #include <array>
 #include <cmath>
+#include <string>
 
 namespace Meow2::Editor
 {
-EditorWorld::EditorWorld(UuidGenerator& ids, Jobs::JobSystem& jobs)
-    : m_ids(ids)
-    , m_scene(std::make_unique<Scene::Scene>(ids, Memory::globalTracker(), jobs.threadCount()))
-    , m_hierarchy(std::make_unique<Scene::TransformHierarchy>(*m_scene, jobs))
+EditorWorld::EditorWorld(const EditorWorldDeps& deps)
+    : m_deps(deps)
 {
-    // Every pool before any job touches the scene (techstack.md §25).
-    m_scene->registerComponent<Scene::Camera>();
-    m_scene->registerComponent<Renderer::MeshRenderer>();
+    adopt(makeScene());
+}
+
+EditorWorld::Fresh EditorWorld::makeScene() const
+{
+    Fresh fresh;
+    fresh.scene = std::make_unique<Scene::Scene>(m_deps.ids, Memory::globalTracker(), m_deps.jobs.threadCount());
+    fresh.hierarchy = std::make_unique<Scene::TransformHierarchy>(*fresh.scene, m_deps.jobs);
+    m_deps.components.registerAll(*fresh.scene); // every pool before any job touches the scene (techstack.md §25)
+    return fresh;
+}
+
+void EditorWorld::adopt(Fresh fresh)
+{
+    // The old hierarchy goes before its scene (it's connected to the scene's signals).
+    m_hierarchy = std::move(fresh.hierarchy);
+    m_scene = std::move(fresh.scene);
+    m_meshes = {};
+    m_instances.clear();
+    m_bounds = {.center = {0.0F, 0.0F, 0.0F}, .radius = 5.0F};
 }
 
 Result<void> EditorWorld::buildDefaultScene(Renderer::GpuScene* gpu)
@@ -27,7 +44,7 @@ Result<void> EditorWorld::buildDefaultScene(Renderer::GpuScene* gpu)
     // One cube mesh; each colour is its own mesh asset (the same GPU mesh with another material).
     const auto makeMeshAsset = [&](const Math::Color& color, float roughness) -> Result<AssetId>
     {
-        const AssetId id = m_ids.next<IdKind::Asset>();
+        const AssetId id = m_deps.ids.next<IdKind::Asset>();
         if (gpu == nullptr)
         {
             return id;
@@ -105,5 +122,122 @@ void EditorWorld::update(Renderer::GpuScene* gpu)
                                                     box->extents.z * box->extents.z)};
     }
     gpu->setInstances(m_instances); // only what moved goes to the GPU
+}
+
+void EditorWorld::newScene(const FreshGpu& freshGpu)
+{
+    if (freshGpu)
+    {
+        static_cast<void>(freshGpu()); // the old scene's meshes go
+    }
+    Fresh fresh = makeScene();
+    // A camera to see the game through, 8 m back on -Z and a little up, looking at the origin; and the sun.
+    const entt::entity camera = fresh.scene->create("Main camera");
+    const Math::Vec3 eye{0.0F, 2.5F, -8.0F};
+    fresh.hierarchy->add(camera, {.position = eye,
+                                  .rotation = Math::lookRotation(Math::Vec3{-eye.x, -eye.y, -eye.z}),
+                                  .scale = {1.0F, 1.0F, 1.0F}});
+    fresh.scene->registry().emplace<Scene::Camera>(camera, Scene::Camera{.lens = {}, .main = true});
+    const entt::entity environment = fresh.scene->create("Environment");
+    fresh.scene->registry().emplace<Scene::Environment>(environment);
+    adopt(std::move(fresh));
+}
+
+Result<Assets::SceneReadReport> EditorWorld::openScene(std::string_view path, const FreshGpu& freshGpu)
+{
+    Fresh fresh = makeScene();
+    Result<Assets::SceneReadReport> read =
+        Assets::loadScene(m_deps.assets.files(), path, *fresh.scene, *fresh.hierarchy, m_deps.components);
+    if (!read)
+    {
+        return Unexpected<Error>{read.error()};
+    }
+    for (const std::string& warning : read->warnings)
+    {
+        MEOW2_LOG_WARN(m_deps.log, "{}", warning);
+    }
+    adopt(std::move(fresh));
+    Renderer::GpuScene* gpu = freshGpu ? freshGpu() : nullptr; // only now: a file that can't be read keeps the old
+    // The models its MeshRenderers name, found by their stable mesh IDs in the models' .meta files.
+    const Renderer::SceneModels models = Renderer::importSceneModels(*m_scene, m_deps.assets, m_meshes, m_deps.log);
+    for (const std::string& warning : models.warnings)
+    {
+        MEOW2_LOG_WARN(m_deps.log, "{}: {}", path, warning);
+    }
+    if (gpu != nullptr)
+    {
+        if (Result<void> uploaded = Renderer::uploadSceneModels(*gpu, models, m_meshes, m_deps.ids, m_deps.log);
+            !uploaded)
+        {
+            MEOW2_LOG_ERROR(m_deps.log, "{}: its models can't all be drawn: {}", path, uploaded.error());
+        }
+    }
+    return read;
+}
+
+Result<void> EditorWorld::saveScene(std::string_view path) const
+{
+    return Assets::saveScene(m_deps.assets.files(), path, *m_scene, m_deps.components);
+}
+
+Result<std::vector<entt::entity>> EditorWorld::importModel(std::string_view source, Renderer::GpuScene* gpu)
+{
+    Result<Assets::ImportedModel> model = Assets::importGltf(m_deps.assets.files(), source, m_deps.log);
+    if (!model)
+    {
+        return Unexpected<Error>{model.error()};
+    }
+    // Stable mesh IDs: the model's .meta keeps one per mesh, so a saved scene finds its meshes again.
+    Result<AssetId> modelId = m_deps.assets.importSource(source);
+    if (!modelId)
+    {
+        return Unexpected<Error>{modelId.error()};
+    }
+    Result<std::vector<AssetId>> meshIds = m_deps.assets.meshIds(*modelId, model->meshes.size());
+    if (!meshIds)
+    {
+        return Unexpected<Error>{meshIds.error()};
+    }
+    // Uploaded once per model: a second import of the same model reuses its meshes.
+    const bool uploaded = !meshIds->empty() && !m_meshes.find(meshIds->front()).empty();
+    if (gpu != nullptr && !uploaded)
+    {
+        Result<std::vector<AssetId>> added =
+            Renderer::uploadModel(*gpu, *model, m_deps.ids, m_meshes, m_deps.log, {}, *meshIds);
+        if (!added)
+        {
+            return Unexpected<Error>{added.error()};
+        }
+    }
+    std::string name{source.substr(source.find_last_of('/') + 1)};
+    name = name.substr(0, name.find_last_of('.'));
+    const entt::entity root = m_scene->create(name);
+    m_hierarchy->add(root);
+    std::vector<entt::entity> entities{root};
+    const std::vector<entt::entity> nodes = Renderer::instantiateModel(*m_scene, *m_hierarchy, *model, *meshIds, root);
+    entities.insert(entities.end(), nodes.begin(), nodes.end());
+    return entities;
+}
+
+void EditorWorld::destroyEntities(std::span<const entt::entity> entities)
+{
+    // Last first: nodes come after their parents, so children go before the entities they hang under.
+    for (auto entity = entities.rbegin(); entity != entities.rend(); ++entity)
+    {
+        if (m_scene->contains(*entity))
+        {
+            m_scene->destroy(*entity);
+        }
+    }
+}
+
+std::optional<Scene::Environment> EditorWorld::environment() const
+{
+    const std::optional<entt::entity> entity = Scene::findEnvironment(*m_scene);
+    if (!entity)
+    {
+        return std::nullopt;
+    }
+    return m_scene->registry().get<Scene::Environment>(*entity);
 }
 } // namespace Meow2::Editor

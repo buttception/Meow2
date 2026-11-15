@@ -8,7 +8,7 @@ Meow2Editor is a **Qt** application: a main window with an **editor viewport** i
   - `Meow2Editor/src/Panels/`: `ConsoleDock`, `SettingsDialog`;
   - built as the `Meow2EditorCore` library plus the exe, so the tests use the same code.
 - Requirements: Qt ≥ 6.8 (Widgets), tested with 6.12.0. Installing Qt and pointing CMake at it is on the [Building → Qt](Building.md#qt) page.
-- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214).
+- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222).
 - **Window size:** in logical units like every app ([Window](Window.md#settings)): 80 % of the screen the first time, and shrunk to fit when a saved size is too big for the screen (Qt sizes follow display scaling, so 1920 × 1080 at 150 % would be 2880 × 1620 real pixels).
 
 ## Settings
@@ -75,9 +75,9 @@ commands.execute(u"scene.rename", {{u"entity"_s, id}, {u"name"_s, u"Lamp"_s}});
 
 ## Menus and toolbar
 
-- **File:** Save (`scene.save`, Ctrl+S), Settings… (Ctrl+,). **Edit:** Undo (Ctrl+Z), Redo (Ctrl+Y). **Window:** Console.
+- **File:** New scene, Open scene…, Open recent, Save, Save as…, Open project folder…, Import model… ([Project and scenes](#project-and-scenes)), Settings… (Ctrl+,). **Edit:** Undo (Ctrl+Z), Redo (Ctrl+Y). **Window:** Console, Game view, Assets.
 - **Toolbar:** Save, Undo, Redo, Settings.
-- Each action is bound to a command name. `EditorMainWindow::tick()`, every frame, enables an action exactly when its command exists and is enabled. So Save stays disabled until `scene.save` exists (M7 PR 3), and lights up by itself then. Undo and Redo name their step: "Undo Set position".
+- Each action is bound to a command name. `EditorMainWindow::tick()`, every frame, enables an action exactly when its command exists and is enabled. File actions that may ask first (unsaved changes, a file name) ask, then run their command. Undo and Redo name their step: "Undo Set position".
 
 ## Console
 
@@ -101,6 +101,37 @@ Edit → Settings…: one field per editor setting. A change runs `settings.set`
 | `loop.fixedStepHz` | 60 | 1–1000 | restart |
 | `loop.maxFixedSteps` | 8 | 1–64 | restart |
 
+## Project and scenes
+
+The editor works on a **project folder**: the scenes, models and their `.meta` files of one game. The open scene is a `.m2scene` file in it ([Scene files](SceneFiles.md)), the same format Meow2Renderer opens and saves.
+
+- **The project folder** is `editor.project` in `Meow2Editor.toml` (default: `project/` next to the exe, made if missing). It's mounted read-write and its `.meta` files are scanned, so scenes find their models' meshes. File → Open project folder… (`project.open`) switches to another; a folder that doesn't exist is created.
+- **At start** the editor reopens the most recent scene, or starts a new one: a main camera and an `Environment` (sun and exposure, which light both viewports).
+- **File menu:** New scene (Ctrl+N), Open scene… (Ctrl+O), Open recent, Save (Ctrl+S; asks for a file for an untitled scene), Save as… (Ctrl+Shift+S), Open project folder…, Import model…. The file dialogs open in the project; a file outside it is refused.
+- **Unsaved changes:** the undo history's clean mark says whether the scene changed since it was opened, started or saved. The title shows the scene's file and a `*` while it has unsaved changes. New, Open, a double-click in the Assets dock, Open project folder and closing the window ask **Save / Discard / Cancel** first. Opening or starting a scene clears the undo history (its steps were about the old scene).
+- **Recent scenes** (`editor.recentScenes`): the last 8 opened or saved, newest first; File → Open recent. They're paths in the project, so switching project clears them.
+- **The Assets dock** (Window → Assets; left side at first): the project's scene files and models in their folders. Double-click a scene to open it, a model to bring it into the scene.
+- **Importing a model** (`asset.importModel`): a `.gltf` or `.glb` of the project comes in under a root entity named after the file, with its nodes, transforms and meshes. Its meshes get stable IDs in its `.meta` the first time, so the scene saves and reopens with them. Undo removes what the import made; redo imports again.
+
+### Project and scene commands
+
+`SceneDocument` (`Meow2Editor/src/Project/`) registers them, so menus, the Assets dock and (with PR 6) MCP all use the same code:
+
+| Command | Kind | Parameters | What it does |
+|---|---|---|---|
+| `project.open` | action | `path` (full folder path), `discard` | Opens (or creates) a project folder; starts a new scene in it |
+| `scene.new` | action | `discard` | A new, untitled scene: a main camera and an Environment |
+| `scene.open` | action | `path`, `discard` | Opens a `.m2scene` of the project, with the models it uses |
+| `scene.save` | action | — | Saves to the scene's file; disabled for an untitled scene |
+| `scene.saveAs` | action | `path` | Saves to a `.m2scene` of the project, which becomes the scene's file |
+| `scene.info` | query | — | The scene's file, unsaved changes, the project folder, recent scenes, entity count |
+| `asset.list` | query | — | The project's scenes and models |
+| `asset.importModel` | action | `path` | Brings a `.gltf`/`.glb` of the project into the scene (undoable) |
+
+- **Paths are relative to the project** (`Levels/Main.m2scene`, any case of the extension). Absolute paths, drive letters and `..` are refused, so a command can't read or write outside the project (techstack §20).
+- **Nothing is dropped silently:** `scene.new`, `scene.open` and `project.open` fail while there are unsaved changes unless `discard` is true. The window asks the user and then passes it; an agent has to say so.
+- **Opening is all or nothing:** a file that can't be read leaves the current scene, its GPU meshes and its history as they were. Only once the file has been read is the GPU scene emptied (`EditorRenderer::resetScene()`, keeping every viewport's view) and refilled with the scene's models.
+
 ## Viewports
 
 The **editor viewport** (the window's centre) shows the scene through the editor's own camera; the **game viewport** (the Game dock, on the right at first) shows it through the scene's main `Camera` entity, as the game will. Each is a native child window with its own swapchain and its own `GpuScene` view, so the two can look at the same scene from different places in the same frame ([Rendering → Several views per frame](Rendering.md#several-views-per-frame)).
@@ -120,7 +151,7 @@ The **editor viewport** (the window's centre) shows the scene through the editor
 - **Render scale** (the Game dock's drop-down: 100, 75, 50, 25 %; `editor.gameRenderScale`): the game view's scene is drawn at that share of the viewport's size and scaled up by the tone-map pass, which samples the smaller image with linear filtering. At 50 % that's a quarter of the pixels to shade. The editor viewport always draws at full size.
 - **A viewport that can't be seen draws nothing:** a hidden dock, a tab behind another, or a zero size. `ViewportController` checks each widget every frame (`isVisible()` and a non-empty visible region) before the renderer culls or draws anything for it.
 - **The dock layout** (where the Game and Console docks are, their sizes, which are hidden) is saved in `editor.layout` at exit and restored at the next start.
-- **The scene**, until scene files arrive (M7 PR 3), is a test scene built by `EditorWorld`: a ground slab, five coloured cubes and a main camera behind them. Each frame the world's transforms are updated and handed to `GpuScene::setInstances()`, which uploads only what moved.
+- **The scene** is the open scene file's, or a new one ([Project and scenes](#project-and-scenes)); its `Environment` sets the viewports' sun and exposure. (`EditorWorld::buildDefaultScene()`, a ground slab and coloured cubes, is kept for tests.) Each frame the world's transforms are updated and handed to `GpuScene::setInstances()`, which uploads only what moved.
 - **Without a GPU** (the offscreen platform in tests and CI, or a GPU that can't start), the editor runs without its renderer: the viewports stay empty, and every command still works.
 
 ### Input: QtInputSource
@@ -191,14 +222,17 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.ViewportCommandsTest.*`: `viewport.setRenderScale` saves the setting and updates the drop-down, out-of-range values are refused, `viewport.setCameraMode` and `viewport.info`; the test scene has a main camera.
 - `Editor.MainWindowTest.LayoutRoundTrips`: the dock layout saved in `editor.layout` is restored by the next window.
 - `EditorGpu.EditorRendererTest.TwoViewportsAndRenderScale` (label `gpu`): an editor and a game viewport drawn offscreen in one frame, both filled; at 50 % the game scene is half size and still fills its viewport; a hidden viewport isn't drawn.
+- `EditorGpu.EditorRendererWindowTest.WindowViewportResizes`: a window viewport resized between frames (#216). `EditorGpu.EditorRendererTest.OpensASavedScene`: a scene with a model, saved and opened again, is drawn from an emptied GPU scene with only its model, in both viewports.
+- `Editor.SceneDocumentTest.*`: save and open round trip; unsaved changes need `discard`, saving marks clean, opening clears the history; paths outside the project refused; recent scenes (order, no repeats, at most 8, reopened at start); importing a model with stable mesh IDs, undo and redo.
+- `Editor.MainWindowTest.UnsavedChangesAsk`, `AssetsDockOpensScenes`: Save / Discard / Cancel before a new or opened scene, the `*` in the title; a double-click in the Assets dock opens a scene.
 - `Smoke.Editor.Runs` and `Smoke.Editor.OpensWindow`: the app runs 3 frames offscreen and exits 0.
 
 ## Not yet
 
 - Scene hierarchy, inspector, selection and gizmos (M7 PR 4).
 - The MCP server (M7 PR 6).
-- Saving scenes, which brings `scene.save` and the clean mark into use (M7 PR 3).
-- Opening glTF files or scenes in the viewports (M7 PR 3); until then the editor shows a built-in test scene.
+- Prefabs: a model as one asset whose instances keep their edits when it's re-imported; textures cooked into the project at import.
+- Renaming, moving and deleting assets in the Assets dock (each needs its `.meta` kept with it).
 - Switching the graphics backend in the editor (the viewports would need to be a `RenderDevice` user); the Renderer's debug tools (M7 PR 5).
 - Mouse capture while flying (the cursor stays visible and can leave the viewport).
 - Routing Qt's own messages (`qWarning`, …) to the engine log.
