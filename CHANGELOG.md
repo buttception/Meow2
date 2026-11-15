@@ -20,6 +20,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - The roadmap: M7, the Editor, is planned in six steps (commands and undo, an editor and a game viewport with a faster GPU scene, scene files and an asset browser, gizmos and picking, the Renderer's debug tools in Qt, MCP for AI agents), M13 gains inferred static or movable objects, and Audio becomes M10, after Scripting; Game UI, Export, Advanced rendering and Platforms move to M11–M14 (#201).
 
 ### Fixed
+- Meow2Editor no longer stops on an assertion ("A swapchain can't be resized while a frame is recording") when it starts or a viewport changes size: a viewport's swapchain is now resized before the frame begins (#217).
 - Meow2Renderer's Render graph window no longer flickers while the camera moves: the passes that redraw the cached static shadows stay in the graph every frame, shown dimmed as "(cached)" when they don't run (`GraphPass::skipped`) (#206).
 
 ## [0.7.0] — 2026-11-14

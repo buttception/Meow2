@@ -13,6 +13,8 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Math/CameraRig.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
+#include <Meow2/Platform/Platform.h>
+#include <Meow2/Platform/Window/Window.h>
 #include <Meow2/Scene/Camera.h>
 
 #include <gtest/gtest.h>
@@ -37,7 +39,7 @@ protected:
         ASSERT_TRUE(m_files.mountDirectory("cooked", MEOW2_COOKED_DIR).has_value());
         Meow2::Result<std::unique_ptr<Meow2::Editor::EditorRenderer>> renderer = Meow2::Editor::EditorRenderer::create(
             {.assets = m_assets, .events = m_events, .jobs = m_jobs, .log = m_log},
-            {.validation = true, .presentation = false, .instanceCapacity = 64, .readBackOffscreen = true});
+            {.validation = true, .presentation = presents(), .instanceCapacity = 64, .readBackOffscreen = true});
         ASSERT_TRUE(renderer) << renderer.error().message;
         m_renderer = std::move(*renderer);
         ASSERT_TRUE(m_world.buildDefaultScene(&m_renderer->scene()));
@@ -46,6 +48,12 @@ protected:
         ASSERT_TRUE(editor && game);
         m_editor = *editor;
         m_game = *game;
+    }
+
+    /// @brief Whether the device can present to windows; only tests with a window viewport need it.
+    [[nodiscard]] virtual bool presents() const
+    {
+        return false;
     }
 
     void TearDown() override
@@ -102,6 +110,16 @@ protected:
     ViewportId m_editor = 0;
     ViewportId m_game = 0;
 };
+
+/// @brief The same, on a device that can present: for window viewports.
+class EditorRendererWindowTest : public EditorRendererTest
+{
+protected:
+    [[nodiscard]] bool presents() const override
+    {
+        return true;
+    }
+};
 } // namespace
 
 TEST_F(EditorRendererTest, TwoViewportsAndRenderScale)
@@ -125,4 +143,60 @@ TEST_F(EditorRendererTest, TwoViewportsAndRenderScale)
     runFrame();
     EXPECT_FALSE(m_renderer->wasDrawn(m_editor));
     EXPECT_TRUE(m_renderer->wasDrawn(m_game));
+}
+
+// #216: a window viewport whose size changed was resized inside the frame, which the RHI forbids (an assert).
+TEST_F(EditorRendererWindowTest, WindowViewportResizes)
+{
+    Meow2::Result<Meow2::Platform::Platform> platform = Meow2::Platform::Platform::create({}, m_log, m_events);
+    ASSERT_TRUE(platform) << platform.error().message;
+    // Unfocused and on a secondary display when there is one, so it doesn't get in the way of whoever uses the PC.
+    Meow2::Platform::WindowDesc desc{.title = "EditorRendererTests", .width = 160, .height = 120, .focusable = false};
+    for (const Meow2::Platform::DisplayInfo& display : platform->displays())
+    {
+        if (!display.primary)
+        {
+            desc.x = display.usable.x + 32;
+            desc.y = display.usable.y + 32;
+            break;
+        }
+    }
+    Meow2::Result<Meow2::Platform::Window> window = Meow2::Platform::Window::create(*platform, m_log, desc);
+    ASSERT_TRUE(window) << window.error().message;
+    const auto pixels = [&]
+    {
+        return std::pair{static_cast<std::uint32_t>(window->pixelWidth()),
+                         static_cast<std::uint32_t>(window->pixelHeight())};
+    };
+    const auto [width, height] = pixels();
+    Meow2::Result<ViewportId> viewport = m_renderer->addWindowViewport(window->nativeHandle(), width, height, "Window");
+    ASSERT_TRUE(viewport) << viewport.error().message;
+
+    const auto drawFrame = [&]
+    {
+        m_world.update(&m_renderer->scene());
+        const Math::Sphere bounds = m_world.bounds();
+        std::array<std::optional<ViewportCamera>, 3> cameras{};
+        cameras.at(*viewport) =
+            ViewportCamera{.transform = Math::orbitTransform(Math::frameScene(bounds.center, bounds.radius)),
+                           .lens = Math::sceneLens(bounds.radius)};
+        const Meow2::Result<void> drawn = m_renderer->renderFrame(cameras);
+        ASSERT_TRUE(drawn) << drawn.error().message;
+    };
+    drawFrame();
+    EXPECT_TRUE(m_renderer->wasDrawn(*viewport));
+
+    // The window grows; the editor tells the renderer the viewport's new size, and the next frame resizes its
+    // swapchain before recording.
+    window->setSize(240, 180);
+    platform->pumpEvents();
+    const std::pair<std::uint32_t, std::uint32_t> grown = pixels();
+    m_renderer->resize(*viewport, grown.first, grown.second);
+    drawFrame();
+    EXPECT_TRUE(m_renderer->wasDrawn(*viewport));
+    EXPECT_EQ(m_renderer->sceneSize(*viewport), grown);
+
+    m_renderer->device().device().waitIdle();
+    EXPECT_EQ(m_renderer->device().device().validationErrorCount(), 0U);
+    m_renderer.reset(); // its swapchain goes before the window
 }

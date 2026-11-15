@@ -280,6 +280,24 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
             drawing.push_back(id);
         }
     }
+    // Swapchains are resized before the frame begins: the RHI forbids it while a frame records (the GPU may still be
+    // using the old images, and the resize waits for it). A viewport that can't be resized sits this frame out.
+    std::erase_if(drawing,
+                  [this](ViewportId id)
+                  {
+                      Viewport& viewport = m_viewports[id];
+                      if (!viewport.swapchain || (viewport.swapchain->width() == viewport.width &&
+                                                  viewport.swapchain->height() == viewport.height))
+                      {
+                          return false;
+                      }
+                      if (Result<void> resized = viewport.swapchain->resize(viewport.width, viewport.height); !resized)
+                      {
+                          MEOW2_LOG_WARN(m_deps.log, "Viewport '{}': {}", viewport.name, resized.error());
+                          return true;
+                      }
+                      return false;
+                  });
     if (drawing.empty())
     {
         return {};
@@ -299,14 +317,6 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
         Viewport& viewport = m_viewports[id];
         if (viewport.swapchain)
         {
-            if (viewport.swapchain->width() != viewport.width || viewport.swapchain->height() != viewport.height)
-            {
-                if (Result<void> resized = viewport.swapchain->resize(viewport.width, viewport.height); !resized)
-                {
-                    MEOW2_LOG_WARN(m_deps.log, "Viewport '{}': {}", viewport.name, resized.error());
-                    continue;
-                }
-            }
             if (!device.acquire(*viewport.swapchain))
             {
                 continue; // minimised or mid-resize: nothing to draw to this frame
