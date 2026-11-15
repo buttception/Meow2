@@ -50,6 +50,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Scene (entities and components on EnTT, command buffers) | [Scene](Scene.md) | ✅ M2 |
 | Shaders (HLSL through DXC) | [Shaders](Shaders.md) | ✅ M4 |
 | Assets (stable IDs, `.meta` sidecars, loading) | [Assets](Assets.md) | ✅ M4 |
+| Scene files (`.m2scene`: merging, versions, migrations, unknown components kept), component field descriptors | [SceneFiles](SceneFiles.md) | 🟨 M7 |
 | glTF import (`.gltf`/`.glb`, images, sample fetch) | [Gltf](Gltf.md) | ✅ M6 |
 | Materials and shading (PBR, normal maps, mips, double-sided, mirrored, blended, meshlets) | [Rendering](Rendering.md) | ✅ M6 |
 | Meow2Renderer (ImGui shell, scene picker, stats, debug views) | [Renderer](Renderer.md) | ✅ M6 |

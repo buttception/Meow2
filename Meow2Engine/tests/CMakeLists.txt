@@ -191,6 +191,7 @@ meow2_add_test_suite(
         Assets/CookedTextureTests.cpp
         Assets/GltfImporterTests.cpp
         Assets/ImageTests.cpp
+        Assets/SceneFileTests.cpp
         Assets/ShaderAssetTests.cpp
         Assets/ShaderMetaTests.cpp
         Assets/TestFiles.h)
@@ -233,5 +234,6 @@ meow2_add_test_suite(
     MODULE    Scene
     SOURCES
         Scene/CameraTests.cpp
+        Scene/ComponentRegistryTests.cpp
         Scene/SceneTests.cpp
         Scene/TransformHierarchyTests.cpp)

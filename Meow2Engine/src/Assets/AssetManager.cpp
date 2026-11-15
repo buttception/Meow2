@@ -9,6 +9,7 @@
 #include <toml++/toml.h>
 
 #include <format>
+#include <sstream>
 
 namespace Meow2::Assets
 {
@@ -40,6 +41,35 @@ Result<AssetId> readMetaId(std::string_view text, const std::string& metaPath)
         return fail(ErrorCode::ParseError, std::format("{}: {}", metaPath, id.error().message));
     }
     return id;
+}
+
+/// @brief Reads the `meshes` list of a model's `.meta`; entries that aren't asset IDs are skipped.
+std::vector<AssetId> readMetaMeshes(const toml::table& table)
+{
+    std::vector<AssetId> meshes;
+    if (const toml::array* list = table["meshes"].as_array())
+    {
+        for (const toml::node& entry : *list)
+        {
+            const std::optional<std::string_view> text = entry.value<std::string_view>();
+            if (!text)
+            {
+                break; // indices after a broken entry would shift, so stop there; meshIds() refills the rest
+            }
+            Result<Uuid> uuid = Uuid::parse(*text);
+            if (!uuid)
+            {
+                break;
+            }
+            Result<AssetId> id = AssetId::fromUuid(*uuid);
+            if (!id)
+            {
+                break; // indices after a broken entry would shift, so stop there; meshIds() refills the rest
+            }
+            meshes.push_back(*id);
+        }
+    }
+    return meshes;
 }
 } // namespace
 
@@ -106,6 +136,11 @@ Result<void> AssetManager::registerMeta(const std::string& metaPath)
         return Unexpected<Error>{id.error()};
     }
     AssetRecord record{*id, metaPath.substr(0, metaPath.size() - c_metaExtension.size()), metaPath};
+    std::vector<AssetId> meshes;
+    if (toml::parse_result parsed = toml::parse(*text))
+    {
+        meshes = readMetaMeshes(parsed.table());
+    }
 
     const std::unique_lock lock{m_mutex};
     const auto existing = m_records.find(*id);
@@ -117,6 +152,10 @@ Result<void> AssetManager::registerMeta(const std::string& metaPath)
                     std::format("{} and {} have the same ID", existing->second.metaPath, metaPath));
     }
     m_records.insert_or_assign(*id, std::move(record));
+    for (std::size_t i = 0; i < meshes.size(); ++i)
+    {
+        m_subAssets.insert_or_assign(meshes[i], SubAssetRecord{.owner = *id, .index = i});
+    }
     return {};
 }
 
@@ -180,6 +219,69 @@ std::vector<AssetRecord> AssetManager::records() const
         result.push_back(record);
     }
     return result;
+}
+
+Result<std::vector<AssetId>> AssetManager::meshIds(AssetId model, std::size_t count)
+{
+    const std::optional<AssetRecord> record = find(model);
+    if (!record)
+    {
+        return fail(ErrorCode::NotFound, std::format("no asset {}", model.uuid().toString()));
+    }
+    Result<std::string> text = m_files.readText(record->metaPath);
+    if (!text)
+    {
+        return Unexpected<Error>{text.error()};
+    }
+    toml::parse_result parsed = toml::parse(*text);
+    if (!parsed)
+    {
+        return fail(ErrorCode::ParseError, std::format("{}: {}", record->metaPath, parsed.error().description()));
+    }
+    toml::table table = std::move(parsed.table());
+    std::vector<AssetId> meshes = readMetaMeshes(table);
+    if (meshes.size() < count)
+    {
+        while (meshes.size() < count)
+        {
+            meshes.push_back(m_ids.next<IdKind::Asset>());
+        }
+        // The other keys stay; toml++ writes the table back in its own (sorted) layout, which for a model's .meta
+        // (just `id` and `meshes`) is the same every time.
+        toml::array list;
+        for (const AssetId id : meshes)
+        {
+            list.push_back(id.uuid().toString());
+        }
+        table.insert_or_assign("meshes", std::move(list));
+        std::ostringstream out;
+        out << table << '\n';
+        if (Result<void> written = m_files.writeText(record->metaPath, out.str()); !written)
+        {
+            return Unexpected<Error>{written.error()};
+        }
+    }
+    {
+        const std::unique_lock lock{m_mutex};
+        for (std::size_t i = 0; i < meshes.size(); ++i)
+        {
+            m_subAssets.insert_or_assign(meshes[i], SubAssetRecord{.owner = model, .index = i});
+        }
+    }
+    // A model that lost meshes keeps the extra IDs in its .meta, so they come back if the meshes do.
+    meshes.resize(count);
+    return meshes;
+}
+
+std::optional<SubAssetRecord> AssetManager::findSubAsset(AssetId id) const
+{
+    const std::shared_lock lock{m_mutex};
+    const auto found = m_subAssets.find(id);
+    if (found == m_subAssets.end())
+    {
+        return std::nullopt;
+    }
+    return found->second;
 }
 
 std::shared_ptr<void> AssetManager::findSlot(AssetId id, const void* type) const

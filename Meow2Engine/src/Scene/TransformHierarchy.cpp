@@ -56,7 +56,7 @@ void TransformHierarchy::add(entt::entity entity, const Math::Transform& local, 
     MEOW2_ASSERT(parent == entt::null || registry.all_of<LocalTransform>(parent), "the parent needs a transform");
     // Until the first update the world transform is the local one; update() fixes it for children.
     const Math::Mat4 matrix = Math::toMat4(local);
-    registry.emplace<LocalTransform>(entity, local);
+    registry.emplace<LocalTransform>(entity, LocalTransform{.value = local, .mobility = Mobility::Auto});
     registry.emplace<WorldTransform>(entity, matrix);
     registry.emplace<PreviousWorldTransform>(entity, matrix);
     registry.emplace<TransformState>(entity);
@@ -64,6 +64,18 @@ void TransformHierarchy::add(entt::entity entity, const Math::Transform& local, 
     {
         registry.emplace<Parent>(entity, parent);
     }
+}
+
+void TransformHierarchy::attach(entt::entity entity)
+{
+    Scene::Registry& registry = m_scene.registry();
+    MEOW2_ASSERT(registry.all_of<LocalTransform>(entity), "the entity needs a LocalTransform");
+    // As in add(): the local transform stands in for the world one until the first update places children.
+    const Math::Mat4 matrix = Math::toMat4(registry.get<LocalTransform>(entity).value);
+    registry.emplace_or_replace<WorldTransform>(entity, matrix);
+    registry.emplace_or_replace<PreviousWorldTransform>(entity, matrix);
+    registry.emplace_or_replace<TransformState>(entity);
+    m_structureChanged = true;
 }
 
 void TransformHierarchy::setLocal(entt::entity entity, const Math::Transform& local)

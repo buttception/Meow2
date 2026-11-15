@@ -207,4 +207,29 @@ TEST_F(AssetManagerTest, JobsLoadTheSameAsset)
                                }));
     EXPECT_EQ(failures.load(), 0);
 }
+TEST_F(AssetManagerTest, MeshIdsAreStable)
+{
+    write("assets/Robot.gltf", "{}");
+    const AssetId model = *m_assets.importSource("assets/Robot.gltf");
+    const Result<std::vector<AssetId>> first = m_assets.meshIds(model, 2);
+    ASSERT_TRUE(first.has_value()) << first.error().message;
+    ASSERT_EQ(first->size(), 2U);
+    EXPECT_NE((*first)[0], (*first)[1]);
+    EXPECT_EQ(m_assets.findSubAsset((*first)[1]), (SubAssetRecord{.owner = model, .index = 1}));
+
+    // The same IDs again, and a third mesh keeps the first two.
+    const Result<std::vector<AssetId>> grown = m_assets.meshIds(model, 3);
+    ASSERT_TRUE(grown.has_value());
+    EXPECT_EQ((*grown)[0], (*first)[0]);
+    EXPECT_EQ((*grown)[1], (*first)[1]);
+
+    // A new manager scanning the folder finds them in the .meta, without being asked for them.
+    AssetManager fresh{m_files, m_ids, m_log};
+    ASSERT_TRUE(fresh.scan("assets").has_value());
+    EXPECT_EQ(fresh.findSubAsset((*grown)[2]), (SubAssetRecord{.owner = model, .index = 2}));
+    EXPECT_EQ(fresh.find(model)->sourcePath, "assets/Robot.gltf") << "the model's own ID is kept";
+    EXPECT_FALSE(m_assets.findSubAsset(model)) << "a model isn't one of its own meshes";
+
+    EXPECT_EQ(m_assets.meshIds(AssetId{m_ids.next<IdKind::Asset>()}, 1).error().code, ErrorCode::NotFound);
+}
 } // namespace Meow2::Assets

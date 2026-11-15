@@ -250,7 +250,7 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
   - Editor camera rigs (orbit, fly, focus on the selection with F), replacing Renderer's stopgap cameras
   - `QtInputSource`: viewport keyboard/mouse → `InputSystem` while a viewport has focus
   - **GPU instance buffer, Unreal-style:** a persistent instance buffer with stable slots (free list, entity → slot); per frame only the changed transforms (from `TransformHierarchy`'s dirty flags) go into the upload ring, and a compute **scatter** pass writes them into the buffer before culling; transforms as 3×4 with the previous frame's beside them; mesh and material indices in a separate, rarely changing buffer; the camera subtracted on the GPU (room for split high/low or tile + offset positions later), so moving the camera dirties nothing
-- **PR 3 Scenes and assets**
+- **PR 3 Scenes and assets**, split in two (2026-11-15): the engine half first (scene files, the component registry, stable mesh IDs, Meow2Renderer opening and saving `.m2scene`; #218 / PR #219), then the editor half (project folder, asset browser, file commands, glTF import into prefabs)
   - **Scene files** (§25): `.m2scene` in TOML (toml++ parses, our writer keeps the order), one text file per scene, entities sorted by `EntityId`, deterministic saving so git merges edits to different entities; a format version and one per component, up and down migrations, unknown components kept, renames through aliases; each app registers the components it knows and skips the rest (Renderer ignores scripts)
   - Components describe their fields once (field-descriptor registry): files, the inspector and MCP schemas all come from it
   - Rotations: quaternions stored and used everywhere; the inspector shows Euler angles and keeps the ones the user typed as a display hint, so values don't jump between equivalent angles
@@ -364,3 +364,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-14 — M7 PR 1 done (#210 / PR #211); from M7 on, progress is tracked in issues (AGENTS.md §4).
 - 2026-11-14 — M7 PR 2 split in two: the GPU scene's views and instance buffer (#212 / PR #213), then the editor's viewports.
 - 2026-11-15 — M7 PR 2 done: the editor's viewports, cameras and Qt input (#214 / PR #215).
+- 2026-11-15 — M7 PR 3 split in two: scene files and the component registry in the engine (#218 / PR #219), then the editor's project folder, asset browser and file commands.

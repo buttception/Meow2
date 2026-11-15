@@ -56,6 +56,16 @@ struct AssetRecord
     friend bool operator==(const AssetRecord&, const AssetRecord&) = default;
 };
 
+/// @brief A part of an asset with an ID of its own: one mesh of a model. Plain data.
+struct SubAssetRecord
+{
+    AssetId owner;         ///< The asset it belongs to (the model).
+    std::size_t index = 0; ///< Which part (the mesh's index in the model).
+
+    /// @brief Records are equal when all fields are.
+    friend bool operator==(const SubAssetRecord&, const SubAssetRecord&) = default;
+};
+
 /// @cond
 namespace Detail
 {
@@ -164,6 +174,21 @@ public:
     /// @return A copy of the records, in no particular order.
     [[nodiscard]] std::vector<AssetRecord> records() const;
 
+    /// @brief Stable IDs for a model's meshes, so scenes can refer to one mesh of a model across runs.
+    ///
+    /// The IDs are listed in the model's `.meta` (`meshes = [...]`). Missing ones are made and written there the first
+    /// time, and the same IDs come back from then on, also after a new scan(). Mesh *i* keeps its ID while the model
+    /// keeps its mesh order.
+    /// @param model The model asset (importSource() or scan() made its record).
+    /// @param count  How many meshes the model has.
+    /// @return One ID per mesh, or an error (unknown model, unreadable or read-only `.meta`).
+    [[nodiscard]] Result<std::vector<AssetId>> meshIds(AssetId model, std::size_t count);
+
+    /// @brief Which model and mesh a mesh ID names (from a `.meta` registered by scan(), importSource() or meshIds()).
+    /// @param id The mesh ID.
+    /// @return Its model and index, or nothing.
+    [[nodiscard]] std::optional<SubAssetRecord> findSubAsset(AssetId id) const;
+
     /// @brief The file system, for `loadAsset()` functions.
     /// @return The FileSystem given to the constructor.
     [[nodiscard]] FileSystem::FileSystem& files() const
@@ -244,6 +269,7 @@ private:
     Log::Logger& m_log;
     mutable std::shared_mutex m_mutex; ///< Guards the two tables below; never held during I/O.
     std::unordered_map<AssetId, AssetRecord> m_records;
+    std::unordered_map<AssetId, SubAssetRecord> m_subAssets; ///< Mesh ID → model and index.
     std::unordered_map<AssetId, LoadedAsset> m_loaded;
 };
 } // namespace Meow2::Assets

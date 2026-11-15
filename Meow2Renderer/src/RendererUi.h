@@ -10,6 +10,7 @@
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Rhi/RhiTypes.h>
 #include <Meow2/Math/Types.h>
+#include <Meow2/Scene/Environment.h>
 
 #include <array>
 #include <atomic>
@@ -47,7 +48,8 @@ struct SampleEntry
 /// @brief A scene the user picked. Plain data.
 struct SceneRequest
 {
-    std::filesystem::path file{}; ///< A `.gltf`/`.glb`; empty for the cube grid.
+    std::filesystem::path file{}; ///< A `.gltf`, `.glb` or `.m2scene`; empty for the cube grid.
+    bool save = false;            ///< Save the open scene as `.m2scene` instead (`file` is ignored).
 };
 
 /// @brief The last few seconds of frame times, for the stats window.
@@ -127,6 +129,16 @@ inline constexpr Math::Color c_sceneClearColor{0.004F, 0.004F, 0.005F, 1.0F};
 /// @return A unit vector, world space (+Y up, +Z forward).
 [[nodiscard]] Math::Vec3 sunDirection(const SunControls& sun);
 
+/// @brief The sun's sliders as a scene's Environment, to save with a scene file.
+/// @param sun The controls.
+/// @return The environment (white sun).
+[[nodiscard]] Scene::Environment environmentFrom(const SunControls& sun);
+
+/// @brief Sets the sun's sliders from a scene's Environment, when a scene file opens.
+/// @param environment The scene's.
+/// @param[out] sun    The controls.
+void applyEnvironment(const Scene::Environment& environment, SunControls& sun);
+
 /// @brief Draws the stats window.
 /// @param info  What to show.
 /// @param fonts The theme's fonts: numbers are drawn in the monospace one.
@@ -162,10 +174,12 @@ public:
 
     /// @brief Draws the window.
     /// @param current The open scene's name, to highlight it.
-    /// @param error   Why the last open failed, or empty.
-    /// @return A scene to open, when the user asked for one.
+    /// @param error   Why the last open or save failed, or empty.
+    /// @param status  What the last save did (the file written), or empty.
+    /// @param fonts   The theme's fonts.
+    /// @return A scene to open, or a request to save the open one, when the user asked.
     [[nodiscard]] std::optional<SceneRequest> draw(std::string_view current, std::string_view error,
-                                                   const UiFonts& fonts = {});
+                                                   std::string_view status = {}, const UiFonts& fonts = {});
 
 private:
     /// @brief Starts fetching a sample on a job.

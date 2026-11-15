@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <unordered_set>
 #include <utility>
 
 namespace Meow2::Renderer
@@ -32,8 +33,10 @@ std::span<const GpuSubmesh> RenderMeshes::find(AssetId mesh) const
 }
 
 Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::ImportedModel& model, UuidGenerator& ids,
-                                         RenderMeshes& meshes, Log::Logger& log, const TextureCooking& cooking)
+                                         RenderMeshes& meshes, Log::Logger& log, const TextureCooking& cooking,
+                                         std::span<const AssetId> givenIds)
 {
+    MEOW2_ASSERT(givenIds.empty() || givenIds.size() == model.meshes.size(), "one mesh ID per mesh, or none");
     // Only images a material uses are uploaded, each once per kind: colour (base colour, emissive) is sRGB, data
     // (metallic-roughness, occlusion) linear, normal maps BC5 when compressed. An image used two ways is cooked twice.
     std::vector<std::array<std::int32_t, 3>> textureOf(model.images.size(), {-1, -1, -1});
@@ -164,7 +167,7 @@ Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::Imported
                              .material = named ? materialOf[static_cast<std::size_t>(primitive.material)] : *fallback,
                              .bounds = primitive.bounds});
         }
-        const AssetId id = ids.next<AssetId::c_kind>();
+        const AssetId id = givenIds.empty() ? ids.next<AssetId::c_kind>() : givenIds[meshIds.size()];
         meshes.add(id, std::move(parts));
         meshIds.push_back(id);
     }
@@ -235,5 +238,111 @@ std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshe
     XMStoreFloat3(&lowCorner, low);
     XMStoreFloat3(&highCorner, high);
     return Math::aabbFromMinMax(lowCorner, highCorner);
+}
+
+void registerRenderComponents(Scene::ComponentRegistry& registry)
+{
+    registry.add(Scene::component<MeshRenderer>(
+        "MeshRenderer", 1,
+        {Scene::field<MeshRenderer>("mesh", [](MeshRenderer& c) -> auto& { return c.mesh; }),
+         Scene::field<MeshRenderer>("movable", [](MeshRenderer& c) -> auto& { return c.movable; })}));
+}
+
+SceneModels importSceneModels(Scene::Scene& scene, Assets::AssetManager& assets, const RenderMeshes& meshes,
+                              Log::Logger& log)
+{
+    SceneModels report;
+    // Which models: every mesh a MeshRenderer names that isn't on the GPU yet, grouped by its model, so a model used
+    // by many entities is imported once.
+    std::vector<AssetId> models;
+    std::unordered_set<AssetId> missing;
+    for (const auto [entity, renderer] : scene.registry().view<MeshRenderer>().each())
+    {
+        if (!renderer.mesh.isValid() || !meshes.find(renderer.mesh).empty() || missing.contains(renderer.mesh))
+        {
+            continue;
+        }
+        const std::optional<Assets::SubAssetRecord> sub = assets.findSubAsset(renderer.mesh);
+        if (!sub)
+        {
+            missing.insert(renderer.mesh);
+            report.warnings.push_back(
+                std::format("mesh {} isn't in any model's .meta; it isn't drawn", renderer.mesh.uuid().toString()));
+            continue;
+        }
+        if (std::ranges::find(models, sub->owner) == models.end())
+        {
+            models.push_back(sub->owner);
+        }
+    }
+    for (const AssetId modelId : models)
+    {
+        const std::optional<Assets::AssetRecord> record = assets.find(modelId);
+        if (!record)
+        {
+            report.warnings.push_back(std::format("model {} isn't registered", modelId.uuid().toString()));
+            continue;
+        }
+        Result<Assets::ImportedModel> model = Assets::importGltf(assets.files(), record->sourcePath, log);
+        if (!model)
+        {
+            report.warnings.push_back(std::format("{}: {}", record->sourcePath, model.error().message));
+            continue;
+        }
+        Result<std::vector<AssetId>> meshIds = assets.meshIds(modelId, model->meshes.size());
+        if (!meshIds)
+        {
+            report.warnings.push_back(std::format("{}: {}", record->sourcePath, meshIds.error().message));
+            continue;
+        }
+        report.models.push_back({.model = modelId, .data = std::move(*model), .meshIds = std::move(*meshIds)});
+    }
+    return report;
+}
+
+std::uint32_t sceneInstanceCount(Scene::Scene& scene, const SceneModels& models, const RenderMeshes& meshes)
+{
+    std::unordered_map<AssetId, std::uint32_t> parts;
+    for (const SceneModelImport& model : models.models)
+    {
+        for (std::size_t i = 0; i < model.meshIds.size(); ++i)
+        {
+            parts[model.meshIds[i]] = static_cast<std::uint32_t>(model.data.meshes[i].primitives.size());
+        }
+    }
+    std::uint32_t count = 0;
+    for (const auto [entity, renderer] : scene.registry().view<MeshRenderer>().each())
+    {
+        const auto known = parts.find(renderer.mesh);
+        count += known != parts.end() ? known->second : static_cast<std::uint32_t>(meshes.find(renderer.mesh).size());
+    }
+    return count;
+}
+
+Result<void> uploadSceneModels(GpuScene& gpu, const SceneModels& models, RenderMeshes& meshes, UuidGenerator& ids,
+                               Log::Logger& log, const TextureCooking& cooking)
+{
+    for (const SceneModelImport& model : models.models)
+    {
+        Result<std::vector<AssetId>> uploaded = uploadModel(gpu, model.data, ids, meshes, log, cooking, model.meshIds);
+        if (!uploaded)
+        {
+            return Unexpected<Error>{uploaded.error()};
+        }
+    }
+    return {};
+}
+
+Result<SceneModelsReport> loadSceneModels(GpuScene& gpu, Scene::Scene& scene, Assets::AssetManager& assets,
+                                          RenderMeshes& meshes, UuidGenerator& ids, Log::Logger& log,
+                                          const TextureCooking& cooking)
+{
+    SceneModels models = importSceneModels(scene, assets, meshes, log);
+    if (Result<void> uploaded = uploadSceneModels(gpu, models, meshes, ids, log, cooking); !uploaded)
+    {
+        return Unexpected<Error>{uploaded.error()};
+    }
+    return SceneModelsReport{
+        .models = models.models.size(), .meshes = meshes.size(), .warnings = std::move(models.warnings)};
 }
 } // namespace Meow2::Renderer

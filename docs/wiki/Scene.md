@@ -75,7 +75,7 @@ scene.applyCommands();
 
 | Component | Holds | Written by |
 |---|---|---|
-| `LocalTransform` | `Math::Transform` relative to the parent | you: `setLocal()`, or directly + `markDirty()` |
+| `LocalTransform` | `Math::Transform` relative to the parent, and its `Mobility` (`Auto`, `Static`, `Movable`: saved in scene files now, inferred from components later, M13) | you: `setLocal()`, or directly + `markDirty()` |
 | `WorldTransform` | local → world matrix | `update()` |
 | `PreviousWorldTransform` | the world matrix at the previous fixed step | `savePrevious()` |
 | `Parent` | the parent entity (absent on roots) | `add()`, `setParent()` |
@@ -102,6 +102,7 @@ const Math::Mat4 world = transforms.interpolatedWorld(wheel, alpha);
 - **`render(alpha)`:** `interpolatedWorld` splits the previous and current world matrices into position, rotation and scale, lerps and slerps them, and recombines them. Motion is smooth even when the screen refreshes faster than the fixed step.
 - **Destroying a parent** turns its children into roots. They keep their local transform, which is now relative to the world. To remove a whole subtree, destroy it child-first.
 - **Reparenting** keeps the local transform (the entity moves with its new parent). Making an entity its own ancestor asserts.
+- **Loaded entities:** a scene file gives an entity its LocalTransform and Parent directly; `attach(entity)` then adds what the hierarchy keeps (world transforms, state), so the next update places it ([Scene files](SceneFiles.md)).
 
 ## Cameras
 
@@ -120,6 +121,11 @@ if (const std::optional<entt::entity> main = Meow2::Scene::findMainCamera(scene)
 - `findMainCamera` returns the camera marked `main`, else the first camera, else nothing. A scene with no main camera still shows something.
 - `cameraTransform` reads the entity's `WorldTransform` (so a camera parented to a moving object follows it) and drops the scale, which a view matrix has no use for; nothing without a world transform.
 - The editor's game viewport draws from it ([Editor → Viewports](Editor.md#viewports)).
+
+## Saved components and the environment
+
+- **Scene files** save the components registered in a `ComponentRegistry`, each described once (fields, version, old names, migrations): [Scene files](SceneFiles.md). The engine registers `LocalTransform`, `Parent`, `Camera` and `Environment` (`registerSceneComponents()`); a component nobody registered is kept as `UnknownComponents` and written back unchanged.
+- **`Environment`** (`Meow2/Scene/Environment.h`): the scene's sun (elevation and azimuth in degrees, colour, intensity) and exposure, on an entity of its own; `findEnvironment()` finds it and `sunDirection()` turns the angles into a direction. It stands in until lights are entities.
 
 ## Rules
 

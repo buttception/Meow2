@@ -226,6 +226,11 @@ int main(int argc, char** argv)
     Meow2::FileSystem::FileSystem files{engineLog};
     Meow2::UuidGenerator ids;
     Meow2::Assets::AssetManager assets{files, ids, engineLog};
+    // The components scene files save and load here: the engine's and the renderer's. Others (an editor scene's
+    // scripts) are kept unchanged when a scene is opened and saved again.
+    Meow2::Scene::ComponentRegistry components;
+    Meow2::Scene::registerSceneComponents(components);
+    Meow2::Renderer::registerRenderComponents(components);
     const std::filesystem::path appFolder = Meow2::executablePath().parent_path();
     std::error_code folderError;
     std::filesystem::create_directories(appFolder / "cache", folderError);
@@ -272,17 +277,20 @@ int main(int argc, char** argv)
     };
     const std::vector<std::byte> savedPipelines =
         files.readFile(pipelineCachePath(backend)).value_or(std::vector<std::byte>{});
-    // renderer.scene opens a glTF 2.0 file (.gltf or .glb) or a Khronos sample by name (DamagedHelmet), fetched with
-    // cmake -P cmake/FetchGltfSample.cmake <Name> or from the Scenes window. Empty: a grid of cubes.
+    // renderer.scene opens a glTF 2.0 file (.gltf or .glb), a scene file (.m2scene) or a Khronos sample by name
+    // (DamagedHelmet), fetched with cmake -P cmake/FetchGltfSample.cmake <Name> or from the Scenes window. Empty: a
+    // grid of cubes.
     const std::filesystem::path sampleRoot{config.getString("renderer.sampleAssets", MEOW2_SAMPLE_ASSETS_DIR)};
     std::filesystem::path startScene;
     std::string sceneError;
+    std::string sceneStatus; // what the last save did, shown in the Scenes window
     if (const std::string sceneName = config.getString("renderer.scene", ""); !sceneName.empty())
     {
         const std::filesystem::path named{sceneName};
-        startScene = named.extension() == ".gltf" || named.extension() == ".glb"
-                         ? named
-                         : Meow2::RendererApp::findSample(sampleRoot, sceneName);
+        startScene =
+            named.extension() == ".gltf" || named.extension() == ".glb" || Meow2::RendererApp::isSceneFile(named)
+                ? named
+                : Meow2::RendererApp::findSample(sampleRoot, sceneName);
         if (startScene.empty() || !std::filesystem::exists(startScene))
         {
             sceneError = std::format("No scene '{}'. Pick a sample in the Scenes window, or fetch it: cmake -P "
@@ -455,6 +463,8 @@ int main(int argc, char** argv)
             Meow2::RendererApp::SceneViewDeps{.device = *renderDevice,
                                               .pipelines = *pipelines,
                                               .files = files,
+                                              .assets = assets,
+                                              .components = components,
                                               .ids = ids,
                                               .jobs = jobs,
                                               .log = appLog,
@@ -470,7 +480,7 @@ int main(int argc, char** argv)
             std::clamp<std::int64_t>(config.getInt("renderer.instances", 100'000), 1, 1'000'000));
         Meow2::Result<std::unique_ptr<Meow2::RendererApp::SceneView>> opened =
             startScene.empty() ? Meow2::RendererApp::SceneView::cubeGrid(*viewDeps, cubeCount)
-                               : Meow2::RendererApp::SceneView::openModel(*viewDeps, startScene);
+                               : Meow2::RendererApp::SceneView::open(*viewDeps, startScene);
         if (!opened && !startScene.empty())
         {
             sceneError = std::format("Can't open {}: {}", startScene.string(), opened.error().message);
@@ -480,6 +490,10 @@ int main(int argc, char** argv)
         if (opened)
         {
             view = std::move(*opened);
+            if (const std::optional<Meow2::Scene::Environment> environment = view->environment())
+            {
+                Meow2::RendererApp::applyEnvironment(*environment, sun); // a scene file brings its own sun
+            }
         }
         else
         {
@@ -617,8 +631,8 @@ int main(int argc, char** argv)
     const auto renderFrame = [&renderDevice, &swapchain, &window, &appLog, &view, &viewDeps, &ui, &sky, &sun, &jobs,
                               &depthTexture, &sceneColor, &toneMap, &renderDebug, &inspector, &grid, &debugLines,
                               &positionView, &screenshot, &logDirectory, &makeDepth, &renderDoc, &clock, &pendingSwap,
-                              &pendingScene, &sceneError, &scenesWindow, &consoleWindow, &settingsWindow, &config,
-                              &orbit, &fly, &cameraState, &startCamera, &cameraScene, &posedAnimation, &input,
+                              &pendingScene, &sceneError, &sceneStatus, &scenesWindow, &consoleWindow, &settingsWindow,
+                              &config, &orbit, &fly, &cameraState, &startCamera, &cameraScene, &posedAnimation, &input,
                               &frameTimes, &showUi, &sampleRoot, &switchScene, captureFrame, captureAtFrame,
                               swapAtFrame, switchSceneAtFrame, screenshotAtFrame, screenshotPath,
                               cubeCount = static_cast<std::uint32_t>(
@@ -649,20 +663,44 @@ int main(int argc, char** argv)
         {
             pendingScene = Meow2::RendererApp::SceneRequest{
                 .file = switchScene.empty() ? std::filesystem::path{}
-                                            : Meow2::RendererApp::findSample(sampleRoot, switchScene)};
+                                            : Meow2::RendererApp::findSample(sampleRoot, switchScene),
+                .save = false};
         }
         // Between frames: a scene picked in the UI. The new one is made before the old one goes, so a scene that
         // fails to open leaves the current one on screen.
         if (const std::optional<Meow2::RendererApp::SceneRequest> request = std::exchange(pendingScene, std::nullopt);
-            request && viewDeps)
+            request && viewDeps && request->save)
+        {
+            // Save the open scene, with the sun from the Stats window, as .m2scene.
+            if (view)
+            {
+                if (const Meow2::Result<std::filesystem::path> saved =
+                        view->saveScene(Meow2::RendererApp::environmentFrom(sun)))
+                {
+                    sceneStatus = std::format("Saved {}", saved->string());
+                    sceneError.clear();
+                }
+                else
+                {
+                    sceneError = std::format("Can't save: {}", saved.error().message);
+                    MEOW2_LOG_ERROR(appLog, "{}", sceneError);
+                }
+            }
+        }
+        else if (request && viewDeps)
         {
             Meow2::Result<std::unique_ptr<Meow2::RendererApp::SceneView>> opened =
                 request->file.empty() ? Meow2::RendererApp::SceneView::cubeGrid(*viewDeps, cubeCount)
-                                      : Meow2::RendererApp::SceneView::openModel(*viewDeps, request->file);
+                                      : Meow2::RendererApp::SceneView::open(*viewDeps, request->file);
             if (opened)
             {
                 view = std::move(*opened);
                 sceneError.clear();
+                sceneStatus.clear();
+                if (const std::optional<Meow2::Scene::Environment> environment = view->environment())
+                {
+                    Meow2::RendererApp::applyEnvironment(*environment, sun); // a scene file brings its own sun
+                }
             }
             else
             {
@@ -756,8 +794,9 @@ int main(int argc, char** argv)
                 {
                     renderDoc.capture();
                 }
-                if (std::optional<Meow2::RendererApp::SceneRequest> request = scenesWindow.draw(
-                        view ? std::string_view{view->name()} : std::string_view{}, sceneError, ui->fonts()))
+                if (std::optional<Meow2::RendererApp::SceneRequest> request =
+                        scenesWindow.draw(view ? std::string_view{view->name()} : std::string_view{}, sceneError,
+                                          sceneStatus, ui->fonts()))
                 {
                     pendingScene = std::move(request);
                 }

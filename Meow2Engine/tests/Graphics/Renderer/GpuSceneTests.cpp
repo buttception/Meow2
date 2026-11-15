@@ -2,14 +2,17 @@
 /// @brief The GPU-driven path on a real GPU (`MEOW2_GPU_TESTS=ON`): compute culling, indirect drawing, vertex pulling,
 ///        reversed-Z depth, and the render graph recording on jobs.
 
+#include "Assets/TestFiles.h"
 #include "Graphics/Rhi/RhiTestBackend.h"
 
 #include <Meow2/Assets/AssetManager.h>
+#include <Meow2/Assets/SceneFile.h>
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Id/UuidGenerator.h>
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
+#include <Meow2/Core/Platform.h>
 #include <Meow2/Graphics/Renderer/FrameResources.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Renderer/SceneModel.h>
@@ -20,6 +23,7 @@
 #include <Meow2/Math/Scalar.h>
 #include <Meow2/Math/Transform.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
+#include <Meow2/Scene/ComponentRegistry.h>
 #include <Meow2/Scene/Scene.h>
 #include <Meow2/Scene/TransformHierarchy.h>
 
@@ -33,6 +37,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <format>
 #include <memory>
 #include <span>
@@ -1387,5 +1392,97 @@ TEST_F(GpuSceneTest, FreedSlotsAreReusedLowestFirst)
     ASSERT_TRUE(again);
     EXPECT_EQ(*again, 2U);
     EXPECT_EQ(m_scene->instanceCount(), 5U);
+}
+
+// A model saved as a scene file (.m2scene) opens again with its meshes: the scene names meshes by the stable IDs in
+// the model's .meta, and loadSceneModels() finds and uploads the model they belong to.
+TEST_F(GpuSceneTest, SceneFileLoadsTheModelsItUses)
+{
+    makeScene(8);
+    namespace fs = std::filesystem;
+    const fs::path folder = fs::temp_directory_path() /
+                            std::format("meow2-scenefile-{}-{}", c_configName, static_cast<int>(Rhi::c_testBackend));
+    std::error_code ignored;
+    fs::remove_all(folder, ignored);
+    fs::create_directories(folder);
+    ASSERT_TRUE(m_files.mountDirectory("project", folder, FileSystem::MountAccess::ReadWrite).has_value());
+
+    // One triangle under a parent node, embedded as a data URI.
+    const std::array<float, 9> positions{0.0F, 0.0F, 3.0F, 1.0F, 0.0F, 3.0F, 0.0F, 1.0F, 3.0F};
+    const std::array<std::uint16_t, 3> indices{0, 1, 2};
+    std::vector<std::byte> buffer = Assets::Testing::bytesOf<float>(positions);
+    const std::vector<std::byte> indexBytes = Assets::Testing::bytesOf<std::uint16_t>(indices);
+    buffer.insert(buffer.end(), indexBytes.begin(), indexBytes.end());
+    const std::string gltf = std::format(
+        R"({{"asset": {{"version": "2.0"}},
+  "buffers": [{{"byteLength": 42, "uri": "data:application/octet-stream;base64,{}"}}],
+  "bufferViews": [{{"buffer": 0, "byteOffset": 0, "byteLength": 36}}, {{"buffer": 0, "byteOffset": 36, "byteLength": 6}}],
+  "accessors": [{{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0, 0, 3], "max": [1, 1, 3]}},
+                {{"bufferView": 1, "componentType": 5123, "count": 3, "type": "SCALAR"}}],
+  "meshes": [{{"name": "Triangle", "primitives": [{{"attributes": {{"POSITION": 0}}, "indices": 1}}]}}],
+  "nodes": [{{"name": "Root", "children": [1]}}, {{"name": "Child", "mesh": 0, "translation": [0.5, 0, 0]}}],
+  "scenes": [{{"nodes": [0]}}], "scene": 0}})",
+        Assets::Testing::base64(buffer));
+    ASSERT_TRUE(m_files.writeText("project/Triangle.gltf", gltf).has_value());
+
+    Scene::ComponentRegistry registry;
+    Scene::registerSceneComponents(registry);
+    registerRenderComponents(registry);
+
+    // Save: import the model with stable mesh IDs, make its entities, write the scene.
+    std::string text;
+    std::vector<InstanceDesc> savedInstances;
+    {
+        const Result<AssetId> modelId = m_assets.importSource("project/Triangle.gltf");
+        ASSERT_TRUE(modelId) << modelId.error().message;
+        Result<Assets::ImportedModel> model = Assets::importGltf(m_files, "project/Triangle.gltf", m_log);
+        ASSERT_TRUE(model) << model.error().message;
+        const Result<std::vector<AssetId>> meshIds = m_assets.meshIds(*modelId, model->meshes.size());
+        ASSERT_TRUE(meshIds) << meshIds.error().message;
+        RenderMeshes meshes;
+        ASSERT_TRUE(uploadModel(*m_scene, *model, m_ids, meshes, m_log, {}, *meshIds));
+        Scene::Scene world{m_ids, Memory::globalTracker()};
+        Scene::TransformHierarchy hierarchy{world, m_jobs};
+        registry.registerAll(world);
+        static_cast<void>(instantiateModel(world, hierarchy, *model, *meshIds));
+        hierarchy.update();
+        static_cast<void>(gatherInstances(world, meshes, savedInstances));
+        Result<std::string> written = Assets::writeScene(world, registry);
+        ASSERT_TRUE(written) << written.error().message;
+        text = *written;
+    }
+    ASSERT_EQ(savedInstances.size(), 1U);
+
+    // Open: a fresh asset manager that only scanned the folder, a fresh scene, and meshes nobody uploaded yet.
+    Assets::AssetManager assets{m_files, m_ids, m_log};
+    ASSERT_TRUE(assets.scan("project").has_value());
+    Scene::Scene world{m_ids, Memory::globalTracker()};
+    Scene::TransformHierarchy hierarchy{world, m_jobs};
+    registry.registerAll(world);
+    const Result<Assets::SceneReadReport> read = Assets::readScene(text, world, hierarchy, registry);
+    ASSERT_TRUE(read) << read.error().message;
+    EXPECT_EQ(read->entities, 2U);
+    RenderMeshes meshes;
+    const Result<SceneModelsReport> loaded = loadSceneModels(*m_scene, world, assets, meshes, m_ids, m_log);
+    ASSERT_TRUE(loaded) << loaded.error().message;
+    EXPECT_EQ(loaded->models, 1U);
+    EXPECT_TRUE(loaded->warnings.empty());
+    hierarchy.update();
+    std::vector<InstanceDesc> instances;
+    static_cast<void>(gatherInstances(world, meshes, instances));
+    ASSERT_EQ(instances.size(), 1U);
+    EXPECT_FLOAT_EQ(instances[0].world._41, savedInstances[0].world._41) << "the same place as before saving";
+    EXPECT_FLOAT_EQ(instances[0].world._41, -0.5F) << "glTF is right-handed: the importer negates X";
+
+    // Loading again uploads nothing new; a mesh no model lists is reported and skipped.
+    const Result<SceneModelsReport> again = loadSceneModels(*m_scene, world, assets, meshes, m_ids, m_log);
+    ASSERT_TRUE(again);
+    EXPECT_EQ(again->models, 0U);
+    const entt::entity stray = world.create("Stray");
+    world.registry().emplace<MeshRenderer>(stray, MeshRenderer{.mesh = m_ids.next<IdKind::Asset>(), .movable = false});
+    const Result<SceneModelsReport> missing = loadSceneModels(*m_scene, world, assets, meshes, m_ids, m_log);
+    ASSERT_TRUE(missing);
+    EXPECT_EQ(missing->warnings.size(), 1U);
+    fs::remove_all(folder, ignored);
 }
 } // namespace Meow2::Renderer
