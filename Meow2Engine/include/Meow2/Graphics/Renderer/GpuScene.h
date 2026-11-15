@@ -22,6 +22,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Meow2::Renderer
@@ -165,6 +166,21 @@ struct MaterialDesc
     bool doubleSided = false;                            ///< Both sides drawn, each lit from its own side.
 };
 
+/// @brief One instance to draw: a mesh with a material at a place in the world. Plain data.
+struct InstanceDesc
+{
+    Math::Mat4 world{};         ///< Local → world, row vectors (Math conventions); any scale, mirroring included.
+    std::uint32_t mesh = 0;     ///< From GpuScene::addMesh().
+    std::uint32_t material = 0; ///< From GpuScene::addMaterial(); a higher index gets a colour from its index.
+    bool movable = false;       ///< Moves at runtime: casts into the sun's shadow every frame, not into its cache.
+};
+
+/// @brief Identifies one of a GpuScene's views (cameras drawn each frame), from GpuScene::addView().
+using ViewId = std::uint32_t;
+
+/// @brief The view every GpuScene starts with: the one the overloads without a ViewId use.
+inline constexpr ViewId c_mainView = 0;
+
 /// @brief The scene's light until lights are entities: one sun and a sky/ground ambient. Plain data.
 struct SceneLighting
 {
@@ -192,6 +208,14 @@ struct SceneLighting
 /// - **Blended materials** are left out of the lists. They're drawn after them, one direct draw per instance, sorted
 ///   back to front on the CPU, without writing depth.
 /// - **Light:** one sun and a sky/ground ambient (SceneLighting), then exposure and a tone curve.
+/// - **Instances** live in a persistent GPU buffer with stable slots, Unreal's "GPU Scene" model: a 3 × 4 transform
+///   and last frame's (InstanceTransform), and what's drawn (InstanceInfo) apart from it. Each frame only the changed
+///   slots are uploaded, and a compute pass (`csScatter`) copies them into place before anything culls, so the cost of
+///   a frame follows what moved, not the scene's size. setInstances() finds the changes itself; addInstance(),
+///   updateInstance() and removeInstance() work slot by slot.
+/// - **Views:** each camera drawn in a frame is a view (addView()) with its own culling lists, G-buffer, shadow
+///   cascades and caches; the scene's meshes, materials, textures and instances are shared. The overloads without a
+///   ViewId draw the main view.
 ///
 /// It's a RenderDevice user: it keeps a CPU copy of its meshes and instances, and makes its buffers again from them
 /// when the backend changes.
@@ -242,21 +266,30 @@ public:
     /// @return True for the meshlet path.
     [[nodiscard]] bool usesMeshlets() const;
 
+    /// @brief Adds a view: a camera drawn each frame with its own culling lists, G-buffer and shadow maps (an editor's
+    ///        second viewport). Its buffers are made at once; its textures at its first frame.
+    /// @return Its id, for the ViewId overloads; or an error from creating its buffers.
+    [[nodiscard]] Result<ViewId> addView();
+
+    /// @brief Removes a view added with addView() and frees its GPU objects (once the GPU is done with them).
+    /// @param view The view; not c_mainView.
+    void removeView(ViewId view);
+
+    /// @brief How many views draw (the main view included).
+    /// @return The count.
+    [[nodiscard]] std::uint32_t viewCount() const;
+
     /// @brief What the meshlet path drew. The GPU's counts arrive a few frames late (they're read back without
     ///        waiting).
+    /// @param view Which view.
     /// @return The counts.
-    [[nodiscard]] MeshletStats meshletStats() const
-    {
-        return m_meshletStats;
-    }
+    [[nodiscard]] MeshletStats meshletStats(ViewId view = c_mainView) const;
 
     /// @brief Where the meshlet path's counters land, for tests: MEOW2_TASK_COUNT_SIZE `uint`s, laid out as
     ///        MEOW2_TASK_COUNT_*.
+    /// @param view Which view.
     /// @return The buffer; changes when the backend does.
-    [[nodiscard]] Rhi::BufferHandle meshletCountBuffer() const
-    {
-        return m_taskCountBuffer;
-    }
+    [[nodiscard]] Rhi::BufferHandle meshletCountBuffer(ViewId view = c_mainView) const;
 
     /// @brief Uploads a texture at the start of the next frame, and keeps a copy for the next device.
     ///
@@ -322,25 +355,19 @@ public:
 
     /// @brief How many times a cascade's cached map of static casters has been drawn since the scene was made: for
     ///        statistics and tests (it should rise only when the camera moves far, the sun turns or the scene changes).
+    /// @param view Which view.
     /// @return The count.
-    [[nodiscard]] std::uint32_t staticShadowRedraws() const
-    {
-        return m_staticShadowRedraws;
-    }
+    [[nodiscard]] std::uint32_t staticShadowRedraws(ViewId view = c_mainView) const;
 
     /// @brief The cascades of the last setView() with shadows.
+    /// @param view Which view.
     /// @return Them; empty without shadows.
-    [[nodiscard]] std::span<const ShadowCascade> shadowCascades() const
-    {
-        return m_frameShadows ? m_cascades.cascades() : std::span<const ShadowCascade>{};
-    }
+    [[nodiscard]] std::span<const ShadowCascade> shadowCascades(ViewId view = c_mainView) const;
 
     /// @brief Each cascade's shadow map (static and movable casters), as lighting reads it.
+    /// @param view Which view.
     /// @return The maps; unset handles before the first frame with shadows.
-    [[nodiscard]] const std::array<Rhi::TextureHandle, c_maxShadowCascades>& shadowMaps() const
-    {
-        return m_shadowMaps;
-    }
+    [[nodiscard]] const std::array<Rhi::TextureHandle, c_maxShadowCascades>& shadowMaps(ViewId view = c_mainView) const;
 
     /// @brief Draws opaque surfaces deferred: a **G-buffer** pass writes each surface's properties (the textures
     ///        gBuffer() lists), then a **Lighting** pass shades every pixel once from them, rebuilding its position
@@ -355,36 +382,66 @@ public:
     }
 
     /// @brief Whether this frame drew deferred (after addPasses()).
+    /// @param view Which view.
     /// @return True if the G-buffer and Lighting passes were added.
-    [[nodiscard]] bool drewDeferred() const
-    {
-        return m_frameDeferred;
-    }
+    [[nodiscard]] bool drewDeferred(ViewId view = c_mainView) const;
 
     /// @brief The G-buffer textures (created on the first deferred frame, at the colour target's size): albedo
     ///        (RGBA8 sRGB), normal (RGBA16F), material (RGBA8: metallic, roughness, occlusion), emissive (RGBA16F).
+    /// @param view Which view.
     /// @return Them; unset handles before the first deferred frame.
-    [[nodiscard]] const std::array<Rhi::TextureHandle, 4>& gBuffer() const
-    {
-        return m_gBuffer;
-    }
+    [[nodiscard]] const std::array<Rhi::TextureHandle, 4>& gBuffer(ViewId view = c_mainView) const;
 
     /// @brief Adds a material, and keeps a copy for the next device.
     /// @param material Its parameters.
-    /// @return Its index, for Shader::InstanceData::material, or an error when the scene has too many.
+    /// @return Its index, for InstanceDesc::material, or an error when the scene has too many.
     [[nodiscard]] Result<std::uint32_t> addMaterial(const MaterialDesc& material);
 
-    /// @brief Sets every instance, and keeps a copy for the next device. Between frames: the GPU reads these while
-    ///        drawing.
+    /// @brief Sets every instance: instance i goes in slot i, and slots past the end are freed. Only what differs from
+    ///        the slots' current contents is uploaded at the next frame, so calling it every frame with a scene where
+    ///        one object moved uploads one record. Any time between frames; the GPU never has to be idle.
     /// @param instances The instances; at most GpuSceneDesc::instanceCapacity.
-    /// @pre No frame is recording, and the GPU is idle (asserted for the count only).
-    void setInstances(std::span<const Shader::InstanceData> instances);
+    void setInstances(std::span<const InstanceDesc> instances);
 
-    /// @brief Sets this frame's camera.
+    /// @brief Adds one instance in a free slot (the lowest), uploaded at the next frame.
+    /// @param instance What to draw where.
+    /// @return Its slot, which stays its own until removeInstance(); or ErrorCode::OutOfMemory when
+    ///         GpuSceneDesc::instanceCapacity slots are in use.
+    [[nodiscard]] Result<std::uint32_t> addInstance(const InstanceDesc& instance);
+
+    /// @brief Changes one instance, uploaded at the next frame (nothing is uploaded if it didn't change).
+    /// @param slot     From addInstance(), or an index given to setInstances().
+    /// @param instance Its new description.
+    /// @pre The slot is in use (asserted).
+    void updateInstance(std::uint32_t slot, const InstanceDesc& instance);
+
+    /// @brief Frees a slot: the instance isn't drawn from the next frame, and the slot can be reused.
+    /// @param slot The slot; an unused one is ignored.
+    void removeInstance(std::uint32_t slot);
+
+    /// @brief How many instance records the last frame uploaded (changed slots plus the ones settling: a slot that
+    ///        moved is sent once more the frame after, so its previous transform catches up). For statistics and tests.
+    /// @return The count.
+    [[nodiscard]] std::uint32_t instanceUploads() const
+    {
+        return m_lastUploads;
+    }
+
+    /// @brief The GPU's instance records, for tests: InstanceTransform per slot.
+    /// @return The buffer; changes when the backend does.
+    [[nodiscard]] Rhi::BufferHandle instanceTransformBuffer() const
+    {
+        return m_transformBuffer;
+    }
+
+    /// @brief Sets a view's camera for this frame. FrameConstants::viewProjectionRelative is worked out here from
+    ///        `viewProjection` and `cameraPosition`.
     /// @param frameSlot IRhiDevice::frameSlot().
     /// @param frame     What shaders see.
-    /// @param frustum   What's visible, camera relative like the instances.
-    void setView(std::uint32_t frameSlot, const Shader::FrameConstants& frame, const Math::Frustum& frustum);
+    /// @param frustum   What's visible, in world space like the instances.
+    /// @param view      Which view.
+    void setView(std::uint32_t frameSlot, const Shader::FrameConstants& frame, const Math::Frustum& frustum,
+                 ViewId view = c_mainView);
 
     /// @brief Builds a set of the scene's draw pipelines from another variant of its shader, or with other states.
     ///
@@ -412,47 +469,48 @@ public:
     /// @param depth     The depth target given to addPasses().
     /// @param frameSlot IRhiDevice::frameSlot().
     /// @param debug     Marks the pass as a debugging tool's (GraphPass::debug), e.g. a wireframe.
+    /// @param view      Which view's lists.
     void addOverlayPass(RenderGraph& graph, std::string name, const DrawPipelines& pipelines, GraphResource color,
                         Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot,
-                        bool debug = false);
+                        bool debug = false, ViewId view = c_mainView);
 
-    /// @brief Adds the culling and drawing passes.
-    /// @param graph     The frame's graph.
+    /// @brief Adds a view's culling and drawing passes. The first call of a frame also adds the passes every view
+    ///        shares: new textures copied, and the changed instances uploaded and scattered into place.
+    /// @param graph     The frame's graph; the same one for every view drawn this frame.
     /// @param frameSlot IRhiDevice::frameSlot().
     /// @param swapchain Draws to this swapchain; null to use `color`.
     /// @param color     The colour target when `swapchain` is null.
     /// @param depth     The depth target, D32Float.
     /// @param clear     The colour to clear to.
+    /// @param view      Which view; setView() for it came first this frame.
     /// @return The colour target in the graph, for passes after these (tone mapping, debugging); an unset resource
     ///         when drawing to a swapchain.
     GraphResource addPasses(RenderGraph& graph, std::uint32_t frameSlot, Rhi::IRhiSwapchain* swapchain,
-                            Rhi::TextureHandle color, Rhi::TextureHandle depth, const Math::Color& clear);
+                            Rhi::TextureHandle color, Rhi::TextureHandle depth, const Math::Color& clear,
+                            ViewId view = c_mainView);
 
-    /// @brief Records the state of the graph's resources, once it's compiled. Call before the next addPasses().
+    /// @brief Records the state of the graph's resources (every view drawn in it), once it's compiled. Call once per
+    ///        frame, before the next addPasses().
     /// @param graph The graph.
     void endFrame(const RenderGraph& graph);
 
     /// @brief The depth target in this frame's graph, for passes after addPasses() that read or test it (an infinite
     ///        grid hidden behind the scene). Importing the texture again would track its state twice.
-    /// @return The resource the last addPasses() imported.
-    [[nodiscard]] GraphResource depthResource() const
-    {
-        return m_depthResource;
-    }
+    /// @param view Which view.
+    /// @return The resource the view's last addPasses() imported.
+    [[nodiscard]] GraphResource depthResource(ViewId view = c_mainView) const;
 
     /// @brief Where the surviving draw counts land, for tests and statistics.
     /// @return A buffer holding one `uint` per draw list (MEOW2_DRAW_LIST_*), the back-culled list first. Changes when
     ///         the backend does.
-    [[nodiscard]] Rhi::BufferHandle countBuffer() const
-    {
-        return m_countBuffer;
-    }
+    /// @param view Which view.
+    [[nodiscard]] Rhi::BufferHandle countBuffer(ViewId view = c_mainView) const;
 
     /// @brief How many instances are drawn, for statistics.
-    /// @return The count from the last setInstances().
+    /// @return Slots in use.
     [[nodiscard]] std::uint32_t instanceCount() const
     {
-        return static_cast<std::uint32_t>(m_instances.size());
+        return m_liveInstances;
     }
 
     /// @brief How many meshes were added, for statistics.
@@ -477,36 +535,136 @@ public:
     }
 
 private:
-    /// @brief Creates the scene's own buffers (not the meshes').
+    /// @brief Everything one camera needs that another doesn't: its constants, culling lists, meshlet task lists,
+    ///        G-buffer, shadow cascades and caches, and this frame's blended order. One per view.
+    struct View
+    {
+        std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> frameBuffers{};   ///< FrameConstants per frame slot.
+        std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> cullBuffers{};    ///< CullConstants per frame slot.
+        std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> countReadback{};  ///< Meshlet counters, for the CPU.
+        std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> deferredInputs{}; ///< DeferredInputs per frame slot.
+        std::array<bool, Rhi::c_maxFramesInFlight> slotReadsBack{}; ///< A slot's last frame copied meshlet counts.
+        Rhi::BufferHandle drawBuffer;                               ///< IndirectDraw lists.
+        Rhi::BufferHandle countBuffer;                              ///< One count per list.
+        Rhi::BufferHandle taskBuffer;                               ///< TaskItem lists, one per draw list.
+        Rhi::BufferHandle taskCountBuffer;                          ///< MEOW2_TASK_COUNT_* counters.
+        Rhi::BufferHandle taskArgsBuffer;                           ///< Mesh dispatch group counts, per draw list.
+        std::uint32_t taskCapacity = 0;                             ///< TaskItems each list has room for.
+        Rhi::ResourceState drawState = Rhi::ResourceState::Undefined;
+        Rhi::ResourceState countState = Rhi::ResourceState::Undefined;
+        Rhi::ResourceState depthState = Rhi::ResourceState::Undefined;
+        Rhi::ResourceState taskState = Rhi::ResourceState::Undefined;
+        Rhi::ResourceState taskCountState = Rhi::ResourceState::Undefined;
+        Rhi::ResourceState taskArgsState = Rhi::ResourceState::Undefined;
+        Rhi::TextureHandle lastDepth; ///< The depth target of the last frame.
+        GraphResource drawResource;
+        GraphResource countResource;
+        GraphResource depthResource;
+        GraphResource taskResource;
+        GraphResource taskCountResource;
+        GraphResource taskArgsResource;
+        bool drawn = false;                    ///< addPasses() ran for it in the frame being built (endFrame() resets).
+        bool frameUsesMeshlets = false;        ///< The path its last addPasses() chose, for overlay passes.
+        bool frameDeferred = false;            ///< Whether its last addPasses() drew deferred.
+        bool frameShadows = false;             ///< Whether its last setView() set up the sun's shadow.
+        MeshletStats meshletStats{};           ///< What it drew on the meshlet path.
+        std::vector<std::uint32_t> blendOrder; ///< Blended slots, farthest first.
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> blendDraws; ///< This frame's: slot, index count.
+        std::array<Rhi::TextureHandle, 4> gBuffer{};                     ///< Albedo, normal, material, emissive.
+        std::uint32_t gBufferWidth = 0;                                  ///< Their size.
+        std::uint32_t gBufferHeight = 0;
+        Rhi::ResourceState gBufferState = Rhi::ResourceState::Undefined;
+        std::array<GraphResource, 4> gBufferResources{};
+        ShadowCascades cascades;                                          ///< Fitted to this view's camera.
+        std::array<Rhi::TextureHandle, c_maxShadowCascades> staticMaps{}; ///< Cached static casters, per cascade.
+        std::array<Rhi::TextureHandle, c_maxShadowCascades> shadowMaps{}; ///< Static + movable, per cascade.
+        std::array<Rhi::ResourceState, c_maxShadowCascades> staticStates{};
+        std::array<Rhi::ResourceState, c_maxShadowCascades> shadowStates{};
+        std::array<GraphResource, c_maxShadowCascades> staticResources{};
+        std::array<GraphResource, c_maxShadowCascades> shadowResources{};
+        std::uint32_t shadowMapResolution = 0; ///< The maps' size; 0 before they're made.
+        std::uint32_t shadowMapCount = 0;      ///< How many cascades have maps.
+        Rhi::BufferHandle shadowDrawBuffer;    ///< The shadow passes' culled draws (reused cascade after cascade).
+        Rhi::BufferHandle shadowCountBuffer;
+        Rhi::ResourceState shadowDrawState = Rhi::ResourceState::Undefined;
+        Rhi::ResourceState shadowCountState = Rhi::ResourceState::Undefined;
+        GraphResource shadowDrawResource;
+        GraphResource shadowCountResource;
+        std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> shadowCullBuffers{};     ///< 2 CullConstants a cascade.
+        std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> shadowConstantBuffers{}; ///< ShadowConstants.
+        /// The casters' FrameConstants (the camera's, with the cascade's view-projection), per frame slot and cascade.
+        std::array<std::array<Rhi::BufferHandle, c_maxShadowCascades>, Rhi::c_maxFramesInFlight> shadowFrameBuffers{};
+        std::uint32_t staticShadowDirty = ~0U; ///< A bit per cascade whose cached map must be drawn again.
+        std::uint32_t staticShadowRedraws = 0; ///< staticShadowRedraws().
+    };
+
+    /// @brief One slot of the instance buffers, as the CPU keeps it.
+    struct InstanceRecord
+    {
+        InstanceDesc desc{};                       ///< What's drawn; meaningless while free.
+        Math::Mat4 previous{};                     ///< The transform the GPU has as "previous" after the next upload.
+        std::uint32_t flags = MEOW2_INSTANCE_FREE; ///< MEOW2_INSTANCE_* as uploaded: mirrored, movable or free.
+        bool dirty = false;                        ///< Uploaded at the next frame.
+        bool settling = false; ///< Moved last upload: sent once more so its previous transform catches up.
+    };
+
+    /// @brief The view with that id. @pre It exists (asserted).
+    [[nodiscard]] View& view(ViewId id);
+    /// @brief The view with that id. @pre It exists (asserted).
+    [[nodiscard]] const View& view(ViewId id) const;
+
+    /// @brief Creates the buffers every view shares (not the meshes').
     /// @param device The device to create them on.
     /// @return The first error; what was made is destroyed by destroyBuffers().
     [[nodiscard]] Result<void> createBuffers(Rhi::IRhiDevice& device);
+    /// @brief Creates a view's buffers (its textures come with its first frame).
+    /// @return The first error; what was made is destroyed by destroyViewBuffers().
+    [[nodiscard]] Result<void> createViewBuffers(Rhi::IRhiDevice& device, View& view);
+    /// @brief Destroys a view's buffers and textures, and forgets their handles and states.
+    void destroyViewBuffers(Rhi::IRhiDevice& device, View& view);
+
+    /// @brief Writes one slot's record and marks it for upload; works out its flags (mirrored, movable).
+    void storeInstance(std::uint32_t slot, const InstanceDesc& desc);
+    /// @brief After a change of instances or meshes (at the next setView()): the blended list, the casters' bounds, the
+    ///        static fingerprint (a changed static caster marks every view's cached shadow maps stale) and the meshlet
+    ///        path's needs.
+    void refreshDerived();
+    /// @brief Adds the passes every view shares, once per frame: new textures copied, changed instances uploaded and
+    ///        scattered into place.
+    void addSharedPasses(RenderGraph& graph, std::uint32_t frameSlot);
+    /// @brief Makes the per-frame-slot upload buffer big enough for `records` InstanceUpdates.
+    /// @return False if it couldn't be made (the uploads wait for the next frame).
+    bool ensureUpdateBuffer(Rhi::IRhiDevice& device, std::uint32_t frameSlot, std::uint32_t records);
+    /// @brief Makes a view's TaskItem lists big enough for the instances' meshlets.
+    /// @return False if they couldn't be made (the view draws through the indirect path).
+    bool ensureTaskBuffer(Rhi::IRhiDevice& device, View& view);
 
     /// @brief Whether the sun's shadow can be drawn (enabled, its pipelines built, instances to cast).
     [[nodiscard]] bool shadowsReady() const;
     /// @brief Makes each cascade's two maps at the settings' resolution, if they aren't already.
     /// @return False if a texture couldn't be made (the frame then has no shadows).
-    bool ensureShadowMaps(Rhi::IRhiDevice& device);
-    /// @brief Fits the cascades to the camera and writes the shadow constants, the casters' frame constants and cull
-    ///        records for this frame slot; sets `constants.shadowBuffer`.
-    void writeShadows(std::uint32_t frameSlot, const Math::Vec3& sunDirection, Shader::FrameConstants& constants);
+    bool ensureShadowMaps(Rhi::IRhiDevice& device, View& view);
+    /// @brief Fits the view's cascades to its camera and writes the shadow constants, the casters' frame constants and
+    ///        cull records for this frame slot; sets `constants.shadowBuffer`.
+    void writeShadows(View& view, std::uint32_t frameSlot, const Math::Vec3& sunDirection,
+                      Shader::FrameConstants& constants);
     /// @brief Adds, per cascade, the static casters (if its cache is stale), the copy and the movable casters.
-    void addShadowPasses(RenderGraph& graph, std::uint32_t frameSlot, const Shader::PushConstants& push);
-    /// @brief recordLists() from given draw and count buffers (the camera's, or the shadow passes').
-    void recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipelines, const Shader::PushConstants& push,
-                     Rhi::BufferHandle draws, Rhi::BufferHandle counts) const;
+    void addShadowPasses(View& view, RenderGraph& graph, std::uint32_t frameSlot, const Shader::PushConstants& push);
+    /// @brief The accesses every pass that reads instances needs: both instance buffers.
+    [[nodiscard]] std::vector<GraphAccess> instanceReads() const;
 
-    /// @brief Makes the G-buffer at a colour target's size, if it isn't already.
+    /// @brief Makes a view's G-buffer at a colour target's size, if it isn't already.
     /// @param device The device.
+    /// @param view   The view.
     /// @param color  The scene's colour target; the G-buffer matches its size.
     /// @return False if a texture couldn't be made (the frame then draws forward).
-    bool ensureGBuffer(Rhi::IRhiDevice& device, Rhi::TextureHandle color);
+    bool ensureGBuffer(Rhi::IRhiDevice& device, View& view, Rhi::TextureHandle color);
 
-    /// @brief Destroys every buffer, the meshes' too, and forgets their handles.
+    /// @brief Destroys every buffer, the meshes' and the views' too, and forgets their handles.
     /// @param device The device they were made on.
     void destroyBuffers(Rhi::IRhiDevice& device);
 
-    /// @brief Makes every buffer again on a new device, from the CPU copies.
+    /// @brief Makes every buffer again on a new device, from the CPU copies; every instance is uploaded again.
     /// @param device The new device.
     /// @return The first error.
     [[nodiscard]] Result<void> restoreBuffers(Rhi::IRhiDevice& device);
@@ -529,12 +687,6 @@ private:
     /// @return An error from creating its buffers.
     [[nodiscard]] Result<void> uploadMesh(Rhi::IRhiDevice& device, const MeshData& mesh, std::uint32_t index);
 
-    /// @brief Makes the TaskItem lists big enough for the instances' meshlets: TaskItems per list, the most any
-    ///        frame can write.
-    /// @param device The device.
-    /// @return An error from creating the buffer.
-    [[nodiscard]] Result<void> sizeTaskBuffer(Rhi::IRhiDevice& device);
-
     /// @brief Adds the meshlet path's mesh pipelines for a variant.
     /// @param options The variant and states.
     /// @param out     [in,out] Gets the pipelines, and `hasMeshLists`.
@@ -542,49 +694,50 @@ private:
     [[nodiscard]] Result<void> addMeshPipelines(const DrawPipelineOptions& options, DrawPipelines& out);
 
     /// @brief Records the draws of the three lists, inside beginRendering(): one mesh dispatch per list on the meshlet
-    ///        path (`pipelines.hasMeshLists`), one indirect draw call per list on the other.
-    /// @param list      The command list.
-    /// @param pipelines Which pipelines.
-    /// @param push      The push constants; on the meshlet path `instance` is replaced by the list.
-    void recordLists(Rhi::IRhiCommandList& list, const DrawPipelines& pipelines,
-                     const Shader::PushConstants& push) const;
+    ///        path (`pipelines.hasMeshLists`, from the view's task arguments), one indirect draw call per list from
+    ///        `draws` and `counts` on the other.
+    void recordLists(const View& view, Rhi::IRhiCommandList& list, const DrawPipelines& pipelines,
+                     const Shader::PushConstants& push, Rhi::BufferHandle draws, Rhi::BufferHandle counts) const;
 
-    /// @brief Copies the meshlet counts read back for a frame slot into m_meshletStats, if that slot's frame used the
-    ///        meshlet path. The GPU has finished the slot's last frame when it's being recorded again.
-    /// @param device    The device.
-    /// @param frameSlot The slot.
-    void readMeshletStats(Rhi::IRhiDevice& device, std::uint32_t frameSlot);
+    /// @brief Copies the meshlet counts read back for a frame slot into the view's stats, if that slot's frame used
+    ///        the meshlet path. The GPU has finished the slot's last frame when it's being recorded again.
+    void readMeshletStats(Rhi::IRhiDevice& device, View& view, std::uint32_t frameSlot);
 
     RenderDevice& m_device;
     PipelineLibrary& m_pipelines;
     GpuSceneDesc m_desc;
     std::optional<PipelineId> m_cullPipeline;
     std::optional<PipelineId> m_taskArgsPipeline; ///< csTaskArgs; only with mesh shaders.
+    std::optional<PipelineId> m_scatterPipeline;  ///< csScatter.
     std::array<std::optional<PipelineId>, MEOW2_DRAW_LIST_COUNT> m_drawPipelines{}; ///< One per draw list.
     std::optional<PipelineId> m_blendPipeline;
     std::array<std::optional<PipelineId>, MEOW2_DRAW_LIST_COUNT>
-        m_meshPipelines{};            ///< Meshlet path; mesh shaders only.
-    bool m_meshletsWanted = true;     ///< setMeshlets().
-    bool m_frameUsesMeshlets = false; ///< The path the last addPasses() chose, for overlay passes.
-    std::array<bool, Rhi::c_maxFramesInFlight> m_slotReadsBack{}; ///< A slot's last frame copied meshlet counts.
-    MeshletStats m_meshletStats{};
-    std::uint32_t m_taskCapacity = 1;    ///< TaskItems each list has room for.
-    Rhi::BufferHandle m_taskBuffer;      ///< TaskItem lists, one per draw list.
-    Rhi::BufferHandle m_taskCountBuffer; ///< MEOW2_TASK_COUNT_* counters.
-    Rhi::BufferHandle m_taskArgsBuffer;  ///< Mesh dispatch group counts, 16 bytes per draw list.
-    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_countReadback{}; ///< The counters, for the CPU.
-    std::optional<DrawPipelines> m_override; ///< Used instead of the pipelines above when set.
-    std::vector<std::pair<std::uint32_t, std::uint32_t>>
-        m_blendDraws; ///< This frame's blended draws: instance, indices.
-    Rhi::BufferHandle m_instanceBuffer;
+        m_meshPipelines{};                      ///< Meshlet path; mesh shaders only.
+    bool m_meshletsWanted = true;               ///< setMeshlets().
+    std::uint32_t m_taskItemsNeeded = 1;        ///< TaskItems a list must have room for: every opaque slot's meshlets.
+    MeshletStats m_meshletTotals{};             ///< Meshlets and triangles of every opaque instance.
+    std::optional<DrawPipelines> m_override;    ///< Used instead of the pipelines above when set.
+    std::vector<std::unique_ptr<View>> m_views; ///< By ViewId; null for a removed view. [0] is the main view.
+
+    // Instances: the CPU's copy of every slot, and the GPU's two buffers, written only by csScatter.
+    std::vector<InstanceRecord> m_instances; ///< One per slot up to the highest used; free ones are FREE.
+    std::vector<std::uint32_t> m_dirty;      ///< Slots to upload at the next frame (each once).
+    std::uint32_t m_liveInstances = 0;       ///< Slots in use.
+    std::uint32_t m_lastUploads = 0;         ///< instanceUploads().
+    bool m_derivedStale = true;              ///< refreshDerived() must run before the next view.
+    Rhi::BufferHandle m_transformBuffer;     ///< InstanceTransform per slot; GPU only.
+    Rhi::BufferHandle m_infoBuffer;          ///< InstanceInfo per slot; GPU only.
+    Rhi::ResourceState m_transformState = Rhi::ResourceState::Undefined;
+    Rhi::ResourceState m_infoState = Rhi::ResourceState::Undefined;
+    GraphResource m_transformResource; ///< This frame's, imported by the first addPasses().
+    GraphResource m_infoResource;
+    bool m_sharedPassesAdded = false; ///< addSharedPasses() ran for the frame being built.
+    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_updateBuffers{}; ///< InstanceUpdates, per frame slot.
+    std::array<std::uint32_t, Rhi::c_maxFramesInFlight> m_updateCapacity{};    ///< Records each has room for.
+
     Rhi::BufferHandle m_meshBuffer;
-    Rhi::BufferHandle m_drawBuffer;
-    Rhi::BufferHandle m_countBuffer;
-    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_frameBuffers{};
-    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_cullBuffers{};
     std::vector<Rhi::BufferHandle> m_meshResources; ///< Vertex and index buffers.
     std::vector<MeshData> m_meshes;                 ///< CPU copies, for the next device.
-    std::vector<Shader::InstanceData> m_instances;  ///< CPU copy, for the next device.
 
     /// @brief A texture, its levels kept for the next device, and its upload until the GPU has done it.
     struct TextureRecord
@@ -606,63 +759,20 @@ private:
         Rhi::SamplerHandle sampler{}; ///< On the current device.
     };
     std::vector<SamplerRecord> m_samplers;
-    std::vector<std::uint32_t> m_blended;    ///< Instances with blended materials, drawn sorted.
-    std::vector<std::uint32_t> m_blendOrder; ///< This frame's back-to-front order of m_blended.
+    std::vector<std::uint32_t> m_blended; ///< Slots with blended materials, drawn sorted.
     SceneLighting m_lighting{};
     const SkyAtmosphere* m_sky = nullptr;            ///< Optional: lights the scene and is drawn behind it.
     bool m_skyPass = true;                           ///< Whether the sky's pass is added (setSkyPass()).
     bool m_deferred = false;                         ///< setDeferred().
-    bool m_frameDeferred = false;                    ///< Whether the last addPasses() drew deferred.
     std::optional<DrawPipelines> m_gBufferPipelines; ///< GBUFFER = 1, into the G-buffer's formats.
     std::optional<PipelineId> m_lightingPipeline;    ///< Deferred.hlsl's psLighting.
-    std::array<Rhi::TextureHandle, 4> m_gBuffer{};   ///< Albedo, normal, material, emissive.
-    std::uint32_t m_gBufferWidth = 0;                ///< Their size.
-    std::uint32_t m_gBufferHeight = 0;
-    Rhi::ResourceState m_gBufferState = Rhi::ResourceState::Undefined; ///< Where the last frame left them.
-    std::array<GraphResource, 4> m_gBufferResources{};
-    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_deferredInputs{}; ///< DeferredInputs, per frame slot.
     Rhi::BufferHandle m_materialBuffer;
-    Rhi::ResourceState m_drawState = Rhi::ResourceState::Undefined;
-    Rhi::ResourceState m_countState = Rhi::ResourceState::Undefined;
-    Rhi::ResourceState m_depthState = Rhi::ResourceState::Undefined;
-    Rhi::ResourceState m_taskState = Rhi::ResourceState::Undefined;
-    Rhi::ResourceState m_taskCountState = Rhi::ResourceState::Undefined;
-    Rhi::ResourceState m_taskArgsState = Rhi::ResourceState::Undefined;
-    Rhi::TextureHandle m_lastDepth;
-    GraphResource m_drawResource;
-    GraphResource m_countResource;
-    GraphResource m_depthResource;
-    GraphResource m_taskResource;
-    GraphResource m_taskCountResource;
-    GraphResource m_taskArgsResource;
     SunShadowSettings m_shadowSettings{};
-    ShadowCascades m_cascades;
-    std::optional<DrawPipelines> m_shadowPipelines;                     ///< Depth only, psShadow; the indirect path.
-    std::optional<PipelineId> m_copyDepthPipeline;                      ///< Shadows.hlsl's psCopyDepth.
-    std::array<Rhi::TextureHandle, c_maxShadowCascades> m_staticMaps{}; ///< Cached static casters, per cascade.
-    std::array<Rhi::TextureHandle, c_maxShadowCascades> m_shadowMaps{}; ///< Static + movable, per cascade.
-    std::array<Rhi::ResourceState, c_maxShadowCascades> m_staticStates{};
-    std::array<Rhi::ResourceState, c_maxShadowCascades> m_shadowStates{};
-    std::array<GraphResource, c_maxShadowCascades> m_staticResources{};
-    std::array<GraphResource, c_maxShadowCascades> m_shadowResources{};
-    std::uint32_t m_shadowMapResolution = 0; ///< The maps' size; 0 before they're made.
-    std::uint32_t m_shadowMapCount = 0;      ///< How many cascades have maps.
-    Rhi::BufferHandle m_shadowDrawBuffer;    ///< The shadow passes' culled draws (reused cascade after cascade).
-    Rhi::BufferHandle m_shadowCountBuffer;
-    Rhi::ResourceState m_shadowDrawState = Rhi::ResourceState::Undefined;
-    Rhi::ResourceState m_shadowCountState = Rhi::ResourceState::Undefined;
-    GraphResource m_shadowDrawResource;
-    GraphResource m_shadowCountResource;
-    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_shadowCullBuffers{};     ///< 2 CullConstants a cascade.
-    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_shadowConstantBuffers{}; ///< ShadowConstants.
-    /// The casters' FrameConstants (the camera's, with the cascade's view-projection), per frame slot and cascade.
-    std::array<std::array<Rhi::BufferHandle, c_maxShadowCascades>, Rhi::c_maxFramesInFlight> m_shadowFrameBuffers{};
-    std::uint32_t m_staticShadowDirty = ~0U; ///< A bit per cascade whose cached map must be drawn again.
-    std::uint64_t m_staticHash = 0;          ///< Of the static instances, to see when they change.
-    Math::Sphere m_casters{};                ///< Around every instance.
-    bool m_hasMovable = false;               ///< Whether any instance is MEOW2_INSTANCE_MOVABLE.
-    bool m_frameShadows = false;             ///< Whether this frame draws the sun's shadow.
-    std::uint32_t m_staticShadowRedraws = 0;
-    DeviceUser m_deviceUser; ///< Last: stops its callbacks before the members they use go away.
+    std::optional<DrawPipelines> m_shadowPipelines; ///< Depth only, psShadow; the indirect path.
+    std::optional<PipelineId> m_copyDepthPipeline;  ///< Shadows.hlsl's psCopyDepth.
+    std::uint64_t m_staticHash = 0;                 ///< Of the static instances, to see when they change.
+    Math::Sphere m_casters{};                       ///< Around every instance.
+    bool m_hasMovable = false;                      ///< Whether any instance is MEOW2_INSTANCE_MOVABLE.
+    DeviceUser m_deviceUser;                        ///< Last: stops its callbacks before the members they use go away.
 };
 } // namespace Meow2::Renderer

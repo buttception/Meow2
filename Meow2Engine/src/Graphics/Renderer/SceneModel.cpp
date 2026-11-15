@@ -195,7 +195,7 @@ std::vector<entt::entity> instantiateModel(Scene::Scene& scene, Scene::Transform
 }
 
 std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshes& meshes,
-                                          std::vector<Shader::InstanceData>& out)
+                                          std::vector<InstanceDesc>& out)
 {
     using namespace DirectX;
     out.clear();
@@ -215,12 +215,8 @@ std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshe
         const XMMATRIX matrix = XMLoadFloat4x4(&world->matrix);
         for (const GpuSubmesh& part : meshes.find(renderer.mesh))
         {
-            Shader::InstanceData instance{};
-            instance.world = world->matrix;
-            instance.material = part.material;
-            instance.mesh = part.mesh;
-            instance.flags = renderer.movable ? MEOW2_INSTANCE_MOVABLE : 0U;
-            out.push_back(instance);
+            out.push_back(
+                {.world = world->matrix, .mesh = part.mesh, .material = part.material, .movable = renderer.movable});
 
             const Math::MinMax box = Math::toMinMax(Math::transformAabb(part.bounds, matrix));
             const XMVECTOR boxLow = XMLoadFloat3(&box.min);

@@ -242,7 +242,7 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
   - Command system: every editor action is an undoable command in `EditorCommandRegistry` (techstack §20), parameter schemas as `QJsonDocument`; read-only queries registered the same way; one undo/redo stack; menus, toolbar and shortcuts only issue commands
   - Log console dock on the engine's `ConsoleBuffer`, only the level coloured (as in PowerShell), filters, copy
   - Settings window (editor preferences in the TOML config) and a toolbar (undo, redo, save; gizmo modes from PR 4)
-- **PR 2 Viewports and the GPU scene**
+- **PR 2 Viewports and the GPU scene**, split in two (2026-11-14): the engine half first (several views per frame and the instance buffer, #212 / PR #213), then the editor half
   - An editor viewport and a game viewport (a swapchain each, on the Qt widgets' native windows), driven by `tick()` from a Qt timer; dock layout
   - A viewport that isn't visible draws nothing: no editor-camera rendering while the editor viewport is hidden
   - A `Camera` component, one marked as the game's main camera, drawn by the game viewport
@@ -362,3 +362,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-14 — M7 planned as six PRs with the owner's decisions (JSON, HTTP, TOML scenes, field descriptors, Qt debug tools, two viewports, gizmos, framebuffer picking, an Unreal-style GPU instance buffer); M12 gains inferred mobility and more shadow work.
 - 2026-11-14 — Owner decision: Audio is M10, after Scripting; Game UI, Export, Advanced rendering and Platforms renumbered M11–M14.
 - 2026-11-14 — M7 PR 1 done (#210 / PR #211); from M7 on, progress is tracked in issues (AGENTS.md §4).
+- 2026-11-14 — M7 PR 2 split in two: the GPU scene's views and instance buffer (#212 / PR #213), then the editor's viewports.

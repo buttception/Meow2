@@ -98,13 +98,13 @@ protected:
         // The camera looks along +Z from the origin, so the sun is put behind it, lighting what it sees.
         m_scene->setLighting({.sunDirection = {0.4F, 0.8F, -0.6F}});
         ASSERT_TRUE(m_scene->addMesh(makeCube()));
-        std::vector<Shader::InstanceData> instances;
+        std::vector<InstanceDesc> instances;
         for (const Math::Vec3 position : {Math::Vec3{0.0F, 0.0F, 3.0F}, Math::Vec3{-1.2F, 0.5F, 4.0F},
                                           Math::Vec3{0.0F, 0.0F, -3.0F}}) // the last is behind the camera
         {
             Math::Transform transform;
             transform.position = position;
-            Shader::InstanceData instance{};
+            InstanceDesc instance{};
             instance.world = Math::toMat4(transform);
             instance.material = static_cast<std::uint32_t>(instances.size()) + 1;
             instances.push_back(instance);

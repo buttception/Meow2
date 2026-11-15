@@ -764,3 +764,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-14 — §10: quaternions stored, Euler shown; §11: GPU instance buffer with a scatter pass (M7), inferred mobility (M12); §20: `QJsonDocument` and cpp-httplib chosen; `.m2scene` is TOML (milestones.md M7).
 - 2026-11-14 — Roadmap: Audio is M10 (owner decision), later milestones renumbered (Game UI M11, Export M12, Advanced rendering M13, Platforms M14); §2/§3: an `Audio` subsystem, library open.
 - 2026-11-14 — §2: `MEOW2_MSVC_MP` (`/MP` for Visual Studio solutions, off by default); CI builds on the owner's PC can be pinned to a CPU set from the runner's `.env` (`MEOW2_CPU_AFFINITY`).
+- 2026-11-14 — §11: the GPU instance buffer implemented (stable slots, `csScatter`, 3 × 4 transforms with the previous frame's, camera subtracted on the GPU), and a GpuScene draws several views per frame (M7 PR 2, engine half).

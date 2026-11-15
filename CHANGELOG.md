@@ -9,6 +9,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- The GPU scene keeps its instances in a persistent GPU buffer with stable slots, as Unreal's GPU Scene does: each frame only the objects that changed are uploaded (one record for one moved object, whatever the scene's size) and a compute pass writes them into place, with every instance's previous transform kept beside it. Updating instances no longer needs the GPU to be idle, and the camera is subtracted on the GPU, so far-away positions keep their precision. A scene can now be drawn from several cameras in one frame (`GpuScene::addView()`), each with its own culling, G-buffer and shadow maps, ready for the editor's two viewports (#213).
 - `MEOW2_MSVC_MP`: compile with MSVC's `/MP` in Visual Studio solutions, so each project's files build in parallel (off by default) (#207).
 - The Windows CI and release builds can be kept on some of the PC's processors: set `MEOW2_CPU_AFFINITY` (a hex mask, e.g. `FFFF0000`) in the runner's `.env` file (#207).
 - Windows can open without taking keyboard focus (`WindowDesc::focusable`, `window.focusable` in the config), and `Platform::displays()` lists the desktop's displays. The GPU tests that need a real window now open it this way, on a secondary display when there is one, so they no longer interrupt whoever is using the PC (#209).

@@ -33,8 +33,66 @@ bool sphereInFrustum(CullConstants cull, float3 center, float radius)
            planeDistance(cull.plane4, center) >= -radius && planeDistance(cull.plane5, center) >= -radius;
 }
 
+/// An instance as the shading code reads it: its world matrix as the four rows of a row-vector float4x4 (local × world),
+/// rebuilt from the 3 × 4 InstanceTransform, plus its InstanceInfo.
+struct Instance
+{
+    float4 worldRow0; ///< The local X axis in world space.
+    float4 worldRow1; ///< The local Y axis.
+    float4 worldRow2; ///< The local Z axis.
+    float4 worldRow3; ///< The translation; w = 1.
+    uint material;    ///< Index of the material.
+    uint mesh;        ///< Index of the mesh.
+    uint flags;       ///< MEOW2_INSTANCE_* bits.
+};
+
+/// Loads instance `index` from GpuScene's two instance buffers.
+Instance loadInstance(uint transformBuffer, uint infoBuffer, uint index)
+{
+    const InstanceTransform transform = loadElement<InstanceTransform>(transformBuffer, index);
+    const InstanceInfo info = loadElement<InstanceInfo>(infoBuffer, index);
+    Instance instance;
+    instance.worldRow0 = float4(transform.world0.x, transform.world1.x, transform.world2.x, 0.0);
+    instance.worldRow1 = float4(transform.world0.y, transform.world1.y, transform.world2.y, 0.0);
+    instance.worldRow2 = float4(transform.world0.z, transform.world1.z, transform.world2.z, 0.0);
+    instance.worldRow3 = float4(transform.world0.w, transform.world1.w, transform.world2.w, 1.0);
+    instance.material = info.material;
+    instance.mesh = info.mesh;
+    instance.flags = info.flags;
+    return instance;
+}
+
+/// Copies this frame's changed instances (InstanceUpdate records) into place, before anything reads them. One thread per
+/// record: g_push.userData holds the records, g_push.instance their count, g_push.instanceBuffer and g_push.frameBuffer
+/// the writable InstanceTransform and InstanceInfo arrays. Slots never repeat within a frame, so threads don't race.
+[numthreads(64, 1, 1)]
+void csScatter(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= g_push.instance)
+    {
+        return;
+    }
+    const InstanceUpdate update = loadElement<InstanceUpdate>(g_push.userData, id.x);
+    InstanceTransform transform;
+    transform.world0 = update.world0;
+    transform.world1 = update.world1;
+    transform.world2 = update.world2;
+    transform.previous0 = update.previous0;
+    transform.previous1 = update.previous1;
+    transform.previous2 = update.previous2;
+    InstanceInfo info;
+    info.material = update.material;
+    info.mesh = update.mesh;
+    info.flags = update.flags;
+    info.padding0 = 0;
+    RWByteAddressBuffer transforms = ResourceDescriptorHeap[g_push.instanceBuffer];
+    RWByteAddressBuffer infos = ResourceDescriptorHeap[g_push.frameBuffer];
+    transforms.Store<InstanceTransform>(update.slot * sizeof(InstanceTransform), transform);
+    infos.Store<InstanceInfo>(update.slot * sizeof(InstanceInfo), info);
+}
+
 /// How much an instance's world matrix scales each local axis: the lengths of its first three rows.
-float3 axisScales(InstanceData instance)
+float3 axisScales(Instance instance)
 {
     return float3(length(instance.worldRow0.xyz), length(instance.worldRow1.xyz), length(instance.worldRow2.xyz));
 }
@@ -42,7 +100,7 @@ float3 axisScales(InstanceData instance)
 /// A local normal in world space: through the inverse transpose, written as the cofactor rows cross(b, c),
 /// cross(c, a), cross(a, b) of the rows a, b, c (only the determinant's sign matters before normalising). For a
 /// mirrored instance the sign keeps it pointing out of the surface. Not normalised.
-float3 worldNormal(InstanceData instance, float3 normal)
+float3 worldNormal(Instance instance, float3 normal)
 {
     const float3 a = instance.worldRow0.xyz;
     const float3 b = instance.worldRow1.xyz;
@@ -60,7 +118,11 @@ void csCull(uint3 id : SV_DispatchThreadID)
     {
         return;
     }
-    const InstanceData instance = loadElement<InstanceData>(cull.instanceBuffer, id.x);
+    const Instance instance = loadInstance(cull.instanceBuffer, cull.instanceInfoBuffer, id.x);
+    if ((instance.flags & MEOW2_INSTANCE_FREE) != 0)
+    {
+        return; // an empty slot
+    }
     const bool movable = (instance.flags & MEOW2_INSTANCE_MOVABLE) != 0;
     if ((cull.mobility == 1 && movable) || (cull.mobility == 2 && !movable))
     {
@@ -203,7 +265,7 @@ float3 unpackPosition(PackedVertex stored, MeshDraw mesh)
 }
 
 /// One vertex of an instance, by its index in the mesh's vertex buffer: for every path.
-VertexOutput shadeStoredVertex(uint instanceIndex, InstanceData instance, MeshDraw mesh, uint index)
+VertexOutput shadeStoredVertex(uint instanceIndex, Instance instance, MeshDraw mesh, uint index)
 {
     const FrameConstants frame = frameConstants();
     const PackedVertex stored = loadElement<PackedVertex>(mesh.vertexBuffer, index);
@@ -211,7 +273,8 @@ VertexOutput shadeStoredVertex(uint instanceIndex, InstanceData instance, MeshDr
     VertexOutput output;
     const float4x4 worldMatrix = MEOW2_ROWS(instance, world);
     const float4 world = mul(float4(unpackPosition(stored, mesh), 1.0), worldMatrix);
-    output.position = mul(world, MEOW2_ROWS(frame, viewProjection));
+    // The camera is subtracted first, so a position far from the origin loses no precision in the projection.
+    output.position = mul(float4(world.xyz - frame.cameraPosition.xyz, 1.0), MEOW2_ROWS(frame, viewProjectionRelative));
     output.worldPosition = world.xyz;
 
     // Normals go through the inverse transpose (worldNormal()), so non-uniform scale doesn't tilt them.
@@ -238,7 +301,7 @@ VertexOutput shadeStoredVertex(uint instanceIndex, InstanceData instance, MeshDr
 /// One vertex of an instance on the indirect path: draws are non-indexed, so the index comes from the index buffer.
 VertexOutput shadeVertex(uint instanceIndex, uint vertexId)
 {
-    const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, instanceIndex);
+    const Instance instance = loadInstance(g_push.instanceBuffer, frameConstants().instanceInfoBuffer, instanceIndex);
     const MeshDraw mesh = loadElement<MeshDraw>(g_push.userData, instance.mesh);
     const uint index = loadElement<uint>(mesh.indexBuffer, mesh.firstIndex + vertexId);
     VertexOutput output = shadeStoredVertex(instanceIndex, instance, mesh, index);
@@ -279,7 +342,7 @@ groupshared uint s_triangles[MEOW2_TASK_MESHLETS]; ///< Its triangles, for the s
 /// centre lies within the cone's angle of its axis, with the radius as a margin. It needs a camera point (a perspective
 /// frustum) and a world matrix that keeps angles: under non-uniform scale or shear the normals' spread changes, so
 /// those instances skip it.
-bool meshletVisible(CullConstants cull, InstanceData instance, Meshlet meshlet, uint drawList)
+bool meshletVisible(CullConstants cull, Instance instance, Meshlet meshlet, uint drawList)
 {
     const float3 center = mul(float4(meshlet.sphere.xyz, 1.0), MEOW2_ROWS(instance, world)).xyz;
     const float3 scales = axisScales(instance);
@@ -325,7 +388,7 @@ void asMain(uint3 groupId : SV_GroupID, uint thread : SV_GroupIndex)
         if (thread < item.meshletCount)
         {
             const CullConstants cull = loadElement<CullConstants>(frame.cullBuffer, 0);
-            const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, item.instance);
+            const Instance instance = loadInstance(g_push.instanceBuffer, frame.instanceInfoBuffer, item.instance);
             const MeshDraw mesh = loadElement<MeshDraw>(g_push.userData, instance.mesh);
             meshletIndex = item.firstMeshlet + thread;
             const Meshlet meshlet = loadElement<Meshlet>(mesh.meshletBuffer, meshletIndex);
@@ -368,7 +431,7 @@ void msMain(uint thread : SV_GroupThreadID, uint3 groupId : SV_GroupID, in paylo
             out indices uint3 outTriangles[MEOW2_MESHLET_MAX_TRIANGLES])
 {
     const uint meshletIndex = payload.meshlets[groupId.x];
-    const InstanceData instance = loadElement<InstanceData>(g_push.instanceBuffer, payload.instance);
+    const Instance instance = loadInstance(g_push.instanceBuffer, frameConstants().instanceInfoBuffer, payload.instance);
     const MeshDraw mesh = loadElement<MeshDraw>(g_push.userData, instance.mesh);
     const Meshlet meshlet = loadElement<Meshlet>(mesh.meshletBuffer, meshletIndex);
     SetMeshOutputCounts(meshlet.vertexCount, meshlet.triangleCount);

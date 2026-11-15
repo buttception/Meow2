@@ -53,12 +53,16 @@ struct FrameConstants
     MEOW2_MATRIX(inverseViewProjection); ///< Clip space → the instances' space: rebuilds positions from depth (deferred
                                          ///< lighting). Set by GpuScene::setView().
     uint shadowBuffer;       ///< Heap index of the sun's ShadowConstants; 0 without shadows. Set by GpuScene::setView().
-    uint shadowPadding0;     ///< Pads to 16 bytes.
+    uint instanceInfoBuffer; ///< Heap index of the InstanceInfo array (GpuScene); set by GpuScene::setView().
     uint shadowPadding1;     ///< Pads to 16 bytes.
     uint shadowPadding2;     ///< Pads to 16 bytes.
+    MEOW2_MATRIX(viewProjectionRelative); ///< Like viewProjection, for positions with cameraPosition already subtracted:
+                                          ///< the GPU-driven path projects (world - camera), so the big numbers of a far
+                                          ///< position never reach the projection. Set by GpuScene::setView().
 };
 
-/// One drawn object, in a buffer the GPU reads and compute culling can edit.
+/// One drawn object as a plain 4 × 4 record: the RHI's bindless tests and the frame packet use it. GpuScene keeps its
+/// instances in InstanceTransform and InstanceInfo instead.
 struct InstanceData
 {
     MEOW2_MATRIX(world); ///< Local → camera-relative world.
@@ -72,6 +76,44 @@ struct InstanceData
 #define MEOW2_INSTANCE_MIRRORED 1u ///< The world matrix has a negative determinant: the winding is reversed.
 #define MEOW2_INSTANCE_MOVABLE 2u  ///< Moves at runtime (Renderer::MeshRenderer::movable): casts into the sun's shadow every
                                    ///< frame, not into its cached map of static casters.
+#define MEOW2_INSTANCE_FREE 4u     ///< An empty slot of GpuScene's instance buffer: culling skips it.
+
+/// One GpuScene instance's placement, in a buffer only the GPU writes (csScatter). A 3 × 4 matrix: world.x is
+/// dot(world0, float4(local, 1)), and so on, so world0..2 are the columns of the row-vector Mat4 (its three basis rows
+/// and translation, transposed). The previous frame's sits beside it, for motion vectors later.
+struct InstanceTransform
+{
+    float4 world0;    ///< Row 0 of the 3 × 4 local → world matrix.
+    float4 world1;    ///< Row 1.
+    float4 world2;    ///< Row 2.
+    float4 previous0; ///< Row 0 of last frame's.
+    float4 previous1; ///< Row 1.
+    float4 previous2; ///< Row 2.
+};
+
+/// What a GpuScene instance draws, in a separate buffer: it rarely changes, so moving an object leaves it alone.
+struct InstanceInfo
+{
+    uint material; ///< Index of the material.
+    uint mesh;     ///< Index of the mesh.
+    uint flags;    ///< MEOW2_INSTANCE_* bits.
+    uint padding0; ///< Pads to 16 bytes.
+};
+
+/// One changed instance, uploaded by the CPU and copied into place by csScatter before culling.
+struct InstanceUpdate
+{
+    uint slot;        ///< Its index in the instance buffers.
+    uint material;    ///< InstanceInfo::material.
+    uint mesh;        ///< InstanceInfo::mesh.
+    uint flags;       ///< InstanceInfo::flags.
+    float4 world0;    ///< InstanceTransform::world0.
+    float4 world1;    ///< InstanceTransform::world1.
+    float4 world2;    ///< InstanceTransform::world2.
+    float4 previous0; ///< InstanceTransform::previous0.
+    float4 previous1; ///< InstanceTransform::previous1.
+    float4 previous2; ///< InstanceTransform::previous2.
+};
 
 /// One indirect draw, written by culling. The four fields from vertexCount on are the layout VkDrawIndirectCommand and
 /// D3D12_DRAW_ARGUMENTS require. `instance` comes first because D3D12's SV_InstanceID leaves out the draw's first
@@ -291,7 +333,7 @@ struct CullConstants
     float4 plane3;       ///< Frustum plane.
     float4 plane4;       ///< Frustum plane.
     float4 plane5;       ///< Frustum plane.
-    uint instanceBuffer; ///< Heap index of the InstanceData array.
+    uint instanceBuffer; ///< Heap index of the instances' InstanceTransform array.
     uint meshBuffer;     ///< Heap index of the MeshDraw array.
     uint drawBuffer;     ///< Heap index of the IndirectDraw lists to fill: one per MEOW2_DRAW_LIST_*, drawCapacity each.
     uint countBuffer;    ///< Heap index of the draw counts, one uint per list.
@@ -307,7 +349,7 @@ struct CullConstants
     uint taskCapacity;   ///< TaskItems each list has room for.
     uint taskArguments;  ///< Writable heap index of the mesh dispatches' group counts: x, y, z and a pad per list.
     uint mobility;       ///< Which instances: 0 all, 1 only static ones, 2 only movable ones (MEOW2_INSTANCE_MOVABLE).
-    uint padding1;       ///< Pads to 16 bytes.
+    uint instanceInfoBuffer; ///< Heap index of the InstanceInfo array (instanceBuffer holds the InstanceTransforms).
     uint padding2;       ///< Pads to 16 bytes.
 };
 
