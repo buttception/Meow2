@@ -21,7 +21,9 @@ Math::CameraInput cameraInputFrom(const Input::InputSystem& input)
     const Input::Vec2 delta = input.mouseDelta();
     camera.mouseDelta = {delta.x, delta.y};
     camera.wheel = input.wheelDelta().y;
-    camera.leftDrag = input.isDown(Input::MouseButton::Left);
+    // Orbiting needs Alt (as in Unity and Maya): a plain left click selects (ViewportController).
+    camera.leftDrag =
+        input.isDown(Input::MouseButton::Left) && (input.isDown(Key::LeftAlt) || input.isDown(Key::RightAlt));
     camera.middleDrag = input.isDown(Input::MouseButton::Middle);
     camera.rightDrag = input.isDown(Input::MouseButton::Right);
     const auto axis = [&input](Key plus, Key minus)

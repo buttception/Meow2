@@ -8,11 +8,14 @@
 
 #include <Meow2/Scene/Camera.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QWidget>
+#include <utility>
+#include <vector>
 
 namespace Meow2::Editor
 {
@@ -81,6 +84,70 @@ void ViewportController::addViewports()
     };
     m_editorViewport = add(m_deps.editorViewport, "Editor");
     m_gameViewport = add(m_deps.gameViewport, "Game");
+    if (m_editorViewport)
+    {
+        m_deps.renderer->setOutline(*m_editorViewport, true); // the game view shows the game, without editor marks
+    }
+}
+
+void ViewportController::handleClicks()
+{
+    using Input::Key;
+    using Input::MouseButton;
+    const Input::InputSystem& input = m_deps.input;
+    const bool alt = input.isDown(Key::LeftAlt) || input.isDown(Key::RightAlt);
+    if (input.wasPressed(MouseButton::Left) && !alt)
+    {
+        m_press = input.mousePosition();
+        m_pressToggle = input.isDown(Key::LeftCtrl) || input.isDown(Key::RightCtrl);
+    }
+    if (!m_press || !input.wasReleased(MouseButton::Left))
+    {
+        return;
+    }
+    // A click, not a drag: released within a few pixels of where it went down.
+    const Input::Vec2 at = input.mousePosition();
+    const Input::Vec2 from = *std::exchange(m_press, std::nullopt);
+    constexpr float c_clickSlop = 4.0F; // logical pixels
+    if (std::abs(at.x - from.x) > c_clickSlop || std::abs(at.y - from.y) > c_clickSlop || m_deps.renderer == nullptr ||
+        !m_editorViewport)
+    {
+        return;
+    }
+    // Qt's positions are logical; the viewport's pixels are scaled by the display.
+    const double ratio = m_deps.editorViewport.devicePixelRatioF();
+    const auto pixel = [ratio](float logical)
+    {
+        return static_cast<std::uint32_t>(std::max(0L, std::lround(static_cast<double>(logical) * ratio)));
+    };
+    m_deps.renderer->requestPick(*m_editorViewport, pixel(at.x), pixel(at.y));
+    m_pickToggle = m_pressToggle;
+}
+
+void ViewportController::applyPick(const PickResult& result)
+{
+    std::vector<entt::entity> entities;
+    entities.reserve(result.hits.size());
+    for (const PickHit& hit : result.hits)
+    {
+        entities.push_back(m_deps.world.instanceEntity(hit.instance));
+    }
+    const std::vector<EntityId> hits = ClickSelection::resolve(m_deps.world.scene(), entities);
+    const std::vector<EntityId> current = m_deps.sceneEditor.selection();
+    const std::vector<EntityId> next = m_clicks.click(current, hits, result.x, result.y, m_pickToggle);
+    if (next == current)
+    {
+        return;
+    }
+    QJsonArray ids;
+    for (const EntityId id : next)
+    {
+        ids.append(QString::fromStdString(id.uuid().toString()));
+    }
+    if (const Result<QJsonValue> set = m_deps.commands.execute(u"selection.set", {{u"ids"_s, ids}}); !set)
+    {
+        MEOW2_LOG_WARN(m_deps.log, "selection.set: {}", set.error());
+    }
 }
 
 void ViewportController::tick(float deltaSeconds)
@@ -89,14 +156,29 @@ void ViewportController::tick(float deltaSeconds)
     m_deps.input.beginFrame();
     const bool editorFocused = m_deps.inputSource.activeViewport() == &m_deps.editorViewport;
     m_camera.update(editorFocused ? cameraInputFrom(m_deps.input) : Math::CameraInput{}, deltaSeconds);
+    if (editorFocused)
+    {
+        handleClicks();
+    }
+    else
+    {
+        m_press.reset(); // a press that started in the viewport and ended elsewhere isn't a click
+    }
 
     EditorRenderer* const renderer = m_deps.renderer;
-    m_deps.world.update(renderer != nullptr ? &renderer->scene() : nullptr);
+    const std::vector<EntityId> selection = m_deps.sceneEditor.selection();
+    m_deps.world.update(renderer != nullptr ? &renderer->scene() : nullptr, selection);
     if (renderer != nullptr)
     {
         if (const std::optional<Scene::Environment> environment = m_deps.world.environment())
         {
             renderer->setEnvironment(*environment); // the scene's sun and exposure
+        }
+        renderer->setHasSelection(m_deps.world.anySelectedInstance());
+        // A pick from a frame or two ago: the instance slots still name last update's entities, or ones checked gone.
+        if (const std::optional<PickResult> picked = renderer->takePickResult())
+        {
+            applyPick(*picked);
         }
     }
     if (renderer == nullptr)

@@ -3,6 +3,7 @@ meow2_add_test_suite(
     TARGET    Meow2EditorTests
     MODULE    Editor
     SOURCES
+        ClickSelectionTests.cpp
         ConsoleDockTests.cpp
         EditingDocksTests.cpp
         EditorCommandRegistryTests.cpp

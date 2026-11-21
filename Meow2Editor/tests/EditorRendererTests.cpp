@@ -1,6 +1,6 @@
 /// @file
-/// @brief Tests for EditorRenderer on a real GPU: two offscreen viewports of one scene, the render scale and a hidden
-///        viewport (label gpu; `MEOW2_GPU_TESTS=ON`).
+/// @brief Tests for EditorRenderer on a real GPU: two offscreen viewports of one scene, the render scale, a hidden
+///        viewport, picking and the selection outline (label gpu; `MEOW2_GPU_TESTS=ON`).
 
 #include "Viewports/EditorRenderer.h"
 #include "Viewports/EditorWorld.h"
@@ -29,6 +29,8 @@
 #include <memory>
 #include <optional>
 #include <QByteArray>
+#include <string>
+#include <vector>
 
 namespace
 {
@@ -75,7 +77,8 @@ protected:
     /// @brief One frame: the editor viewport from an orbit around the scene, the game one from its main camera.
     void runFrame()
     {
-        m_world.update(&m_renderer->scene());
+        m_world.update(&m_renderer->scene(), m_selection);
+        m_renderer->setHasSelection(m_world.anySelectedInstance());
         const Math::Sphere bounds = m_world.bounds();
         std::array<std::optional<ViewportCamera>, 2> cameras{};
         cameras.at(m_editor) =
@@ -124,6 +127,7 @@ protected:
     std::unique_ptr<Meow2::Editor::EditorRenderer> m_renderer;
     ViewportId m_editor = 0;
     ViewportId m_game = 0;
+    std::vector<Meow2::EntityId> m_selection; ///< Outlined (in viewports with setOutline()).
 };
 
 /// @brief The same, on a device that can present: for window viewports.
@@ -256,4 +260,122 @@ TEST_F(EditorRendererTest, OpensASavedScene)
     EXPECT_TRUE(m_renderer->wasDrawn(m_editor));
     EXPECT_TRUE(m_renderer->wasDrawn(m_game)) << "both viewports have a view in the new GPU scene";
     std::filesystem::remove_all(folder, ignored);
+}
+
+namespace
+{
+/// @brief The name of the entity a picked instance was drawn for, or "" for none.
+std::string nameOf(Meow2::Editor::EditorWorld& world, std::uint32_t instance)
+{
+    const entt::entity entity = world.instanceEntity(instance);
+    if (entity == entt::null || !world.scene().registry().valid(entity))
+    {
+        return {};
+    }
+    const auto* name = world.scene().registry().try_get<Meow2::Scene::NameComponent>(entity);
+    return name != nullptr ? name->name : std::string{};
+}
+} // namespace
+
+// #226: a pick at a pixel lists every surface under it (and a couple of pixels around), what covers the pixel and is
+// nearest first; the readback comes a frame or two later.
+TEST_F(EditorRendererTest, PicksWhatIsUnderTheCursor)
+{
+    const auto pick = [this](std::uint32_t x, std::uint32_t y)
+    {
+        m_renderer->requestPick(m_editor, x, y);
+        EXPECT_TRUE(m_renderer->pickPending());
+        std::optional<Meow2::Editor::PickResult> result;
+        for (int frame = 0; frame < 4 && !result; ++frame)
+        {
+            runFrame();
+            result = m_renderer->takePickResult();
+        }
+        EXPECT_FALSE(m_renderer->pickPending());
+        return result;
+    };
+
+    // The editor view frames the scene around the origin, looking a little down: the middle cube is in the centre,
+    // with the ground behind it.
+    runFrame();
+    const std::optional<Meow2::Editor::PickResult> centre = pick(c_size / 2, c_size / 2);
+    ASSERT_TRUE(centre) << "the result came back";
+    EXPECT_EQ(centre->viewport, m_editor);
+    EXPECT_EQ(centre->x, c_size / 2);
+    ASSERT_GE(centre->hits.size(), 2U) << "the cube and the ground behind it";
+    EXPECT_EQ(nameOf(m_world, centre->hits[0].instance), "Cube") << "nearest first";
+    EXPECT_EQ(centre->hits[0].distance, 0U) << "it covers the cursor's pixel";
+    const entt::entity cube = m_world.instanceEntity(centre->hits[0].instance);
+    EXPECT_NEAR(m_world.scene().registry().get<Meow2::Scene::LocalTransform>(cube).value.position.x, 0.0F, 1e-4F)
+        << "the middle one";
+    bool ground = false;
+    for (std::size_t i = 1; i < centre->hits.size(); ++i)
+    {
+        const Meow2::Editor::PickHit& before = centre->hits[i - 1];
+        const Meow2::Editor::PickHit& hit = centre->hits[i];
+        EXPECT_TRUE(before.distance < hit.distance || (before.distance == hit.distance && before.depth >= hit.depth))
+            << "what covers the cursor first, then nearest (reversed Z)";
+        EXPECT_NE(centre->hits[i].instance, centre->hits[i - 1].instance) << "each instance once";
+        ground = ground || nameOf(m_world, centre->hits[i].instance) == "Ground";
+    }
+    EXPECT_TRUE(ground);
+
+    // The top row is sky: nothing there.
+    const std::optional<Meow2::Editor::PickResult> sky = pick(c_size / 2, 1);
+    ASSERT_TRUE(sky);
+    EXPECT_TRUE(sky->hits.empty());
+}
+
+// #226: a selected instance gets an outline in a viewport with the outline on (the editor's), and nowhere else.
+TEST_F(EditorRendererTest, OutlinesTheSelection)
+{
+    m_renderer->setOutline(m_editor, true);
+    runFrame();
+    runFrame(); // settled: the shadow caches and the sky are made by the first frame
+    const auto copy = [this](ViewportId viewport)
+    {
+        const auto pixels = m_renderer->offscreenTarget(viewport)->pixels();
+        return std::vector<std::uint8_t>(reinterpret_cast<const std::uint8_t*>(pixels.data()),
+                                         reinterpret_cast<const std::uint8_t*>(pixels.data()) + pixels.size());
+    };
+    const std::vector<std::uint8_t> editorBefore = copy(m_editor);
+    const std::vector<std::uint8_t> gameBefore = copy(m_game);
+
+    // Select the middle cube.
+    for (const auto [entity, local] : m_world.scene().registry().view<Meow2::Scene::LocalTransform>().each())
+    {
+        const auto* name = m_world.scene().registry().try_get<Meow2::Scene::NameComponent>(entity);
+        if (name != nullptr && name->name == "Cube" && local.value.position.x == 0.0F)
+        {
+            m_selection.push_back(m_world.scene().registry().get<Meow2::Scene::IdComponent>(entity).id);
+        }
+    }
+    ASSERT_EQ(m_selection.size(), 1U);
+    runFrame();
+    EXPECT_TRUE(m_world.anySelectedInstance());
+    const std::vector<std::uint8_t> editorAfter = copy(m_editor);
+    const std::vector<std::uint8_t> gameAfter = copy(m_game);
+
+    // Pixels that changed in the editor view are the outline: orange (red above green above blue).
+    std::uint32_t changed = 0;
+    std::uint32_t orange = 0;
+    for (std::size_t i = 0; i + 3 < editorAfter.size(); i += 4)
+    {
+        if (editorAfter[i] != editorBefore[i] || editorAfter[i + 1] != editorBefore[i + 1] ||
+            editorAfter[i + 2] != editorBefore[i + 2])
+        {
+            ++changed;
+            orange += (editorAfter[i] > editorAfter[i + 1] && editorAfter[i + 1] > editorAfter[i + 2]) ? 1U : 0U;
+        }
+    }
+    EXPECT_GT(changed, 8U) << "an edge around the cube";
+    EXPECT_LT(changed, c_size * c_size / 4) << "an outline, not the whole view";
+    EXPECT_EQ(orange, changed);
+    EXPECT_EQ(gameAfter, gameBefore) << "the game view has no outline";
+
+    // Nothing selected: the outline goes.
+    m_selection.clear();
+    runFrame();
+    EXPECT_FALSE(m_world.anySelectedInstance());
+    EXPECT_EQ(copy(m_editor), editorBefore);
 }

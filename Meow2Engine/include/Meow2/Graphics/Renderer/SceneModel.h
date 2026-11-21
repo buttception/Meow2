@@ -113,14 +113,16 @@ std::vector<entt::entity> instantiateModel(Scene::Scene& scene, Scene::Transform
 
 /// @brief One InstanceDesc per part of every entity with a MeshRenderer and a WorldTransform, in a stable order (the
 ///        component storage's), so GpuScene::setInstances() keeps each part in the same slot from call to call.
-/// @param scene  The scene, after TransformHierarchy::update(). Not changed (non-const: EnTT views of const components
-/// need an
-///               allocator with a default constructor, which the scene's hasn't).
+/// @param scene  The scene, after TransformHierarchy::update(). Not changed (non-const: EnTT views of const
+///               components need an allocator with a default constructor, which the scene's hasn't).
 /// @param meshes The GPU parts of each mesh.
 /// @param out    Cleared, then filled.
+/// @param entities Cleared, then filled with each instance's entity, in the same order (several parts of one mesh give
+///                 several entries); null to skip. The editor maps a picked instance back to its entity with it.
 /// @return A box around everything gathered, in world space; empty when nothing was.
 std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshes& meshes,
-                                          std::vector<InstanceDesc>& out);
+                                          std::vector<InstanceDesc>& out,
+                                          std::vector<entt::entity>* entities = nullptr);
 /// @brief Registers the renderer's scene components (`MeshRenderer`) for scene files.
 /// @param registry Where.
 void registerRenderComponents(Scene::ComponentRegistry& registry);

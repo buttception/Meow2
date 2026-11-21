@@ -44,6 +44,8 @@ add_library(Meow2EditorCore STATIC
     src/Commands/EditorSettings.h
     src/Commands/UndoStack.cpp
     src/Commands/UndoStack.h
+    src/Editing/ClickSelection.cpp
+    src/Editing/ClickSelection.h
     src/Editing/SceneEditor.cpp
     src/Editing/SceneEditor.h
     src/EditorMainWindow.cpp

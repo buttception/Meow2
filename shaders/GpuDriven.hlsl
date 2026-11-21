@@ -726,3 +726,78 @@ float4 psMain(VertexOutput input, bool frontFace : SV_IsFrontFace) : SV_Target
     return float4(color, baseColor.a);
 #endif
 }
+
+#if DEBUG_VIEW == 1
+/// Whether an alpha-masked surface is cut away at this fragment (the cutoff of psShadow and the shading).
+bool cutAway(VertexOutput input, FrameConstants frame)
+{
+    if (input.material >= frame.materialCount)
+    {
+        return false;
+    }
+    const MaterialData material = loadElement<MaterialData>(frame.materialBuffer, input.material);
+    if ((material.flags & MEOW2_MATERIAL_ALPHA_MASK) == 0)
+    {
+        return false;
+    }
+    const float alpha = input.color.a * material.baseColorFactor.a *
+                        sampleMaterial(material.baseColorTexture, material.baseColorSampler,
+                                       transformUv(material.baseColorUv0, material.baseColorUv1, input.uv),
+                                       float4(1, 1, 1, 1))
+                            .a;
+    return alpha < material.parameters.x;
+}
+
+/// The editor's picking: every fragment within MEOW2_PICK_RADIUS pixels of FrameConstants::pickPixel appends its
+/// instance, depth and distance from that pixel to the pick buffer, so the CPU can sort what's under the cursor (what
+/// covers the pixel itself first, then the nearest: reversed Z, the larger depth) and step through it. Drawn without a
+/// depth test, so it sees what's hidden too, into a target nothing reads (the selection mask, cleared after it).
+/// Everything else is discarded.
+float4 psPick(VertexOutput input) : SV_Target
+{
+    const FrameConstants frame = frameConstants();
+    const int2 pixel = int2(input.position.xy);
+    const int2 target = int2(frame.pickPixel & 0xFFFFu, frame.pickPixel >> 16);
+    if (frame.pickBuffer == 0 || any(abs(pixel - target) > MEOW2_PICK_RADIUS) || cutAway(input, frame))
+    {
+        discard;
+    }
+    RWByteAddressBuffer records = ResourceDescriptorHeap[frame.pickBuffer];
+    uint slot;
+    records.InterlockedAdd(0, 1, slot);
+    if (slot < MEOW2_PICK_CAPACITY)
+    {
+        const int2 offset = pixel - target;
+        records.Store4(MEOW2_PICK_HEADER_BYTES + slot * MEOW2_PICK_RECORD_BYTES,
+                       uint4(input.instance, asuint(input.position.z), uint(dot(offset, offset)), 0));
+    }
+    return float4(0.0, 0.0, 0.0, 0.0);
+}
+
+/// The selection outline's mask: 1 where a selected instance (MEOW2_INSTANCE_SELECTED) covers the pixel, drawn without
+/// a depth test, so the outline also shows a selected object behind others. Everything else is discarded.
+float4 psSelectionMask(VertexOutput input) : SV_Target
+{
+    const FrameConstants frame = frameConstants();
+    const InstanceInfo info = loadElement<InstanceInfo>(frame.instanceInfoBuffer, input.instance);
+    if ((info.flags & MEOW2_INSTANCE_SELECTED) == 0 || cutAway(input, frame))
+    {
+        discard;
+    }
+    return float4(1.0, 1.0, 1.0, 1.0);
+}
+#else
+// The entries exist in every variant of the shader; only DEBUG_VIEW = 1 knows the instance index, so the others draw
+// nothing (the editor builds its pick and mask pipelines from DEBUG_VIEW = 1).
+float4 psPick(VertexOutput input) : SV_Target
+{
+    discard;
+    return float4(input.color.rgb * 0.0, 0.0);
+}
+
+float4 psSelectionMask(VertexOutput input) : SV_Target
+{
+    discard;
+    return float4(input.color.rgb * 0.0, 0.0);
+}
+#endif

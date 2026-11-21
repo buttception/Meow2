@@ -198,10 +198,14 @@ std::vector<entt::entity> instantiateModel(Scene::Scene& scene, Scene::Transform
 }
 
 std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshes& meshes,
-                                          std::vector<InstanceDesc>& out)
+                                          std::vector<InstanceDesc>& out, std::vector<entt::entity>* entities)
 {
     using namespace DirectX;
     out.clear();
+    if (entities != nullptr)
+    {
+        entities->clear();
+    }
     bool any = false;
     XMVECTOR low = XMVectorReplicate(0.0F);
     XMVECTOR high = XMVectorReplicate(0.0F);
@@ -220,6 +224,10 @@ std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshe
         {
             out.push_back(
                 {.world = world->matrix, .mesh = part.mesh, .material = part.material, .movable = renderer.movable});
+            if (entities != nullptr)
+            {
+                entities->push_back(entity);
+            }
 
             const Math::MinMax box = Math::toMinMax(Math::transformAabb(part.bounds, matrix));
             const XMVECTOR boxLow = XMLoadFloat3(&box.min);

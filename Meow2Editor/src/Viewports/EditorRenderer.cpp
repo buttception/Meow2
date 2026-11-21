@@ -7,7 +7,9 @@
 #include <Meow2/Math/Bounds.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstring>
 #include <format>
 #include <string_view>
 #include <utility>
@@ -24,6 +26,11 @@ AssetId shaderId(std::string_view text)
 
 constexpr Rhi::RhiFormat c_sceneFormat = Rhi::RhiFormat::Rgba16Float; ///< The scene's HDR colour.
 constexpr Math::Color c_clear{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+/// @brief The selection mask's format: one channel (the RHI has no 8-bit single-channel format).
+constexpr Rhi::RhiFormat c_maskFormat = Rhi::RhiFormat::R32Float;
+/// @brief The pick buffer's size: the header (the record count) and MEOW2_PICK_CAPACITY records.
+constexpr std::uint64_t c_pickBytes =
+    MEOW2_PICK_HEADER_BYTES + std::uint64_t{MEOW2_PICK_CAPACITY} * MEOW2_PICK_RECORD_BYTES;
 } // namespace
 
 EditorRenderer::EditorRenderer(const EditorRendererDeps& deps, const EditorRendererDesc& desc)
@@ -67,7 +74,175 @@ Result<std::unique_ptr<EditorRenderer>> EditorRenderer::create(const EditorRende
     }
     renderer->m_scene = std::move(*scene);
     renderer->m_toneMapShader = shaderId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058");
+    if (Result<void> overlays = renderer->makeOverlayPipelines(); !overlays)
+    {
+        return Unexpected<Error>{overlays.error()};
+    }
+    Result<Renderer::PipelineId> outline = renderer->m_pipelines->add(
+        Renderer::GraphicsPipelineRequest{.shader = shaderId("01a1b5e2-3c1f-8000-80a4-7b19d2e6c060"),
+                                          .colorFormat = c_sceneFormat,
+                                          .depthFormat = Rhi::RhiFormat::Unknown,
+                                          .depthWrite = false,
+                                          .name = "Selection outline"});
+    if (!outline)
+    {
+        return Unexpected<Error>{outline.error()};
+    }
+    renderer->m_outlinePipeline = *outline;
+
+    // The pick records: a count, then {instance, depth, distance} records (MEOW2_PICK_*); one GPU buffer, a readback
+    // per slot.
+    Rhi::IRhiDevice& rhi = renderer->m_device->device();
+    Result<Rhi::BufferHandle> pick = rhi.createBuffer(
+        {.size = c_pickBytes, .memory = Rhi::RhiMemory::GpuOnly, .tag = Memory::MemTag::Renderer, .name = "Pick"});
+    if (!pick)
+    {
+        return Unexpected<Error>{pick.error()};
+    }
+    renderer->m_pickBuffer = *pick;
+    for (std::uint32_t slot = 0; slot < Rhi::c_maxFramesInFlight; ++slot)
+    {
+        Result<Rhi::BufferHandle> readback = rhi.createBuffer({.size = c_pickBytes,
+                                                               .memory = Rhi::RhiMemory::Readback,
+                                                               .tag = Memory::MemTag::Renderer,
+                                                               .name = std::format("Pick readback {}", slot)});
+        if (!readback)
+        {
+            return Unexpected<Error>{readback.error()};
+        }
+        renderer->m_pickReadback[slot] = *readback;
+    }
     return renderer;
+}
+
+Result<void> EditorRenderer::makeOverlayPipelines()
+{
+    // From the debug-view variant, whose vertex output carries the instance index. No depth test: a pick finds every
+    // surface under the cursor (sorted on the CPU), and the outline shows a selected object behind others.
+    const Renderer::DrawPipelineOptions common{
+        .options = {{"DEBUG_VIEW", "1"}}, .depthTest = false, .depthWrite = false, .colorFormat = c_maskFormat};
+    Renderer::DrawPipelineOptions pick = common;
+    pick.pixelEntry = "psPick";
+    pick.name = "Pick";
+    Result<Renderer::DrawPipelines> pickPipelines = m_scene->makeDrawPipelines(pick);
+    if (!pickPipelines)
+    {
+        return Unexpected<Error>{pickPipelines.error()};
+    }
+    Renderer::DrawPipelineOptions mask = common;
+    mask.pixelEntry = "psSelectionMask";
+    mask.name = "Selection mask";
+    Result<Renderer::DrawPipelines> maskPipelines = m_scene->makeDrawPipelines(mask);
+    if (!maskPipelines)
+    {
+        return Unexpected<Error>{maskPipelines.error()};
+    }
+    m_pickPipelines = *pickPipelines;
+    m_maskPipelines = *maskPipelines;
+    return {};
+}
+
+void EditorRenderer::requestPick(ViewportId viewport, std::uint32_t x, std::uint32_t y)
+{
+    m_pickRequest = PickRequest{.viewport = viewport, .x = x, .y = y};
+}
+
+std::optional<PickResult> EditorRenderer::takePickResult()
+{
+    return std::exchange(m_pickResult, std::nullopt);
+}
+
+bool EditorRenderer::pickPending() const
+{
+    return m_pickRequest.has_value() ||
+           std::ranges::any_of(m_pickInFlight, [](const std::optional<PickRequest>& slot) { return slot.has_value(); });
+}
+
+void EditorRenderer::setOutline(ViewportId viewport, bool outline)
+{
+    m_viewports.at(viewport).outline = outline;
+}
+
+void EditorRenderer::setHasSelection(bool any)
+{
+    m_hasSelection = any;
+}
+
+void EditorRenderer::readPick(std::uint32_t slot)
+{
+    std::optional<PickRequest> request = std::exchange(m_pickInFlight[slot], std::nullopt);
+    if (!request)
+    {
+        return;
+    }
+    const std::span<const std::byte> bytes = m_device->device().mappedMemory(m_pickReadback[slot]);
+    const auto word = [&bytes](std::size_t offset)
+    {
+        std::uint32_t value = 0;
+        std::memcpy(&value, bytes.data() + offset, sizeof(value));
+        return value;
+    };
+    // Every fragment near the cursor appended one record. Each instance is kept once, at its closest pixel to the
+    // cursor and its nearest depth there: what covers the cursor's own pixel beats something nearer that only covers
+    // a pixel beside it (the window is there for thin things, not to reorder what's right under the cursor).
+    const std::uint32_t count = std::min(word(0), static_cast<std::uint32_t>(MEOW2_PICK_CAPACITY));
+    PickResult result{.viewport = request->viewport, .x = request->x, .y = request->y};
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        const std::size_t offset = MEOW2_PICK_HEADER_BYTES + static_cast<std::size_t>(i) * MEOW2_PICK_RECORD_BYTES;
+        const PickHit record{
+            .instance = word(offset), .depth = std::bit_cast<float>(word(offset + 4)), .distance = word(offset + 8)};
+        const auto found = std::ranges::find_if(result.hits, [&record](const PickHit& hit)
+                                                { return hit.instance == record.instance; });
+        if (found == result.hits.end())
+        {
+            result.hits.push_back(record);
+        }
+        else if (record.distance < found->distance ||
+                 (record.distance == found->distance && record.depth > found->depth))
+        {
+            *found = record;
+        }
+    }
+    // Closest to the cursor first, then nearest (reversed Z: the larger depth); ties stable by instance.
+    std::ranges::sort(result.hits,
+                      [](const PickHit& a, const PickHit& b)
+                      {
+                          if (a.distance != b.distance)
+                          {
+                              return a.distance < b.distance;
+                          }
+                          return a.depth != b.depth ? a.depth > b.depth : a.instance < b.instance;
+                      });
+    m_pickResult = std::move(result);
+}
+
+bool EditorRenderer::ensureMask(Viewport& viewport)
+{
+    Rhi::IRhiDevice& device = m_device->device();
+    if (viewport.mask.isSet() && viewport.maskWidth == viewport.sceneWidth &&
+        viewport.maskHeight == viewport.sceneHeight)
+    {
+        return true;
+    }
+    device.destroy(viewport.mask);
+    viewport.mask = {};
+    Result<Rhi::TextureHandle> mask = device.createTexture({.width = viewport.sceneWidth,
+                                                            .height = viewport.sceneHeight,
+                                                            .format = c_maskFormat,
+                                                            .renderTarget = true,
+                                                            .tag = Memory::MemTag::Renderer,
+                                                            .name = viewport.name + " selection mask"});
+    if (!mask)
+    {
+        MEOW2_LOG_WARN(m_deps.log, "Viewport '{}': no selection mask: {}", viewport.name, mask.error());
+        return false;
+    }
+    viewport.mask = *mask;
+    viewport.maskState = Rhi::ResourceState::Undefined;
+    viewport.maskWidth = viewport.sceneWidth;
+    viewport.maskHeight = viewport.sceneHeight;
+    return true;
 }
 
 Result<std::unique_ptr<Renderer::GpuScene>> EditorRenderer::makeScene() const
@@ -110,7 +285,10 @@ Result<void> EditorRenderer::resetScene()
         }
         m_viewports[i].view = *view;
     }
-    return {};
+    // Draw pipelines belong to their scene; a pick in flight named the old scene's instances.
+    m_pickInFlight = {};
+    m_pickResult.reset();
+    return makeOverlayPipelines();
 }
 
 void EditorRenderer::setEnvironment(const Scene::Environment& environment)
@@ -133,8 +311,14 @@ EditorRenderer::~EditorRenderer()
         {
             m_device->device().destroy(viewport.color);
             m_device->device().destroy(viewport.depth);
+            m_device->device().destroy(viewport.mask);
             viewport.swapchain.reset();
             viewport.offscreen.reset();
+        }
+        m_device->device().destroy(m_pickBuffer);
+        for (const Rhi::BufferHandle readback : m_pickReadback)
+        {
+            m_device->device().destroy(readback);
         }
     }
     m_viewports.clear();
@@ -352,8 +536,12 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
         return Unexpected<Error>{first.error()};
     }
     const std::uint32_t slot = device.frameSlot();
+    readPick(slot); // beginFrame() waited for this slot's last frame, so its copy has landed
     Renderer::RenderGraph graph;
     bool skyAdded = false;
+    // Resources whose states carry over to the next frame, read back after compile().
+    std::optional<Renderer::GraphResource> pickResource;
+    std::vector<std::pair<ViewportId, Renderer::GraphResource>> masks;
     for (const ViewportId id : drawing)
     {
         Viewport& viewport = m_viewports[id];
@@ -392,9 +580,93 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
         frame.viewport = {static_cast<float>(viewport.sceneWidth), static_cast<float>(viewport.sceneHeight),
                           1.0F / static_cast<float>(viewport.sceneWidth),
                           1.0F / static_cast<float>(viewport.sceneHeight)};
+        const bool picking = m_pickRequest && m_pickRequest->viewport == id && !m_pickInFlight[slot];
+        const bool outlining = viewport.outline && m_hasSelection;
+        const bool overlays = (picking || outlining) && ensureMask(viewport);
+        if (picking && overlays)
+        {
+            // The cursor in scene pixels: the scene may be drawn at a render scale.
+            const auto toScene = [](std::uint32_t pixel, std::uint32_t size, std::uint32_t scene)
+            {
+                return std::min(scene - 1, static_cast<std::uint32_t>(std::uint64_t{pixel} * scene / size));
+            };
+            const std::uint32_t x = toScene(m_pickRequest->x, viewport.width, viewport.sceneWidth);
+            const std::uint32_t y = toScene(m_pickRequest->y, viewport.height, viewport.sceneHeight);
+            frame.pickBuffer = device.bindlessStorageIndex(m_pickBuffer);
+            frame.pickPixel = (x & 0xFFFFU) | (y << 16U);
+        }
         m_scene->setView(slot, frame, Math::frustumFromCamera(matrices), viewport.view);
         const Renderer::GraphResource hdr =
             m_scene->addPasses(graph, slot, nullptr, viewport.color, viewport.depth, c_clear, viewport.view);
+        if (overlays)
+        {
+            const Renderer::GraphResource mask =
+                graph.import(viewport.mask, viewport.maskState, viewport.name + " selection mask");
+            masks.emplace_back(id, mask);
+            if (picking)
+            {
+                pickResource = graph.import(m_pickBuffer, m_pickBufferState, "Pick");
+                const Renderer::GraphResource readback =
+                    graph.import(m_pickReadback[slot], Rhi::ResourceState::Undefined, "Pick readback");
+                const Rhi::BufferHandle pickBuffer = m_pickBuffer;
+                const Rhi::BufferHandle readbackBuffer = m_pickReadback[slot];
+                graph.addPass({.name = "Pick clear",
+                               .accesses = {{*pickResource, Rhi::ResourceState::CopyTarget}},
+                               .record = [pickBuffer](Rhi::IRhiCommandList& list) { list.fillBuffer(pickBuffer, 0); },
+                               .small = true,
+                               .debug = true});
+                // The mask is only the pass's target here (psPick writes no colour); the mask passes clear it after.
+                const std::array<Renderer::GraphAccess, 1> writes{
+                    Renderer::GraphAccess{*pickResource, Rhi::ResourceState::ShaderWrite}};
+                m_scene->addOverlayPass(graph, "Pick", m_pickPipelines, mask, viewport.mask, viewport.depth, slot, true,
+                                        viewport.view, writes);
+                graph.addPass({.name = "Pick copy",
+                               .accesses = {{*pickResource, Rhi::ResourceState::CopySource},
+                                            {readback, Rhi::ResourceState::CopyTarget}},
+                               .record = [pickBuffer, readbackBuffer](Rhi::IRhiCommandList& list)
+                               { list.copyBuffer(pickBuffer, readbackBuffer, c_pickBytes); },
+                               .small = true,
+                               .debug = true});
+                m_pickInFlight[slot] = m_pickRequest;
+                m_pickRequest.reset();
+            }
+            if (outlining)
+            {
+                const Rhi::TextureHandle maskTexture = viewport.mask;
+                graph.addPass({.name = "Selection mask clear",
+                               .accesses = {{mask, Rhi::ResourceState::ColorTarget}},
+                               .record =
+                                   [maskTexture](Rhi::IRhiCommandList& list)
+                               {
+                                   list.beginRendering(Rhi::RenderTargets{
+                                       .color = maskTexture,
+                                       .clearColor = Math::Color{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 0.0F}});
+                                   list.endRendering();
+                               },
+                               .small = true,
+                               .debug = true});
+                m_scene->addOverlayPass(graph, "Selection mask", m_maskPipelines, mask, viewport.mask, viewport.depth,
+                                        slot, true, viewport.view);
+                Shader::PushConstants push{};
+                push.instance = device.bindlessIndex(viewport.mask);
+                const Rhi::PipelineHandle pipeline = m_pipelines->get(m_outlinePipeline);
+                const Rhi::TextureHandle colorTexture = viewport.color;
+                graph.addPass(
+                    {.name = "Selection outline",
+                     .accesses = {{mask, Rhi::ResourceState::ShaderRead}, {hdr, Rhi::ResourceState::ColorTarget}},
+                     .record =
+                         [pipeline, push, colorTexture](Rhi::IRhiCommandList& list)
+                     {
+                         list.beginRendering(Rhi::RenderTargets{.color = colorTexture});
+                         list.setPipeline(pipeline);
+                         list.setPushConstants(push);
+                         list.draw(3);
+                         list.endRendering();
+                     },
+                     .small = true,
+                     .debug = true});
+            }
+        }
         if (viewport.swapchain)
         {
             if (Renderer::ToneMapPass* toneMap = toneMapFor(viewport.swapchain->format()))
@@ -412,6 +684,14 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
     }
 
     graph.compile();
+    if (pickResource)
+    {
+        m_pickBufferState = graph.finalState(*pickResource);
+    }
+    for (const auto& [id, mask] : masks)
+    {
+        m_viewports[id].maskState = graph.finalState(mask);
+    }
     Result<std::vector<Rhi::IRhiCommandList*>> lists = graph.execute(device, m_deps.jobs);
     m_scene->endFrame(graph);
     m_sky->endFrame();

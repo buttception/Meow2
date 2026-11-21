@@ -5,6 +5,8 @@
 
 #include "Commands/EditorCommandRegistry.h"
 #include "Commands/EditorSettings.h"
+#include "Editing/ClickSelection.h"
+#include "Editing/SceneEditor.h"
 #include "Viewports/EditorCamera.h"
 #include "Viewports/EditorRenderer.h"
 #include "Viewports/EditorWorld.h"
@@ -28,6 +30,7 @@ struct ViewportControllerDeps
     EditorCommandRegistry& commands; ///< Where its commands are registered.
     EditorSettings& settings;        ///< The game view's render scale (`editor.gameRenderScale`).
     EditorWorld& world;              ///< The scene both viewports show.
+    SceneEditor& sceneEditor;        ///< The selection: outlined, and set by clicking in the editor viewport.
     Input::InputSystem& input;       ///< Keyboard and mouse, fed by the QtInputSource.
     QtInputSource& inputSource;      ///< Says which viewport has focus.
     EditorRenderer* renderer;        ///< Draws the viewports; null without a GPU (offscreen platform, tests).
@@ -40,6 +43,9 @@ struct ViewportControllerDeps
 ///        transforms, and one frame of both through the EditorRenderer.
 ///
 /// The editor viewport shows the EditorCamera; the game viewport shows the scene's main camera (`Scene::Camera`).
+/// A left click (without Alt, which orbits) in the editor viewport picks what's under the cursor on the GPU and
+/// runs `selection.set` with it when the result comes back (ClickSelection: the nearest, the next one behind on a
+/// second click at the same spot, Ctrl to add or remove, nothing to clear); the selection is outlined there.
 /// A viewport whose widget isn't visible (a hidden or tabbed-away dock) isn't drawn. Its commands:
 /// - `viewport.focus`: frames the scene in the editor viewport (F);
 /// - `viewport.setCameraMode {mode}`: `orbit` or `fly`;
@@ -82,10 +88,19 @@ private:
     void registerCommands();
     /// @brief Adds the two viewports to the renderer, if their widgets have native windows.
     void addViewports();
+    /// @brief Turns a left click (press and release without moving, no Alt) into a pick request.
+    void handleClicks();
+    /// @brief Applies a pick's result to the selection through `selection.set`.
+    /// @param result What the pick found.
+    void applyPick(const PickResult& result);
 
     ViewportControllerDeps m_deps;
     EditorCamera m_camera;
     std::optional<ViewportId> m_editorViewport; ///< In the renderer; unset without one (or without native windows).
     std::optional<ViewportId> m_gameViewport;
+    ClickSelection m_clicks;            ///< Steps through the surfaces under repeated clicks.
+    std::optional<Input::Vec2> m_press; ///< Where the left button went down (logical pixels), for a click.
+    bool m_pressToggle = false;         ///< Ctrl was held at that press.
+    bool m_pickToggle = false;          ///< Ctrl was held for the pick in flight.
 };
 } // namespace Meow2::Editor

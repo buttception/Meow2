@@ -83,6 +83,13 @@ graph.compile();  /* execute */  gpuScene.endFrame(graph);        // once, for e
 The getters that describe a frame (`drewDeferred()`, `gBuffer()`, `shadowCascades()`, `shadowMaps()`, `meshletStats()`, `countBuffer()`, `depthResource()`) take an optional `ViewId`. A view that isn't drawn in a frame costs nothing.
 
 
+### Overlay passes, picking and the selection mask
+
+`addOverlayPass()` draws a view's lists again, after its scene passes, with other pipelines (`makeDrawPipelines()`): a debug view, wireframe, or the editor's tools. Its `extra` accesses declare what the pipelines' shaders touch besides the target, so the graph places their barriers.
+
+- **Picking** (the editor's click, [Editor → Selecting](Editor.md#selecting-in-the-viewport)): `FrameConstants::pickBuffer` and `pickPixel` name a buffer and a pixel. A pass with `psPick` (the debug-view variant, whose vertex output carries the instance slot; no depth test) appends a record `{instance, depth, squared distance}` for every fragment within `MEOW2_PICK_RADIUS` (2) pixels of it, counted with an atomic add, at most `MEOW2_PICK_CAPACITY` (1024). The pass declares the buffer as `ShaderWrite` through `extra`. The caller clears the buffer before and copies it to a readback buffer after; the CPU sorts the records: what covers the pixel itself first, then the nearest (reversed Z: the larger depth). Alpha-masked surfaces honour their cutoff.
+- **Selection mask**: `InstanceDesc::selected` sets `MEOW2_INSTANCE_SELECTED` in the instance's flags (a selection change uploads that record only, and doesn't touch the cached shadows). `psSelectionMask` writes 1 where a selected instance covers a pixel, without a depth test; `shaders/SelectionOutline.hlsl` then draws an edge over the HDR colour where an uncovered pixel has a covered one within 2 pixels.
+
 ### Deferred shading
 
 Opaque surfaces are drawn **deferred** by default (`GpuScene::setDeferred()`, Meow2Renderer's DEFERRED setting); forward stays available, and both give the same image (the golden images run on both paths against the same goldens).
@@ -328,6 +335,7 @@ The sun casts **cascaded shadow maps** (`GpuScene::setShadows()`, `shaders/Shado
 | `RhiGpu*.GpuSceneTest.FreedSlotsAreReusedLowestFirst` | slots freed in any order come back lowest first, and a dropped tail slot isn't handed out twice |
 | `RhiGpu*.ToneMapTest.ScalesUpASmallerImage` | a 32 × 32 image tone-mapped into 64 × 64 fills it, with its halves where they belong |
 | `RhiGpu*.GpuSceneTest.PreviousTransformFollows` | read back from the GPU: a moved instance has last frame's transform as previous, and its new one a frame later |
+| `Renderer.SceneModel.GatherReportsEntities` | `gatherInstances()` lists each instance's entity, one per part, in instance order |
 | `Shader.BindlessLayout.InstanceRecordsMatchTheShaders` | the instance records' sizes and offsets, as the shaders expect |
 | `Renderer.RenderGraph.SkippedPassesAreKeptButNotRun` | a skipped pass stays in the graph, places no barriers, changes no state, and shares the list before it |
 | `RhiGpu*.SkyAtmosphereTest.TransmittanceFallsTowardsTheHorizon` | the transmittance LUT: more light gets through straight up than along the horizon, and red more than blue |

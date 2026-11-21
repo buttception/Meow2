@@ -8,6 +8,7 @@
 #include <Meow2/Math/Quaternion.h>
 #include <Meow2/Scene/Camera.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <string>
@@ -109,20 +110,54 @@ Result<void> EditorWorld::buildDefaultScene(Renderer::GpuScene* gpu)
     return {};
 }
 
-void EditorWorld::update(Renderer::GpuScene* gpu)
+void EditorWorld::update(Renderer::GpuScene* gpu, std::span<const EntityId> selected)
 {
     m_hierarchy->update();
     if (gpu == nullptr)
     {
         return;
     }
-    if (const std::optional<Math::Aabb> box = Renderer::gatherInstances(*m_scene, m_meshes, m_instances))
+    if (const std::optional<Math::Aabb> box =
+            Renderer::gatherInstances(*m_scene, m_meshes, m_instances, &m_instanceEntities))
     {
         m_bounds = Math::Sphere{.center = box->center,
                                 .radius = std::sqrt(box->extents.x * box->extents.x + box->extents.y * box->extents.y +
                                                     box->extents.z * box->extents.z)};
     }
-    gpu->setInstances(m_instances); // only what moved goes to the GPU
+    // Selecting a model's root outlines all of it: an instance is selected if its entity or an ancestor is.
+    std::vector<entt::entity> roots;
+    for (const EntityId id : selected)
+    {
+        if (const std::optional<entt::entity> entity = m_scene->find(id))
+        {
+            roots.push_back(*entity);
+        }
+    }
+    m_anySelected = false;
+    if (!roots.empty())
+    {
+        const auto& registry = m_scene->registry();
+        for (std::size_t i = 0; i < m_instances.size(); ++i)
+        {
+            for (entt::entity at = m_instanceEntities[i]; at != entt::null && registry.valid(at);)
+            {
+                if (std::ranges::find(roots, at) != roots.end())
+                {
+                    m_instances[i].selected = true;
+                    m_anySelected = true;
+                    break;
+                }
+                const auto* parent = registry.try_get<Scene::Parent>(at);
+                at = parent != nullptr ? parent->entity : entt::null;
+            }
+        }
+    }
+    gpu->setInstances(m_instances); // only what moved (or changed selection) goes to the GPU
+}
+
+entt::entity EditorWorld::instanceEntity(std::uint32_t slot) const
+{
+    return slot < m_instanceEntities.size() ? m_instanceEntities[slot] : entt::entity{entt::null};
 }
 
 void EditorWorld::newScene(const FreshGpu& freshGpu)
