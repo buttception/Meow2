@@ -22,7 +22,8 @@ enum class CameraMode
 /// @return Its name.
 [[nodiscard]] QString cameraModeName(CameraMode mode);
 
-/// @brief The camera input of a frame, from the InputSystem: mouse delta and wheel, buttons, WASD/QE and Shift.
+/// @brief The camera input of a frame, from the InputSystem: mouse delta and wheel, buttons, WASD/QE and Shift. A
+///        left drag counts only with Alt held, so a plain left click is free to select.
 /// @param input The input system, after its beginFrame().
 /// @return The input for the rigs.
 [[nodiscard]] Math::CameraInput cameraInputFrom(const Input::InputSystem& input);

@@ -3,7 +3,10 @@
 
 #include "Viewports/EditorCamera.h"
 
+#include <Meow2/Core/Events/EventBus.h>
+#include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Math/Quaternion.h>
+#include <Meow2/Platform/Input/InputSystem.h>
 
 #include <gtest/gtest.h>
 
@@ -66,4 +69,35 @@ TEST(EditorCameraTest, ModesAndFocus)
     EXPECT_NEAR(forward.z, toCentre.z / length, 1e-3F);
     EXPECT_LT(camera.lens().nearZ, 0.1F) << "the near plane follows the framed size";
     EXPECT_EQ(Meow2::Editor::cameraModeName(CameraMode::Fly), QStringLiteral("fly"));
+}
+
+TEST(EditorCameraTest, OrbitNeedsAlt)
+{
+    // A plain left drag is a click to select (or a gizmo drag, later), not an orbit: only Alt + left orbits.
+    namespace Input = Meow2::Input;
+    Meow2::Events::EventBus events{Meow2::Memory::globalTracker()};
+    Input::InputSystem input{events};
+    input.submit(Input::MouseButtonInput{.button = Input::MouseButton::Left, .down = true});
+    input.submit(Input::MouseMotionInput{.x = 50.0F, .y = 10.0F, .dx = 40.0F, .dy = 0.0F});
+    input.beginFrame();
+    const Math::CameraInput plain = Meow2::Editor::cameraInputFrom(input);
+    EXPECT_FALSE(plain.leftDrag) << "without Alt";
+
+    EditorCamera camera;
+    const Math::Transform before = camera.transform();
+    camera.update(plain, 0.016F);
+    EXPECT_NEAR(distance(camera.transform().position, before.position), 0.0F, 1e-4F) << "didn't orbit";
+
+    input.submit(Input::KeyInput{.key = Input::Key::LeftAlt, .down = true});
+    input.submit(Input::MouseMotionInput{.x = 90.0F, .y = 10.0F, .dx = 40.0F, .dy = 0.0F});
+    input.beginFrame();
+    const Math::CameraInput withAlt = Meow2::Editor::cameraInputFrom(input);
+    EXPECT_TRUE(withAlt.leftDrag);
+    camera.update(withAlt, 0.016F);
+    EXPECT_GT(distance(camera.transform().position, before.position), 0.01F) << "Alt + left drag orbits";
+
+    input.submit(Input::KeyInput{.key = Input::Key::LeftAlt, .down = false});
+    input.submit(Input::KeyInput{.key = Input::Key::RightAlt, .down = true});
+    input.beginFrame();
+    EXPECT_TRUE(Meow2::Editor::cameraInputFrom(input).leftDrag) << "either Alt";
 }

@@ -93,8 +93,22 @@ public:
     void destroyEntities(std::span<const entt::entity> entities);
 
     /// @brief Updates world transforms, and the GPU scene's instances from them.
-    /// @param gpu The GPU scene; null to update the transforms only.
-    void update(Renderer::GpuScene* gpu);
+    /// @param gpu      The GPU scene; null to update the transforms only.
+    /// @param selected The selection: their instances, and their children's, are marked InstanceDesc::selected (the
+    ///                 outline); IDs not in the scene are ignored.
+    void update(Renderer::GpuScene* gpu, std::span<const EntityId> selected = {});
+
+    /// @brief The entity a GPU instance slot was drawn for by the last update() (a pick names slots).
+    /// @param slot The slot.
+    /// @return The entity, or entt::null for a slot out of range; it may have been destroyed since (check it).
+    [[nodiscard]] entt::entity instanceEntity(std::uint32_t slot) const;
+
+    /// @brief Whether the last update() marked any instance selected.
+    /// @return True if one is.
+    [[nodiscard]] bool anySelectedInstance() const
+    {
+        return m_anySelected;
+    }
 
     /// @brief A number that changes whenever the scene does (a new or opened scene, an import, an edit command), so
     ///        panels rebuild only when there's something new to show.
@@ -160,6 +174,8 @@ private:
     std::unique_ptr<Scene::TransformHierarchy> m_hierarchy; ///< Likewise; destroyed before the scene.
     Renderer::RenderMeshes m_meshes;                        ///< Mesh AssetId → GPU mesh and material.
     std::vector<Renderer::InstanceDesc> m_instances;        ///< Reused each update.
+    std::vector<entt::entity> m_instanceEntities;           ///< The entity of each of m_instances (its slot).
+    bool m_anySelected = false;                             ///< anySelectedInstance().
     Math::Sphere m_bounds{.center = {0.0F, 0.0F, 0.0F}, .radius = 5.0F};
     std::uint64_t m_revision = 0; ///< revision().
 };

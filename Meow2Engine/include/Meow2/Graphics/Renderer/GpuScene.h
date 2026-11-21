@@ -175,6 +175,8 @@ struct InstanceDesc
     std::uint32_t mesh = 0;     ///< From GpuScene::addMesh().
     std::uint32_t material = 0; ///< From GpuScene::addMaterial(); a higher index gets a colour from its index.
     bool movable = false;       ///< Moves at runtime: casts into the sun's shadow every frame, not into its cache.
+    bool selected =
+        false; ///< Selected in the editor: drawn into the selection outline's mask (MEOW2_INSTANCE_SELECTED).
 };
 
 /// @brief Identifies one of a GpuScene's views (cameras drawn each frame), from GpuScene::addView().
@@ -472,9 +474,11 @@ public:
     /// @param frameSlot IRhiDevice::frameSlot().
     /// @param debug     Marks the pass as a debugging tool's (GraphPass::debug), e.g. a wireframe.
     /// @param view      Which view's lists.
+    /// @param extra     More resources the pipelines' shaders touch (the editor's pick buffer, written by the pixel
+    ///                  shader), so the graph places their barriers too.
     void addOverlayPass(RenderGraph& graph, std::string name, const DrawPipelines& pipelines, GraphResource color,
                         Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot,
-                        bool debug = false, ViewId view = c_mainView);
+                        bool debug = false, ViewId view = c_mainView, std::span<const GraphAccess> extra = {});
 
     /// @brief Adds a view's culling and drawing passes. The first call of a frame also adds the passes every view
     ///        shares: new textures copied, and the changed instances uploaded and scattered into place.

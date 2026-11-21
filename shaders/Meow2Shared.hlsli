@@ -54,8 +54,8 @@ struct FrameConstants
                                          ///< lighting). Set by GpuScene::setView().
     uint shadowBuffer;       ///< Heap index of the sun's ShadowConstants; 0 without shadows. Set by GpuScene::setView().
     uint instanceInfoBuffer; ///< Heap index of the InstanceInfo array (GpuScene); set by GpuScene::setView().
-    uint shadowPadding1;     ///< Pads to 16 bytes.
-    uint shadowPadding2;     ///< Pads to 16 bytes.
+    uint pickBuffer;         ///< Writable heap index of this frame's pick records (psPick); 0: no picking.
+    uint pickPixel;          ///< The pixel picked: x in the low 16 bits, y in the high 16 (the view's scene texture).
     MEOW2_MATRIX(viewProjectionRelative); ///< Like viewProjection, for positions with cameraPosition already subtracted:
                                           ///< the GPU-driven path projects (world - camera), so the big numbers of a far
                                           ///< position never reach the projection. Set by GpuScene::setView().
@@ -77,6 +77,14 @@ struct InstanceData
 #define MEOW2_INSTANCE_MOVABLE 2u  ///< Moves at runtime (Renderer::MeshRenderer::movable): casts into the sun's shadow every
                                    ///< frame, not into its cached map of static casters.
 #define MEOW2_INSTANCE_FREE 4u     ///< An empty slot of GpuScene's instance buffer: culling skips it.
+#define MEOW2_INSTANCE_SELECTED 8u ///< Selected in the editor: drawn into the selection outline's mask.
+
+/// Picking (psPick): a uint count at offset 0, then up to MEOW2_PICK_CAPACITY records of MEOW2_PICK_RECORD_BYTES
+/// (instance, depth as float bits, squared distance in pixels from the picked pixel, 0) from MEOW2_PICK_HEADER_BYTES.
+#define MEOW2_PICK_CAPACITY 1024u    ///< Most records a pick keeps; fragments past it are dropped.
+#define MEOW2_PICK_HEADER_BYTES 16u  ///< Where the records start: after the count, padded to 16 bytes.
+#define MEOW2_PICK_RECORD_BYTES 16u  ///< One record: four uints.
+#define MEOW2_PICK_RADIUS 2 ///< Pixels around the picked one that count, so thin things can be hit.
 
 /// One GpuScene instance's placement, in a buffer only the GPU writes (csScatter). A 3 × 4 matrix: world.x is
 /// dot(world0, float4(local, 1)), and so on, so world0..2 are the columns of the row-vector Mat4 (its three basis rows

@@ -19,6 +19,7 @@
 #include <Meow2/Platform/Window/Window.h>
 #include <Meow2/Scene/Environment.h>
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -58,6 +59,24 @@ struct ViewportCamera
     Math::CameraLens lens{};     ///< Its projection.
 };
 
+/// @brief One surface under the cursor at a pick. Plain data.
+struct PickHit
+{
+    std::uint32_t instance = 0; ///< The GpuScene instance slot.
+    float depth = 0.0F;         ///< Its nearest depth at `distance` (reversed Z: larger is nearer).
+    std::uint32_t distance = 0; ///< Squared distance in pixels from the picked pixel to its closest one (0: covers it).
+};
+
+/// @brief What a pick found. Plain data.
+struct PickResult
+{
+    ViewportId viewport = 0;     ///< Where it was asked for.
+    std::uint32_t x = 0;         ///< The pixel asked for, in the viewport's pixels.
+    std::uint32_t y = 0;         ///< The pixel asked for.
+    std::vector<PickHit> hits{}; ///< Each instance under the cursor once, closest to the cursor, then nearest, first;
+                                 ///< empty: nothing there.
+};
+
 /// @brief The editor's renderer: one device, one GpuScene shared by every viewport, and a view per viewport.
 ///
 /// Each viewport has a target (a swapchain on a Qt widget's native window, or an offscreen texture in tests), a
@@ -68,6 +87,14 @@ struct ViewportCamera
 ///
 /// renderFrame() runs one frame for every visible viewport: the sky's passes once, then each viewport's scene
 /// passes and tone map, in one render graph.
+///
+/// **Picking:** requestPick() adds, to the viewport's next frame, a pass that draws its culled instances with
+/// GpuDriven.hlsl's psPick, which appends `{instance, depth}` for every fragment within MEOW2_PICK_RADIUS pixels of the
+/// cursor into a buffer; the buffer is copied to a readback buffer of that frame slot and read when the slot comes
+/// round again (the GPU is done with it then), so takePickResult() has it a frame or two later.
+/// **Outline:** in a viewport with setOutline(), instances marked InstanceDesc::selected are drawn into a mask
+/// (psSelectionMask, no depth test), and SelectionOutline.hlsl draws an orange edge around the mask over the HDR
+/// colour, before the tone map.
 /// @par Thread safety
 /// Not thread-safe; the GUI thread. The graph's passes record on jobs.
 /// @par Lifetime
@@ -135,6 +162,30 @@ public:
     /// @return Nothing, or an error if the device was lost.
     Result<void> renderFrame(std::span<const std::optional<ViewportCamera>> cameras);
 
+    /// @brief Asks for what's under a pixel of a viewport, found by its next drawn frame (see the class comment).
+    ///        A new request replaces one that hasn't been drawn yet.
+    /// @param viewport The viewport.
+    /// @param x        The pixel, in the viewport's pixels (not the render scale's).
+    /// @param y        The pixel.
+    void requestPick(ViewportId viewport, std::uint32_t x, std::uint32_t y);
+
+    /// @brief The result of the last pick, once its frame has come back from the GPU; it's handed out once.
+    /// @return The result, or nothing yet.
+    [[nodiscard]] std::optional<PickResult> takePickResult();
+
+    /// @brief Whether a pick is waiting to be drawn or to come back.
+    /// @return True while one is.
+    [[nodiscard]] bool pickPending() const;
+
+    /// @brief Draws the selection outline in a viewport (the editor viewport; not the game view).
+    /// @param viewport The viewport.
+    /// @param outline  Whether to draw it; with nothing selected the passes are skipped anyway.
+    void setOutline(ViewportId viewport, bool outline);
+
+    /// @brief Tells the renderer whether any instance is marked selected, so the outline passes can be skipped.
+    /// @param any True if some InstanceDesc has `selected`.
+    void setHasSelection(bool any);
+
     /// @brief Whether a viewport was drawn by the last renderFrame().
     /// @param viewport The viewport.
     /// @return True if its passes ran.
@@ -191,7 +242,32 @@ private:
         Rhi::TextureHandle depth;                     ///< Depth at the render scale.
         std::uint32_t sceneWidth = 0;                 ///< The scene textures' size.
         std::uint32_t sceneHeight = 0;
+        bool outline = false;                                         ///< setOutline().
+        Rhi::TextureHandle mask;                                      ///< Selection mask (and pick target), scene size.
+        Rhi::ResourceState maskState = Rhi::ResourceState::Undefined; ///< The mask's state after the last frame.
+        std::uint32_t maskWidth = 0;                                  ///< The mask's size.
+        std::uint32_t maskHeight = 0;
     };
+
+    /// @brief A pick asked for. Plain data.
+    struct PickRequest
+    {
+        ViewportId viewport = 0; ///< Where.
+        std::uint32_t x = 0;     ///< The viewport's pixel.
+        std::uint32_t y = 0;
+    };
+
+    /// @brief Makes the pick and selection-mask draw pipelines in the current GPU scene.
+    /// @return Nothing, or the error.
+    [[nodiscard]] Result<void> makeOverlayPipelines();
+
+    /// @brief Makes a viewport's mask at its scene size, if it isn't already.
+    /// @return False if it couldn't be made.
+    bool ensureMask(Viewport& viewport);
+
+    /// @brief Reads a pick's records from this frame slot's readback buffer into m_pickResult.
+    /// @param slot The frame slot, whose GPU work has finished.
+    void readPick(std::uint32_t slot);
 
     /// @brief Makes a viewport's scene textures at its size times its render scale, if they aren't already.
     /// @return False if a texture couldn't be made (the viewport is skipped this frame).
@@ -217,5 +293,16 @@ private:
     float m_sunIntensity = 3.0F;                  ///< The sun's illuminance.
     float m_exposure = 1.0F;                      ///< Before the tone curve.
     std::vector<Viewport> m_viewports;            ///< By ViewportId.
+
+    Renderer::DrawPipelines m_pickPipelines{}; ///< psPick, in the current GPU scene.
+    Renderer::DrawPipelines m_maskPipelines{}; ///< psSelectionMask, in the current GPU scene.
+    Renderer::PipelineId m_outlinePipeline{};  ///< SelectionOutline.hlsl.
+    Rhi::BufferHandle m_pickBuffer;            ///< The records psPick appends to (GPU only).
+    Rhi::ResourceState m_pickBufferState = Rhi::ResourceState::Undefined;              ///< After the last frame.
+    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_pickReadback{};          ///< A copy per frame slot.
+    std::array<std::optional<PickRequest>, Rhi::c_maxFramesInFlight> m_pickInFlight{}; ///< What each slot picked.
+    std::optional<PickRequest> m_pickRequest;                                          ///< Asked for, not drawn yet.
+    std::optional<PickResult> m_pickResult;                                            ///< Come back, not taken yet.
+    bool m_hasSelection = false;                                                       ///< setHasSelection().
 };
 } // namespace Meow2::Editor

@@ -931,7 +931,7 @@ Result<std::uint32_t> GpuScene::addMesh(const MeshData& mesh)
 
 namespace
 {
-/// @brief Whether two descriptions draw the same thing in the same place.
+/// @brief Whether two descriptions draw the same thing in the same place (the editor's selection aside).
 bool sameInstance(const InstanceDesc& a, const InstanceDesc& b)
 {
     return a.mesh == b.mesh && a.material == b.material && a.movable == b.movable &&
@@ -951,7 +951,8 @@ void GpuScene::storeInstance(std::uint32_t slot, const InstanceDesc& desc)
 {
     InstanceRecord& record = m_instances[slot];
     const bool wasFree = (record.flags & MEOW2_INSTANCE_FREE) != 0;
-    if (!wasFree && sameInstance(record.desc, desc))
+    const bool sameDrawing = !wasFree && sameInstance(record.desc, desc);
+    if (sameDrawing && record.desc.selected == desc.selected)
     {
         return; // nothing to upload
     }
@@ -964,13 +965,17 @@ void GpuScene::storeInstance(std::uint32_t slot, const InstanceDesc& desc)
     const DirectX::XMMATRIX world = DirectX::XMLoadFloat4x4(&desc.world);
     const bool mirrored = DirectX::XMVectorGetX(DirectX::XMMatrixDeterminant(world)) < 0.0F;
     record.desc = desc;
-    record.flags = (mirrored ? MEOW2_INSTANCE_MIRRORED : 0U) | (desc.movable ? MEOW2_INSTANCE_MOVABLE : 0U);
+    record.flags = (mirrored ? MEOW2_INSTANCE_MIRRORED : 0U) | (desc.movable ? MEOW2_INSTANCE_MOVABLE : 0U) |
+                   (desc.selected ? MEOW2_INSTANCE_SELECTED : 0U);
     if (!record.dirty)
     {
         record.dirty = true;
         m_dirty.push_back(slot);
     }
-    m_derivedStale = true;
+    if (!sameDrawing)
+    {
+        m_derivedStale = true; // a selection change alone uploads the flag, nothing derived (cached shadows) goes stale
+    }
 }
 
 void GpuScene::setInstances(std::span<const InstanceDesc> instances)
@@ -1835,7 +1840,7 @@ void GpuScene::recordLists(const View& view, Rhi::IRhiCommandList& list, const D
 
 void GpuScene::addOverlayPass(RenderGraph& graph, std::string name, const DrawPipelines& pipelines, GraphResource color,
                               Rhi::TextureHandle colorTexture, Rhi::TextureHandle depth, std::uint32_t frameSlot,
-                              bool debug, ViewId viewId)
+                              bool debug, ViewId viewId, std::span<const GraphAccess> extra)
 {
     Rhi::IRhiDevice& device = m_device.device();
     const View& view = this->view(viewId);
@@ -1853,6 +1858,7 @@ void GpuScene::addOverlayPass(RenderGraph& graph, std::string name, const DrawPi
     std::vector<GraphAccess> accesses = instanceReads();
     accesses.push_back({view.depthResource, Rhi::ResourceState::DepthTarget});
     accesses.push_back({color, Rhi::ResourceState::ColorTarget});
+    accesses.insert(accesses.end(), extra.begin(), extra.end());
     if (lists && view.frameUsesMeshlets)
     {
         accesses.push_back({view.taskArgsResource, Rhi::ResourceState::IndirectArgs});

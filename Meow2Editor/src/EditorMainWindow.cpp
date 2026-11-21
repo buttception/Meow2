@@ -104,6 +104,7 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     m_viewports = std::make_unique<ViewportController>(ViewportControllerDeps{.commands = deps.commands,
                                                                               .settings = deps.settings,
                                                                               .world = deps.world,
+                                                                              .sceneEditor = deps.editor,
                                                                               .input = deps.input,
                                                                               .inputSource = *m_inputSource,
                                                                               .renderer = deps.renderer,

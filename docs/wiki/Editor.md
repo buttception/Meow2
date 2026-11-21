@@ -179,11 +179,11 @@ The editor works on a **project folder**: the scenes, models and their `.meta` f
 
 The **editor viewport** (the window's centre) shows the scene through the editor's own camera; the **game viewport** (the Game dock, on the right at first) shows it through the scene's main `Camera` entity, as the game will. Each is a native child window with its own swapchain and its own `GpuScene` view, so the two can look at the same scene from different places in the same frame ([Rendering → Several views per frame](Rendering.md#several-views-per-frame)).
 
-- **Moving the editor camera** (while the editor viewport has focus; a click gives it focus):
+- **Moving the editor camera** (while the editor viewport has focus; a click gives it focus): a plain left click selects ([below](#selecting-in-the-viewport)), so orbiting takes Alt, as in Unity and Maya.
 
   | Input | Orbit mode (default) | Fly mode |
   |---|---|---|
-  | Left drag | turn around the point in front | — |
+  | Alt + left drag | turn around the point in front | — |
   | Middle drag | pan | — |
   | Wheel | zoom | change speed |
   | Right drag | fly while held (look around, WASD/QE move, Shift faster); let go to orbit again | look around |
@@ -196,6 +196,19 @@ The **editor viewport** (the window's centre) shows the scene through the editor
 - **The dock layout** (where the Game and Console docks are, their sizes, which are hidden) is saved in `editor.layout` at exit and restored at the next start.
 - **The scene** is the open scene file's, or a new one ([Project and scenes](#project-and-scenes)); its `Environment` sets the viewports' sun and exposure. (`EditorWorld::buildDefaultScene()`, a ground slab and coloured cubes, is kept for tests.) Each frame the world's transforms are updated and handed to `GpuScene::setInstances()`, which uploads only what moved.
 - **Without a GPU** (the offscreen platform in tests and CI, or a GPU that can't start), the editor runs without its renderer: the viewports stay empty, and every command still works.
+
+### Selecting in the viewport
+
+- **Click** an object in the editor viewport to select it (Alt + drag orbits instead). **Click the same spot again** to select the one behind it (through glass, or an object hidden behind another), and again to go on; it wraps round. **Ctrl + click** adds an object to the selection or removes it. A click on nothing (the sky) clears the selection. A click that moves more than 4 pixels before the button comes up is a drag, not a click.
+- **Selected objects get an orange outline** in the editor viewport, also where something stands in front of them; the game view never shows it. Selecting a model's root outlines all of its parts.
+- **How a click becomes a selection:**
+  1. `ViewportController` sees the press and release (no Alt, little movement) and asks `EditorRenderer::requestPick()` for that pixel (Qt's logical position times the display's pixel ratio).
+  2. The editor viewport's next frame draws its culled instances once more with `psPick`, which records every surface within 2 pixels of the cursor with its depth ([Rendering → Overlay passes](Rendering.md#overlay-passes-picking-and-the-selection-mask)); the records are copied to a readback buffer of that frame slot.
+  3. When that slot comes round again (a frame or two later; the GPU is done with it then), `takePickResult()` hands over the hits: each instance once, what covers the cursor's pixel first, then the nearest.
+  4. `EditorWorld::instanceEntity()` maps each instance slot back to its entity; `ClickSelection` drops entities gone since, lists each once, and picks the nearest, or the next one when the same spot (within 2 pixels) is clicked again with the same hits under it.
+  5. The new selection goes through `selection.set`, like the Hierarchy's, so an agent sees the same command.
+- **The outline:** `EditorWorld::update()` marks the instances of selected entities (and their children) `InstanceDesc::selected`. In the editor viewport (`EditorRenderer::setOutline()`), a pass draws them into a mask without a depth test, and `SelectionOutline.hlsl` draws a 2-pixel orange edge around the mask over the scene's HDR colour, before the tone map. With nothing selected, both passes are skipped.
+- **Why the GPU and not rays on the CPU:** the GPU draws exactly what's on screen, alpha cutouts included, with no copy of the meshes on the CPU and no acceleration structure to keep up to date; meshlet and indirect paths pick the same. The cost is one small pass on the frame after a click, and an answer a frame or two later, which a click never notices.
 
 ### Input: QtInputSource
 
@@ -261,10 +274,12 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.ViewportTest.*`: the viewport is the native central widget; offscreen has no OS handle.
 - `Editor.ViewportWin32.NativeHandle` (Windows only): with the real platform, the viewport has its own `HWND`.
 - `Editor.QtInputSourceTest.*`: keys, mouse and wheel reach the `InputSystem` only from the focused viewport, and losing focus releases them; `Editor.QtInputSourceKeys.MapsNativeScanCodes`: the Windows and evdev tables.
-- `Editor.EditorCameraTest.*`: right drag flies and letting go orbits without a jump; Fly mode; focus frames the bounds and stops the spin.
+- `Editor.EditorCameraTest.*`: right drag flies and letting go orbits without a jump; Fly mode; focus frames the bounds and stops the spin; `OrbitNeedsAlt`: a left drag orbits only with Alt held.
+- `Editor.ViewportPickingTest.ClicksSelect`: the nearest hit is selected, the same spot again steps behind it and wraps round, another spot or other hits start over, Ctrl adds and removes, nothing under the cursor clears; gone and repeated entities are dropped.
 - `Editor.ViewportCommandsTest.*`: `viewport.setRenderScale` saves the setting and updates the drop-down, out-of-range values are refused, `viewport.setCameraMode` and `viewport.info`; the test scene has a main camera.
 - `Editor.MainWindowTest.LayoutRoundTrips`: the dock layout saved in `editor.layout` is restored by the next window.
 - `EditorGpu.EditorRendererTest.TwoViewportsAndRenderScale` (label `gpu`): an editor and a game viewport drawn offscreen in one frame, both filled; at 50 % the game scene is half size and still fills its viewport; a hidden viewport isn't drawn.
+- `EditorGpu.EditorRendererTest.PicksWhatIsUnderTheCursor`: a pick at the centre finds the middle cube first and the ground behind it, each once and in order; a pick in the sky finds nothing. `OutlinesTheSelection`: selecting the cube changes only orange pixels around it in the editor view, none in the game view, and clearing the selection removes them.
 - `EditorGpu.EditorRendererWindowTest.WindowViewportResizes`: a window viewport resized between frames (#216). `EditorGpu.EditorRendererTest.OpensASavedScene`: a scene with a model, saved and opened again, is drawn from an emptied GPU scene with only its model, in both viewports.
 - `Editor.SceneDocumentTest.*`: save and open round trip; unsaved changes need `discard`, saving marks clean, opening clears the history; paths outside the project refused; recent scenes (order, no repeats, at most 8, reopened at start); importing a model with stable mesh IDs, undo and redo.
 - `Editor.MainWindowTest.UnsavedChangesAsk`, `AssetsDockOpensScenes`: Save / Discard / Cancel before a new or opened scene, the `*` in the title; a double-click in the Assets dock opens a scene.
@@ -274,7 +289,7 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 
 ## Not yet
 
-- GPU picking in the viewport, the selection outline and gizmos (M7 PR 4, second half); an asset picker for mesh fields; editing several entities at once.
+- Gizmos: translate, rotate, scale, with snapping (M7 PR 4, last part); an asset picker for mesh fields; editing several entities at once.
 - The MCP server (M7 PR 6).
 - Prefabs: a model as one asset whose instances keep their edits when it's re-imported; textures cooked into the project at import.
 - Renaming, moving and deleting assets in the Assets dock (each needs its `.meta` kept with it).
