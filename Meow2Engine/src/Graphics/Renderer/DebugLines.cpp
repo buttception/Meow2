@@ -1,13 +1,13 @@
 /// @file
 /// @brief Debug lines: the frustum's edges, the line buffer and the pass that draws them.
 
-#include "DebugLines.h"
+#include "Meow2/Graphics/Renderer/DebugLines.h"
 
 #include <DirectXMath.h>
 
 #include <cstring>
 
-namespace Meow2::RendererApp
+namespace Meow2::Renderer
 {
 namespace
 {
@@ -61,13 +61,13 @@ std::array<DebugLine, 12> frustumLines(const Shader::FrameConstants& frame, floa
     return lines;
 }
 
-DebugLines::DebugLines(Renderer::RenderDevice& device, Renderer::PipelineLibrary& pipelines, AssetId shader,
-                       Rhi::RhiFormat colorFormat, Log::Logger& log)
+DebugLines::DebugLines(RenderDevice& device, PipelineLibrary& pipelines, AssetId shader, Rhi::RhiFormat colorFormat,
+                       Log::Logger& log)
     : m_device(device)
     , m_pipelines(pipelines)
 {
     // On top of everything: no depth target, so the lines show through the scene.
-    Result<Renderer::PipelineId> pipeline =
+    Result<PipelineId> pipeline =
         pipelines.add(Renderer::GraphicsPipelineRequest{.shader = shader,
                                                         .colorFormat = colorFormat,
                                                         .depthFormat = Rhi::RhiFormat::Unknown,
@@ -105,8 +105,8 @@ void DebugLines::release(Rhi::IRhiDevice& device)
     }
 }
 
-void DebugLines::addPass(Renderer::RenderGraph& graph, std::uint32_t frameSlot, const Math::Mat4& viewProjection,
-                         Renderer::GraphResource color, Rhi::TextureHandle colorTexture)
+void DebugLines::addPass(RenderGraph& graph, std::uint32_t frameSlot, const Math::Mat4& viewProjection,
+                         GraphResource color, Rhi::TextureHandle colorTexture)
 {
     if (m_lines.empty() || !m_pipeline)
     {
@@ -154,4 +154,4 @@ void DebugLines::addPass(Renderer::RenderGraph& graph, std::uint32_t frameSlot, 
                    .small = true,
                    .debug = true});
 }
-} // namespace Meow2::RendererApp
+} // namespace Meow2::Renderer

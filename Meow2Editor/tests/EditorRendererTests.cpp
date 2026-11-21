@@ -379,3 +379,38 @@ TEST_F(EditorRendererTest, OutlinesTheSelection)
     EXPECT_FALSE(m_world.anySelectedInstance());
     EXPECT_EQ(copy(m_editor), editorBefore);
 }
+
+// #228: lines given to a viewport (the gizmo) are drawn over its scene, and only there.
+TEST_F(EditorRendererTest, DrawsLines)
+{
+    runFrame();
+    runFrame(); // settled
+    const auto copy = [this](ViewportId viewport)
+    {
+        const auto pixels = m_renderer->offscreenTarget(viewport)->pixels();
+        return std::vector<std::uint8_t>(reinterpret_cast<const std::uint8_t*>(pixels.data()),
+                                         reinterpret_cast<const std::uint8_t*>(pixels.data()) + pixels.size());
+    };
+    const std::vector<std::uint8_t> editorBefore = copy(m_editor);
+    const std::vector<std::uint8_t> gameBefore = copy(m_game);
+
+    // A yellow cross through the middle of the scene, as the gizmo draws its handles.
+    const Math::Color yellow{.r = 1.0F, .g = 0.85F, .b = 0.1F, .a = 1.0F};
+    m_renderer->setLines(m_editor, {{.from = {-3.0F, 0.0F, 0.0F}, .to = {3.0F, 0.0F, 0.0F}, .color = yellow},
+                                    {.from = {0.0F, -3.0F, 0.0F}, .to = {0.0F, 3.0F, 0.0F}, .color = yellow}});
+    runFrame();
+    const std::vector<std::uint8_t> editorAfter = copy(m_editor);
+    std::uint32_t changed = 0;
+    for (std::size_t i = 0; i + 3 < editorAfter.size(); i += 4)
+    {
+        changed += (editorAfter[i] != editorBefore[i] || editorAfter[i + 2] != editorBefore[i + 2]) ? 1U : 0U;
+    }
+    EXPECT_GT(changed, c_size / 2) << "two lines across the view";
+    EXPECT_LT(changed, c_size * c_size / 4) << "lines, not a fill";
+    EXPECT_EQ(copy(m_game), gameBefore) << "the game view has no gizmo";
+
+    // No lines: gone again.
+    m_renderer->setLines(m_editor, {});
+    runFrame();
+    EXPECT_EQ(copy(m_editor), editorBefore);
+}

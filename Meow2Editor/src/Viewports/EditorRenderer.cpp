@@ -168,6 +168,11 @@ void EditorRenderer::setHasSelection(bool any)
     m_hasSelection = any;
 }
 
+void EditorRenderer::setLines(ViewportId viewport, std::vector<Renderer::DebugLine> lines)
+{
+    m_viewports.at(viewport).lines = std::move(lines);
+}
+
 void EditorRenderer::readPick(std::uint32_t slot)
 {
     std::optional<PickRequest> request = std::exchange(m_pickInFlight[slot], std::nullopt);
@@ -314,6 +319,7 @@ EditorRenderer::~EditorRenderer()
             m_device->device().destroy(viewport.mask);
             viewport.swapchain.reset();
             viewport.offscreen.reset();
+            viewport.debugLines.reset();
         }
         m_device->device().destroy(m_pickBuffer);
         for (const Rhi::BufferHandle readback : m_pickReadback)
@@ -666,6 +672,28 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
                      .small = true,
                      .debug = true});
             }
+        }
+        if (!viewport.lines.empty())
+        {
+            if (!viewport.debugLines)
+            {
+                viewport.debugLines = std::make_unique<Renderer::DebugLines>(
+                    *m_device, *m_pipelines, shaderId("01a1b5e2-3c1a-8000-80a4-7b19d2e6c05b"), c_sceneFormat,
+                    m_deps.log);
+            }
+            // Drawn before the tone map, which multiplies by the exposure: divided here, so the gizmo stays as bright
+            // in a dim scene as in a bright one.
+            const float unexpose = m_exposure > 0.0F ? 1.0F / m_exposure : 1.0F;
+            viewport.debugLines->clear();
+            for (Renderer::DebugLine line : viewport.lines)
+            {
+                line.color = {.r = line.color.r * unexpose,
+                              .g = line.color.g * unexpose,
+                              .b = line.color.b * unexpose,
+                              .a = line.color.a};
+                viewport.debugLines->add(line);
+            }
+            viewport.debugLines->addPass(graph, slot, matrices.viewProjection, hdr, viewport.color);
         }
         if (viewport.swapchain)
         {

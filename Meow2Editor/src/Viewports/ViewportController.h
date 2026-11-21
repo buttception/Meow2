@@ -6,6 +6,7 @@
 #include "Commands/EditorCommandRegistry.h"
 #include "Commands/EditorSettings.h"
 #include "Editing/ClickSelection.h"
+#include "Editing/Gizmo.h"
 #include "Editing/SceneEditor.h"
 #include "Viewports/EditorCamera.h"
 #include "Viewports/EditorRenderer.h"
@@ -46,11 +47,17 @@ struct ViewportControllerDeps
 /// A left click (without Alt, which orbits) in the editor viewport picks what's under the cursor on the GPU and
 /// runs `selection.set` with it when the result comes back (ClickSelection: the nearest, the next one behind on a
 /// second click at the same spot, Ctrl to add or remove, nothing to clear); the selection is outlined there.
+/// The last selected entity gets a gizmo there (Gizmo): hovering highlights a handle, and dragging one runs
+/// `entity.setTransform` previews while the button is held and one recorded step on release, so a drag is one undo
+/// step; a gizmo under the cursor wins over picking. Snapping is on with `viewport.setGizmo {snap}` or while Ctrl is
+/// held, in the steps of `editor.snap.*`.
 /// A viewport whose widget isn't visible (a hidden or tabbed-away dock) isn't drawn. Its commands:
 /// - `viewport.focus`: frames the scene in the editor viewport (F);
 /// - `viewport.setCameraMode {mode}`: `orbit` or `fly`;
 /// - `viewport.setRenderScale {percent}`: the game viewport's render scale, 25..100, saved as
 ///   `editor.gameRenderScale`;
+/// - `viewport.setGizmo {mode, space, snap}`: the gizmo's mode (`translate`, `rotate`, `scale`), axes (`world`,
+///   `local`) and snapping (each optional);
 /// - query `viewport.info`: each viewport's size, visibility, whether it drew, the camera mode and the render scale.
 /// @par Thread safety
 /// Not thread-safe; GUI thread only.
@@ -79,6 +86,20 @@ public:
         return m_camera;
     }
 
+    /// @brief The editor viewport's gizmo (its mode and space).
+    /// @return It.
+    [[nodiscard]] const Gizmo& gizmo() const
+    {
+        return m_gizmo;
+    }
+
+    /// @brief Whether snapping is switched on (Ctrl snaps while held either way).
+    /// @return True if it is.
+    [[nodiscard]] bool snapping() const
+    {
+        return m_snap;
+    }
+
     /// @brief The game viewport's render scale, from the settings.
     /// @return 25 to 100.
     [[nodiscard]] int renderScalePercent() const;
@@ -93,14 +114,37 @@ private:
     /// @brief Applies a pick's result to the selection through `selection.set`.
     /// @param result What the pick found.
     void applyPick(const PickResult& result);
+    /// @brief Hovering and dragging the gizmo.
+    /// @param editorFocused Whether the editor viewport has the keyboard and mouse.
+    /// @return True if the gizmo took the mouse this frame (a press on a handle, or a drag), so it isn't a click.
+    bool handleGizmo(bool editorFocused);
+    /// @brief Ends a drag: one recorded `entity.setTransform` from where it began, if it moved anything.
+    void finishGizmoDrag();
+    /// @brief Hands the gizmo's lines for this frame to the renderer (none without a target).
+    void updateGizmoLines();
+    /// @brief The entity the gizmo is on: the last selected one, if it's there and has a transform.
+    /// @return It, or nothing.
+    [[nodiscard]] std::optional<entt::entity> gizmoTarget() const;
+    /// @brief The editor camera as the gizmo sees it this frame.
+    /// @return It, or nothing while the editor viewport has no size.
+    [[nodiscard]] std::optional<GizmoView> gizmoView() const;
+    /// @brief The cursor in the editor viewport's pixels.
+    /// @return x and y.
+    [[nodiscard]] std::pair<float, float> cursorPixels() const;
 
     ViewportControllerDeps m_deps;
     EditorCamera m_camera;
     std::optional<ViewportId> m_editorViewport; ///< In the renderer; unset without one (or without native windows).
     std::optional<ViewportId> m_gameViewport;
-    ClickSelection m_clicks;            ///< Steps through the surfaces under repeated clicks.
-    std::optional<Input::Vec2> m_press; ///< Where the left button went down (logical pixels), for a click.
-    bool m_pressToggle = false;         ///< Ctrl was held at that press.
-    bool m_pickToggle = false;          ///< Ctrl was held for the pick in flight.
+    ClickSelection m_clicks;                   ///< Steps through the surfaces under repeated clicks.
+    std::optional<Input::Vec2> m_press;        ///< Where the left button went down (logical pixels), for a click.
+    bool m_pressToggle = false;                ///< Ctrl was held at that press.
+    bool m_pickToggle = false;                 ///< Ctrl was held for the pick in flight.
+    Gizmo m_gizmo;                             ///< The editor viewport's gizmo.
+    bool m_snap = false;                       ///< `viewport.setGizmo {snap}`.
+    GizmoHandle m_hover = GizmoHandle::None;   ///< The handle under the cursor this frame.
+    EntityId m_dragEntity{};                   ///< What the drag moves.
+    Math::Transform m_dragFrom{};              ///< Its local transform when the drag began.
+    std::optional<Math::Transform> m_dragLast; ///< The last local transform the drag previewed.
 };
 } // namespace Meow2::Editor

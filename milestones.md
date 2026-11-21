@@ -259,7 +259,7 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
   - glTF import writes assets with `.meta` sidecars and a prefab, so re-importing keeps edits (and textures are cooked at import)
   - Scene environment (sun, sky, exposure) saved with the scene
   - Renderer opens `.m2scene`
-- **PR 4 Editing**, split in three (2026-11-15): the hierarchy, inspector and edit commands first (#224 / PR #225), then GPU picking and the selection outline (#226 / PR #227), then gizmos
+- ✅ **PR 4 Editing**, split in three (2026-11-15): the hierarchy, inspector and edit commands first (#224 / PR #225), then GPU picking and the selection outline (#226 / PR #227), then gizmos (#228 / PR #229)
   - Scene hierarchy (create, delete, duplicate, rename, re-parent by dragging) and an inspector generated from the field descriptors (add and remove components)
   - Selection and a selection outline
   - GPU picking through a framebuffer: on a click, a scissored pass around the cursor appends `{entity, depth}` per pixel; sorted on the CPU, repeated clicks step down through transparent layers; alpha cutoff in the pick shader; gizmos win; `registry.valid()` checked after the delayed readback
@@ -368,3 +368,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-15 — M7 PR 3 done (#222 / PR #223); prefabs and cooking textures at import moved out of it.
 - 2026-11-15 — M7 PR 4 split in two: the hierarchy, inspector and edit commands (#224 / PR #225), then picking, the selection outline and gizmos.
 - 2026-11-21 — M7 PR 4's second half split again: GPU picking and the selection outline (#226 / PR #227), then gizmos.
+- 2026-11-21 — M7 PR 4 done: gizmos with snapping (#228 / PR #229); the editor's dock tabs go on top (owner request).

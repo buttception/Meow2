@@ -11,6 +11,7 @@ meow2_add_test_suite(
         EditorCommandsTests.cpp
         EditorTestRig.h
         EditorThemeTests.cpp
+        GizmoTests.cpp
         MainWindowTests.cpp
         QtInputSourceTests.cpp
         QtTestApplication.h

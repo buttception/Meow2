@@ -1,5 +1,5 @@
 /// @file
-/// @brief Debug lines in world space (Meow2Renderer only): the frozen camera's frustum, and later other helpers.
+/// @brief Debug lines in world space for tools (never games): Meow2Renderer's frozen frustum, the editor's gizmos.
 
 #pragma once
 
@@ -16,7 +16,7 @@
 #include <optional>
 #include <vector>
 
-namespace Meow2::RendererApp
+namespace Meow2::Renderer
 {
 /// @brief One line in world space. Plain data.
 struct DebugLine
@@ -59,8 +59,8 @@ public:
     /// @param shader      `shaders/DebugLines.hlsl`.
     /// @param colorFormat The target's format (the scene's HDR colour).
     /// @param log         Receives a pipeline that couldn't be built.
-    DebugLines(Renderer::RenderDevice& device, Renderer::PipelineLibrary& pipelines, AssetId shader,
-               Rhi::RhiFormat colorFormat, Log::Logger& log);
+    DebugLines(RenderDevice& device, PipelineLibrary& pipelines, AssetId shader, Rhi::RhiFormat colorFormat,
+               Log::Logger& log);
 
     /// @brief Releases the buffers.
     ~DebugLines();
@@ -97,19 +97,19 @@ public:
     /// @param viewProjection The camera's view-projection matrix (FrameConstants::viewProjection).
     /// @param color          The target in the graph.
     /// @param colorTexture   The same texture.
-    void addPass(Renderer::RenderGraph& graph, std::uint32_t frameSlot, const Math::Mat4& viewProjection,
-                 Renderer::GraphResource color, Rhi::TextureHandle colorTexture);
+    void addPass(RenderGraph& graph, std::uint32_t frameSlot, const Math::Mat4& viewProjection, GraphResource color,
+                 Rhi::TextureHandle colorTexture);
 
 private:
     /// @brief Destroys the buffers (a backend switch, or the end).
     /// @param device The device they were made on.
     void release(Rhi::IRhiDevice& device);
 
-    Renderer::RenderDevice& m_device;
-    Renderer::PipelineLibrary& m_pipelines;
-    std::optional<Renderer::PipelineId> m_pipeline;
+    RenderDevice& m_device;
+    PipelineLibrary& m_pipelines;
+    std::optional<PipelineId> m_pipeline;
     std::vector<DebugLine> m_lines;
     std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_buffers{}; ///< Matrix and vertices, per frame slot.
-    Renderer::DeviceUser m_deviceUser; ///< Last: stops its callbacks before the members they use go away.
+    DeviceUser m_deviceUser; ///< Last: stops its callbacks before the members they use go away.
 };
-} // namespace Meow2::RendererApp
+} // namespace Meow2::Renderer

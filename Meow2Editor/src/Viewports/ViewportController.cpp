@@ -48,8 +48,8 @@ ViewportController::ViewportController(const ViewportControllerDeps& deps)
 
 ViewportController::~ViewportController()
 {
-    for (const auto* name :
-         {u"viewport.focus", u"viewport.setCameraMode", u"viewport.setRenderScale", u"viewport.info"})
+    for (const auto* name : {u"viewport.focus", u"viewport.setCameraMode", u"viewport.setRenderScale", u"viewport.info",
+                             u"viewport.setGizmo"})
     {
         m_deps.commands.remove(QStringView{name});
     }
@@ -150,13 +150,203 @@ void ViewportController::applyPick(const PickResult& result)
     }
 }
 
+std::pair<float, float> ViewportController::cursorPixels() const
+{
+    // Qt's positions are logical; the viewport's pixels are scaled by the display.
+    const auto ratio = static_cast<float>(m_deps.editorViewport.devicePixelRatioF());
+    const Input::Vec2 at = m_deps.input.mousePosition();
+    return {at.x * ratio, at.y * ratio};
+}
+
+std::optional<entt::entity> ViewportController::gizmoTarget() const
+{
+    const std::vector<EntityId> selection = m_deps.sceneEditor.selection();
+    if (selection.empty())
+    {
+        return std::nullopt;
+    }
+    const Scene::Scene& scene = m_deps.world.scene();
+    const std::optional<entt::entity> entity = scene.find(selection.back());
+    if (!entity || !scene.registry().all_of<Scene::LocalTransform, Scene::WorldTransform>(*entity))
+    {
+        return std::nullopt;
+    }
+    return entity;
+}
+
+std::optional<GizmoView> ViewportController::gizmoView() const
+{
+    const auto [width, height] = pixelSize(m_deps.editorViewport);
+    if (width == 0 || height == 0)
+    {
+        return std::nullopt;
+    }
+    const float aspect = static_cast<float>(width) / static_cast<float>(height);
+    return GizmoView{.matrices = Math::cameraMatrices(m_camera.transform(), m_camera.lens(), aspect),
+                     .viewport = {.width = static_cast<float>(width), .height = static_cast<float>(height)}};
+}
+
+namespace
+{
+/// @brief An entity's world transform, from its world matrix.
+std::optional<Math::Transform> worldTransformOf(const Scene::Scene& scene, entt::entity entity)
+{
+    return Math::fromMatrix(Math::load(scene.registry().get<Scene::WorldTransform>(entity).matrix));
+}
+
+/// @brief The local transform that puts an entity at a world transform: through its parent's world matrix
+///        (local = world × parent⁻¹, row vectors); exact unless the parent's scale is non-uniform and rotated.
+std::optional<Math::Transform> localFromWorld(const Scene::Scene& scene, entt::entity entity,
+                                              const Math::Transform& world)
+{
+    const auto& registry = scene.registry();
+    const auto* parent = registry.try_get<Scene::Parent>(entity);
+    if (parent == nullptr || parent->entity == entt::null || !registry.valid(parent->entity) ||
+        !registry.all_of<Scene::WorldTransform>(parent->entity))
+    {
+        return world;
+    }
+    const DirectX::XMMATRIX parentWorld = Math::load(registry.get<Scene::WorldTransform>(parent->entity).matrix);
+    DirectX::XMVECTOR determinant;
+    const DirectX::XMMATRIX inverse = DirectX::XMMatrixInverse(&determinant, parentWorld);
+    if (std::abs(DirectX::XMVectorGetX(determinant)) < 1e-12F)
+    {
+        return std::nullopt; // a parent scaled to nothing: no local transform can undo it
+    }
+    return Math::fromMatrix(DirectX::XMMatrixMultiply(Math::toMatrix(world), inverse));
+}
+
+/// @brief A transform as `entity.setTransform` takes it.
+QJsonObject transformJson(const Math::Transform& transform)
+{
+    const auto d = [](float value)
+    {
+        return static_cast<double>(value);
+    };
+    return {{u"position"_s, QJsonArray{d(transform.position.x), d(transform.position.y), d(transform.position.z)}},
+            {u"rotation"_s, QJsonArray{d(transform.rotation.x), d(transform.rotation.y), d(transform.rotation.z),
+                                       d(transform.rotation.w)}},
+            {u"scale"_s, QJsonArray{d(transform.scale.x), d(transform.scale.y), d(transform.scale.z)}}};
+}
+} // namespace
+
+bool ViewportController::handleGizmo(bool editorFocused)
+{
+    using Input::Key;
+    using Input::MouseButton;
+    const Input::InputSystem& input = m_deps.input;
+    m_hover = GizmoHandle::None;
+    if (m_gizmo.dragged() != GizmoHandle::None)
+    {
+        const std::optional<entt::entity> target = m_deps.world.scene().find(m_dragEntity);
+        const std::optional<GizmoView> view = gizmoView();
+        if (!editorFocused || !input.isDown(MouseButton::Left) || !target || !view)
+        {
+            finishGizmoDrag(); // released, focus lost, or the entity went away (an undo, an agent)
+            return true;
+        }
+        const bool ctrl = input.isDown(Key::LeftCtrl) || input.isDown(Key::RightCtrl);
+        const GizmoSnap snap{.enabled = m_snap || ctrl,
+                             .translate =
+                                 static_cast<float>(m_deps.settings.intValue(u"editor.snap.translate"_s)) / 100.0F,
+                             .angleDegrees = static_cast<float>(m_deps.settings.intValue(u"editor.snap.angle"_s)),
+                             .scale = static_cast<float>(m_deps.settings.intValue(u"editor.snap.scale"_s)) / 100.0F};
+        const auto [x, y] = cursorPixels();
+        if (const std::optional<Math::Transform> world = m_gizmo.drag(*view, x, y, snap))
+        {
+            const std::optional<Math::Transform> local = localFromWorld(m_deps.world.scene(), *target, *world);
+            if (local && (!m_dragLast || !Math::nearlyEqual(*local, *m_dragLast)))
+            {
+                QJsonObject parameters = transformJson(*local);
+                parameters.insert(u"id", QString::fromStdString(m_dragEntity.uuid().toString()));
+                parameters.insert(u"preview", true);
+                if (const Result<QJsonValue> set = m_deps.commands.execute(u"entity.setTransform", parameters); !set)
+                {
+                    MEOW2_LOG_WARN(m_deps.log, "entity.setTransform: {}", set.error());
+                }
+                m_dragLast = local;
+            }
+        }
+        return true;
+    }
+    if (!editorFocused)
+    {
+        return false;
+    }
+    const std::optional<entt::entity> target = gizmoTarget();
+    const std::optional<GizmoView> view = gizmoView();
+    if (!target || !view)
+    {
+        return false;
+    }
+    const std::optional<Math::Transform> world = worldTransformOf(m_deps.world.scene(), *target);
+    if (!world)
+    {
+        return false;
+    }
+    const auto [x, y] = cursorPixels();
+    m_hover = m_gizmo.hitTest(*view, *world, x, y);
+    const bool alt = input.isDown(Key::LeftAlt) || input.isDown(Key::RightAlt);
+    if (m_hover == GizmoHandle::None || alt || !input.wasPressed(MouseButton::Left) ||
+        !m_gizmo.beginDrag(*view, *world, m_hover, x, y))
+    {
+        return false;
+    }
+    const Scene::Scene& scene = m_deps.world.scene();
+    m_dragEntity = scene.idOf(*target);
+    m_dragFrom = scene.registry().get<Scene::LocalTransform>(*target).value;
+    m_dragLast.reset();
+    return true;
+}
+
+void ViewportController::finishGizmoDrag()
+{
+    m_gizmo.endDrag();
+    if (!m_dragLast || Math::nearlyEqual(*m_dragLast, m_dragFrom) || !m_deps.world.scene().find(m_dragEntity))
+    {
+        return; // nothing moved, or nothing left to move
+    }
+    QJsonObject parameters = transformJson(*m_dragLast);
+    parameters.insert(u"id", QString::fromStdString(m_dragEntity.uuid().toString()));
+    parameters.insert(u"from", transformJson(m_dragFrom));
+    if (const Result<QJsonValue> set = m_deps.commands.execute(u"entity.setTransform", parameters); !set)
+    {
+        MEOW2_LOG_WARN(m_deps.log, "entity.setTransform: {}", set.error());
+    }
+    m_dragLast.reset();
+}
+
+void ViewportController::updateGizmoLines()
+{
+    if (m_deps.renderer == nullptr || !m_editorViewport)
+    {
+        return;
+    }
+    const std::optional<entt::entity> target =
+        m_gizmo.dragged() != GizmoHandle::None ? m_deps.world.scene().find(m_dragEntity) : gizmoTarget();
+    const std::optional<GizmoView> view = gizmoView();
+    std::optional<Math::Transform> world;
+    if (target && view)
+    {
+        world = worldTransformOf(m_deps.world.scene(), *target);
+    }
+    const GizmoHandle highlight = m_gizmo.dragged() != GizmoHandle::None ? m_gizmo.dragged() : m_hover;
+    m_deps.renderer->setLines(*m_editorViewport,
+                              world ? m_gizmo.lines(*view, *world, highlight) : std::vector<Renderer::DebugLine>{});
+}
+
 void ViewportController::tick(float deltaSeconds)
 {
     // The editor camera moves only while its viewport has focus: input meant for the game view or a dock stays there.
     m_deps.input.beginFrame();
     const bool editorFocused = m_deps.inputSource.activeViewport() == &m_deps.editorViewport;
     m_camera.update(editorFocused ? cameraInputFrom(m_deps.input) : Math::CameraInput{}, deltaSeconds);
-    if (editorFocused)
+    // The gizmo first: a press on one of its handles is a drag, not a click that picks.
+    if (handleGizmo(editorFocused))
+    {
+        m_press.reset();
+    }
+    else if (editorFocused)
     {
         handleClicks();
     }
@@ -180,6 +370,7 @@ void ViewportController::tick(float deltaSeconds)
         {
             applyPick(*picked);
         }
+        updateGizmoLines(); // after the update: the gizmo sits where the entity is this frame
     }
     if (renderer == nullptr)
     {
@@ -263,6 +454,44 @@ void ViewportController::registerCommands()
             return CommandOutcome{.result = renderScalePercent()};
         });
 
+    QJsonObject gizmoMode = propertySchema(u"string"_s, u"translate: arrows; rotate: rings; scale: boxes."_s);
+    gizmoMode.insert(u"enum", QJsonArray{u"translate"_s, u"rotate"_s, u"scale"_s});
+    QJsonObject gizmoSpace = propertySchema(u"string"_s, u"world: the world's axes; local: the entity's own."_s);
+    gizmoSpace.insert(u"enum", QJsonArray{u"world"_s, u"local"_s});
+    [[maybe_unused]] const Result<void> setGizmo = commands.add(
+        {.name = u"viewport.setGizmo"_s,
+         .description = u"The editor viewport's gizmo: mode, axes for translate and rotate (scale is always "
+                        u"local), and snapping (Ctrl snaps while held either way). Each is optional."_s,
+         .parameters = objectSchema(
+             {{.name = u"mode"_s, .schema = gizmoMode},
+              {.name = u"space"_s, .schema = gizmoSpace},
+              {.name = u"snap"_s, .schema = propertySchema(u"boolean"_s, u"Snap to the editor.snap.* steps."_s)}})},
+        [this](const QJsonObject& parameters) -> Result<CommandOutcome>
+        {
+            if ((parameters.contains(u"mode") || parameters.contains(u"space")) &&
+                m_gizmo.dragged() != GizmoHandle::None)
+            {
+                finishGizmoDrag(); // a drag in progress keeps what it did, as one step
+            }
+            if (parameters.contains(u"mode"))
+            {
+                const QString mode = parameters.value(u"mode").toString();
+                m_gizmo.setMode(mode == u"rotate"  ? GizmoMode::Rotate
+                                : mode == u"scale" ? GizmoMode::Scale
+                                                   : GizmoMode::Translate);
+            }
+            if (parameters.contains(u"space"))
+            {
+                m_gizmo.setSpace(parameters.value(u"space").toString() == u"local" ? GizmoSpace::Local
+                                                                                   : GizmoSpace::World);
+            }
+            if (parameters.contains(u"snap"))
+            {
+                m_snap = parameters.value(u"snap").toBool();
+            }
+            return CommandOutcome{};
+        });
+
     [[maybe_unused]] const Result<void> info = commands.add(
         {.name = u"viewport.info"_s,
          .description =
@@ -287,13 +516,18 @@ void ViewportController::registerCommands()
             };
             const Math::Transform camera = m_camera.transform();
             return CommandOutcome{
-                .result = QJsonObject{{u"editor"_s, describe(m_editorViewport, m_deps.editorViewport)},
-                                      {u"game"_s, describe(m_gameViewport, m_deps.gameViewport)},
-                                      {u"cameraMode"_s, cameraModeName(m_camera.mode())},
-                                      {u"cameraPosition"_s, QJsonArray{static_cast<double>(camera.position.x),
-                                                                       static_cast<double>(camera.position.y),
-                                                                       static_cast<double>(camera.position.z)}},
-                                      {u"renderScale"_s, renderScalePercent()}}};
+                .result = QJsonObject{
+                    {u"editor"_s, describe(m_editorViewport, m_deps.editorViewport)},
+                    {u"game"_s, describe(m_gameViewport, m_deps.gameViewport)},
+                    {u"cameraMode"_s, cameraModeName(m_camera.mode())},
+                    {u"cameraPosition"_s,
+                     QJsonArray{static_cast<double>(camera.position.x), static_cast<double>(camera.position.y),
+                                static_cast<double>(camera.position.z)}},
+                    {u"renderScale"_s, renderScalePercent()},
+                    {u"gizmo"_s,
+                     QJsonObject{{u"mode"_s, QString::fromLatin1(gizmoModeName(m_gizmo.mode()))},
+                                 {u"space"_s, m_gizmo.space() == GizmoSpace::Local ? u"local"_s : u"world"_s},
+                                 {u"snap"_s, m_snap}}}}};
         });
 }
 } // namespace Meow2::Editor

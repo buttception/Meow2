@@ -7,6 +7,7 @@
 
 #include <Meow2/Scene/Camera.h>
 
+#include <QAction>
 #include <QComboBox>
 #include <QJsonArray>
 
@@ -63,4 +64,59 @@ TEST_F(ViewportCommandsTest, DefaultSceneHasAMainCamera)
     ASSERT_TRUE(transform);
     EXPECT_LT(transform->position.z, 0.0F) << "behind the cubes, looking at them";
     EXPECT_GT(m_world.bounds().radius, 1.0F);
+}
+
+// #228: the gizmo's mode, axes and snapping through viewport.setGizmo, shown by viewport.info and the toolbar.
+TEST_F(ViewportCommandsTest, GizmoCommand)
+{
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    const auto actionNamed = [&window](const QString& text)
+    {
+        for (QAction* action : window.findChildren<QAction*>())
+        {
+            if (action->text() == text)
+            {
+                return action;
+            }
+        }
+        return static_cast<QAction*>(nullptr);
+    };
+    QAction* move = actionNamed(u"Move"_s);
+    QAction* rotate = actionNamed(u"Rotate"_s);
+    QAction* local = actionNamed(u"Local axes"_s);
+    QAction* snap = actionNamed(u"Snap"_s);
+    ASSERT_TRUE(move && rotate && local && snap);
+    window.tick();
+    EXPECT_TRUE(move->isChecked()) << "translate in world space, without snapping, at first";
+    EXPECT_FALSE(local->isChecked());
+
+    ASSERT_TRUE(m_commands.execute(u"viewport.setGizmo",
+                                   {{u"mode"_s, u"rotate"_s}, {u"space"_s, u"local"_s}, {u"snap"_s, true}}));
+    EXPECT_EQ(window.viewports().gizmo().mode(), Meow2::Editor::GizmoMode::Rotate);
+    EXPECT_EQ(window.viewports().gizmo().space(), Meow2::Editor::GizmoSpace::Local);
+    EXPECT_TRUE(window.viewports().snapping());
+    const Meow2::Result<QJsonValue> info = m_commands.execute(u"viewport.info");
+    ASSERT_TRUE(info);
+    EXPECT_EQ((*info)[u"gizmo"][u"mode"].toString(), u"rotate"_s);
+    EXPECT_EQ((*info)[u"gizmo"][u"space"].toString(), u"local"_s);
+    EXPECT_TRUE((*info)[u"gizmo"][u"snap"].toBool());
+    window.tick();
+    EXPECT_TRUE(rotate->isChecked()) << "the toolbar follows";
+    EXPECT_FALSE(move->isChecked());
+    EXPECT_TRUE(local->isChecked());
+    EXPECT_TRUE(snap->isChecked());
+
+    // Only what's given changes; bad values are refused; nothing goes into the history.
+    ASSERT_TRUE(m_commands.execute(u"viewport.setGizmo", {{u"snap"_s, false}}));
+    EXPECT_EQ(window.viewports().gizmo().mode(), Meow2::Editor::GizmoMode::Rotate);
+    EXPECT_FALSE(window.viewports().snapping());
+    EXPECT_FALSE(m_commands.execute(u"viewport.setGizmo", {{u"mode"_s, u"shear"_s}}));
+    EXPECT_FALSE(m_commands.execute(u"viewport.setGizmo", {{u"space"_s, u"screen"_s}}));
+    EXPECT_FALSE(m_history.canUndo());
+
+    // The toolbar runs the command.
+    move->trigger();
+    EXPECT_EQ(window.viewports().gizmo().mode(), Meow2::Editor::GizmoMode::Translate);
+    local->trigger();
+    EXPECT_EQ(window.viewports().gizmo().space(), Meow2::Editor::GizmoSpace::World);
 }

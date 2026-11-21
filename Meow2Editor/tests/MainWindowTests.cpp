@@ -9,6 +9,7 @@
 
 #include <QAction>
 #include <QPlainTextEdit>
+#include <QTabWidget>
 
 namespace
 {
@@ -125,4 +126,15 @@ TEST_F(MainWindowTest, AssetsDockOpensScenes)
     EXPECT_EQ(m_document->scenePath(), u"Levels/Dock.m2scene"_s) << "a double-click opens the scene";
     ASSERT_TRUE(m_commands.execute(u"view.showPanel", {{u"panel"_s, u"assets"_s}, {u"visible"_s, false}}));
     EXPECT_FALSE(window.assetsDock().isVisible());
+}
+
+// #228 (owner request): docks stacked as tabs show their tabs on top.
+TEST_F(MainWindowTest, DockTabsOnTop)
+{
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    for (const Qt::DockWidgetArea area :
+         {Qt::LeftDockWidgetArea, Qt::RightDockWidgetArea, Qt::TopDockWidgetArea, Qt::BottomDockWidgetArea})
+    {
+        EXPECT_EQ(window.tabPosition(area), QTabWidget::North) << "area " << static_cast<int>(area);
+    }
 }

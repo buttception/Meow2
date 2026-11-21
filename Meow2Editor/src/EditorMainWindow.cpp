@@ -69,6 +69,8 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
 {
     m_viewport->setObjectName(u"EditorViewport"_s);
     setCentralWidget(m_viewport);
+    // Tabs of docks stacked in one place go on top (owner request), as in most editors; Qt's default is below.
+    setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
     addDockWidget(Qt::RightDockWidgetArea, m_gameDock);
     addDockWidget(Qt::BottomDockWidgetArea, m_console);
     addDockWidget(Qt::LeftDockWidgetArea, m_hierarchyDock);
@@ -171,6 +173,12 @@ void EditorMainWindow::refreshActions()
     refreshRecent();
     m_orbitAction->setChecked(m_viewports->camera().mode() == CameraMode::Orbit);
     m_flyAction->setChecked(m_viewports->camera().mode() == CameraMode::Fly);
+    const Gizmo& gizmo = m_viewports->gizmo();
+    m_translateAction->setChecked(gizmo.mode() == GizmoMode::Translate);
+    m_rotateAction->setChecked(gizmo.mode() == GizmoMode::Rotate);
+    m_scaleAction->setChecked(gizmo.mode() == GizmoMode::Scale);
+    m_localAction->setChecked(gizmo.space() == GizmoSpace::Local);
+    m_snapAction->setChecked(m_viewports->snapping());
     m_gameDock->showRenderScale(m_viewports->renderScalePercent());
 
     // The labels name the next step: "Undo Set position". Only rebuilt when the history changed.
@@ -387,6 +395,40 @@ void EditorMainWindow::createMenusAndToolbar()
         modes->addAction(mode);
     }
 
+    // Gizmo modes, as in Unity: W move, E rotate, R scale, while the editor viewport has focus and the camera isn't
+    // flying (WASD moves it then).
+    const auto gizmoAction = [this](const QString& text, const QString& mode, Qt::Key key)
+    {
+        auto* action = new QAction(text, this);
+        action->setCheckable(true);
+        action->setShortcut(QKeySequence{key});
+        action->setShortcutContext(Qt::WidgetShortcut);
+        action->setToolTip(u"%1 (%2)"_s.arg(text, QKeySequence{key}.toString()));
+        connect(action, &QAction::triggered, this,
+                [this, mode]
+                {
+                    if (!m_viewports->camera().flying())
+                    {
+                        run(u"viewport.setGizmo"_s, {{u"mode"_s, mode}});
+                    }
+                });
+        m_viewport->addAction(action);
+        return action;
+    };
+    m_translateAction = gizmoAction(u"Move"_s, u"translate"_s, Qt::Key_W);
+    m_rotateAction = gizmoAction(u"Rotate"_s, u"rotate"_s, Qt::Key_E);
+    m_scaleAction = gizmoAction(u"Scale"_s, u"scale"_s, Qt::Key_R);
+    m_localAction = new QAction(u"Local axes"_s, this);
+    m_localAction->setCheckable(true);
+    m_localAction->setToolTip(u"Move and rotate along the entity's own axes instead of the world's"_s);
+    connect(m_localAction, &QAction::triggered, this,
+            [this](bool local) { run(u"viewport.setGizmo"_s, {{u"space"_s, local ? u"local"_s : u"world"_s}}); });
+    m_snapAction = new QAction(u"Snap"_s, this);
+    m_snapAction->setCheckable(true);
+    m_snapAction->setToolTip(u"Snap to the steps in Settings (or hold Ctrl while dragging)"_s);
+    connect(m_snapAction, &QAction::triggered, this,
+            [this](bool snap) { run(u"viewport.setGizmo"_s, {{u"snap"_s, snap}}); });
+
     QMenu* file = menuBar()->addMenu(u"&File"_s);
     file->addAction(newAction);
     file->addAction(open);
@@ -410,6 +452,12 @@ void EditorMainWindow::createMenusAndToolbar()
     view->addSeparator();
     view->addAction(m_orbitAction);
     view->addAction(m_flyAction);
+    view->addSeparator();
+    view->addAction(m_translateAction);
+    view->addAction(m_rotateAction);
+    view->addAction(m_scaleAction);
+    view->addAction(m_localAction);
+    view->addAction(m_snapAction);
     QMenu* window = menuBar()->addMenu(u"&Window"_s);
     window->addAction(m_consoleAction);
     window->addAction(m_gameAction);
@@ -424,6 +472,12 @@ void EditorMainWindow::createMenusAndToolbar()
     toolbar->addSeparator();
     toolbar->addAction(m_undoAction);
     toolbar->addAction(m_redoAction);
+    toolbar->addSeparator();
+    toolbar->addAction(m_translateAction);
+    toolbar->addAction(m_rotateAction);
+    toolbar->addAction(m_scaleAction);
+    toolbar->addAction(m_localAction);
+    toolbar->addAction(m_snapAction);
     toolbar->addSeparator();
     toolbar->addAction(settings);
 }
