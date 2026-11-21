@@ -10,7 +10,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <numbers>
+#include <utility>
 
 namespace Meow2::Editor
 {
@@ -157,6 +159,79 @@ float snapTo(float value, float step)
 {
     return step > 0.0F ? std::round(value / step) * step : value;
 }
+
+constexpr std::array<GizmoHandle, 3> c_planes{GizmoHandle::PlaneXY, GizmoHandle::PlaneYZ, GizmoHandle::PlaneZX};
+
+/// @brief The two axes a move plane moves along.
+std::pair<GizmoHandle, GizmoHandle> planeAxes(GizmoHandle plane)
+{
+    switch (plane)
+    {
+        case GizmoHandle::PlaneXY:
+            return {GizmoHandle::X, GizmoHandle::Y};
+        case GizmoHandle::PlaneYZ:
+            return {GizmoHandle::Y, GizmoHandle::Z};
+        default:
+            return {GizmoHandle::Z, GizmoHandle::X};
+    }
+}
+
+/// @brief The axis a move plane lies across: its colour is that axis's (Z's blue for XY, as in Unity).
+GizmoHandle planeNormal(GizmoHandle plane)
+{
+    return plane == GizmoHandle::PlaneXY   ? GizmoHandle::Z
+           : plane == GizmoHandle::PlaneYZ ? GizmoHandle::X
+                                           : GizmoHandle::Y;
+}
+
+bool isPlane(GizmoHandle handle)
+{
+    return handle == GizmoHandle::PlaneXY || handle == GizmoHandle::PlaneYZ || handle == GizmoHandle::PlaneZX;
+}
+
+/// @brief The four corners of a move plane's square in world space.
+std::array<Math::Vec3, 4> planeCorners(const Math::Vec3& center, const Math::Vec3& a, const Math::Vec3& b, float size)
+{
+    const float near = size * Gizmo::c_planeStart;
+    const float far = size * Gizmo::c_planeEnd;
+    return {add(center, add(scaled(a, near), scaled(b, near))), add(center, add(scaled(a, far), scaled(b, near))),
+            add(center, add(scaled(a, far), scaled(b, far))), add(center, add(scaled(a, near), scaled(b, far)))};
+}
+
+/// @brief Whether a point lies in a triangle on screen (either winding).
+bool insideTriangle(float x, float y, const Math::Vec3& a, const Math::Vec3& b, const Math::Vec3& c)
+{
+    const auto side = [x, y](const Math::Vec3& p, const Math::Vec3& q)
+    {
+        return (q.x - p.x) * (y - p.y) - (q.y - p.y) * (x - p.x);
+    };
+    const float ab = side(a, b);
+    const float bc = side(b, c);
+    const float ca = side(c, a);
+    return (ab >= 0.0F && bc >= 0.0F && ca >= 0.0F) || (ab <= 0.0F && bc <= 0.0F && ca <= 0.0F);
+}
+
+/// @brief Where the ray meets the plane through `point` across `normal`, or nothing if it runs along the plane.
+std::optional<Math::Vec3> onPlane(const Math::Ray& ray, const Math::Vec3& point, const Math::Vec3& normal)
+{
+    const float facing = dot(ray.direction, normal);
+    if (std::abs(facing) < c_parallel)
+    {
+        return std::nullopt;
+    }
+    const float t = dot(sub(point, ray.origin), normal) / facing;
+    return add(ray.origin, scaled(ray.direction, t));
+}
+
+/// @brief The camera's position, from its view matrix.
+Math::Vec3 cameraPosition(const GizmoView& view)
+{
+    XMVECTOR determinant;
+    const XMMATRIX inverse = XMMatrixInverse(&determinant, Math::load(view.matrices.view));
+    Math::Vec3 out;
+    XMStoreFloat3(&out, inverse.r[3]);
+    return out;
+}
 } // namespace
 
 const char* gizmoModeName(GizmoMode mode)
@@ -287,6 +362,29 @@ GizmoHandle Gizmo::hitTest(const GizmoView& view, const Math::Transform& target,
         return GizmoHandle::Uniform; // the centre box wins over the axes, which all start there
     }
     const bool local = m_space == GizmoSpace::Local || m_mode == GizmoMode::Scale;
+    if (m_mode == GizmoMode::Translate)
+    {
+        // The plane squares first: they sit between the arrows, away from them.
+        for (const GizmoHandle plane : c_planes)
+        {
+            const auto [first, second] = planeAxes(plane);
+            const std::array<Math::Vec3, 4> corners = planeCorners(center, axisOf(first, target.rotation, local),
+                                                                   axisOf(second, target.rotation, local), size);
+            std::array<Math::Vec3, 4> onScreen{};
+            bool visible = true;
+            for (std::size_t i = 0; i < corners.size(); ++i)
+            {
+                const std::optional<Math::Vec3> point = Math::worldToScreen(corners[i], view.matrices, view.viewport);
+                visible = visible && point.has_value();
+                onScreen[i] = point.value_or(Math::Vec3{});
+            }
+            if (visible && (insideTriangle(x, y, onScreen[0], onScreen[1], onScreen[2]) ||
+                            insideTriangle(x, y, onScreen[0], onScreen[2], onScreen[3])))
+            {
+                return plane;
+            }
+        }
+    }
     GizmoHandle best = GizmoHandle::None;
     float bestDistance = c_hitPixels;
     for (const GizmoHandle handle : c_axes)
@@ -340,8 +438,23 @@ bool Gizmo::beginDrag(const GizmoView& view, const Math::Transform& target, Gizm
         return true;
     }
     const bool local = m_space == GizmoSpace::Local || m_mode == GizmoMode::Scale;
-    m_axis = axisOf(handle, target.rotation, local);
     const Math::Ray ray = Math::rayFromScreen(x, y, view.matrices, view.viewport);
+    m_sweep = 0.0F;
+    if (isPlane(handle))
+    {
+        const auto [first, second] = planeAxes(handle);
+        m_axis = axisOf(first, target.rotation, local);
+        m_axis2 = axisOf(second, target.rotation, local);
+        const std::optional<Math::Vec3> grabbed = onPlane(ray, target.position, cross(m_axis, m_axis2));
+        if (!grabbed)
+        {
+            return false; // the plane seen edge-on
+        }
+        m_grabPoint = *grabbed;
+        m_handle = handle;
+        return true;
+    }
+    m_axis = axisOf(handle, target.rotation, local);
     if (m_mode == GizmoMode::Rotate)
     {
         const std::optional<Math::Vec3> grabbed = ringVector(ray, target.position, m_axis);
@@ -364,7 +477,7 @@ bool Gizmo::beginDrag(const GizmoView& view, const Math::Transform& target, Gizm
     return true;
 }
 
-std::optional<Math::Transform> Gizmo::drag(const GizmoView& view, float x, float y, const GizmoSnap& snap) const
+std::optional<Math::Transform> Gizmo::drag(const GizmoView& view, float x, float y, const GizmoSnap& snap)
 {
     if (m_handle == GizmoHandle::None)
     {
@@ -386,6 +499,23 @@ std::optional<Math::Transform> Gizmo::drag(const GizmoView& view, float x, float
         return result;
     }
     const Math::Ray ray = Math::rayFromScreen(x, y, view.matrices, view.viewport);
+    if (isPlane(m_handle))
+    {
+        // Along both of the plane's axes: the change from where it was grabbed, each part snapped on its own.
+        if (const std::optional<Math::Vec3> now = onPlane(ray, m_start.position, cross(m_axis, m_axis2)))
+        {
+            const Math::Vec3 moved = sub(*now, m_grabPoint);
+            float along = dot(moved, m_axis);
+            float across = dot(moved, m_axis2);
+            if (snap.enabled)
+            {
+                along = snapTo(along, snap.translate);
+                across = snapTo(across, snap.translate);
+            }
+            result.position = add(m_start.position, add(scaled(m_axis, along), scaled(m_axis2, across)));
+        }
+        return result;
+    }
     switch (m_mode)
     {
         case GizmoMode::Translate:
@@ -403,6 +533,7 @@ std::optional<Math::Transform> Gizmo::drag(const GizmoView& view, float x, float
                 {
                     angle = snapTo(angle, Math::toRadians(snap.angleDegrees));
                 }
+                m_sweep = angle; // for the arc shapes() draws
                 // The turn about a world-space axis, after the rotation it had: for a local axis that is the same as
                 // turning about the entity's own axis.
                 result.rotation = Math::normalize(Math::combine(m_start.rotation, Math::fromAxisAngle(m_axis, angle)));
@@ -420,5 +551,268 @@ std::optional<Math::Transform> Gizmo::drag(const GizmoView& view, float x, float
             break;
     }
     return result;
+}
+
+GizmoShapes Gizmo::shapes(const GizmoView& view, const Math::Transform& target, GizmoHandle highlight) const
+{
+    GizmoShapes out;
+    const Math::Vec3 center = target.position;
+    const float perPixel = worldPerPixel(view, center);
+    const float size = perPixel * c_sizePixels;
+    if (size <= 0.0F)
+    {
+        return out;
+    }
+    const Math::Vec3 eye = cameraPosition(view);
+    const bool local = m_space == GizmoSpace::Local || m_mode == GizmoMode::Scale;
+    auto& triangles = out.triangles;
+    const auto triangle =
+        [&triangles](const Math::Vec3& a, const Math::Vec3& b, const Math::Vec3& c, const Math::Color& color)
+    {
+        triangles.push_back({.corners = {a, b, c}, .color = color});
+    };
+    // A line a few pixels thick: a quad along it, turned to face the camera.
+    const auto thick = [&](const Math::Vec3& a, const Math::Vec3& b, float pixels, const Math::Color& color)
+    {
+        const Math::Vec3 middle = scaled(add(a, b), 0.5F);
+        const Math::Vec3 side = cross(sub(b, a), sub(eye, middle));
+        const float length = std::sqrt(dot(side, side));
+        if (length <= 0.0F)
+        {
+            return;
+        }
+        const Math::Vec3 offset = scaled(side, 0.5F * pixels * perPixel / length);
+        triangle(sub(a, offset), add(a, offset), add(b, offset), color);
+        triangle(sub(a, offset), add(b, offset), sub(b, offset), color);
+    };
+    const auto widthOf = [highlight](GizmoHandle handle)
+    {
+        return handle == highlight ? 4.0F : c_lineWidthPixels;
+    };
+    // A solid box: six faces, two triangles each.
+    const auto solidBox = [&triangle](const Math::Vec3& at, const Math::Vec3& a, const Math::Vec3& b,
+                                      const Math::Vec3& c, float half, const Math::Color& color)
+    {
+        const auto corner = [&](int i)
+        {
+            return add(at, add(scaled(a, (i & 1) != 0 ? half : -half),
+                               add(scaled(b, (i & 2) != 0 ? half : -half), scaled(c, (i & 4) != 0 ? half : -half))));
+        };
+        constexpr std::array<std::array<int, 4>, 6> c_faces{
+            {{0, 1, 3, 2}, {4, 5, 7, 6}, {0, 1, 5, 4}, {2, 3, 7, 6}, {0, 2, 6, 4}, {1, 3, 7, 5}}};
+        for (const std::array<int, 4>& face : c_faces)
+        {
+            triangle(corner(face[0]), corner(face[1]), corner(face[2]), color);
+            triangle(corner(face[0]), corner(face[2]), corner(face[3]), color);
+        }
+    };
+
+    for (const GizmoHandle handle : c_axes)
+    {
+        const Math::Vec3 axis = axisOf(handle, target.rotation, local);
+        const auto [u, v] = basisAround(axis);
+        const Math::Color color = colorOf(handle, highlight);
+        const Math::Vec3 tip = add(center, scaled(axis, size));
+        switch (m_mode)
+        {
+            case GizmoMode::Translate:
+            {
+                // The shaft to the cone's base, then a solid cone.
+                const Math::Vec3 base = add(center, scaled(axis, size * (1.0F - c_headLength)));
+                thick(center, base, widthOf(handle), color);
+                constexpr int c_coneSides = 16;
+                const float radius = size * c_headRadius;
+                for (int i = 0; i < c_coneSides; ++i)
+                {
+                    const auto rim = [&](int k)
+                    {
+                        const float angle =
+                            2.0F * std::numbers::pi_v<float> * static_cast<float>(k) / static_cast<float>(c_coneSides);
+                        return add(base, add(scaled(u, std::cos(angle) * radius), scaled(v, std::sin(angle) * radius)));
+                    };
+                    triangle(tip, rim(i), rim(i + 1), color);
+                    triangle(base, rim(i + 1), rim(i), color); // the cap
+                }
+                break;
+            }
+            case GizmoMode::Rotate:
+                for (int i = 0; i < c_ringSegments; ++i)
+                {
+                    const auto point = [&](int k)
+                    {
+                        const float angle = 2.0F * std::numbers::pi_v<float> * static_cast<float>(k) /
+                                            static_cast<float>(c_ringSegments);
+                        return add(center, add(scaled(u, std::cos(angle) * size), scaled(v, std::sin(angle) * size)));
+                    };
+                    thick(point(i), point(i + 1), widthOf(handle), color);
+                }
+                break;
+            case GizmoMode::Scale:
+                thick(center, tip, widthOf(handle), color);
+                solidBox(tip, axis, u, v, size * c_headRadius, color);
+                break;
+        }
+    }
+    if (m_mode == GizmoMode::Scale)
+    {
+        solidBox(center, axisOf(GizmoHandle::X, target.rotation, true), axisOf(GizmoHandle::Y, target.rotation, true),
+                 axisOf(GizmoHandle::Z, target.rotation, true), size * c_uniformRadius,
+                 colorOf(GizmoHandle::Uniform, highlight));
+    }
+    if (m_mode == GizmoMode::Translate)
+    {
+        // The move planes: see-through squares in the colour of the axis they lie across, with a solid edge.
+        for (const GizmoHandle plane : c_planes)
+        {
+            const auto [first, second] = planeAxes(plane);
+            const std::array<Math::Vec3, 4> corners = planeCorners(center, axisOf(first, target.rotation, local),
+                                                                   axisOf(second, target.rotation, local), size);
+            Math::Color fill = colorOf(plane == highlight ? plane : planeNormal(plane), highlight);
+            fill.a = plane == highlight ? 0.6F : 0.3F;
+            triangle(corners[0], corners[1], corners[2], fill);
+            triangle(corners[0], corners[2], corners[3], fill);
+            Math::Color edge = fill;
+            edge.a = 1.0F;
+            for (std::size_t i = 0; i < corners.size(); ++i)
+            {
+                thick(corners[i], corners[(i + 1) % corners.size()], 1.5F, edge);
+            }
+        }
+    }
+    if (m_mode == GizmoMode::Rotate && m_handle != GizmoHandle::None && m_sweep != 0.0F)
+    {
+        // The turn so far: an orange slice of the ring's disc from where the drag began to where it is now, with
+        // its two edges drawn solid.
+        const Math::Color slice{.r = 1.0F, .g = 0.55F, .b = 0.1F, .a = 0.35F};
+        const Math::Color edge{.r = 1.0F, .g = 0.55F, .b = 0.1F, .a = 1.0F};
+        const int steps = std::max(2, static_cast<int>(std::abs(m_sweep) / Math::toRadians(4.0F)));
+        const auto around = [&](float angle)
+        {
+            return add(center, scaled(Math::rotate(Math::fromAxisAngle(m_axis, angle), m_grabVector), size));
+        };
+        for (int i = 0; i < steps; ++i)
+        {
+            const float from = m_sweep * static_cast<float>(i) / static_cast<float>(steps);
+            const float to = m_sweep * static_cast<float>(i + 1) / static_cast<float>(steps);
+            triangle(center, around(from), around(to), slice);
+        }
+        thick(center, around(0.0F), 2.0F, edge);
+        thick(center, around(m_sweep), 2.0F, edge);
+    }
+    return out;
+}
+
+namespace
+{
+/// @brief The six directions of the view-axis gizmo, and the colours of their balls.
+struct AxisBall
+{
+    Math::Vec3 direction;
+    Math::Color color;
+    bool positive;
+};
+
+constexpr std::array<AxisBall, 6> c_balls{
+    {{.direction = {1.0F, 0.0F, 0.0F}, .color = {.r = 0.9F, .g = 0.18F, .b = 0.2F, .a = 1.0F}, .positive = true},
+     {.direction = {0.0F, 1.0F, 0.0F}, .color = {.r = 0.27F, .g = 0.66F, .b = 0.35F, .a = 1.0F}, .positive = true},
+     {.direction = {0.0F, 0.0F, 1.0F}, .color = {.r = 0.25F, .g = 0.48F, .b = 0.98F, .a = 1.0F}, .positive = true},
+     {.direction = {-1.0F, 0.0F, 0.0F}, .color = {.r = 0.9F, .g = 0.18F, .b = 0.2F, .a = 0.45F}, .positive = false},
+     {.direction = {0.0F, -1.0F, 0.0F}, .color = {.r = 0.27F, .g = 0.66F, .b = 0.35F, .a = 0.45F}, .positive = false},
+     {.direction = {0.0F, 0.0F, -1.0F}, .color = {.r = 0.25F, .g = 0.48F, .b = 0.98F, .a = 0.45F}, .positive = false}}};
+
+/// @brief A world direction as the camera sees it, in pixels from the gizmo's centre (y down), and its depth (larger
+///        is further from the viewer).
+Math::Vec3 onGizmo(const GizmoView& view, const Math::Vec3& direction)
+{
+    // Row vectors: a direction times the view matrix's 3 × 3 part is the direction in view space (+Z forward).
+    const Math::Mat4& m = view.matrices.view;
+    const float x = direction.x * m._11 + direction.y * m._21 + direction.z * m._31;
+    const float y = direction.x * m._12 + direction.y * m._22 + direction.z * m._32;
+    const float z = direction.x * m._13 + direction.y * m._23 + direction.z * m._33;
+    return {x * ViewAxes::c_radiusPixels, -y * ViewAxes::c_radiusPixels, z};
+}
+
+bool sameDirection(const Math::Vec3& a, const Math::Vec3& b)
+{
+    return dot(a, b) > 0.999F;
+}
+} // namespace
+
+std::pair<float, float> ViewAxes::center(const GizmoView& view)
+{
+    const float reach = c_radiusPixels + c_ballPixels;
+    return {view.viewport.x + view.viewport.width - c_marginPixels - reach, view.viewport.y + c_marginPixels + reach};
+}
+
+std::optional<Math::Vec3> ViewAxes::hitTest(const GizmoView& view, float x, float y)
+{
+    const auto [cx, cy] = center(view);
+    // The nearest ball to the viewer wins where two overlap (the front one is the one seen).
+    std::optional<Math::Vec3> best;
+    float bestDepth = std::numeric_limits<float>::max();
+    for (const AxisBall& ball : c_balls)
+    {
+        const Math::Vec3 at = onGizmo(view, ball.direction);
+        if (std::hypot(x - (cx + at.x), y - (cy + at.y)) <= c_ballPixels && at.z < bestDepth)
+        {
+            best = ball.direction;
+            bestDepth = at.z;
+        }
+    }
+    return best;
+}
+
+GizmoShapes ViewAxes::shapes(const GizmoView& view, const std::optional<Math::Vec3>& hovered)
+{
+    GizmoShapes out;
+    const auto [cx, cy] = center(view);
+    const auto disc = [&out](float x, float y, float radius, const Math::Color& color)
+    {
+        constexpr int c_sides = 20;
+        for (int i = 0; i < c_sides; ++i)
+        {
+            const float a0 = 2.0F * std::numbers::pi_v<float> * static_cast<float>(i) / static_cast<float>(c_sides);
+            const float a1 = 2.0F * std::numbers::pi_v<float> * static_cast<float>(i + 1) / static_cast<float>(c_sides);
+            out.triangles.push_back(
+                {.corners = {Math::Vec3{x, y, 0.5F},
+                             Math::Vec3{x + std::cos(a0) * radius, y + std::sin(a0) * radius, 0.5F},
+                             Math::Vec3{x + std::cos(a1) * radius, y + std::sin(a1) * radius, 0.5F}},
+                 .color = color});
+        }
+    };
+    // A faint backdrop, so the gizmo reads over any scene.
+    disc(cx, cy, c_radiusPixels + c_ballPixels + 4.0F, {.r = 0.05F, .g = 0.05F, .b = 0.06F, .a = 0.45F});
+    // Back to front: the balls behind are drawn first, so the front ones cover them.
+    std::array<std::size_t, 6> order{0, 1, 2, 3, 4, 5};
+    std::ranges::sort(order, [&view](std::size_t a, std::size_t b)
+                      { return onGizmo(view, c_balls[a].direction).z > onGizmo(view, c_balls[b].direction).z; });
+    for (const std::size_t index : order)
+    {
+        const AxisBall& ball = c_balls[index];
+        const Math::Vec3 at = onGizmo(view, ball.direction);
+        Math::Color color = ball.color;
+        if (hovered && sameDirection(*hovered, ball.direction))
+        {
+            color = {.r = 1.0F, .g = 0.85F, .b = 0.1F, .a = 1.0F};
+        }
+        if (ball.positive)
+        {
+            // An axis line from the centre to its positive ball, three pixels wide.
+            const float length = std::hypot(at.x, at.y);
+            if (length > 0.5F)
+            {
+                const float nx = -at.y / length * 1.5F;
+                const float ny = at.x / length * 1.5F;
+                const Math::Vec3 a0{cx + nx, cy + ny, 0.5F};
+                const Math::Vec3 a1{cx - nx, cy - ny, 0.5F};
+                const Math::Vec3 b0{cx + at.x + nx, cy + at.y + ny, 0.5F};
+                const Math::Vec3 b1{cx + at.x - nx, cy + at.y - ny, 0.5F};
+                out.triangles.push_back({.corners = {a0, a1, b1}, .color = ball.color});
+                out.triangles.push_back({.corners = {a0, b1, b0}, .color = ball.color});
+            }
+        }
+        disc(cx + at.x, cy + at.y, ball.positive ? c_ballPixels : c_ballPixels * 0.75F, color);
+    }
+    return out;
 }
 } // namespace Meow2::Editor

@@ -17,6 +17,7 @@
 #include <QStringList>
 #include <QTextCharFormat>
 #include <QTextCursor>
+#include <QTextOption>
 #include <QVBoxLayout>
 #include <string_view>
 #include <utility>
@@ -95,7 +96,10 @@ ConsoleDock::ConsoleDock(const Log::ConsoleBuffer& buffer, bool followNewest, QW
 
     m_view = new QPlainTextEdit(content);
     m_view->setReadOnly(true);
-    m_view->setLineWrapMode(QPlainTextEdit::NoWrap);
+    // Long lines wrap at the panel's edge (owner request): a horizontal scroll bar hid the ends of long messages.
+    m_view->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    m_view->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    m_view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_view->setFont(editorMonospaceFont());
     m_view->setMaximumBlockCount(static_cast<int>(m_buffer.capacity())); // drop the oldest blocks as Qt goes
     layout->addWidget(m_view, 1);

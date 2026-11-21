@@ -5,6 +5,7 @@
 #include "Viewports/GameViewportDock.h"
 #include "Viewports/ViewportController.h"
 
+#include <Meow2/Math/Quaternion.h>
 #include <Meow2/Scene/Camera.h>
 
 #include <QAction>
@@ -149,4 +150,19 @@ TEST_F(ViewportCommandsTest, GizmoKeysStepAsideWhileFlying)
     EXPECT_TRUE(keyW->isEnabled());
     keyE->trigger();
     EXPECT_EQ(window.viewports().gizmo().mode(), Meow2::Editor::GizmoMode::Rotate);
+}
+
+// Owner request (#229): the view-axis gizmo's command turns the camera to look from a side.
+TEST_F(ViewportCommandsTest, ViewFromASide)
+{
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    ASSERT_TRUE(m_commands.execute(u"viewport.viewFrom", {{u"side"_s, u"+x"_s}}));
+    const Meow2::Math::Vec3 forward =
+        Meow2::Math::rotate(window.viewports().camera().transform().rotation, Meow2::Math::c_forward);
+    EXPECT_NEAR(forward.x, -1.0F, 1e-3F) << "from +X, looking along -X";
+    ASSERT_TRUE(m_commands.execute(u"viewport.viewFrom", {{u"side"_s, u"-z"_s}}));
+    EXPECT_NEAR(Meow2::Math::rotate(window.viewports().camera().transform().rotation, Meow2::Math::c_forward).z, 1.0F,
+                1e-3F);
+    EXPECT_FALSE(m_commands.execute(u"viewport.viewFrom", {{u"side"_s, u"top"_s}}));
+    EXPECT_FALSE(m_history.canUndo()) << "how the scene is viewed, not an edit";
 }

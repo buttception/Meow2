@@ -2,6 +2,7 @@
 /// @brief Tests for Gizmo: hit tests, drawing size and what dragging each handle does to a transform.
 
 #include "Editing/Gizmo.h"
+#include "Viewports/EditorCamera.h"
 
 #include <Meow2/Math/Quaternion.h>
 #include <Meow2/Math/Scalar.h>
@@ -207,4 +208,95 @@ TEST(GizmoTest, ScalesAndHitTests)
         EXPECT_GT(pixels, 0.5F * Gizmo::c_sizePixels) << "distance " << distance;
         EXPECT_LT(pixels, 1.1F * Gizmo::c_sizePixels) << "distance " << distance;
     }
+}
+
+// Owner requests (#229): plane squares move along two axes; handles are drawn thick and solid; rotating shows the
+// swept slice.
+TEST(GizmoTest, PlanesShapesAndArc)
+{
+    Gizmo gizmo;
+    const Math::Vec3 tipX = tipOf(gizmo, c_view, c_origin, 0);
+    const float size = tipX.x;
+    // The middle of the XZ plane's square (between the X and Z arrows): moves on the ground, Y untouched.
+    const float middle = size * (Gizmo::c_planeStart + Gizmo::c_planeEnd) * 0.5F;
+    const Math::Vec3 grab = screenOf(c_view, {middle, 0.0F, middle});
+    ASSERT_EQ(gizmo.hitTest(c_view, c_origin, grab.x, grab.y), GizmoHandle::PlaneZX);
+    ASSERT_TRUE(gizmo.beginDrag(c_view, c_origin, GizmoHandle::PlaneZX, grab.x, grab.y));
+    const Math::Vec3 to = screenOf(c_view, {middle + 1.2F, 0.0F, middle - 0.7F});
+    const std::optional<Math::Transform> moved = gizmo.drag(c_view, to.x, to.y, {});
+    ASSERT_TRUE(moved);
+    EXPECT_NEAR(moved->position.x, 1.2F, 1e-3F);
+    EXPECT_NEAR(moved->position.y, 0.0F, 1e-4F) << "the plane holds the axis across it";
+    EXPECT_NEAR(moved->position.z, -0.7F, 1e-3F);
+    const std::optional<Math::Transform> snapped = gizmo.drag(c_view, to.x, to.y, {.enabled = true, .translate = 0.5F});
+    ASSERT_TRUE(snapped);
+    EXPECT_NEAR(snapped->position.x, 1.0F, 1e-4F) << "each part in whole steps";
+    EXPECT_NEAR(snapped->position.z, -0.5F, 1e-4F);
+    gizmo.endDrag();
+
+    // Thick, solid shapes: opaque arrowheads, translucent planes.
+    const Meow2::Editor::GizmoShapes shapes = gizmo.shapes(c_view, c_origin, GizmoHandle::None);
+    EXPECT_GT(shapes.triangles.size(), 3U * 16U) << "three cones";
+    bool opaque = false;
+    bool translucent = false;
+    for (const Meow2::Renderer::DebugTriangle& triangle : shapes.triangles)
+    {
+        opaque = opaque || triangle.color.a == 1.0F;
+        translucent = translucent || (triangle.color.a > 0.0F && triangle.color.a < 1.0F);
+    }
+    EXPECT_TRUE(opaque && translucent);
+
+    // Rotating: an orange slice from where the drag began to where it is, only while dragging.
+    gizmo.setMode(GizmoMode::Rotate);
+    const auto onRing = [size](float degrees)
+    {
+        const float angle = Math::toRadians(degrees);
+        return Math::Vec3{std::sin(angle) * size, 0.0F, std::cos(angle) * size};
+    };
+    const std::size_t idle = gizmo.shapes(c_view, c_origin, GizmoHandle::None).triangles.size();
+    const Math::Vec3 ringGrab = screenOf(c_view, onRing(20.0F));
+    ASSERT_TRUE(gizmo.beginDrag(c_view, c_origin, GizmoHandle::Y, ringGrab.x, ringGrab.y));
+    const Math::Vec3 ringTo = screenOf(c_view, onRing(80.0F));
+    ASSERT_TRUE(gizmo.drag(c_view, ringTo.x, ringTo.y, {}));
+    const Meow2::Editor::GizmoShapes turning = gizmo.shapes(c_view, c_origin, GizmoHandle::Y);
+    EXPECT_GT(turning.triangles.size(), idle + 10) << "the slice and its edges";
+    bool orange = false;
+    for (const Meow2::Renderer::DebugTriangle& triangle : turning.triangles)
+    {
+        orange = orange || (triangle.color.r == 1.0F && triangle.color.g > 0.5F && triangle.color.g < 0.6F);
+    }
+    EXPECT_TRUE(orange);
+}
+
+// Owner request: the view-axis gizmo in the corner turns the camera to look from one side.
+TEST(GizmoTest, ViewAxesPickASide)
+{
+    using Meow2::Editor::ViewAxes;
+    // Seen from straight in front (looking along +Z): +X points right on screen, +Y up.
+    const GizmoView front = viewFrom({0.0F, 0.0F, -10.0F});
+    const auto [cx, cy] = ViewAxes::center(front);
+    EXPECT_GT(cx, c_width / 2.0F) << "in the top-right corner";
+    EXPECT_LT(cy, c_height / 2.0F);
+    const std::optional<Math::Vec3> right = ViewAxes::hitTest(front, cx + ViewAxes::c_radiusPixels, cy);
+    ASSERT_TRUE(right);
+    EXPECT_NEAR(right->x, 1.0F, 1e-5F);
+    const std::optional<Math::Vec3> up = ViewAxes::hitTest(front, cx, cy - ViewAxes::c_radiusPixels);
+    ASSERT_TRUE(up);
+    EXPECT_NEAR(up->y, 1.0F, 1e-5F);
+    EXPECT_FALSE(ViewAxes::hitTest(front, cx + 20.0F, cy + 20.0F)) << "between the balls";
+    EXPECT_FALSE(ViewAxes::shapes(front, right).triangles.empty());
+
+    // The camera turns to look from +X: along -X, from as far away around the same point.
+    Meow2::Editor::EditorCamera camera;
+    camera.focus({1.0F, 0.0F, 0.0F}, 2.0F);
+    const Math::Transform before = camera.transform();
+    camera.viewAlong({-1.0F, 0.0F, 0.0F});
+    const Math::Transform after = camera.transform();
+    const Math::Vec3 forward = Math::rotate(after.rotation, Math::c_forward);
+    EXPECT_NEAR(forward.x, -1.0F, 1e-3F);
+    EXPECT_GT(after.position.x, 1.0F) << "on the +X side";
+    const float far = std::hypot(before.position.x - 1.0F, before.position.y, before.position.z);
+    EXPECT_NEAR(std::hypot(after.position.x - 1.0F, after.position.y, after.position.z), far, 1e-3F);
+    camera.viewAlong({0.0F, -1.0F, 0.0F});
+    EXPECT_LT(Math::rotate(camera.transform().rotation, Math::c_forward).y, -0.99F) << "from above, looking down";
 }

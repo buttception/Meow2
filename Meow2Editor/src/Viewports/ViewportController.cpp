@@ -49,7 +49,7 @@ ViewportController::ViewportController(const ViewportControllerDeps& deps)
 ViewportController::~ViewportController()
 {
     for (const auto* name : {u"viewport.focus", u"viewport.setCameraMode", u"viewport.setRenderScale", u"viewport.info",
-                             u"viewport.setGizmo"})
+                             u"viewport.setGizmo", u"viewport.viewFrom"})
     {
         m_deps.commands.remove(QStringView{name});
     }
@@ -216,6 +216,27 @@ std::optional<Math::Transform> localFromWorld(const Scene::Scene& scene, entt::e
     return Math::fromMatrix(DirectX::XMMatrixMultiply(Math::toMatrix(world), inverse));
 }
 
+/// @brief The sides the camera can view from (viewport.viewFrom), and the direction each stands for.
+constexpr std::array<std::pair<const char16_t*, Math::Vec3>, 6> c_sides{{{u"+x", {1.0F, 0.0F, 0.0F}},
+                                                                         {u"-x", {-1.0F, 0.0F, 0.0F}},
+                                                                         {u"+y", {0.0F, 1.0F, 0.0F}},
+                                                                         {u"-y", {0.0F, -1.0F, 0.0F}},
+                                                                         {u"+z", {0.0F, 0.0F, 1.0F}},
+                                                                         {u"-z", {0.0F, 0.0F, -1.0F}}}};
+
+/// @brief A side's name for a direction from the view-axis gizmo.
+QString sideName(const Math::Vec3& direction)
+{
+    for (const auto& [name, side] : c_sides)
+    {
+        if (direction.x * side.x + direction.y * side.y + direction.z * side.z > 0.999F)
+        {
+            return QString::fromUtf16(name);
+        }
+    }
+    return u"+z"_s;
+}
+
 /// @brief A transform as `entity.setTransform` takes it.
 QJsonObject transformJson(const Math::Transform& transform)
 {
@@ -269,9 +290,26 @@ bool ViewportController::handleGizmo(bool editorFocused)
         }
         return true;
     }
+    m_axisHover.reset();
     if (!editorFocused)
     {
         return false;
+    }
+    // The view-axis gizmo in the corner first: a click on one of its balls turns the camera.
+    if (const std::optional<GizmoView> corner = gizmoView())
+    {
+        const auto [cornerX, cornerY] = cursorPixels();
+        m_axisHover = ViewAxes::hitTest(*corner, cornerX, cornerY);
+        if (m_axisHover && input.wasPressed(MouseButton::Left))
+        {
+            if (const Result<QJsonValue> turned =
+                    m_deps.commands.execute(u"viewport.viewFrom", {{u"side"_s, sideName(*m_axisHover)}});
+                !turned)
+            {
+                MEOW2_LOG_WARN(m_deps.log, "viewport.viewFrom: {}", turned.error());
+            }
+            return true;
+        }
     }
     const std::optional<entt::entity> target = gizmoTarget();
     const std::optional<GizmoView> view = gizmoView();
@@ -331,8 +369,20 @@ void ViewportController::updateGizmoLines()
         world = worldTransformOf(m_deps.world.scene(), *target);
     }
     const GizmoHandle highlight = m_gizmo.dragged() != GizmoHandle::None ? m_gizmo.dragged() : m_hover;
-    m_deps.renderer->setLines(*m_editorViewport,
-                              world ? m_gizmo.lines(*view, *world, highlight) : std::vector<Renderer::DebugLine>{});
+    ViewportOverlay overlay;
+    if (world)
+    {
+        GizmoShapes shapes = m_gizmo.shapes(*view, *world, highlight);
+        overlay.lines = std::move(shapes.lines);
+        overlay.triangles = std::move(shapes.triangles);
+    }
+    if (view)
+    {
+        GizmoShapes axes = ViewAxes::shapes(*view, m_axisHover);
+        overlay.screenLines = std::move(axes.lines);
+        overlay.screenTriangles = std::move(axes.triangles);
+    }
+    m_deps.renderer->setOverlay(*m_editorViewport, std::move(overlay));
 }
 
 void ViewportController::tick(float deltaSeconds)
@@ -357,6 +407,8 @@ void ViewportController::tick(float deltaSeconds)
     }
 
     EditorRenderer* const renderer = m_deps.renderer;
+    // Models edited on disk (a texture repainted, a model re-exported) are reloaded while the editor runs.
+    m_deps.world.reloadChangedModels(renderer != nullptr ? &renderer->scene() : nullptr);
     const std::vector<EntityId> selection = m_deps.sceneEditor.selection();
     m_deps.world.update(renderer != nullptr ? &renderer->scene() : nullptr, selection);
     if (renderer != nullptr)
@@ -417,14 +469,74 @@ void ViewportController::tick(float deltaSeconds)
 void ViewportController::registerCommands()
 {
     EditorCommandRegistry& commands = m_deps.commands;
-    [[maybe_unused]] const Result<void> focus =
-        commands.add({.name = u"viewport.focus"_s, .description = u"Frames the whole scene in the editor viewport."_s},
-                     [this](const QJsonObject&) -> Result<CommandOutcome>
-                     {
-                         const Math::Sphere bounds = m_deps.world.bounds();
-                         m_camera.focus(bounds.center, bounds.radius);
-                         return CommandOutcome{};
-                     });
+    [[maybe_unused]] const Result<void> focus = commands.add(
+        {.name = u"viewport.focus"_s,
+         .description = u"Frames an entity (id) in the editor viewport, with everything under it; without "
+                        u"an id the selection, and with nothing selected the whole scene."_s,
+         .parameters = objectSchema({{.name = u"id"_s, .schema = propertySchema(u"string"_s, u"The entity's ID."_s)}})},
+        [this](const QJsonObject& parameters) -> Result<CommandOutcome>
+        {
+            // Which entity: the one named, else the last selected one.
+            std::optional<EntityId> target;
+            if (parameters.contains(u"id"))
+            {
+                const Result<Uuid> uuid = Uuid::parse(parameters.value(u"id").toString().toStdString());
+                if (!uuid)
+                {
+                    return fail(ErrorCode::InvalidArgument, "id: " + uuid.error().message);
+                }
+                const Result<EntityId> id = EntityId::fromUuid(*uuid);
+                if (!id)
+                {
+                    return fail(ErrorCode::InvalidArgument, "id: " + id.error().message);
+                }
+                target = *id;
+            }
+            else if (const std::vector<EntityId> selection = m_deps.sceneEditor.selection(); !selection.empty())
+            {
+                target = selection.back();
+            }
+            Math::Sphere bounds = m_deps.world.bounds();
+            if (target)
+            {
+                const std::optional<entt::entity> entity = m_deps.world.scene().find(*target);
+                const std::optional<Math::Sphere> around = entity ? m_deps.world.boundsOf(*entity) : std::nullopt;
+                if (!around)
+                {
+                    return fail(ErrorCode::NotFound, "no entity with a transform has that ID");
+                }
+                bounds = *around;
+            }
+            // The orbit stands far enough back for the whole sphere to fit the view (EditorCamera::focus).
+            m_camera.focus(bounds.center, bounds.radius);
+            return CommandOutcome{};
+        });
+
+    QJsonObject side = propertySchema(u"string"_s, u"+x: from the +X side looking towards -X, and so on."_s);
+    QJsonArray sides;
+    for (const auto& [name, direction] : c_sides)
+    {
+        sides.append(QString::fromUtf16(name));
+    }
+    side.insert(u"enum", sides);
+    [[maybe_unused]] const Result<void> viewFrom = commands.add(
+        {.name = u"viewport.viewFrom"_s,
+         .description = u"Turns the editor camera to look at what it looks at from one side (the view-axis gizmo): "
+                        u"from +x it looks along -x, from +y down, and so on."_s,
+         .parameters = objectSchema({{.name = u"side"_s, .schema = side, .required = true}})},
+        [this](const QJsonObject& parameters) -> Result<CommandOutcome>
+        {
+            const QString name = parameters.value(u"side").toString();
+            for (const auto& [candidate, direction] : c_sides)
+            {
+                if (name == QString::fromUtf16(candidate))
+                {
+                    m_camera.viewAlong({-direction.x, -direction.y, -direction.z});
+                    return CommandOutcome{};
+                }
+            }
+            return fail(ErrorCode::InvalidArgument, "side must be one of +x, -x, +y, -y, +z, -z");
+        });
 
     QJsonObject mode = propertySchema(u"string"_s, u"orbit: turn around a point; fly: move with WASD."_s);
     mode.insert(u"enum", QJsonArray{u"orbit"_s, u"fly"_s});

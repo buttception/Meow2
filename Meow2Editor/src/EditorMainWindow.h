@@ -31,6 +31,7 @@ namespace Meow2::Editor
 class AssetsDock;
 class HierarchyDock;
 class InspectorDock;
+class SceneSettingsDock;
 class SceneEditor;
 class ConsoleDock;
 class GameViewportDock;
@@ -236,15 +237,17 @@ private:
     std::uint64_t m_historyRevision = ~std::uint64_t{0}; ///< The history's revision the labels show.
     SceneDocument& m_document;
     SceneEditor& m_editor;
-    HierarchyDock* m_hierarchyDock = nullptr;    ///< Owned by Qt.
-    InspectorDock* m_inspectorDock = nullptr;    ///< Owned by Qt.
-    QAction* m_hierarchyAction = nullptr;        ///< Checked while the Hierarchy dock is shown.
-    QAction* m_inspectorAction = nullptr;        ///< Checked while the Inspector dock is shown.
-    AssetsDock* m_assetsDock = nullptr;          ///< Owned by Qt, never null after construction.
-    QAction* m_assetsAction = nullptr;           ///< Checked while the Assets dock is shown.
-    QMenu* m_recentMenu = nullptr;               ///< File → Open Recent.
-    QStringList m_recentShown;                   ///< What m_recentMenu lists.
-    std::function<UnsavedAnswer()> m_askUnsaved; ///< setUnsavedPrompt().
-    std::function<QString()> m_pickSaveAs;       ///< setSaveAsPrompt().
+    HierarchyDock* m_hierarchyDock = nullptr;         ///< Owned by Qt.
+    InspectorDock* m_inspectorDock = nullptr;         ///< Owned by Qt.
+    SceneSettingsDock* m_sceneSettingsDock = nullptr; ///< Owned by Qt.
+    QAction* m_hierarchyAction = nullptr;             ///< Checked while the Hierarchy dock is shown.
+    QAction* m_inspectorAction = nullptr;             ///< Checked while the Inspector dock is shown.
+    QAction* m_sceneSettingsAction = nullptr;         ///< Checked while the Scene settings dock is shown.
+    AssetsDock* m_assetsDock = nullptr;               ///< Owned by Qt, never null after construction.
+    QAction* m_assetsAction = nullptr;                ///< Checked while the Assets dock is shown.
+    QMenu* m_recentMenu = nullptr;                    ///< File → Open Recent.
+    QStringList m_recentShown;                        ///< What m_recentMenu lists.
+    std::function<UnsavedAnswer()> m_askUnsaved;      ///< setUnsavedPrompt().
+    std::function<QString()> m_pickSaveAs;            ///< setSaveAsPrompt().
 };
 } // namespace Meow2::Editor

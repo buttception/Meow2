@@ -168,9 +168,9 @@ void EditorRenderer::setHasSelection(bool any)
     m_hasSelection = any;
 }
 
-void EditorRenderer::setLines(ViewportId viewport, std::vector<Renderer::DebugLine> lines)
+void EditorRenderer::setOverlay(ViewportId viewport, ViewportOverlay overlay)
 {
-    m_viewports.at(viewport).lines = std::move(lines);
+    m_viewports.at(viewport).overlay = std::move(overlay);
 }
 
 void EditorRenderer::readPick(std::uint32_t slot)
@@ -320,6 +320,7 @@ EditorRenderer::~EditorRenderer()
             viewport.swapchain.reset();
             viewport.offscreen.reset();
             viewport.debugLines.reset();
+            viewport.screenLines.reset();
         }
         m_device->device().destroy(m_pickBuffer);
         for (const Rhi::BufferHandle readback : m_pickReadback)
@@ -673,27 +674,55 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
                      .debug = true});
             }
         }
-        if (!viewport.lines.empty())
+        if (!viewport.overlay.lines.empty() || !viewport.overlay.triangles.empty() ||
+            !viewport.overlay.screenLines.empty() || !viewport.overlay.screenTriangles.empty())
         {
+            const auto make = [this]
+            {
+                return std::make_unique<Renderer::DebugLines>(*m_device, *m_pipelines,
+                                                              shaderId("01a1b5e2-3c1a-8000-80a4-7b19d2e6c05b"),
+                                                              c_sceneFormat, m_deps.log);
+            };
             if (!viewport.debugLines)
             {
-                viewport.debugLines = std::make_unique<Renderer::DebugLines>(
-                    *m_device, *m_pipelines, shaderId("01a1b5e2-3c1a-8000-80a4-7b19d2e6c05b"), c_sceneFormat,
-                    m_deps.log);
+                viewport.debugLines = make();
+                viewport.screenLines = make();
             }
-            // Drawn before the tone map, which multiplies by the exposure: divided here, so the gizmo stays as bright
+            // Drawn before the tone map, which multiplies by the exposure: divided here, so the gizmos stay as bright
             // in a dim scene as in a bright one.
             const float unexpose = m_exposure > 0.0F ? 1.0F / m_exposure : 1.0F;
-            viewport.debugLines->clear();
-            for (Renderer::DebugLine line : viewport.lines)
+            const auto shown = [unexpose](Math::Color color)
             {
-                line.color = {.r = line.color.r * unexpose,
-                              .g = line.color.g * unexpose,
-                              .b = line.color.b * unexpose,
-                              .a = line.color.a};
-                viewport.debugLines->add(line);
-            }
+                color.r *= unexpose;
+                color.g *= unexpose;
+                color.b *= unexpose;
+                return color;
+            };
+            const auto fill = [&shown](Renderer::DebugLines& target, const std::vector<Renderer::DebugLine>& lines,
+                                       const std::vector<Renderer::DebugTriangle>& triangles)
+            {
+                target.clear();
+                for (Renderer::DebugLine line : lines)
+                {
+                    line.color = shown(line.color);
+                    target.add(line);
+                }
+                for (Renderer::DebugTriangle triangle : triangles)
+                {
+                    triangle.color = shown(triangle.color);
+                    target.add(triangle);
+                }
+            };
+            fill(*viewport.debugLines, viewport.overlay.lines, viewport.overlay.triangles);
             viewport.debugLines->addPass(graph, slot, matrices.viewProjection, hdr, viewport.color);
+            // Screen-space shapes (the view-axis gizmo) in the viewport's pixels: x right, y down, to clip space.
+            fill(*viewport.screenLines, viewport.overlay.screenLines, viewport.overlay.screenTriangles);
+            Math::Mat4 pixels;
+            DirectX::XMStoreFloat4x4(&pixels,
+                                     DirectX::XMMatrixSet(2.0F / static_cast<float>(viewport.width), 0.0F, 0.0F, 0.0F,
+                                                          0.0F, -2.0F / static_cast<float>(viewport.height), 0.0F, 0.0F,
+                                                          0.0F, 0.0F, 1.0F, 0.0F, -1.0F, 1.0F, 0.0F, 1.0F));
+            viewport.screenLines->addPass(graph, slot, pixels, hdr, viewport.color);
         }
         if (viewport.swapchain)
         {

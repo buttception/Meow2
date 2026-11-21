@@ -15,8 +15,15 @@ version = 1
 [components]
 Environment = 1
 LocalTransform = 1
-MeshRenderer = 1
+MeshRenderer = 2
 Parent = 1
+
+[settings.Environment]
+sunElevation = 35.0
+sunAzimuth = 30.0
+sunColor = [1.0, 1.0, 1.0, 1.0]
+sunIntensity = 3.0
+exposure = 1.0
 
 [[entity]]
 id = "019a7c2e-41d0-8000-8140-3f2a9c11d5e1"
@@ -30,25 +37,25 @@ mobility = "auto"
 
 [entity.MeshRenderer]
 mesh = "019a7c2e-41cf-8000-8141-77e0b2a4c3d9"
-movable = false
-
-[[entity]]
-id = "019a7c2e-41d1-8000-8140-3f2a9c11d5e1"
-name = "Environment"
-
-[entity.Environment]
-sunElevation = 35.0
-sunAzimuth = 30.0
-sunColor = [1.0, 1.0, 1.0, 1.0]
-sunIntensity = 3.0
-exposure = 1.0
 ```
 
 - **`format` and `version`** say it's a scene and which layout of the file it uses. A file from a newer layout is refused ("saved by a newer Meow2") rather than misread. The layout version changes rarely; components carry their own versions.
-- **`[components]`** lists each component used in the file once, with its version.
+- **`[components]`** lists each component used in the file once, with its version (scene settings too).
+- **`[settings.<Setting>]`**: the scene's settings, one table each (today `Environment`: the sun and the exposure). See [Scene settings](#scene-settings).
 - **`[[entity]]`** blocks, one per saved entity: its `id` (an `EntityId`, [Ids](Ids.md)), its `name`, then a table per component, `[entity.<Component>]`, with its fields.
 - **References** are IDs as text: a mesh is its mesh `AssetId`, a parent is the parent's `EntityId`. `""` means none.
 - **Transient entities** (no `EntityId`: runtime helpers) aren't saved; a reference to one is saved as `""`.
+
+## Scene settings
+
+Some things belong to the scene, not to an entity: today the `Environment` (the sun's angles, colour and strength, and the exposure). The registry describes it like a component, marked `setting` (`ComponentDesc::setting`), so files, the editor's Scene settings dock and agents read and write its fields the same way; it lives in the scene's registry context (`Scene::environment()`, `setEnvironment()`), not on an entity, and is written as `[settings.Environment]` before the entities.
+
+- **Older files** kept it on an `Environment` entity. Reading one folds that component into the setting, and removes the entity if it held nothing else (`SceneReadReport::entities` counts what stays).
+- An entity's component that's a setting is never written; `component.add` refuses it.
+
+## Mobility
+
+Whether something moves at runtime is `LocalTransform::mobility` (`auto`, `static`, `movable`): `movable` meshes are drawn into the sun's shadow every frame, the rest into its cache; `auto` counts as static until M13 infers it. `MeshRenderer` had a `movable` flag of its own until version 2; the migration drops it (a migration sees one component, so it can't move the flag to the transform), and Meow2Renderer marks animated nodes `movable` each time it loads them.
 
 ## Why it merges
 

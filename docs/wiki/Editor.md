@@ -86,6 +86,7 @@ commands.execute(u"scene.rename", {{u"entity"_s, id}, {u"name"_s, u"Lamp"_s}});
 A dock at the bottom, over the engine's `ConsoleBuffer` (the last 2000 lines every logger wrote, [Logging](Logging.md)).
 
 - **Only the level is coloured**, as in PowerShell: `<debug>` grey, `<info>` the text colour, `<warn>` yellow, `<error>` red. The time, logger and message keep the normal text colour.
+- **Long lines wrap** at the dock's edge; there's no horizontal scroll bar.
 - **Filters:** a checkbox per level and a text filter (message or logger, any case). **Clear** forgets what's shown; **Copy** copies the selection, or every shown line, as the log file has them; **Follow** keeps it scrolled to the newest line.
 - **No cross-thread signals:** any thread may log, and `tick()` copies the new lines out of the buffer on the GUI thread once a frame.
 - An agent reads the log with the `log.lines` query instead.
@@ -110,14 +111,15 @@ Edit → Settings…: one field per editor setting. A change runs `settings.set`
 
 The editor works on a **project folder**: the scenes, models and their `.meta` files of one game. The open scene is a `.m2scene` file in it ([Scene files](SceneFiles.md)), the same format Meow2Renderer opens and saves.
 
-- **The project folder** is `editor.project` in `Meow2Editor.toml` (default: `project/` next to the exe, made if missing). It's mounted read-write and its `.meta` files are scanned, so scenes find their models' meshes. File → Open project folder… (`project.open`) switches to another; a folder that doesn't exist is created.
-- **At start** the editor reopens the most recent scene, or starts a new one: a main camera and an `Environment` (sun and exposure, which light both viewports).
-- **File menu:** New scene (Ctrl+N), Open scene… (Ctrl+O), Open recent, Save (Ctrl+S; asks for a file for an untitled scene), Save as… (Ctrl+Shift+S), Open project folder…, Import model…. The file dialogs open in the project; a file outside it is refused.
+- **A project** is laid out as in Unity: `Assets/` for everything imported (models under `Assets/Models/<name>/`, with their textures), `Scenes/` for scenes, and `<name>.m2project`, a small TOML file naming it. File → New project… makes one in a folder you name; File → Open project… opens another; any folder opened gets the layout added if it's missing (`project.open`). The open project is `editor.project` in `Meow2Editor.toml` (default: `project/` next to the exe) and reopens at start. It's mounted read-write and its `.meta` files are scanned, so scenes find their models' meshes.
+- **At start** the editor reopens the most recent scene, or starts a new one: a main camera, with the default sun and exposure as the scene's settings ([Scene settings](#scene-settings)).
+- **File menu:** New scene (Ctrl+N), Open scene… (Ctrl+O), Open recent, Save (Ctrl+S; asks for a file for an untitled scene), Save as… (Ctrl+Shift+S; starts in `Scenes/`), New project…, Open project…, Import model…, Scene settings…. The file dialogs open in the project; a file outside it is refused.
 - **Unsaved changes:** the undo history's clean mark says whether the scene changed since it was opened, started or saved. The title shows the scene's file and a `*` while it has unsaved changes. New, Open, a double-click in the Assets dock, Open project folder and closing the window ask **Save / Discard / Cancel** first. Opening or starting a scene clears the undo history (its steps were about the old scene).
 - **Recent scenes** (`editor.recentScenes`): the last 8 opened or saved, newest first; File → Open recent. They're paths in the project, so switching project clears them.
-- **The Assets dock** (Window → Assets; left side at first): the project's scene files and models in their folders. Double-click a scene to open it, a model to bring it into the scene.
+- **The Assets dock** (Window → Assets; left side at first): the project's scenes, models, textures and shaders in their folders, with the engine's asset icons (`assets/icons/assets/*.svg`, [Theme](Theme.md#asset-icons), built into the editor as Qt resources; Qt's own icons if Qt's Svg module is missing). Double-click a scene to open it, a model to bring it into the scene.
+- **Hot reload:** a model whose files change on disk while the editor runs (its `.gltf`, its `.bin`, a texture repainted) is re-imported and uploaded again under the same mesh IDs, so every entity drawing it shows the new meshes, materials and textures (`EditorWorld::reloadChangedModels()`, twice a second, after a file has settled for 0.3 s). The entities stay as they are, edits included; a file that can't be read keeps the old model. Shaders reloaded already ([Shaders → Hot reload](Shaders.md)). The old GPU copies stay until the scene is closed.
 - **Importing a model** (`asset.importModel`): a `.gltf` or `.glb` of the project comes in under a root entity named after the file, with its nodes, transforms and meshes. Its meshes get stable IDs in its `.meta` the first time, so the scene saves and reopens with them. Undo removes what the import made; redo imports again.
-- **A model outside the project** (File → Import model… on a file elsewhere, such as the Khronos samples in `assets/gltf-sample-assets`) is first copied into `Models/<model name>/` with the rest of its folder (its `.bin` and textures), then imported; a second import reuses the copy. Only the window does this, for a file you picked: commands never read outside the project, so an agent works with what's in it.
+- **A model outside the project** (File → Import model… on a file elsewhere, such as the Khronos samples in `assets/gltf-sample-assets`) is first copied into `Assets/Models/<model name>/` with the rest of its folder (its `.bin` and textures), then imported; a second import reuses the copy. Only the window does this, for a file you picked: commands never read outside the project, so an agent works with what's in it.
 
 ### Project and scene commands
 
@@ -125,8 +127,8 @@ The editor works on a **project folder**: the scenes, models and their `.meta` f
 
 | Command | Kind | Parameters | What it does |
 |---|---|---|---|
-| `project.open` | action | `path` (full folder path), `discard` | Opens (or creates) a project folder; starts a new scene in it |
-| `scene.new` | action | `discard` | A new, untitled scene: a main camera and an Environment |
+| `project.open` | action | `path` (full folder path), `discard` | Opens a project, made if the folder doesn't exist and given `Assets/`, `Scenes/` and a project file if missing; starts a new scene in it |
+| `scene.new` | action | `discard` | A new, untitled scene: a main camera and the default scene settings |
 | `scene.open` | action | `path`, `discard` | Opens a `.m2scene` of the project, with the models it uses |
 | `scene.save` | action | — | Saves to the scene's file; disabled for an untitled scene |
 | `scene.saveAs` | action | `path` | Saves to a `.m2scene` of the project, which becomes the scene's file |
@@ -138,15 +140,29 @@ The editor works on a **project folder**: the scenes, models and their `.meta` f
 - **Nothing is dropped silently:** `scene.new`, `scene.open` and `project.open` fail while there are unsaved changes unless `discard` is true. The window asks the user and then passes it; an agent has to say so.
 - **Opening is all or nothing:** a file that can't be read leaves the current scene, its GPU meshes and its history as they were. Only once the file has been read is the GPU scene emptied (`EditorRenderer::resetScene()`, keeping every viewport's view) and refilled with the scene's models.
 
+## Scene settings
+
+What belongs to the scene rather than to an entity: today the `Environment`, the sun's elevation and azimuth (degrees), its colour and strength, and the exposure. They light both viewports.
+
+- **The Scene settings dock** (File → Scene settings…, Window → Scene settings; a tab beside the Inspector at first): a field per setting, made from the component registry's description of `Environment` (marked `setting`, so it's never offered as a component). An edit runs `scene.setSetting`, one undo step.
+- **In the file** they're the scene's `[settings.Environment]` table ([Scene files](SceneFiles.md#scene-settings)); a file from before kept an `Environment` entity, which is folded into the setting when it's read.
+
+| Command | Kind | Parameters | What it does |
+|---|---|---|---|
+| `scene.settings` | query | — | The settings and their values |
+| `scene.setSetting` | action | `setting` (`Environment`), `field`, `value` | Sets one field (undoable) |
+
+`component.list` lists the settings' fields under `settings`.
+
 ## Hierarchy and Inspector
 
-- **Hierarchy dock** (left): the scene's entities as a tree, children under their parent. Click to select (Ctrl/Shift for several), F2 or a double-click to rename, drag an entity onto another to hang it under it (onto empty space: to the root), Create for a new entity (under the selected one). The tree follows the scene: a change made by a command, undo or an agent shows at the next frame.
-- **Inspector dock** (right, under the game view): the selected entity's name and components, an editor per field made from the component registry ([Scene files → Components describe their fields once](SceneFiles.md#components-describe-their-fields-once)):
+- **Hierarchy dock** (left): the scene's entities as a tree, children under their parent. Click to select (Ctrl/Shift for several), F2 to rename, double-click to frame the entity in the editor viewport (`viewport.focus`), drag an entity onto another to hang it under it (onto empty space: to the root), Create for a new entity (under the selected one). The tree follows the scene: a change made by a command, undo or an agent shows at the next frame. Typing doesn't jump to an entity whose name starts with that letter (Qt's tree search is off), so W/E/R and F stay shortcuts.
+- **Inspector dock** (right, under the game view): the selected entity's name, its ID in grey under it (selectable, to copy), and its components as cards: a header bar with a fold arrow, the name and Remove, over the fields. Folding is remembered per component type while the editor runs. Number boxes are compact (no arrow buttons, three decimals) and vectors have coloured X Y Z letters, so the panel can be narrow; it never gets narrower than its fields plus the scroll bar, so the bar doesn't cover them. An editor per field is made from the component registry ([Scene files → Components describe their fields once](SceneFiles.md#components-describe-their-fields-once)):
 
   | Field type | Editor |
   |---|---|
   | bool | check box |
-  | int, float | spin box |
+  | int, float | compact number box |
   | vec3, color | 3 or 4 spin boxes |
   | quat (rotations) | Euler angles in degrees: X pitch, Y yaw, Z roll |
   | enum | drop-down |
@@ -154,7 +170,7 @@ The editor works on a **project folder**: the scenes, models and their `.meta` f
   | asset (a mesh) | a drop-down of the meshes the scene has loaded, by name ("Sponza: mesh_12": the model file, then the mesh); the ID stays in the file and the tooltip |
   | entity (`Parent`) | a drop-down of the scene's entities by name, repeated names with the start of their ID; picking a parent runs `entity.setParent` |
 
-  An edit counts when it's finished (Enter, or leaving the box), so typing a number records one step, not one per key. Each component has Remove; Add component lists those the entity doesn't have. Components kept from a scene file but unknown here are named at the bottom.
+  An edit counts when it's finished (Enter, or leaving the box), so typing a number records one step, not one per key. Each component has Remove. **Add component** is a search field: type part of a name (any case) to see the matches, or click into it for the whole list; Enter or a pick adds it. Components kept from a scene file but unknown here are named at the bottom.
 - **Rotations:** stored as quaternions, shown as Euler angles. Several angle sets give the same rotation, so angles worked out from the quaternion could jump to another set; the inspector keeps the angles you typed while they still give the stored rotation, and shows those (techstack §10).
 - **Edit menu:** Create entity, Duplicate (Ctrl+D), Delete (Del), on the selection.
 - **Undo** brings back exactly what was there: a deleted entity returns with the same ID, components and children, so steps further back still find it.
@@ -196,7 +212,10 @@ The **editor viewport** (the window's centre) shows the scene through the editor
   | Wheel | zoom | change speed |
   | Right drag | fly while held (look around, WASD/QE move, Shift faster); let go to orbit again | look around |
   | WASD / QE | (while flying) | move, down/up |
-  | F | frame the scene (`viewport.focus`) | frame the scene |
+  | F | frame the selection, or the scene with nothing selected (`viewport.focus`) | the same |
+
+  Framing stands far enough back for the whole of what's framed to fit the view: a sphere of radius r fills a 60° lens at r / sin(30°) = 2 r, plus 10 %. A double-click in the Hierarchy frames that entity with everything under it (its meshes' boxes in world space, `EditorWorld::boundsOf()`).
+- **The view-axis gizmo** (top-right corner of the editor viewport): the world's axes as the camera sees them, a coloured ball at each positive end (X red, Y green, Z blue) and a dim one at each negative end. Click a ball to look from that side (`viewport.viewFrom`): +X looks along −X at what the camera looks at, from as far away; ±Y look straight down or up (just short of it, at the rigs' pitch limit).
 
   The rigs are the engine's ([Math → Camera rigs](Math.md#camera-rigs)), shared with Meow2Renderer. Switching between them never jumps: the fly camera starts where the orbit was, and the orbit picks up around the point ahead of where the flight ended.
 - **Render scale** (the Game dock's drop-down: 100, 75, 50, 25 %; `editor.gameRenderScale`): the game view's scene is drawn at that share of the viewport's size and scaled up by the tone-map pass, which samples the smaller image with linear filtering. At 50 % that's a quarter of the pixels to shade. The editor viewport always draws at full size.
@@ -224,11 +243,11 @@ The last selected entity gets a gizmo in the editor viewport, always on top and 
 
 | Mode | Key | Handles | Dragging |
 |---|---|---|---|
-| Move | W | three arrows | moves along the axis, following the point under the cursor |
-| Rotate | E | three rings | turns about the axis by the angle the cursor sweeps round the centre |
+| Move | W | three arrows, and three squares between them | an arrow moves along its axis, following the point under the cursor; a square moves in its plane (the XY square along X and Y, and so on) |
+| Rotate | E | three rings | turns about the axis by the angle the cursor sweeps round the centre, shown as an orange slice of the ring from where the drag began to where it is |
 | Scale | R | three axes with boxes, a centre box | scales along the axis; the centre box scales all three (drag right to grow, left to shrink) |
 
-- X is red, Y green, Z blue; the handle under the cursor (or being dragged) turns yellow. A gizmo handle wins over a click that would pick.
+- X is red, Y green, Z blue (a square takes the colour of the axis it lies across); the handle under the cursor (or being dragged) turns yellow. Handles are drawn 3 px thick (4 under the cursor), the arrowheads and boxes solid, the squares see-through. A gizmo handle wins over a click that would pick.
 - **Local axes** (toolbar, View menu) move and rotate along the entity's own axes instead of the world's; scale always uses its own.
 - **Snapping:** the toolbar's Snap, or hold Ctrl while dragging. Moves go in steps of `editor.snap.translate` cm along the axis, turns in `editor.snap.angle` degrees, and scales snap to multiples of `editor.snap.scale` %.
 - W/E/R work while the editor viewport has focus and the camera isn't flying. They are separate actions on the viewport, switched off while the camera flies, because a Qt shortcut takes its key before the viewport sees it: as toolbar shortcuts they kept W and E from the flying camera. The toolbar buttons have no key and always work.
@@ -237,9 +256,10 @@ The last selected entity gets a gizmo in the editor viewport, always on top and 
   - Move: the closest point on the axis line to the cursor's ray, minus where it was grabbed.
   - Rotate: where the ray meets the plane across the axis, and the signed angle from where it was grabbed.
   - Scale: how far along the axis the cursor is now, divided by where it grabbed.
+  - A square: where the ray meets the square's plane, minus where it was grabbed, along each of its two axes (each snapped on its own).
   - Snapping rounds the change, not the result, so an entity at 0.3 m moves to 0.8 m, 1.3 m…
   - `ViewportController` turns the new world transform into a local one through the parent's world matrix (local = world × parent⁻¹), exact unless a parent is scaled unevenly and rotated.
-  - The handles are lines (`Renderer::DebugLines`) drawn into the editor viewport's HDR colour before the tone map, their colours divided by the exposure so they stay bright in any scene. Their size comes from how many pixels a metre covers at the entity: 100 px.
+  - The handles are filled triangles (`Renderer::DebugLines`, which draws triangles with alpha blending as well as lines): a thick line is a quad along it, turned to face the camera; a cone and a box are solid. They're drawn into the editor viewport's HDR colour before the tone map, their colours divided by the exposure so they stay bright in any scene. Their size comes from how many pixels a metre covers at the entity: 100 px.
   - Hit tests are in screen space: the closest handle within 8 px, the centre box within 12 px of the centre.
 
 ### Input: QtInputSource
@@ -255,7 +275,8 @@ The engine's `InputSystem` is fed by `QtInputSource`, an event filter on both vi
 
 | Command | Kind | Parameters | What it does |
 |---|---|---|---|
-| `viewport.focus` | action | — | Frames the whole scene in the editor viewport (F). |
+| `viewport.focus` | action | `id` (optional) | Frames an entity and everything under it; without `id` the selection, or the whole scene (F, a double-click in the Hierarchy). |
+| `viewport.viewFrom` | action | `side` (`+x`, `-x`, `+y`, `-y`, `+z`, `-z`) | Looks from that side at what the camera looks at (the view-axis gizmo). |
 | `viewport.setCameraMode` | action | `mode` (`orbit`, `fly`) | The editor camera's mode (View menu). |
 | `viewport.setRenderScale` | action | `percent` (25–100) | The game view's render scale; saved as `editor.gameRenderScale`. |
 | `viewport.setGizmo` | action | `mode` (`translate`, `rotate`, `scale`), `space` (`world`, `local`), `snap` (each optional) | The gizmo's mode, axes and snapping (toolbar, W/E/R). |
@@ -317,6 +338,9 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.EditorCameraTest.*`: right drag flies and letting go orbits without a jump; Fly mode; focus frames the bounds and stops the spin; `OrbitNeedsAlt`: a left drag orbits only with Alt held.
 - `Editor.ViewportPickingTest.ClicksSelect`: the nearest hit is selected, the same spot again steps behind it and wraps round, another spot or other hits start over, Ctrl adds and removes, nothing under the cursor clears; gone and repeated entities are dropped.
 - `Editor.GizmoTest.TranslatesAlongTheAxis`, `RotatesAroundTheAxis`, `ScalesAndHitTests`: a drag moves along the axis by what's under the cursor (only along it, in whole steps with snapping, along the entity's own axis in local space); turns by the swept angle (15° steps, added to an existing rotation); scales one axis or all from the centre, never to nothing; hit tests find each handle and nothing far away; the gizmo keeps its size on screen.
+- `Editor.InspectorDockTest.CardsIdAndComponentSearch`: the grey ID under the name, cards that fold (kept across rebuilds), compact number boxes, Add component by search (whole names, any case). `Editor.HierarchyDockTest.KeysDontSearchAndDoubleClickFrames`: typing doesn't jump to an entity, F2 renames, a double-click frames the entity. `Editor.ConsoleDockTest.LongLinesWrap`.
+- `Editor.GizmoTest.PlanesShapesAndArc`: a square moves in its plane (snapped per axis); the shapes are solid and see-through; rotating draws the orange slice. `Editor.GizmoTest.ViewAxesPickASide`, `Editor.ViewportCommandsTest.ViewFromASide`: the corner gizmo's balls where the axes point, the camera looking from that side.
+- `Editor.SceneEditorTest.EnvironmentIsASceneSetting`, `Editor.MainWindowTest.SceneSettingsDockAndAssetIcons`: settings commands with undo, not a component; the dock edits through them; the asset icons by file type, built in. `Editor.SceneDocumentTest.ProjectsHaveAssetsAndScenes`, `ChangedModelsReload`: the project layout; a model changed on disk reloads under the same mesh IDs, a broken save keeps the old one.
 - `Editor.SceneEditorTest.SetTransformCommand`: only the given parts change; previews aren't recorded; the last step undoes back to `from` in one step; quaternions normalised; wrong shapes refused. `Editor.ViewportCommandsTest.GizmoCommand`: `viewport. `Editor.ViewportCommandsTest.GizmoKeysStepAsideWhileFlying`: the toolbar items take no key, and W/E/R are off while the camera flies. `Editor.InspectorDockTest.MeshAndEntityFieldsShowNames`: mesh and parent fields are drop-downs of names (repeated names told apart), picking one sets the ID, undo restores it.setGizmo` and `viewport.info`, bad values refused, the toolbar follows and runs it. `Editor.MainWindowTest.DockTabsOnTop`. `Editor.MainWindowTest.TabbedDocksHideTheirTitle`: a dock tabbed with another loses its title bar, gets it back when the other tab closes or it's split off. `Editor.WheelGuardTest.WheelEditsOnlyFocusedFields`: the wheel over an unfocused spin box or drop-down leaves its value and scrolls the panel; focused, it edits.
 - `Editor.ViewportCommandsTest.*`: `viewport.setRenderScale` saves the setting and updates the drop-down, out-of-range values are refused, `viewport.setCameraMode` and `viewport.info`; the test scene has a main camera.
 - `Editor.MainWindowTest.LayoutRoundTrips`: the dock layout saved in `editor.layout` is restored by the next window.

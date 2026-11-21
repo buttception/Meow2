@@ -3,22 +3,29 @@
 
 #include "Panels/InspectorDock.h"
 
+#include "Panels/FieldWidgets.h"
+
 #include <Meow2/Math/Quaternion.h>
 #include <Meow2/Math/Scalar.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCompleter>
 #include <QDoubleSpinBox>
+#include <QEvent>
 #include <QFormLayout>
+#include <QFrame>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSpinBox>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -30,17 +37,6 @@ using namespace Qt::StringLiterals;
 
 namespace
 {
-QDoubleSpinBox* numberBox(double value, QWidget* parent)
-{
-    auto* box = new QDoubleSpinBox(parent); // Qt parent–child ownership
-    box->setRange(-1e9, 1e9);
-    box->setDecimals(4);
-    box->setSingleStep(0.1);
-    box->setKeyboardTracking(false); // edits land on Enter or when focus leaves, not on every key
-    box->setValue(value);
-    return box;
-}
-
 /// @brief Whether two rotations are the same (q and −q are).
 bool sameRotation(const Math::Quat& a, const Math::Quat& b)
 {
@@ -60,7 +56,12 @@ InspectorDock::InspectorDock(EditorCommandRegistry& commands, const SceneEditor&
     auto* scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
     scroll->setObjectName(u"InspectorScroll"_s);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff); // the panel is kept wide enough instead (build())
     setWidget(scroll);
+    // Components as cards: a dark frame each, a header bar with the theme's red at its left edge.
+    setStyleSheet(
+        u"QFrame[componentCard=\"true\"] { border: 1px solid #2A2A30; border-radius: 4px; background: #08080A; }"
+        u"QWidget[componentHeader=\"true\"] { background: #17171B; border-left: 3px solid #E01E2D; }"_s);
 }
 
 bool InspectorDock::run(const QString& command, const QJsonObject& parameters)
@@ -134,6 +135,13 @@ void InspectorDock::build()
                 }
             });
     m_layout->addWidget(name);
+    // The ID in grey under the name: what scene files, commands and agents call the entity. Selectable, to copy.
+    auto* idLabel = new QLabel(id, m_content);
+    idLabel->setObjectName(u"EntityId"_s);
+    idLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    idLabel->setStyleSheet(u"color: #6E6E76; font-size: 11px;"_s);
+    m_layout->addWidget(idLabel);
+    m_layout->addSpacing(6);
 
     // Field types by component, from the registry's descriptions.
     std::map<QString, QJsonArray> fieldsOf;
@@ -153,30 +161,77 @@ void InspectorDock::build()
         }
     }
 
+    // Each component a card: a header bar (a fold arrow, the name, Remove) over its fields, with space between cards,
+    // so where one ends and the next begins is plain at a glance.
     for (const QJsonValue& entry : info.value(u"components").toArray())
     {
         const QJsonObject component = entry.toObject();
         const QString componentName = component.value(u"name").toString();
-        auto* group = new QGroupBox(componentName, m_content);
-        group->setObjectName(componentName);
-        auto* form = new QFormLayout(group);
+        auto* card = new QFrame(m_content);
+        card->setObjectName(componentName);
+        card->setProperty("componentCard", true);
+        auto* cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(0, 0, 0, 0);
+        cardLayout->setSpacing(0);
+
+        auto* header = new QWidget(card);
+        header->setProperty("componentHeader", true);
+        header->setAttribute(Qt::WA_StyledBackground); // so the style sheet's header colour is drawn
+        auto* headerLayout = new QHBoxLayout(header);
+        headerLayout->setContentsMargins(4, 2, 4, 2);
+        auto* fold = new QToolButton(header);
+        fold->setObjectName(u"Fold."_s + componentName);
+        fold->setAutoRaise(true);
+        fold->setCheckable(true);
+        fold->setChecked(!m_folded.contains(componentName));
+        fold->setArrowType(fold->isChecked() ? Qt::DownArrow : Qt::RightArrow);
+        headerLayout->addWidget(fold);
+        auto* title = new QLabel(componentName, header);
+        title->setStyleSheet(u"font-weight: 600;"_s);
+        headerLayout->addWidget(title, 1);
         if (componentName != u"Parent"_s)
         {
-            auto* remove = new QToolButton(group);
+            auto* remove = new QToolButton(header);
             remove->setObjectName(u"Remove."_s + componentName);
             remove->setText(u"Remove"_s);
+            remove->setAutoRaise(true);
+            remove->setToolTip(u"Remove %1"_s.arg(componentName));
             connect(remove, &QToolButton::clicked, this, [this, id, componentName]
                     { run(u"component.remove"_s, {{u"id"_s, id}, {u"component"_s, componentName}}); });
-            form->addRow(remove);
+            headerLayout->addWidget(remove);
         }
+        cardLayout->addWidget(header);
+
+        auto* body = new QWidget(card);
+        auto* form = new QFormLayout(body);
+        form->setContentsMargins(8, 4, 6, 6);
+        form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
         const QJsonObject values = component.value(u"fields").toObject();
         for (const QJsonValue& field : fieldsOf[componentName])
         {
             const QJsonObject description = field.toObject();
             const QString fieldName = description.value(u"name").toString();
-            form->addRow(fieldName, fieldEditor(componentName, description, values.value(fieldName), group));
+            form->addRow(fieldName, fieldEditor(componentName, description, values.value(fieldName), body));
         }
-        m_layout->addWidget(group);
+        body->setVisible(fold->isChecked());
+        cardLayout->addWidget(body);
+        // Folding is how the panel is viewed, not an edit: remembered per component type while the editor runs.
+        connect(fold, &QToolButton::toggled, this,
+                [this, fold, body, componentName](bool open)
+                {
+                    fold->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+                    body->setVisible(open);
+                    if (open)
+                    {
+                        m_folded.remove(componentName);
+                    }
+                    else
+                    {
+                        m_folded.insert(componentName);
+                    }
+                });
+        m_layout->addWidget(card);
+        m_layout->addSpacing(6);
     }
     if (const QJsonArray unknown = info.value(u"unknown").toArray(); !unknown.isEmpty())
     {
@@ -191,21 +246,50 @@ void InspectorDock::build()
     }
     if (!addable.isEmpty())
     {
-        auto* add = new QComboBox(m_content);
+        // A search field rather than a list to scroll: with scripts there will be many components to add.
+        auto* add = new QLineEdit(m_content);
         add->setObjectName(u"AddComponent"_s);
-        add->addItem(u"Add component…"_s);
-        add->addItems(addable);
-        connect(add, &QComboBox::activated, this,
-                [this, add, id](int index)
-                {
-                    if (index > 0)
-                    {
-                        run(u"component.add"_s, {{u"id"_s, id}, {u"component"_s, add->itemText(index)}});
-                    }
-                });
+        add->setPlaceholderText(u"Add component… (type to search)"_s);
+        add->setClearButtonEnabled(true);
+        auto* completer = new QCompleter(addable, add);
+        completer->setCaseSensitivity(Qt::CaseInsensitive);
+        completer->setFilterMode(Qt::MatchContains);
+        completer->setCompletionMode(QCompleter::PopupCompletion);
+        add->setCompleter(completer);
+        const auto addNamed = [this, id, addable](const QString& typed)
+        {
+            const auto found = std::ranges::find_if(addable, [&typed](const QString& candidate)
+                                                    { return candidate.compare(typed, Qt::CaseInsensitive) == 0; });
+            if (found != addable.end())
+            {
+                run(u"component.add"_s, {{u"id"_s, id}, {u"component"_s, *found}});
+            }
+        };
+        connect(completer, qOverload<const QString&>(&QCompleter::activated), this, addNamed);
+        connect(add, &QLineEdit::returnPressed, this, [add, addNamed] { addNamed(add->text().trimmed()); });
+        // The whole list on a click into the empty field, so there's something to pick without knowing names.
+        add->installEventFilter(this);
         m_layout->addWidget(add);
     }
     m_layout->addStretch(1);
+
+    // Wide enough for the fields and the scroll bar beside them: the panel can't be squeezed until the scroll bar
+    // covers the boxes.
+    const int needed = m_content->minimumSizeHint().width() + scroll->verticalScrollBar()->sizeHint().width() +
+                       2 * scroll->frameWidth();
+    scroll->setMinimumWidth(needed);
+}
+
+bool InspectorDock::eventFilter(QObject* watched, QEvent* event)
+{
+    auto* add = qobject_cast<QLineEdit*>(watched);
+    if (add != nullptr && add->objectName() == u"AddComponent"_s && event->type() == QEvent::MouseButtonPress &&
+        add->text().isEmpty() && add->completer() != nullptr)
+    {
+        add->completer()->setCompletionPrefix(QString{});
+        add->completer()->complete();
+    }
+    return QDockWidget::eventFilter(watched, event);
 }
 
 QWidget* InspectorDock::fieldEditor(const QString& component, const QJsonObject& field, const QJsonValue& value,
@@ -226,7 +310,8 @@ QWidget* InspectorDock::fieldEditor(const QString& component, const QJsonObject&
     }
     if (type == u"int"_s)
     {
-        auto* box = new QSpinBox(parent);
+        auto* box = new CompactBox<QSpinBox>(parent);
+        box->setButtonSymbols(QAbstractSpinBox::NoButtons);
         box->setObjectName(objectName);
         box->setRange(std::numeric_limits<int>::min(), std::numeric_limits<int>::max());
         box->setKeyboardTracking(false);
@@ -310,8 +395,14 @@ QWidget* InspectorDock::fieldEditor(const QString& component, const QJsonObject&
             }
         }
         std::vector<QDoubleSpinBox*> boxes;
+        const QStringList letters =
+            type == u"color"_s ? QStringList{u"R"_s, u"G"_s, u"B"_s, u"A"_s} : QStringList{u"X"_s, u"Y"_s, u"Z"_s};
         for (std::size_t i = 0; i < shown.size(); ++i)
         {
+            if (i < static_cast<std::size_t>(letters.size()))
+            {
+                layout->addWidget(axisLabel(letters.at(static_cast<qsizetype>(i)), row));
+            }
             QDoubleSpinBox* box = numberBox(shown[i], row);
             box->setObjectName(objectName + u'.' + QString::number(i));
             if (type == u"color"_s)

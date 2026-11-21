@@ -34,14 +34,15 @@ TEST(EditorCameraTest, FlyAndOrbit)
     EditorCamera camera;
     camera.focus({0.0F, 0.0F, 0.0F}, 2.0F);
     const Math::Transform start = camera.transform();
-    EXPECT_NEAR(distance(start.position, {0.0F, 0.0F, 0.0F}), 3.4F, 1e-3F) << "framed 1.7 radii away";
+    // A 2 m sphere fits a 60° view from 2 / sin(30°) = 4 m; with 10 % to spare, 4.4 m.
+    EXPECT_NEAR(distance(start.position, {0.0F, 0.0F, 0.0F}), 4.4F, 1e-3F) << "far enough to see all of it";
 
     // Right drag + W flies forward from where the orbit was, without a jump.
     camera.update({.rightDrag = true, .move = {0.0F, 0.0F, 1.0F}}, 0.0F);
     EXPECT_NEAR(distance(camera.transform().position, start.position), 0.0F, 1e-3F) << "switching doesn't jump";
     camera.update({.rightDrag = true, .move = {0.0F, 0.0F, 1.0F}}, 1.0F);
     const Math::Transform flown = camera.transform();
-    EXPECT_LT(distance(flown.position, {0.0F, 0.0F, 0.0F}), 3.4F) << "moved towards what it looks at";
+    EXPECT_LT(distance(flown.position, {0.0F, 0.0F, 0.0F}), 4.4F) << "moved towards what it looks at";
 
     // Letting go orbits again, around the point ahead, from where it flew to.
     camera.update({}, 0.0F);

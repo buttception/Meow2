@@ -17,6 +17,7 @@
 #include <optional>
 #include <QDockWidget>
 #include <QJsonObject>
+#include <QSet>
 #include <QString>
 
 class QVBoxLayout;
@@ -70,6 +71,13 @@ public:
         return m_shown;
     }
 
+protected:
+    /// @brief Opens the Add component list on a click into its empty search field.
+    /// @param watched The object the event is for.
+    /// @param event   The event.
+    /// @return Whether it was handled (never: the field still gets the click).
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private:
     /// @brief Runs a command; a failure is logged.
     bool run(const QString& command, const QJsonObject& parameters);
@@ -93,5 +101,6 @@ private:
     /// @brief Euler angles (degrees) the user typed, by "<entity> <component>.<field>", kept while they still give
     ///        the stored rotation.
     std::map<QString, Math::Vec3> m_typedAngles;
+    QSet<QString> m_folded; ///< Component types folded shut, kept across rebuilds.
 };
 } // namespace Meow2::Editor

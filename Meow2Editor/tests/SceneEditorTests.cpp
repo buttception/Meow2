@@ -4,6 +4,7 @@
 #include "EditorTestRig.h"
 
 #include <Meow2/Scene/Camera.h>
+#include <Meow2/Scene/Environment.h>
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -253,4 +254,41 @@ TEST_F(SceneEditorTest, SetTransformCommand)
     EXPECT_FALSE(
         m_commands.execute(u"entity.setTransform", {{u"id"_s, u"nope"_s}, {u"position"_s, QJsonArray{0.0, 0.0, 0.0}}}));
     EXPECT_FLOAT_EQ(local().position.x, 3.0F);
+}
+
+// Owner request (#229): the Environment is a scene setting, not an entity: its own commands, undoable, and never a
+// component to add.
+TEST_F(SceneEditorTest, EnvironmentIsASceneSetting)
+{
+    m_world.newScene();
+    EXPECT_TRUE(Meow2::Scene::hasEnvironment(m_world.scene()));
+    EXPECT_FALSE(Meow2::Scene::findEnvironment(m_world.scene())) << "no Environment entity in a new scene";
+
+    const QJsonObject list = ok(m_commands, u"component.list");
+    bool listedAsComponent = false;
+    for (const QJsonValue& entry : list.value(u"components").toArray())
+    {
+        listedAsComponent = listedAsComponent || entry.toObject().value(u"name").toString() == u"Environment"_s;
+    }
+    EXPECT_FALSE(listedAsComponent);
+    ASSERT_EQ(list.value(u"settings").toArray().size(), 1);
+    EXPECT_EQ(list.value(u"settings").toArray().at(0).toObject().value(u"name").toString(), u"Environment"_s);
+
+    const QString id = ok(m_commands, u"entity.create", {{u"name"_s, u"Box"_s}}).value(u"id").toString();
+    EXPECT_FALSE(m_commands.execute(u"component.add", {{u"id"_s, id}, {u"component"_s, u"Environment"_s}}))
+        << "a setting isn't added to entities";
+
+    EXPECT_DOUBLE_EQ(ok(m_commands, u"scene.settings").value(u"Environment")[u"sunElevation"].toDouble(), 35.0);
+    const std::uint64_t revision = m_world.revision();
+    ok(m_commands, u"scene.setSetting",
+       {{u"setting"_s, u"Environment"_s}, {u"field"_s, u"sunElevation"_s}, {u"value"_s, 60.0}});
+    EXPECT_FLOAT_EQ(Meow2::Scene::environment(m_world.scene()).sunElevation, 60.0F);
+    EXPECT_GT(m_world.revision(), revision) << "the docks and the viewports follow";
+    ASSERT_TRUE(m_commands.execute(u"edit.undo"));
+    EXPECT_FLOAT_EQ(Meow2::Scene::environment(m_world.scene()).sunElevation, 35.0F);
+    EXPECT_FALSE(m_commands.execute(
+        u"scene.setSetting",
+        {{u"setting"_s, u"Environment"_s}, {u"field"_s, u"sunElevation"_s}, {u"value"_s, u"high"_s}}));
+    EXPECT_FALSE(m_commands.execute(u"scene.setSetting",
+                                    {{u"setting"_s, u"Weather"_s}, {u"field"_s, u"rain"_s}, {u"value"_s, 1.0}}));
 }

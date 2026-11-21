@@ -34,6 +34,10 @@ public:
     std::function<void(const QStringList&, const QString&)> onDrop; ///< Dragged IDs and the target's (empty: root).
 
 protected:
+    /// @brief Does nothing: Qt's trees jump to the item whose name starts with a typed letter, so W/E/R or F with
+    ///        the Hierarchy focused selected some entity "W…" (owner report). Keys here are for shortcuts.
+    void keyboardSearch(const QString&) override {}
+
     void dropEvent(QDropEvent* event) override
     {
         QStringList ids;
@@ -81,7 +85,8 @@ HierarchyDock::HierarchyDock(EditorCommandRegistry& commands, const SceneEditor&
     m_tree->setHeaderHidden(true);
     m_tree->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_tree->setDragDropMode(QAbstractItemView::InternalMove);
-    m_tree->setEditTriggers(QAbstractItemView::EditKeyPressed | QAbstractItemView::DoubleClicked);
+    // F2 renames; a double-click frames the entity in the editor viewport (as in Unity), so it doesn't rename too.
+    m_tree->setEditTriggers(QAbstractItemView::EditKeyPressed);
     tree->onDrop = [this](const QStringList& ids, const QString& target)
     {
         reparent(ids, target);
@@ -103,6 +108,8 @@ HierarchyDock::HierarchyDock(EditorCommandRegistry& commands, const SceneEditor&
                 }
                 run(u"selection.set"_s, {{u"ids"_s, ids}});
             });
+    connect(m_tree, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* item, int)
+            { run(u"viewport.focus"_s, {{u"id"_s, item->data(0, c_idRole).toString()}}); });
     connect(m_tree, &QTreeWidget::itemChanged, this,
             [this](QTreeWidgetItem* item, int)
             {

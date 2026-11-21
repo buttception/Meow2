@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace Meow2::Editor
@@ -33,11 +34,21 @@ enum class GizmoSpace : std::uint8_t
 /// @brief A part of the gizmo the cursor can grab.
 enum class GizmoHandle : std::uint8_t
 {
-    None,   ///< Nothing.
-    X,      ///< The X axis (arrow, ring or box).
-    Y,      ///< The Y axis.
-    Z,      ///< The Z axis.
-    Uniform ///< Scale mode's centre box: all three axes at once.
+    None,    ///< Nothing.
+    X,       ///< The X axis (arrow, ring or box).
+    Y,       ///< The Y axis.
+    Z,       ///< The Z axis.
+    Uniform, ///< Scale mode's centre box: all three axes at once.
+    PlaneXY, ///< Move mode's square between X and Y: moves in that plane (across Z).
+    PlaneYZ, ///< Between Y and Z (across X).
+    PlaneZX  ///< Between Z and X (across Y).
+};
+
+/// @brief What a gizmo draws this frame, in world space. Plain data.
+struct GizmoShapes
+{
+    std::vector<Renderer::DebugLine> lines{};         ///< Thin lines (outlines).
+    std::vector<Renderer::DebugTriangle> triangles{}; ///< Filled shapes: the thick handles, heads, planes, the arc.
 };
 
 /// @brief The camera a gizmo is seen through. Plain data.
@@ -77,8 +88,11 @@ struct GizmoSnap
 class Gizmo
 {
 public:
-    static constexpr float c_sizePixels = 100.0F; ///< How long the handles are on screen.
-    static constexpr float c_hitPixels = 8.0F;    ///< How close the cursor must be to grab one.
+    static constexpr float c_sizePixels = 100.0F;    ///< How long the handles are on screen.
+    static constexpr float c_hitPixels = 8.0F;       ///< How close the cursor must be to grab one.
+    static constexpr float c_lineWidthPixels = 3.0F; ///< How thick the handles are drawn (the hovered one 4).
+    static constexpr float c_planeStart = 0.25F;     ///< Where the move planes' squares start, as a share of the size.
+    static constexpr float c_planeEnd = 0.5F;        ///< Where they end.
 
     /// @brief Sets what the gizmo does; ends a drag.
     /// @param mode The mode.
@@ -110,6 +124,15 @@ public:
     [[nodiscard]] std::vector<Renderer::DebugLine> lines(const GizmoView& view, const Math::Transform& target,
                                                          GizmoHandle highlight) const;
 
+    /// @brief What to draw: the handles as thick, opaque shapes facing the camera (solid arrowheads and boxes),
+    ///        translucent squares for the move planes, and while rotating, an orange slice of the ring's disc from
+    ///        where the drag began to where it is.
+    /// @param view      The camera.
+    /// @param target    The entity's world transform.
+    /// @param highlight The hovered (or dragged) handle, drawn yellow.
+    /// @return The shapes.
+    [[nodiscard]] GizmoShapes shapes(const GizmoView& view, const Math::Transform& target, GizmoHandle highlight) const;
+
     /// @brief The handle under the cursor.
     /// @param view   The camera.
     /// @param target The entity's world transform.
@@ -134,8 +157,7 @@ public:
     /// @param snap Snapping.
     /// @return The new world transform; the one from when the drag began while the cursor's ray misses (parallel to
     ///         the axis or its plane); nothing when not dragging.
-    [[nodiscard]] std::optional<Math::Transform> drag(const GizmoView& view, float x, float y,
-                                                      const GizmoSnap& snap) const;
+    [[nodiscard]] std::optional<Math::Transform> drag(const GizmoView& view, float x, float y, const GizmoSnap& snap);
 
     /// @brief Ends the drag.
     void endDrag()
@@ -166,5 +188,39 @@ private:
     float m_grabParam = 0.0F;                 ///< Translate, scale: where on the axis line it was grabbed.
     Math::Vec3 m_grabVector{};                ///< Rotate: from the centre to where the ring's plane was grabbed (unit).
     float m_grabX = 0.0F;                     ///< Uniform scale: the cursor's x when grabbed.
+    Math::Vec3 m_axis2{};                     ///< Plane moves: the plane's second axis (unit); m_axis is its first.
+    Math::Vec3 m_grabPoint{};                 ///< Plane moves: where the cursor's ray met the plane when grabbed.
+    float m_sweep = 0.0F;                     ///< Rotate: the angle turned so far (radians, as applied), for the arc.
+};
+
+/// @brief The view-axis gizmo in the editor viewport's top-right corner: the world's axes as the camera sees them,
+///        a coloured ball at each positive end (X red, Y green, Z blue) and a dim one at each negative end. Clicking
+///        a ball turns the camera to look from that side, e.g. +X looks along −X. Drawn in viewport pixels.
+/// @par Thread safety
+/// Immutable; any thread.
+class ViewAxes
+{
+public:
+    static constexpr float c_radiusPixels = 42.0F; ///< From the centre to a ball.
+    static constexpr float c_ballPixels = 9.0F;    ///< A ball's radius (and how close a click must be).
+    static constexpr float c_marginPixels = 16.0F; ///< From the viewport's top and right edges to the circle.
+
+    /// @brief Where the gizmo's centre is in a viewport.
+    /// @param view The camera and viewport.
+    /// @return x and y in viewport pixels.
+    [[nodiscard]] static std::pair<float, float> center(const GizmoView& view);
+
+    /// @brief The ball under the cursor.
+    /// @param view The camera and viewport.
+    /// @param x    The cursor, in viewport pixels.
+    /// @param y    The cursor.
+    /// @return The world direction the ball stands for (±X, ±Y, ±Z), or nothing.
+    [[nodiscard]] static std::optional<Math::Vec3> hitTest(const GizmoView& view, float x, float y);
+
+    /// @brief What to draw, in viewport pixels (x right, y down; z is unused).
+    /// @param view    The camera and viewport.
+    /// @param hovered The direction under the cursor (from hitTest()), drawn brighter.
+    /// @return The shapes.
+    [[nodiscard]] static GizmoShapes shapes(const GizmoView& view, const std::optional<Math::Vec3>& hovered);
 };
 } // namespace Meow2::Editor

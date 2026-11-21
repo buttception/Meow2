@@ -7,7 +7,13 @@
 #include "Panels/SettingsDialog.h"
 #include "Viewports/GameViewportDock.h"
 
+#include <Meow2/Scene/Environment.h>
+
 #include <QAction>
+#include <QDockWidget>
+#include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileInfo>
 #include <QPlainTextEdit>
 #include <QTabWidget>
 
@@ -168,4 +174,32 @@ TEST_F(MainWindowTest, TabbedDocksHideTheirTitle)
     window.tick();
     EXPECT_EQ(console.titleBarWidget(), nullptr);
     EXPECT_EQ(assets.titleBarWidget(), nullptr);
+}
+
+// Owner requests (#229): the scene's settings in a dock of their own (File → Scene settings…), edited through
+// scene.setSetting; the Assets dock's icons.
+TEST_F(MainWindowTest, SceneSettingsDockAndAssetIcons)
+{
+    m_world.newScene();
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    ASSERT_TRUE(m_commands.execute(u"view.showPanel", {{u"panel"_s, u"sceneSettings"_s}, {u"visible"_s, true}}));
+    window.tick();
+    auto* dock = window.findChild<QDockWidget*>(u"SceneSettingsDock"_s);
+    ASSERT_NE(dock, nullptr);
+    auto* elevation = dock->findChild<QDoubleSpinBox*>(u"Environment.sunElevation"_s);
+    ASSERT_NE(elevation, nullptr);
+    EXPECT_DOUBLE_EQ(elevation->value(), 35.0);
+    elevation->setValue(50.0);
+    emit elevation->editingFinished();
+    EXPECT_FLOAT_EQ(Meow2::Scene::environment(m_world.scene()).sunElevation, 50.0F);
+    EXPECT_TRUE(m_history.canUndo()) << "an undoable step";
+    ASSERT_NE(dock->findChild<QDoubleSpinBox*>(u"Environment.sunColor.2"_s), nullptr) << "colours as four boxes";
+
+    EXPECT_EQ(Meow2::Editor::assetIconName(QFileInfo{u"Level.m2scene"_s}), u"Scene"_s);
+    EXPECT_EQ(Meow2::Editor::assetIconName(QFileInfo{u"Sponza.GLTF"_s}), u"Mesh"_s);
+    EXPECT_EQ(Meow2::Editor::assetIconName(QFileInfo{u"bricks.png"_s}), u"Texture"_s);
+    EXPECT_EQ(Meow2::Editor::assetIconName(QFileInfo{u"Lit.hlsl"_s}), u"Shader"_s);
+    EXPECT_TRUE(Meow2::Editor::assetIconName(QFileInfo{u"notes.txt"_s}).isEmpty());
+    EXPECT_FALSE(QFile::exists(u":/icons/Nope.svg"_s));
+    EXPECT_TRUE(QFile::exists(u":/icons/Scene.svg"_s)) << "the icon set is built into the editor";
 }

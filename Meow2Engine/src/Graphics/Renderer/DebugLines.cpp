@@ -82,6 +82,22 @@ DebugLines::DebugLines(RenderDevice& device, PipelineLibrary& pipelines, AssetId
     {
         MEOW2_LOG_ERROR(log, "Debug line pipeline not built: {}", pipeline.error());
     }
+    Result<PipelineId> triangles =
+        pipelines.add(Renderer::GraphicsPipelineRequest{.shader = shader,
+                                                        .colorFormat = colorFormat,
+                                                        .depthFormat = Rhi::RhiFormat::Unknown,
+                                                        .depthWrite = false,
+                                                        .cull = Rhi::CullMode::None,
+                                                        .blend = Rhi::BlendMode::Alpha,
+                                                        .name = "Debug triangles"});
+    if (triangles)
+    {
+        m_trianglePipeline = *triangles;
+    }
+    else
+    {
+        MEOW2_LOG_ERROR(log, "Debug triangle pipeline not built: {}", triangles.error());
+    }
     // The buffers are made on demand, so a new device has nothing to restore.
     m_deviceUser = device.addUser(
         "DebugLines", [this](Rhi::IRhiDevice& old) { release(old); },
@@ -108,7 +124,9 @@ void DebugLines::release(Rhi::IRhiDevice& device)
 void DebugLines::addPass(RenderGraph& graph, std::uint32_t frameSlot, const Math::Mat4& viewProjection,
                          GraphResource color, Rhi::TextureHandle colorTexture)
 {
-    if (m_lines.empty() || !m_pipeline)
+    const bool lines = !m_lines.empty() && m_pipeline;
+    const bool triangles = !m_triangles.empty() && m_trianglePipeline;
+    if (!lines && !triangles)
     {
         return;
     }
@@ -116,11 +134,12 @@ void DebugLines::addPass(RenderGraph& graph, std::uint32_t frameSlot, const Math
     Rhi::BufferHandle& buffer = m_buffers[frameSlot];
     if (!buffer.isSet())
     {
-        Result<Rhi::BufferHandle> made =
-            device.createBuffer({.size = c_headerBytes + std::uint64_t{c_maxLines} * 2 * sizeof(LineVertex),
-                                 .memory = Rhi::RhiMemory::Upload,
-                                 .tag = Memory::MemTag::Renderer,
-                                 .name = "Debug lines"});
+        Result<Rhi::BufferHandle> made = device.createBuffer(
+            {.size = c_headerBytes +
+                     (std::uint64_t{c_maxLines} * 2 + std::uint64_t{c_maxTriangles} * 3) * sizeof(LineVertex),
+             .memory = Rhi::RhiMemory::Upload,
+             .tag = Memory::MemTag::Renderer,
+             .name = "Debug lines"});
         if (!made)
         {
             return;
@@ -131,27 +150,51 @@ void DebugLines::addPass(RenderGraph& graph, std::uint32_t frameSlot, const Math
     std::byte* memory = device.mappedMemory(buffer).data();
     std::memcpy(memory, &viewProjection, c_headerBytes);
     auto* vertices = reinterpret_cast<LineVertex*>(memory + c_headerBytes);
+    const auto vertex = [](const Math::Vec3& at, const Math::Color& color)
+    {
+        return LineVertex{.position = {at.x, at.y, at.z, 1.0F}, .color = {color.r, color.g, color.b, color.a}};
+    };
+    // The triangles first, then the lines: one buffer, each draw told where its vertices start.
+    for (const DebugTriangle& triangle : m_triangles)
+    {
+        for (const Math::Vec3& corner : triangle.corners)
+        {
+            *vertices++ = vertex(corner, triangle.color);
+        }
+    }
     for (const DebugLine& line : m_lines)
     {
-        const Math::Vec4 colour{line.color.r, line.color.g, line.color.b, line.color.a};
-        *vertices++ = {.position = {line.from.x, line.from.y, line.from.z, 1.0F}, .color = colour};
-        *vertices++ = {.position = {line.to.x, line.to.y, line.to.z, 1.0F}, .color = colour};
+        *vertices++ = vertex(line.from, line.color);
+        *vertices++ = vertex(line.to, line.color);
     }
     Shader::PushConstants push{};
     push.userData = device.bindlessIndex(buffer);
-    const auto vertexCount = static_cast<std::uint32_t>(m_lines.size() * 2);
-    graph.addPass({.name = "Debug lines",
-                   .accesses = {{color, Rhi::ResourceState::ColorTarget}},
-                   .record =
-                       [this, push, vertexCount, colorTexture](Rhi::IRhiCommandList& list)
-                   {
-                       list.beginRendering(Rhi::RenderTargets{.color = colorTexture});
-                       list.setPipeline(m_pipelines.get(*m_pipeline));
-                       list.setPushConstants(push);
-                       list.draw(vertexCount);
-                       list.endRendering();
-                   },
-                   .small = true,
-                   .debug = true});
+    const auto triangleVertices = static_cast<std::uint32_t>(m_triangles.size() * 3);
+    const auto lineVertices = static_cast<std::uint32_t>(m_lines.size() * 2);
+    graph.addPass(
+        {.name = "Debug lines",
+         .accesses = {{color, Rhi::ResourceState::ColorTarget}},
+         .record =
+             [this, push, triangleVertices, lineVertices, lines, triangles, colorTexture](Rhi::IRhiCommandList& list)
+         {
+             list.beginRendering(Rhi::RenderTargets{.color = colorTexture});
+             if (triangles)
+             {
+                 list.setPipeline(m_pipelines.get(*m_trianglePipeline));
+                 list.setPushConstants(push);
+                 list.draw(triangleVertices);
+             }
+             if (lines)
+             {
+                 Shader::PushConstants after = push;
+                 after.instance = triangleVertices; // the lines follow the triangles in the buffer
+                 list.setPipeline(m_pipelines.get(*m_pipeline));
+                 list.setPushConstants(after);
+                 list.draw(lineVertices);
+             }
+             list.endRendering();
+         },
+         .small = true,
+         .debug = true});
 }
 } // namespace Meow2::Renderer

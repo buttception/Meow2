@@ -26,6 +26,15 @@ struct DebugLine
     Math::Color color{}; ///< Linear colour, the same along it.
 };
 
+/// @brief One filled triangle in world space, drawn with alpha blending (a gizmo's solid arrowheads, translucent
+/// planes).
+///        Plain data.
+struct DebugTriangle
+{
+    std::array<Math::Vec3, 3> corners{}; ///< Its corners; either winding (nothing is culled).
+    Math::Color color{};                 ///< Linear colour; `a` is its opacity.
+};
+
 /// @brief The edges of a camera's view volume, out to a distance: the near rectangle, the far one at `distance`, and
 ///        the four edges from the camera through the corners to the far one.
 ///
@@ -52,6 +61,8 @@ class DebugLines
 public:
     /// @brief The most lines a frame can draw.
     static constexpr std::uint32_t c_maxLines = 4096;
+    /// @brief The most filled triangles a frame can draw.
+    static constexpr std::uint32_t c_maxTriangles = 8192;
 
     /// @brief Builds the pipeline. The buffers are made when first needed.
     /// @param device      The device.
@@ -68,10 +79,11 @@ public:
     DebugLines(const DebugLines&) = delete;            ///< Not copyable: owns buffers.
     DebugLines& operator=(const DebugLines&) = delete; ///< Not copyable: owns buffers.
 
-    /// @brief Forgets the lines added so far.
+    /// @brief Forgets the lines and triangles added so far.
     void clear()
     {
         m_lines.clear();
+        m_triangles.clear();
     }
 
     /// @brief Adds a line for the next addPass(). Lines past c_maxLines are dropped.
@@ -84,6 +96,16 @@ public:
         }
     }
 
+    /// @brief Adds a filled triangle for the next addPass(), drawn under the lines. Past c_maxTriangles it's dropped.
+    /// @param triangle The triangle.
+    void add(const DebugTriangle& triangle)
+    {
+        if (m_triangles.size() < c_maxTriangles)
+        {
+            m_triangles.push_back(triangle);
+        }
+    }
+
     /// @brief How many lines are waiting.
     /// @return The count.
     [[nodiscard]] std::size_t size() const
@@ -91,7 +113,7 @@ public:
         return m_lines.size();
     }
 
-    /// @brief Adds the pass that draws the lines into a colour target, if there are any.
+    /// @brief Adds the pass that draws the triangles, then the lines over them, into a colour target, if there are any.
     /// @param graph          The frame's graph.
     /// @param frameSlot      IRhiDevice::frameSlot().
     /// @param viewProjection The camera's view-projection matrix (FrameConstants::viewProjection).
@@ -108,7 +130,9 @@ private:
     RenderDevice& m_device;
     PipelineLibrary& m_pipelines;
     std::optional<PipelineId> m_pipeline;
+    std::optional<PipelineId> m_trianglePipeline; ///< Filled, alpha-blended.
     std::vector<DebugLine> m_lines;
+    std::vector<DebugTriangle> m_triangles;
     std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_buffers{}; ///< Matrix and vertices, per frame slot.
     DeviceUser m_deviceUser; ///< Last: stops its callbacks before the members they use go away.
 };

@@ -168,12 +168,11 @@ void SceneView::finishLoading()
 
 std::optional<Scene::Environment> SceneView::environment() const
 {
-    const std::optional<entt::entity> entity = Scene::findEnvironment(*m_world);
-    if (!entity)
+    if (!Scene::hasEnvironment(*m_world))
     {
         return std::nullopt;
     }
-    return m_world->registry().get<Scene::Environment>(*entity);
+    return Scene::environment(*m_world);
 }
 
 Result<std::filesystem::path> SceneView::saveScene(const Scene::Environment& environment)
@@ -183,12 +182,7 @@ Result<std::filesystem::path> SceneView::saveScene(const Scene::Environment& env
         return fail(ErrorCode::Unsupported,
                     m_saveProblem.empty() ? std::string{"this scene can't be saved"} : m_saveProblem);
     }
-    entt::entity holder = Scene::findEnvironment(*m_world).value_or(entt::null);
-    if (holder == entt::null)
-    {
-        holder = m_world->create("Environment");
-    }
-    m_world->registry().emplace_or_replace<Scene::Environment>(holder, environment);
+    Scene::setEnvironment(*m_world, environment); // saved as the file's [settings.Environment]
     if (Result<void> saved = Assets::saveScene(m_deps.files, m_saveVirtualPath, *m_world, m_deps.components); !saved)
     {
         return Unexpected<Error>{saved.error()};
@@ -314,9 +308,10 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
         }
         if (movable[i])
         {
-            if (auto* renderer = view->m_world->registry().try_get<Renderer::MeshRenderer>(view->m_nodeEntities[i]))
+            // Animated: its transform's mobility says so, so the renderer draws it into the shadows every frame.
+            if (auto* local = view->m_world->registry().try_get<Scene::LocalTransform>(view->m_nodeEntities[i]))
             {
-                renderer->movable = true;
+                local->mobility = Scene::Mobility::Movable;
             }
         }
     }

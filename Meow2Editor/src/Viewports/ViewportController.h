@@ -52,10 +52,12 @@ struct ViewportControllerDeps
 /// step; a gizmo under the cursor wins over picking. Snapping is on with `viewport.setGizmo {snap}` or while Ctrl is
 /// held, in the steps of `editor.snap.*`.
 /// A viewport whose widget isn't visible (a hidden or tabbed-away dock) isn't drawn. Its commands:
-/// - `viewport.focus`: frames the scene in the editor viewport (F);
+/// - `viewport.focus {id}`: frames an entity and everything under it (a double-click in the Hierarchy), or the
+///   selection, or the whole scene (F);
 /// - `viewport.setCameraMode {mode}`: `orbit` or `fly`;
 /// - `viewport.setRenderScale {percent}`: the game viewport's render scale, 25..100, saved as
 ///   `editor.gameRenderScale`;
+/// - `viewport.viewFrom {side}`: looks from +x, -x, +y, -y, +z or -z (the view-axis gizmo in the top-right corner);
 /// - `viewport.setGizmo {mode, space, snap}`: the gizmo's mode (`translate`, `rotate`, `scale`), axes (`world`,
 ///   `local`) and snapping (each optional);
 /// - query `viewport.info`: each viewport's size, visibility, whether it drew, the camera mode and the render scale.
@@ -128,7 +130,8 @@ private:
     bool handleGizmo(bool editorFocused);
     /// @brief Ends a drag: one recorded `entity.setTransform` from where it began, if it moved anything.
     void finishGizmoDrag();
-    /// @brief Hands the gizmo's lines for this frame to the renderer (none without a target).
+    /// @brief Hands this frame's gizmos to the renderer: the transform gizmo (none without a target) and the
+    ///        view-axis gizmo in the corner.
     void updateGizmoLines();
     /// @brief The entity the gizmo is on: the last selected one, if it's there and has a transform.
     /// @return It, or nothing.
@@ -152,6 +155,7 @@ private:
     bool m_drew = false;                       ///< drewLastFrame().
     bool m_snap = false;                       ///< `viewport.setGizmo {snap}`.
     GizmoHandle m_hover = GizmoHandle::None;   ///< The handle under the cursor this frame.
+    std::optional<Math::Vec3> m_axisHover;     ///< The view-axis gizmo's ball under the cursor.
     EntityId m_dragEntity{};                   ///< What the drag moves.
     Math::Transform m_dragFrom{};              ///< Its local transform when the drag began.
     std::optional<Math::Transform> m_dragLast; ///< The last local transform the drag previewed.

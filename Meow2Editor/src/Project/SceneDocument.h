@@ -25,6 +25,8 @@ namespace Meow2::Editor
 {
 /// @brief The config key of the project folder (a native path).
 inline constexpr const char* c_projectKey = "editor.project";
+/// @brief The extension of a project's file, `<name>.m2project`, in its folder beside Assets/ and Scenes/.
+inline constexpr const char* c_projectExtension = ".m2project";
 /// @brief The config key of the recent scenes: project-relative paths, newest first, one per line.
 inline constexpr const char* c_recentScenesKey = "editor.recentScenes";
 /// @brief How many recent scenes are kept.

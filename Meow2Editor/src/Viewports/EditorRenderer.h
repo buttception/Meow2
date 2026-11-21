@@ -78,6 +78,15 @@ struct PickResult
                                  ///< empty: nothing there.
 };
 
+/// @brief Shapes drawn over a viewport: the gizmos. Plain data.
+struct ViewportOverlay
+{
+    std::vector<Renderer::DebugLine> lines{};               ///< In world space.
+    std::vector<Renderer::DebugTriangle> triangles{};       ///< In world space (the transform gizmo).
+    std::vector<Renderer::DebugLine> screenLines{};         ///< In viewport pixels: x right, y down.
+    std::vector<Renderer::DebugTriangle> screenTriangles{}; ///< In viewport pixels (the view-axis gizmo).
+};
+
 /// @brief The editor's renderer: one device, one GpuScene shared by every viewport, and a view per viewport.
 ///
 /// Each viewport has a target (a swapchain on a Qt widget's native window, or an offscreen texture in tests), a
@@ -183,11 +192,11 @@ public:
     /// @param outline  Whether to draw it; with nothing selected the passes are skipped anyway.
     void setOutline(ViewportId viewport, bool outline);
 
-    /// @brief Lines to draw over a viewport's scene each frame until changed (the gizmo), on top of everything,
+    /// @brief Shapes to draw over a viewport's scene each frame until changed (the gizmos), on top of everything,
     ///        before the tone map. Their colours are divided by the exposure, so they keep their brightness.
     /// @param viewport The viewport.
-    /// @param lines    The lines in world space; empty draws none.
-    void setLines(ViewportId viewport, std::vector<Renderer::DebugLine> lines);
+    /// @param overlay  The shapes; empty draws none.
+    void setOverlay(ViewportId viewport, ViewportOverlay overlay);
 
     /// @brief Tells the renderer whether any instance is marked selected, so the outline passes can be skipped.
     /// @param any True if some InstanceDesc has `selected`.
@@ -254,8 +263,9 @@ private:
         Rhi::ResourceState maskState = Rhi::ResourceState::Undefined; ///< The mask's state after the last frame.
         std::uint32_t maskWidth = 0;                                  ///< The mask's size.
         std::uint32_t maskHeight = 0;
-        std::vector<Renderer::DebugLine> lines;           ///< setLines().
-        std::unique_ptr<Renderer::DebugLines> debugLines; ///< Draws them; made on first use.
+        ViewportOverlay overlay;                           ///< setOverlay().
+        std::unique_ptr<Renderer::DebugLines> debugLines;  ///< Draws its world shapes; made on first use.
+        std::unique_ptr<Renderer::DebugLines> screenLines; ///< Draws its screen shapes; made with debugLines.
     };
 
     /// @brief A pick asked for. Plain data.

@@ -436,6 +436,11 @@ Result<const Scene::ComponentDesc*> SceneEditor::componentParameter(const QJsonO
     {
         return fail(ErrorCode::NotFound, std::format("no component '{}' (component.list lists them)", name));
     }
+    if (desc->setting)
+    {
+        return fail(ErrorCode::InvalidArgument,
+                    std::format("{} is a scene setting, not a component: scene.setSetting changes it", name));
+    }
     return desc;
 }
 
@@ -1052,35 +1057,122 @@ void SceneEditor::registerCommands()
             return CommandOutcome{.result = describeEntity(*entity)};
         });
 
+    // A component's (or setting's) fields as component.list describes them.
+    const auto describe = [](const Scene::ComponentDesc& desc)
+    {
+        QJsonArray fields;
+        for (const Scene::FieldDesc& field : desc.fields)
+        {
+            QJsonObject entry{{u"name"_s, QString::fromStdString(field.name)}, {u"type"_s, fieldTypeName(field.type)}};
+            if (!field.enumNames.empty())
+            {
+                QJsonArray values;
+                for (const std::string& value : field.enumNames)
+                {
+                    values.append(QString::fromStdString(value));
+                }
+                entry.insert(u"values"_s, values);
+            }
+            fields.append(entry);
+        }
+        return QJsonObject{{u"name"_s, QString::fromStdString(desc.name)},
+                           {u"version"_s, static_cast<qint64>(desc.version)},
+                           {u"fields"_s, fields}};
+    };
     add({.name = u"component.list"_s,
-         .description = u"Every component the editor knows: its fields with their types (and an enum's values)."_s,
+         .description = u"Every component the editor knows: its fields with their types (and an enum's values); and "
+                        u"the scene settings (settings), changed with scene.setSetting."_s,
+         .kind = CommandKind::Query},
+        [this, describe](const QJsonObject&) -> Result<CommandOutcome>
+        {
+            QJsonArray list;
+            QJsonArray settings;
+            for (const Scene::ComponentDesc& desc : m_deps.components.components())
+            {
+                (desc.setting ? settings : list).append(describe(desc));
+            }
+            return CommandOutcome{.result = QJsonObject{{u"components"_s, list}, {u"settings"_s, settings}}};
+        });
+
+    // Scene settings: one value per scene, not on an entity (the Environment: sun and exposure).
+    add({.name = u"scene.settings"_s,
+         .description = u"The scene's settings and their values: Environment (the sun's angles, colour and strength, "
+                        u"and the exposure)."_s,
          .kind = CommandKind::Query},
         [this](const QJsonObject&) -> Result<CommandOutcome>
         {
-            QJsonArray list;
-            for (const Scene::ComponentDesc& desc : m_deps.components.components())
+            QJsonObject settings;
+            if (const Scene::ComponentDesc* desc = m_deps.components.find("Environment"))
             {
-                QJsonArray fields;
-                for (const Scene::FieldDesc& field : desc.fields)
+                const Scene::Environment environment = Scene::environment(m_deps.world.scene());
+                QJsonObject fields;
+                for (const Scene::FieldDesc& field : desc->fields)
                 {
-                    QJsonObject entry{{u"name"_s, QString::fromStdString(field.name)},
-                                      {u"type"_s, fieldTypeName(field.type)}};
-                    if (!field.enumNames.empty())
-                    {
-                        QJsonArray values;
-                        for (const std::string& value : field.enumNames)
-                        {
-                            values.append(QString::fromStdString(value));
-                        }
-                        entry.insert(u"values"_s, values);
-                    }
-                    fields.append(entry);
+                    fields.insert(QString::fromStdString(field.name),
+                                  toJson(field.get(&environment, m_deps.world.scene())));
                 }
-                list.append(QJsonObject{{u"name"_s, QString::fromStdString(desc.name)},
-                                        {u"version"_s, static_cast<qint64>(desc.version)},
-                                        {u"fields"_s, fields}});
+                settings.insert(u"Environment"_s, fields);
             }
-            return CommandOutcome{.result = QJsonObject{{u"components"_s, list}}};
+            return CommandOutcome{.result = settings};
+        });
+    add({.name = u"scene.setSetting"_s,
+         .description = u"Sets one field of a scene setting, e.g. setting Environment, field sunElevation, value 40."_s,
+         .parameters = objectSchema(
+             {{.name = u"setting"_s,
+               .schema = propertySchema(u"string"_s, u"The setting: Environment."_s),
+               .required = true},
+              {.name = u"field"_s, .schema = propertySchema(u"string"_s, u"The field's name."_s), .required = true},
+              {.name = u"value"_s, .schema = propertySchema(QString{}, u"The new value."_s), .required = true}})},
+        [this](const QJsonObject& parameters) -> Result<CommandOutcome>
+        {
+            const std::string settingName = parameters.value(u"setting").toString().toStdString();
+            const Scene::ComponentDesc* desc = m_deps.components.find(settingName);
+            if (desc == nullptr || !desc->setting || settingName != "Environment")
+            {
+                return fail(ErrorCode::NotFound, std::format("no scene setting '{}'", settingName));
+            }
+            const std::string fieldName = parameters.value(u"field").toString().toStdString();
+            const auto field = std::ranges::find_if(desc->fields, [&fieldName](const Scene::FieldDesc& candidate)
+                                                    { return candidate.name == fieldName; });
+            if (field == desc->fields.end())
+            {
+                return fail(ErrorCode::NotFound, std::format("{} has no field '{}'", settingName, fieldName));
+            }
+            Result<Scene::FieldValue> value = fromJson(parameters.value(u"value"), field->type);
+            if (!value)
+            {
+                return fail(ErrorCode::InvalidArgument,
+                            std::format("{}.{}: {}", settingName, fieldName, value.error().message));
+            }
+            const Scene::FieldDesc* fieldDesc = &*field;
+            Scene::Environment environment = Scene::environment(m_deps.world.scene());
+            const Scene::FieldValue before = fieldDesc->get(&environment, m_deps.world.scene());
+            const auto setValue = [this, fieldDesc](const Scene::FieldValue& to) -> Result<void>
+            {
+                Scene::Environment changed = Scene::environment(m_deps.world.scene());
+                if (Result<void> set = fieldDesc->set(&changed, to, m_deps.world.scene()); !set)
+                {
+                    return set;
+                }
+                Scene::setEnvironment(m_deps.world.scene(), changed);
+                m_deps.world.markChanged();
+                return {};
+            };
+            if (Result<void> set = setValue(*value); !set)
+            {
+                return fail(ErrorCode::InvalidArgument,
+                            std::format("{}.{}: {}", settingName, fieldName, set.error().message));
+            }
+            const Scene::FieldValue after = *value;
+            return CommandOutcome{
+                .result = {},
+                .undoStep = UndoStep{.label = QString::fromStdString(std::format("Set {}.{}", settingName, fieldName)),
+                                     .undo = [setValue, before] { static_cast<void>(setValue(before)); },
+                                     .redo =
+                                         [setValue, after]
+                                     {
+                                         static_cast<void>(setValue(after));
+                                     }}};
         });
 }
 } // namespace Meow2::Editor

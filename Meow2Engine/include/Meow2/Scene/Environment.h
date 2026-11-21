@@ -11,8 +11,8 @@
 
 namespace Meow2::Scene
 {
-/// @brief A scene's sun, sky light and exposure. One per scene, on an entity of its own; the first one found is used.
-///        Plain data.
+/// @brief A scene's sun, sky light and exposure: a scene setting (environment(), setEnvironment()), one per scene,
+///        saved as the scene file's `[settings.Environment]`. Plain data.
 ///
 /// The sun is given by two angles, as a person would set it: how high it stands and which way it comes from.
 struct Environment
@@ -29,8 +29,24 @@ struct Environment
 /// @return The direction (left-handed, +Y up).
 [[nodiscard]] Math::Vec3 sunDirection(const Environment& environment);
 
-/// @brief The scene's environment: the first entity with an Environment.
+/// @brief The scene's environment setting.
 /// @param scene The scene.
-/// @return The entity, or nothing.
+/// @return Its Environment, or the default one when none was set.
+[[nodiscard]] Environment environment(const Scene& scene);
+
+/// @brief Sets the scene's environment.
+/// @param scene       The scene.
+/// @param environment The sun and exposure.
+void setEnvironment(Scene& scene, const Environment& environment);
+
+/// @brief Whether the scene has its own environment (one was set or read from its file).
+/// @param scene The scene.
+/// @return True if it has.
+[[nodiscard]] bool hasEnvironment(const Scene& scene);
+
+/// @brief An entity with an Environment component: how scene files before Environment became a setting kept it
+///        (readScene() folds it into the setting).
+/// @param scene The scene.
+/// @return The first such entity, or nothing.
 [[nodiscard]] std::optional<entt::entity> findEnvironment(const Scene& scene);
 } // namespace Meow2::Scene
