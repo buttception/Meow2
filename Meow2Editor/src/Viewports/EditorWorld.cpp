@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <format>
 #include <string>
 
 namespace Meow2::Editor
@@ -36,6 +37,7 @@ void EditorWorld::adopt(Fresh fresh)
     m_hierarchy = std::move(fresh.hierarchy);
     m_scene = std::move(fresh.scene);
     m_meshes = {};
+    m_meshNames.clear();
     m_instances.clear();
     m_bounds = {.center = {0.0F, 0.0F, 0.0F}, .radius = 5.0F};
     ++m_revision;
@@ -44,9 +46,10 @@ void EditorWorld::adopt(Fresh fresh)
 Result<void> EditorWorld::buildDefaultScene(Renderer::GpuScene* gpu)
 {
     // One cube mesh; each colour is its own mesh asset (the same GPU mesh with another material).
-    const auto makeMeshAsset = [&](const Math::Color& color, float roughness) -> Result<AssetId>
+    const auto makeMeshAsset = [&](const Math::Color& color, float roughness, std::string name) -> Result<AssetId>
     {
         const AssetId id = m_deps.ids.next<IdKind::Asset>();
+        m_meshNames[id] = std::move(name);
         if (gpu == nullptr)
         {
             return id;
@@ -75,7 +78,7 @@ Result<void> EditorWorld::buildDefaultScene(Renderer::GpuScene* gpu)
         return entity;
     };
 
-    Result<AssetId> ground = makeMeshAsset({0.35F, 0.35F, 0.38F, 1.0F}, 0.9F);
+    Result<AssetId> ground = makeMeshAsset({0.35F, 0.35F, 0.38F, 1.0F}, 0.9F, "Test scene: ground");
     if (!ground)
     {
         return Unexpected<Error>{ground.error()};
@@ -89,7 +92,7 @@ Result<void> EditorWorld::buildDefaultScene(Renderer::GpuScene* gpu)
                                                   {0.6F, 0.25F, 0.85F, 1.0F}};
     for (std::size_t i = 0; i < c_colors.size(); ++i)
     {
-        Result<AssetId> cube = makeMeshAsset(c_colors[i], 0.4F);
+        Result<AssetId> cube = makeMeshAsset(c_colors[i], 0.4F, std::format("Test scene: cube {}", i + 1));
         if (!cube)
         {
             return Unexpected<Error>{cube.error()};
@@ -196,6 +199,11 @@ Result<Assets::SceneReadReport> EditorWorld::openScene(std::string_view path, co
     Renderer::GpuScene* gpu = freshGpu ? freshGpu() : nullptr; // only now: a file that can't be read keeps the old
     // The models its MeshRenderers name, found by their stable mesh IDs in the models' .meta files.
     const Renderer::SceneModels models = Renderer::importSceneModels(*m_scene, m_deps.assets, m_meshes, m_deps.log);
+    for (const Renderer::SceneModelImport& model : models.models)
+    {
+        const std::optional<Assets::AssetRecord> record = m_deps.assets.find(model.model);
+        nameMeshes(record ? record->sourcePath : std::string{}, model.data, model.meshIds);
+    }
     for (const std::string& warning : models.warnings)
     {
         MEOW2_LOG_WARN(m_deps.log, "{}: {}", path, warning);
@@ -245,6 +253,7 @@ Result<std::vector<entt::entity>> EditorWorld::importModel(std::string_view sour
             return Unexpected<Error>{added.error()};
         }
     }
+    nameMeshes(source, *model, *meshIds);
     std::string name{source.substr(source.find_last_of('/') + 1)};
     name = name.substr(0, name.find_last_of('.'));
     const entt::entity root = m_scene->create(name);
@@ -277,5 +286,32 @@ std::optional<Scene::Environment> EditorWorld::environment() const
         return std::nullopt;
     }
     return m_scene->registry().get<Scene::Environment>(*entity);
+}
+
+void EditorWorld::nameMeshes(std::string_view source, const Assets::ImportedModel& model,
+                             std::span<const AssetId> meshIds)
+{
+    // "Sponza: mesh_12": the model's file name without its folder and extension, then the mesh's own name.
+    std::string stem{source.substr(source.find_last_of('/') + 1)};
+    stem = stem.substr(0, stem.find_last_of('.'));
+    for (std::size_t i = 0; i < meshIds.size() && i < model.meshes.size(); ++i)
+    {
+        const std::string& mesh = model.meshes[i].name;
+        const std::string part = mesh.empty() ? std::format("mesh {}", i + 1) : mesh;
+        m_meshNames[meshIds[i]] = stem.empty() ? part : stem + ": " + part;
+    }
+}
+
+std::string EditorWorld::meshName(AssetId mesh) const
+{
+    const auto found = m_meshNames.find(mesh);
+    return found != m_meshNames.end() ? found->second : std::string{};
+}
+
+std::vector<std::pair<AssetId, std::string>> EditorWorld::meshNames() const
+{
+    std::vector<std::pair<AssetId, std::string>> out(m_meshNames.begin(), m_meshNames.end());
+    std::ranges::sort(out, [](const auto& a, const auto& b) { return a.second < b.second; });
+    return out;
 }
 } // namespace Meow2::Editor

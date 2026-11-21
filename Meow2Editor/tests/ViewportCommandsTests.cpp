@@ -120,3 +120,33 @@ TEST_F(ViewportCommandsTest, GizmoCommand)
     local->trigger();
     EXPECT_EQ(window.viewports().gizmo().space(), Meow2::Editor::GizmoSpace::World);
 }
+
+// Owner report: W and E didn't reach the flying camera. The gizmo keys are viewport-only actions that step aside
+// while the camera flies; the toolbar items have no shortcut that could take the keys.
+TEST_F(ViewportCommandsTest, GizmoKeysStepAsideWhileFlying)
+{
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    auto* keyW = window.findChild<QAction*>(u"GizmoKeyW"_s);
+    auto* keyE = window.findChild<QAction*>(u"GizmoKeyE"_s);
+    ASSERT_TRUE(keyW && keyE);
+    for (QAction* action : window.findChildren<QAction*>())
+    {
+        if (action->text() == u"Move"_s || action->text() == u"Rotate"_s || action->text() == u"Scale"_s)
+        {
+            EXPECT_TRUE(action->shortcut().isEmpty()) << action->text().toStdString() << " takes no key";
+        }
+    }
+    window.tick();
+    EXPECT_TRUE(keyW->isEnabled()) << "orbiting: W picks the move gizmo";
+
+    ASSERT_TRUE(m_commands.execute(u"viewport.setCameraMode", {{u"mode"_s, u"fly"_s}}));
+    window.tick();
+    EXPECT_FALSE(keyW->isEnabled()) << "flying: W moves the camera";
+    EXPECT_FALSE(keyE->isEnabled()) << "and E lifts it";
+
+    ASSERT_TRUE(m_commands.execute(u"viewport.setCameraMode", {{u"mode"_s, u"orbit"_s}}));
+    window.tick();
+    EXPECT_TRUE(keyW->isEnabled());
+    keyE->trigger();
+    EXPECT_EQ(window.viewports().gizmo().mode(), Meow2::Editor::GizmoMode::Rotate);
+}

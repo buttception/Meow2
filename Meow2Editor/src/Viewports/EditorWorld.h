@@ -23,7 +23,10 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace Meow2::Editor
@@ -149,6 +152,22 @@ public:
         return *m_scene;
     }
 
+    /// @brief The scene, read-only.
+    /// @return It.
+    [[nodiscard]] const Scene::Scene& scene() const
+    {
+        return *m_scene;
+    }
+
+    /// @brief A mesh's name for people: "<model file>: <mesh>" for imported models, as the Inspector shows it.
+    /// @param mesh The mesh's AssetId.
+    /// @return The name, or empty for a mesh this scene hasn't loaded.
+    [[nodiscard]] std::string meshName(AssetId mesh) const;
+
+    /// @brief Every mesh the scene has loaded, with its name, sorted by name (the Inspector's mesh drop-down).
+    /// @return The meshes.
+    [[nodiscard]] std::vector<std::pair<AssetId, std::string>> meshNames() const;
+
     /// @brief Its transform hierarchy.
     /// @return It.
     [[nodiscard]] Scene::TransformHierarchy& hierarchy()
@@ -169,10 +188,17 @@ private:
     /// @brief Makes `fresh` the current scene; its meshes start empty.
     void adopt(Fresh fresh);
 
+    /// @brief Remembers the names of a model's meshes (meshName()).
+    /// @param source  The model's virtual path; its file name prefixes the names.
+    /// @param model   The imported model (its meshes' names).
+    /// @param meshIds Its stable mesh IDs, one per mesh.
+    void nameMeshes(std::string_view source, const Assets::ImportedModel& model, std::span<const AssetId> meshIds);
+
     EditorWorldDeps m_deps;
     std::unique_ptr<Scene::Scene> m_scene;                  ///< Behind a pointer: Scene can't move.
     std::unique_ptr<Scene::TransformHierarchy> m_hierarchy; ///< Likewise; destroyed before the scene.
     Renderer::RenderMeshes m_meshes;                        ///< Mesh AssetId → GPU mesh and material.
+    std::unordered_map<AssetId, std::string> m_meshNames;   ///< meshName().
     std::vector<Renderer::InstanceDesc> m_instances;        ///< Reused each update.
     std::vector<entt::entity> m_instanceEntities;           ///< The entity of each of m_instances (its slot).
     bool m_anySelected = false;                             ///< anySelectedInstance().

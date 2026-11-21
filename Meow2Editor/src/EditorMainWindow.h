@@ -228,6 +228,7 @@ private:
     QAction* m_scaleAction = nullptr;                    ///< Gizmo: scale (R).
     QAction* m_localAction = nullptr;                    ///< Gizmo: checked for local axes.
     QAction* m_snapAction = nullptr;                     ///< Gizmo: checked while snapping is on.
+    std::vector<QAction*> m_gizmoKeys;                   ///< W/E/R on the viewport; off while the camera flies.
     std::vector<CommandAction> m_commandActions;         ///< Every action bound to a command.
     QAction* m_undoAction = nullptr;                     ///< Its text names the step it undoes.
     QAction* m_redoAction = nullptr;                     ///< Its text names the step it redoes.

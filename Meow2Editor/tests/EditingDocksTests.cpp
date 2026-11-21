@@ -6,9 +6,11 @@
 #include "Panels/HierarchyDock.h"
 #include "Panels/InspectorDock.h"
 
+#include <Meow2/Graphics/Renderer/SceneModel.h>
 #include <Meow2/Math/Quaternion.h>
 #include <Meow2/Scene/TransformHierarchy.h>
 
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -123,4 +125,62 @@ TEST_F(InspectorDockTest, EditsIssueCommands)
     emit name->editingFinished();
     EXPECT_EQ(m_commands.execute(u"entity.get", {{u"id"_s, id}}).value().toObject().value(u"name").toString(),
               u"Crate"_s);
+}
+
+// Owner request: mesh and entity fields show names to pick from, not IDs.
+TEST_F(InspectorDockTest, MeshAndEntityFieldsShowNames)
+{
+    ASSERT_TRUE(m_world.buildDefaultScene(nullptr));
+    m_world.update(nullptr);
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+
+    // A cube of the test scene, under a new parent.
+    QString cube;
+    QString otherMesh;
+    for (const auto [entity, renderer] : m_world.scene().registry().view<Meow2::Renderer::MeshRenderer>().each())
+    {
+        const QString id = QString::fromStdString(m_world.scene().idOf(entity).uuid().toString());
+        const QString mesh = QString::fromStdString(renderer.mesh.uuid().toString());
+        if (m_world.meshName(renderer.mesh) == "Test scene: cube 1")
+        {
+            cube = id;
+        }
+        else if (m_world.meshName(renderer.mesh) == "Test scene: ground")
+        {
+            otherMesh = mesh;
+        }
+    }
+    ASSERT_FALSE(cube.isEmpty());
+    ASSERT_FALSE(otherMesh.isEmpty());
+    const QString holder = create(m_commands, u"Holder"_s);
+    ASSERT_TRUE(m_commands.execute(u"entity.setParent", {{u"id"_s, cube}, {u"parent"_s, holder}}));
+    ASSERT_TRUE(m_commands.execute(u"selection.set", {{u"ids"_s, QJsonArray{cube}}}));
+    window.tick();
+
+    auto* mesh = window.inspectorDock().findChild<QComboBox*>(u"MeshRenderer.mesh"_s);
+    ASSERT_NE(mesh, nullptr) << "a drop-down, not a text box";
+    EXPECT_EQ(mesh->currentText(), u"Test scene: cube 1"_s);
+    EXPECT_GE(mesh->findText(u"Test scene: ground"_s), 0) << "every loaded mesh, by name";
+    EXPECT_GE(mesh->findText(u"(none)"_s), 0);
+    auto* parent = window.inspectorDock().findChild<QComboBox*>(u"Parent.entity"_s);
+    ASSERT_NE(parent, nullptr);
+    EXPECT_EQ(parent->currentText(), u"Holder"_s);
+    // Two entities share that name here (the new scene's camera and the test scene's): both are told apart by ID.
+    EXPECT_GE(parent->findText(u"Main camera ("_s, Qt::MatchStartsWith), 0) << "every entity, by name";
+    EXPECT_EQ(parent->findText(u"Main camera"_s), -1) << "a repeated name gets the start of its ID";
+
+    // Picking a name sets the field to that one's ID.
+    const int ground = mesh->findText(u"Test scene: ground"_s);
+    mesh->setCurrentIndex(ground);
+    emit mesh->activated(ground);
+    const Meow2::Result<Meow2::Uuid> uuid = Meow2::Uuid::parse(cube.toStdString());
+    ASSERT_TRUE(uuid);
+    const entt::entity entity = m_world.scene().find(Meow2::EntityId{*uuid}).value_or(entt::entity{entt::null});
+    ASSERT_TRUE(entity != entt::null);
+    EXPECT_EQ(QString::fromStdString(
+                  m_world.scene().registry().get<Meow2::Renderer::MeshRenderer>(entity).mesh.uuid().toString()),
+              otherMesh);
+    ASSERT_TRUE(m_commands.execute(u"edit.undo"));
+    EXPECT_EQ(m_world.meshName(m_world.scene().registry().get<Meow2::Renderer::MeshRenderer>(entity).mesh),
+              "Test scene: cube 1");
 }

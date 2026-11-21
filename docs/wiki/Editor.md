@@ -150,7 +150,9 @@ The editor works on a **project folder**: the scenes, models and their `.meta` f
   | vec3, color | 3 or 4 spin boxes |
   | quat (rotations) | Euler angles in degrees: X pitch, Y yaw, Z roll |
   | enum | drop-down |
-  | string, asset, entity | text (an asset picker comes later) |
+  | string | text |
+  | asset (a mesh) | a drop-down of the meshes the scene has loaded, by name ("Sponza: mesh_12": the model file, then the mesh); the ID stays in the file and the tooltip |
+  | entity (`Parent`) | a drop-down of the scene's entities by name, repeated names with the start of their ID; picking a parent runs `entity.setParent` |
 
   An edit counts when it's finished (Enter, or leaving the box), so typing a number records one step, not one per key. Each component has Remove; Add component lists those the entity doesn't have. Components kept from a scene file but unknown here are named at the bottom.
 - **Rotations:** stored as quaternions, shown as Euler angles. Several angle sets give the same rotation, so angles worked out from the quaternion could jump to another set; the inspector keeps the angles you typed while they still give the stored rotation, and shows those (techstack §10).
@@ -229,7 +231,7 @@ The last selected entity gets a gizmo in the editor viewport, always on top and 
 - X is red, Y green, Z blue; the handle under the cursor (or being dragged) turns yellow. A gizmo handle wins over a click that would pick.
 - **Local axes** (toolbar, View menu) move and rotate along the entity's own axes instead of the world's; scale always uses its own.
 - **Snapping:** the toolbar's Snap, or hold Ctrl while dragging. Moves go in steps of `editor.snap.translate` cm along the axis, turns in `editor.snap.angle` degrees, and scales snap to multiples of `editor.snap.scale` %.
-- W/E/R work while the editor viewport has focus and the camera isn't flying (WASD moves it then); the toolbar buttons always work.
+- W/E/R work while the editor viewport has focus and the camera isn't flying. They are separate actions on the viewport, switched off while the camera flies, because a Qt shortcut takes its key before the viewport sees it: as toolbar shortcuts they kept W and E from the flying camera. The toolbar buttons have no key and always work.
 - **A drag is one undo step.** While the button is held, each change runs `entity.setTransform` with `preview: true`, which moves the entity without touching the history; on release one recorded step names the transform the drag began from (`from`), so Ctrl+Z puts it back in one go. An agent can do the same in one call.
 - **How it works** (`Editing/Gizmo`, plain maths with no Qt or GPU): the gizmo works on the entity's *world* transform from when the drag began.
   - Move: the closest point on the axis line to the cursor's ray, minus where it was grabbed.
@@ -315,7 +317,7 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.EditorCameraTest.*`: right drag flies and letting go orbits without a jump; Fly mode; focus frames the bounds and stops the spin; `OrbitNeedsAlt`: a left drag orbits only with Alt held.
 - `Editor.ViewportPickingTest.ClicksSelect`: the nearest hit is selected, the same spot again steps behind it and wraps round, another spot or other hits start over, Ctrl adds and removes, nothing under the cursor clears; gone and repeated entities are dropped.
 - `Editor.GizmoTest.TranslatesAlongTheAxis`, `RotatesAroundTheAxis`, `ScalesAndHitTests`: a drag moves along the axis by what's under the cursor (only along it, in whole steps with snapping, along the entity's own axis in local space); turns by the swept angle (15° steps, added to an existing rotation); scales one axis or all from the centre, never to nothing; hit tests find each handle and nothing far away; the gizmo keeps its size on screen.
-- `Editor.SceneEditorTest.SetTransformCommand`: only the given parts change; previews aren't recorded; the last step undoes back to `from` in one step; quaternions normalised; wrong shapes refused. `Editor.ViewportCommandsTest.GizmoCommand`: `viewport.setGizmo` and `viewport.info`, bad values refused, the toolbar follows and runs it. `Editor.MainWindowTest.DockTabsOnTop`. `Editor.MainWindowTest.TabbedDocksHideTheirTitle`: a dock tabbed with another loses its title bar, gets it back when the other tab closes or it's split off. `Editor.WheelGuardTest.WheelEditsOnlyFocusedFields`: the wheel over an unfocused spin box or drop-down leaves its value and scrolls the panel; focused, it edits.
+- `Editor.SceneEditorTest.SetTransformCommand`: only the given parts change; previews aren't recorded; the last step undoes back to `from` in one step; quaternions normalised; wrong shapes refused. `Editor.ViewportCommandsTest.GizmoCommand`: `viewport. `Editor.ViewportCommandsTest.GizmoKeysStepAsideWhileFlying`: the toolbar items take no key, and W/E/R are off while the camera flies. `Editor.InspectorDockTest.MeshAndEntityFieldsShowNames`: mesh and parent fields are drop-downs of names (repeated names told apart), picking one sets the ID, undo restores it.setGizmo` and `viewport.info`, bad values refused, the toolbar follows and runs it. `Editor.MainWindowTest.DockTabsOnTop`. `Editor.MainWindowTest.TabbedDocksHideTheirTitle`: a dock tabbed with another loses its title bar, gets it back when the other tab closes or it's split off. `Editor.WheelGuardTest.WheelEditsOnlyFocusedFields`: the wheel over an unfocused spin box or drop-down leaves its value and scrolls the panel; focused, it edits.
 - `Editor.ViewportCommandsTest.*`: `viewport.setRenderScale` saves the setting and updates the drop-down, out-of-range values are refused, `viewport.setCameraMode` and `viewport.info`; the test scene has a main camera.
 - `Editor.MainWindowTest.LayoutRoundTrips`: the dock layout saved in `editor.layout` is restored by the next window.
 - `EditorGpu.EditorRendererTest.TwoViewportsAndRenderScale` (label `gpu`): an editor and a game viewport drawn offscreen in one frame, both filled; at 50 % the game scene is half size and still fills its viewport; a hidden viewport isn't drawn.
@@ -330,7 +332,7 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 
 ## Not yet
 
-- Gizmos on several selected entities at once, plane handles (two axes), solid handles, pivot options; an asset picker for mesh fields; editing several entities at once in the Inspector.
+- Gizmos on several selected entities at once, plane handles (two axes), solid handles, pivot options; picking meshes from the Assets dock by dragging; editing several entities at once in the Inspector.
 - The MCP server (M7 PR 6).
 - Prefabs: a model as one asset whose instances keep their edits when it's re-imported; textures cooked into the project at import.
 - Renaming, moving and deleting assets in the Assets dock (each needs its `.meta` kept with it).

@@ -360,7 +360,70 @@ QWidget* InspectorDock::fieldEditor(const QString& component, const QJsonObject&
         }
         return row;
     }
-    // string, asset, entity: text.
+    if (type == u"asset"_s || type == u"entity"_s)
+    {
+        // Names to pick from, the ID behind each (item data): people read names, files and commands keep IDs.
+        auto* box = new QComboBox(parent);
+        box->setObjectName(objectName);
+        box->addItem(u"(none)"_s, QString{});
+        std::vector<std::pair<QString, QString>> choices; // name, ID text
+        if (type == u"asset"_s)
+        {
+            for (const auto& [mesh, name] : m_world.meshNames())
+            {
+                choices.emplace_back(QString::fromStdString(name), QString::fromStdString(mesh.uuid().toString()));
+            }
+        }
+        else
+        {
+            const auto& registry = m_world.scene().registry();
+            for (const auto [entity, idComponent] : registry.storage<Scene::IdComponent>()->each())
+            {
+                if (m_shown && idComponent.id == *m_shown)
+                {
+                    continue; // not itself (its own parent, its own target)
+                }
+                const auto* named = registry.try_get<Scene::NameComponent>(entity);
+                const QString name =
+                    named != nullptr && !named->name.empty() ? QString::fromStdString(named->name) : u"(unnamed)"_s;
+                choices.emplace_back(name, QString::fromStdString(idComponent.id.uuid().toString()));
+            }
+            std::ranges::sort(choices);
+        }
+        // Several entities (or meshes) can share a name: those get the start of their ID, to tell them apart.
+        for (std::size_t i = 0; i < choices.size(); ++i)
+        {
+            const bool repeated = (i > 0 && choices[i - 1].first == choices[i].first) ||
+                                  (i + 1 < choices.size() && choices[i + 1].first == choices[i].first);
+            box->addItem(repeated ? choices[i].first + u" ("_s + choices[i].second.left(8) + u')' : choices[i].first,
+                         choices[i].second);
+        }
+        const QString current = value.toString();
+        int index = box->findData(current);
+        if (index < 0)
+        {
+            // Not loaded (a mesh whose model is missing) or gone: shown by its ID, so nothing is lost on screen.
+            box->addItem(u"(not found) "_s + current, current);
+            index = box->count() - 1;
+        }
+        box->setCurrentIndex(index);
+        box->setToolTip(current.isEmpty() ? u"None"_s : u"ID: "_s + current);
+        connect(box, &QComboBox::activated, this,
+                [this, box, component, fieldName](int chosen)
+                {
+                    const QString picked = box->itemData(chosen).toString();
+                    if (component == u"Parent"_s && m_shown)
+                    {
+                        // Re-parenting goes through its own command: it keeps the hierarchy right and refuses cycles.
+                        run(u"entity.setParent"_s,
+                            {{u"id"_s, QString::fromStdString(m_shown->uuid().toString())}, {u"parent"_s, picked}});
+                        return;
+                    }
+                    setField(component, fieldName, picked);
+                });
+        return box;
+    }
+    // string: text.
     auto* edit = new QLineEdit(value.toString(), parent);
     edit->setObjectName(objectName);
     connect(edit, &QLineEdit::editingFinished, this,

@@ -210,6 +210,12 @@ void EditorMainWindow::refreshActions()
     m_scaleAction->setChecked(gizmo.mode() == GizmoMode::Scale);
     m_localAction->setChecked(gizmo.space() == GizmoSpace::Local);
     m_snapAction->setChecked(m_viewports->snapping());
+    // While the camera flies, W and E move it: the gizmo keys step aside so the viewport gets them.
+    const bool flying = m_viewports->camera().flying();
+    for (QAction* key : m_gizmoKeys)
+    {
+        key->setEnabled(!flying);
+    }
     m_gameDock->showRenderScale(m_viewports->renderScalePercent());
 
     // The labels name the next step: "Undo Set position". Only rebuilt when the history changed.
@@ -426,24 +432,24 @@ void EditorMainWindow::createMenusAndToolbar()
         modes->addAction(mode);
     }
 
-    // Gizmo modes, as in Unity: W move, E rotate, R scale, while the editor viewport has focus and the camera isn't
-    // flying (WASD moves it then).
+    // Gizmo modes, as in Unity: W move, E rotate, R scale. The toolbar and menu items have no shortcut of their own:
+    // a Qt shortcut takes its key before the viewport sees it, so W and E would never reach the flying camera (WASD,
+    // QE). The keys are separate actions on the viewport instead, switched off while the camera flies
+    // (refreshActions()).
     const auto gizmoAction = [this](const QString& text, const QString& mode, Qt::Key key)
     {
         auto* action = new QAction(text, this);
         action->setCheckable(true);
-        action->setShortcut(QKeySequence{key});
-        action->setShortcutContext(Qt::WidgetShortcut);
         action->setToolTip(u"%1 (%2)"_s.arg(text, QKeySequence{key}.toString()));
-        connect(action, &QAction::triggered, this,
-                [this, mode]
-                {
-                    if (!m_viewports->camera().flying())
-                    {
-                        run(u"viewport.setGizmo"_s, {{u"mode"_s, mode}});
-                    }
-                });
-        m_viewport->addAction(action);
+        connect(action, &QAction::triggered, this, [this, mode] { run(u"viewport.setGizmo"_s, {{u"mode"_s, mode}}); });
+        auto* shortcut = new QAction(text + u" (key)"_s, this);
+        shortcut->setObjectName(u"GizmoKey"_s + QKeySequence{key}.toString());
+        shortcut->setShortcut(QKeySequence{key});
+        shortcut->setShortcutContext(Qt::WidgetShortcut);
+        connect(shortcut, &QAction::triggered, this,
+                [this, mode] { run(u"viewport.setGizmo"_s, {{u"mode"_s, mode}}); });
+        m_viewport->addAction(shortcut);
+        m_gizmoKeys.push_back(shortcut);
         return action;
     };
     m_translateAction = gizmoAction(u"Move"_s, u"translate"_s, Qt::Key_W);
