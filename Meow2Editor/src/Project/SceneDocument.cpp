@@ -108,6 +108,40 @@ QString SceneDocument::projectPath(const std::filesystem::path& path) const
     return QString::fromUtf8(reinterpret_cast<const char*>(text.data()), static_cast<qsizetype>(text.size()));
 }
 
+Result<QString> SceneDocument::copyIntoProject(const std::filesystem::path& model)
+{
+    if (m_mount.empty())
+    {
+        return fail(ErrorCode::NotFound, "no project folder is open");
+    }
+    const std::string extension = lowerExtension(model);
+    if (extension != ".gltf" && extension != ".glb")
+    {
+        return fail(ErrorCode::InvalidArgument, std::format("{} isn't a .gltf or .glb file", model.string()));
+    }
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(model, error))
+    {
+        return fail(ErrorCode::NotFound, model.string());
+    }
+    // The whole folder: a .gltf names its buffers and textures by paths relative to itself.
+    const std::filesystem::path target = m_projectFolder / "Models" / model.stem();
+    if (!std::filesystem::exists(target / model.filename(), error))
+    {
+        std::filesystem::create_directories(target, error);
+        std::filesystem::copy(model.parent_path(), target,
+                              std::filesystem::copy_options::recursive | std::filesystem::copy_options::skip_existing,
+                              error);
+        if (error)
+        {
+            return fail(ErrorCode::IoError, std::format("can't copy {} into the project: {}",
+                                                        model.parent_path().string(), error.message()));
+        }
+        MEOW2_LOG_INFO(m_deps.log, "Copied {} into {}", model.parent_path().string(), target.string());
+    }
+    return projectPath(target / model.filename());
+}
+
 Result<void> SceneDocument::mountProject(const std::filesystem::path& folder)
 {
     std::error_code error;
@@ -148,7 +182,11 @@ Result<std::string> SceneDocument::virtualPath(const QString& path, std::initial
     const std::string text = toUtf8(path);
     const std::filesystem::path relative{reinterpret_cast<const char8_t*>(text.c_str())};
     // Inside the project only (techstack §20): no drive, no leading slash, no step up.
-    if (text.empty() || relative.has_root_name() || relative.has_root_directory() ||
+    if (text.empty())
+    {
+        return fail(ErrorCode::InvalidArgument, "no path given (a file outside the project folder has none)");
+    }
+    if (relative.has_root_name() || relative.has_root_directory() ||
         std::ranges::any_of(relative, [](const std::filesystem::path& part) { return part == ".."; }))
     {
         return fail(ErrorCode::InvalidArgument,

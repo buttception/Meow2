@@ -116,6 +116,15 @@ public:
     /// @return The relative path (generic separators), or empty if it isn't inside the project.
     [[nodiscard]] QString projectPath(const std::filesystem::path& path) const;
 
+    /// @brief Copies a model from outside the project into it, with the rest of its folder (its `.bin` buffers and
+    ///        textures), to `Models/<model name>/`. A model already copied there is reused.
+    ///
+    /// Only the window calls it, for a file the user picked in a dialog: commands never read outside the project
+    /// (techstack §20), so an agent works with what's in the project.
+    /// @param model The `.gltf` or `.glb`, a native path outside the project.
+    /// @return Its copy's path relative to the project, or the error.
+    [[nodiscard]] Result<QString> copyIntoProject(const std::filesystem::path& model);
+
 private:
     /// @brief Mounts a project folder (creating it if needed) and scans its `.meta` files.
     [[nodiscard]] Result<void> mountProject(const std::filesystem::path& folder);

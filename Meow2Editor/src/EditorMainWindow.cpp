@@ -4,8 +4,11 @@
 #include "EditorMainWindow.h"
 
 #include "Commands/CommandSchema.h"
+#include "Editing/SceneEditor.h"
 #include "Panels/AssetsDock.h"
 #include "Panels/ConsoleDock.h"
+#include "Panels/HierarchyDock.h"
+#include "Panels/InspectorDock.h"
 #include "Panels/SettingsDialog.h"
 #include "Project/SceneDocument.h"
 #include "Viewports/GameViewportDock.h"
@@ -42,6 +45,8 @@ constexpr QLatin1StringView c_consolePanel{"console"};
 constexpr QLatin1StringView c_settingsPanel{"settings"};
 constexpr QLatin1StringView c_gamePanel{"game"};
 constexpr QLatin1StringView c_assetsPanel{"assets"};
+constexpr QLatin1StringView c_hierarchyPanel{"hierarchy"};
+constexpr QLatin1StringView c_inspectorPanel{"inspector"};
 /// @brief Where the dock layout is kept (QMainWindow::saveState(), base64).
 constexpr std::string_view c_layoutKey = "editor.layout";
 } // namespace
@@ -57,13 +62,19 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     , m_inputSource(new QtInputSource(deps.input, this))
     , m_settings(deps.settings)
     , m_document(deps.document)
+    , m_editor(deps.editor)
+    , m_hierarchyDock(new HierarchyDock(deps.commands, deps.editor, deps.world, deps.log, this))
+    , m_inspectorDock(new InspectorDock(deps.commands, deps.editor, deps.world, deps.log, this))
     , m_assetsDock(new AssetsDock(this))
 {
     m_viewport->setObjectName(u"EditorViewport"_s);
     setCentralWidget(m_viewport);
     addDockWidget(Qt::RightDockWidgetArea, m_gameDock);
     addDockWidget(Qt::BottomDockWidgetArea, m_console);
+    addDockWidget(Qt::LeftDockWidgetArea, m_hierarchyDock);
     addDockWidget(Qt::LeftDockWidgetArea, m_assetsDock);
+    addDockWidget(Qt::RightDockWidgetArea, m_inspectorDock);
+    splitDockWidget(m_gameDock, m_inspectorDock, Qt::Vertical); // the game view above, the inspector below
     m_assetsDock->setProject(QString::fromStdString(m_document.projectFolder().string()));
     m_assetsDock->onActivate([this](const QString& path) { activateAsset(path); });
     // How the window asks; tests replace both (setUnsavedPrompt(), setSaveAsPrompt()).
@@ -116,6 +127,8 @@ EditorMainWindow::~EditorMainWindow()
 void EditorMainWindow::tick(float deltaSeconds)
 {
     m_console->tick();
+    m_hierarchyDock->refresh();
+    m_inspectorDock->refresh();
     m_viewports->tick(deltaSeconds);
     refreshActions();
 }
@@ -144,6 +157,8 @@ void EditorMainWindow::refreshActions()
     m_consoleAction->setChecked(m_console->isVisible());
     m_gameAction->setChecked(m_gameDock->isVisible());
     m_assetsAction->setChecked(m_assetsDock->isVisible());
+    m_hierarchyAction->setChecked(m_hierarchyDock->isVisible());
+    m_inspectorAction->setChecked(m_inspectorDock->isVisible());
     // The title names the scene's file, with a * while it has unsaved changes.
     const QString name = m_document.scenePath().isEmpty() ? u"Untitled"_s : m_document.scenePath();
     const QString title = name + (m_document.hasUnsavedChanges() ? u"*"_s : QString{}) + u" — Meow2Editor"_s;
@@ -230,7 +245,16 @@ void EditorMainWindow::createMenusAndToolbar()
                     u"Meow2 scene (*.m2scene)"_s);
                 if (!file.isEmpty())
                 {
-                    openScene(m_document.projectPath(file.toStdWString()));
+                    if (const QString path = m_document.projectPath(file.toStdWString()); !path.isEmpty())
+                    {
+                        openScene(path);
+                    }
+                    else
+                    {
+                        MEOW2_LOG_WARN(m_log,
+                                       "{} is outside the project folder ({}); scenes are opened from the project",
+                                       file.toStdString(), m_document.projectFolder().string());
+                    }
                 }
             });
     auto* save = new QAction(u"Save"_s, this);
@@ -264,11 +288,68 @@ void EditorMainWindow::createMenusAndToolbar()
                 const QString file = QFileDialog::getOpenFileName(
                     this, u"Import model"_s, QString::fromStdString(m_document.projectFolder().string()),
                     u"glTF model (*.gltf *.glb)"_s);
-                if (!file.isEmpty())
+                if (file.isEmpty())
                 {
-                    tryRun(u"asset.importModel"_s, {{u"path"_s, m_document.projectPath(file.toStdWString())}});
+                    return;
+                }
+                // A model outside the project is copied in first (with its folder): scenes only refer to what the
+                // project holds, so it opens on another machine too.
+                QString path = m_document.projectPath(file.toStdWString());
+                if (path.isEmpty())
+                {
+                    Result<QString> copied = m_document.copyIntoProject(file.toStdWString());
+                    if (!copied)
+                    {
+                        MEOW2_LOG_WARN(m_log, "Import model: {}", copied.error());
+                        return;
+                    }
+                    path = *copied;
+                }
+                tryRun(u"asset.importModel"_s, {{u"path"_s, path}});
+            });
+    // Entity actions work on the selection; Delete and Ctrl+D act wherever focus is, unless a text box uses the key.
+    auto* createEntity = new QAction(u"Create entity"_s, this);
+    connect(createEntity, &QAction::triggered, this,
+            [this]
+            {
+                const std::vector<EntityId> selected = m_editor.selection();
+                tryRun(u"entity.create"_s,
+                       {{u"name"_s, u"Entity"_s},
+                        {u"parent"_s,
+                         selected.empty() ? QString{} : QString::fromStdString(selected.front().uuid().toString())}});
+            });
+    auto* duplicate = new QAction(u"Duplicate"_s, this);
+    duplicate->setShortcut(QKeySequence{u"Ctrl+D"_s});
+    connect(duplicate, &QAction::triggered, this,
+            [this]
+            {
+                for (const EntityId id : m_editor.selection())
+                {
+                    tryRun(u"entity.duplicate"_s, {{u"id"_s, QString::fromStdString(id.uuid().toString())}});
                 }
             });
+    auto* deleteEntity = new QAction(u"Delete"_s, this);
+    deleteEntity->setShortcut(QKeySequence::Delete);
+    connect(deleteEntity, &QAction::triggered, this,
+            [this]
+            {
+                for (const EntityId id : m_editor.selection())
+                {
+                    if (m_editor.find(id) == entt::null)
+                    {
+                        continue; // gone with a selected parent
+                    }
+                    tryRun(u"entity.delete"_s, {{u"id"_s, QString::fromStdString(id.uuid().toString())}});
+                }
+            });
+    m_hierarchyAction = new QAction(u"Hierarchy"_s, this);
+    m_hierarchyAction->setCheckable(true);
+    connect(m_hierarchyAction, &QAction::triggered, this,
+            [this](bool shown) { run(u"view.showPanel"_s, {{u"panel"_s, c_hierarchyPanel}, {u"visible"_s, shown}}); });
+    m_inspectorAction = new QAction(u"Inspector"_s, this);
+    m_inspectorAction->setCheckable(true);
+    connect(m_inspectorAction, &QAction::triggered, this,
+            [this](bool shown) { run(u"view.showPanel"_s, {{u"panel"_s, c_inspectorPanel}, {u"visible"_s, shown}}); });
     m_assetsAction = new QAction(u"Assets"_s, this);
     m_assetsAction->setCheckable(true);
     connect(m_assetsAction, &QAction::triggered, this,
@@ -319,6 +400,10 @@ void EditorMainWindow::createMenusAndToolbar()
     QMenu* edit = menuBar()->addMenu(u"&Edit"_s);
     edit->addAction(m_undoAction);
     edit->addAction(m_redoAction);
+    edit->addSeparator();
+    edit->addAction(createEntity);
+    edit->addAction(duplicate);
+    edit->addAction(deleteEntity);
     QMenu* view = menuBar()->addMenu(u"&View"_s);
     view->addAction(focus);
     view->addSeparator();
@@ -328,6 +413,8 @@ void EditorMainWindow::createMenusAndToolbar()
     window->addAction(m_consoleAction);
     window->addAction(m_gameAction);
     window->addAction(m_assetsAction);
+    window->addAction(m_hierarchyAction);
+    window->addAction(m_inspectorAction);
 
     QToolBar* toolbar = addToolBar(u"Main"_s);
     toolbar->setObjectName(u"MainToolbar"_s);
@@ -343,11 +430,12 @@ void EditorMainWindow::createMenusAndToolbar()
 void EditorMainWindow::registerViewCommands()
 {
     QJsonObject panel = propertySchema(u"string"_s, u"Which panel."_s);
-    panel.insert(u"enum", QJsonArray{c_assetsPanel, c_consolePanel, c_gamePanel, c_settingsPanel});
+    panel.insert(u"enum", QJsonArray{c_assetsPanel, c_consolePanel, c_gamePanel, c_hierarchyPanel, c_inspectorPanel,
+                                     c_settingsPanel});
     [[maybe_unused]] const Result<void> added = m_commands.add(
         {.name = u"view.showPanel"_s,
          .description =
-             u"Shows or hides a panel: the Assets dock, the console dock, the game view dock or the settings window."_s,
+             u"Shows or hides a panel: the Assets, console, game view, Hierarchy or Inspector dock, or the settings window."_s,
          .parameters = objectSchema({{.name = u"panel"_s, .schema = panel, .required = true},
                                      {.name = u"visible"_s,
                                       .schema = propertySchema(u"boolean"_s, u"Shown or hidden."_s),
@@ -356,10 +444,12 @@ void EditorMainWindow::registerViewCommands()
         {
             const bool visible = parameters.value(u"visible").toBool();
             const QString name = parameters.value(u"panel").toString();
-            QWidget* widget = name == c_consolePanel  ? static_cast<QWidget*>(m_console)
-                              : name == c_gamePanel   ? static_cast<QWidget*>(m_gameDock)
-                              : name == c_assetsPanel ? static_cast<QWidget*>(m_assetsDock)
-                                                      : static_cast<QWidget*>(m_settingsDialog);
+            QWidget* widget = name == c_consolePanel     ? static_cast<QWidget*>(m_console)
+                              : name == c_gamePanel      ? static_cast<QWidget*>(m_gameDock)
+                              : name == c_assetsPanel    ? static_cast<QWidget*>(m_assetsDock)
+                              : name == c_hierarchyPanel ? static_cast<QWidget*>(m_hierarchyDock)
+                              : name == c_inspectorPanel ? static_cast<QWidget*>(m_inspectorDock)
+                                                         : static_cast<QWidget*>(m_settingsDialog);
             if (widget == m_settingsDialog && visible)
             {
                 m_settingsDialog->refresh(); // an agent may have changed a setting since it was last open
@@ -377,6 +467,16 @@ void EditorMainWindow::registerViewCommands()
 AssetsDock& EditorMainWindow::assetsDock()
 {
     return *m_assetsDock;
+}
+
+HierarchyDock& EditorMainWindow::hierarchyDock()
+{
+    return *m_hierarchyDock;
+}
+
+InspectorDock& EditorMainWindow::inspectorDock()
+{
+    return *m_inspectorDock;
 }
 
 bool EditorMainWindow::tryRun(const QString& command, const QJsonObject& parameters)

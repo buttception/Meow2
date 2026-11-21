@@ -6,6 +6,7 @@
 #include "Commands/EditorCommands.h"
 #include "Commands/EditorSettings.h"
 #include "Commands/UndoStack.h"
+#include "Editing/SceneEditor.h"
 #include "EditorMainWindow.h"
 #include "EditorTheme.h"
 #include "Project/SceneDocument.h"
@@ -168,6 +169,9 @@ int main(int argc, char** argv)
                                            .assets = assets,
                                            .log = appLog}};
 
+    // The edit commands (entity.*, component.*, selection.*) the Hierarchy and Inspector docks run.
+    Meow2::Editor::SceneEditor editor{{.commands = commands, .world = world, .components = components, .log = appLog}};
+
     Meow2::Editor::EditorMainWindow window{{.commands = commands,
                                             .settings = settings,
                                             .console = consoleLines,
@@ -175,6 +179,7 @@ int main(int argc, char** argv)
                                             .world = world,
                                             .input = input,
                                             .document = document,
+                                            .editor = editor,
                                             .renderer = renderer.get()}};
     Meow2::Editor::showWithDesc(
         window, Meow2::Platform::windowDescFromConfig(config, {.title = "Meow2Editor"}, engineLog), engineLog);

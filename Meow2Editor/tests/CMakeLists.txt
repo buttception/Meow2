@@ -4,6 +4,7 @@ meow2_add_test_suite(
     MODULE    Editor
     SOURCES
         ConsoleDockTests.cpp
+        EditingDocksTests.cpp
         EditorCommandRegistryTests.cpp
         EditorCameraTests.cpp
         EditorCommandsTests.cpp
@@ -13,6 +14,7 @@ meow2_add_test_suite(
         QtInputSourceTests.cpp
         QtTestApplication.h
         SceneDocumentTests.cpp
+        SceneEditorTests.cpp
         SettingsDialogTests.cpp
         UndoStackTests.cpp
         ViewportCommandsTests.cpp

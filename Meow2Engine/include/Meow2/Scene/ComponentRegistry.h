@@ -125,6 +125,8 @@ struct ComponentDesc
     const void* (*get)(const Scene::Registry& registry, entt::entity entity) = nullptr;
     /// @brief The entity's component, added with default values when it has none.
     void* (*getOrEmplace)(Scene::Registry& registry, entt::entity entity) = nullptr;
+    /// @brief Removes the component from an entity (nothing if it has none).
+    void (*remove)(Scene::Registry& registry, entt::entity entity) = nullptr;
     /// @brief Creates the component's storage up front (Scene::registerComponent()).
     void (*registerStorage)(Scene& scene) = nullptr;
 };
@@ -439,6 +441,7 @@ template <class C>
                        .has = nullptr,
                        .get = nullptr,
                        .getOrEmplace = nullptr,
+                       .remove = nullptr,
                        .registerStorage = nullptr};
     desc.has = [](const Scene::Registry& registry, entt::entity entity)
     {
@@ -451,6 +454,10 @@ template <class C>
     desc.getOrEmplace = [](Scene::Registry& registry, entt::entity entity) -> void*
     {
         return &registry.get_or_emplace<C>(entity);
+    };
+    desc.remove = [](Scene::Registry& registry, entt::entity entity)
+    {
+        registry.remove<C>(entity);
     };
     desc.registerStorage = [](Scene& scene)
     {

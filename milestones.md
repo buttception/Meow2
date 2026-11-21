@@ -259,7 +259,7 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
   - glTF import writes assets with `.meta` sidecars and a prefab, so re-importing keeps edits (and textures are cooked at import)
   - Scene environment (sun, sky, exposure) saved with the scene
   - Renderer opens `.m2scene`
-- **PR 4 Editing**
+- **PR 4 Editing**, split in two (2026-11-15): the hierarchy, inspector and edit commands first (#224 / PR #225), then picking, the selection outline and gizmos
   - Scene hierarchy (create, delete, duplicate, rename, re-parent by dragging) and an inspector generated from the field descriptors (add and remove components)
   - Selection and a selection outline
   - GPU picking through a framebuffer: on a click, a scissored pass around the cursor appends `{entity, depth}` per pixel; sorted on the CPU, repeated clicks step down through transparent layers; alpha cutoff in the pick shader; gizmos win; `registry.valid()` checked after the delayed readback
@@ -366,3 +366,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-15 — M7 PR 2 done: the editor's viewports, cameras and Qt input (#214 / PR #215).
 - 2026-11-15 — M7 PR 3 split in two: scene files and the component registry in the engine (#218 / PR #219), then the editor's project folder, asset browser and file commands.
 - 2026-11-15 — M7 PR 3 done (#222 / PR #223); prefabs and cooking textures at import moved out of it.
+- 2026-11-15 — M7 PR 4 split in two: the hierarchy, inspector and edit commands (#224 / PR #225), then picking, the selection outline and gizmos.

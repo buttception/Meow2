@@ -174,3 +174,23 @@ TEST_F(SceneDocumentTest, ImportModelIsUndoable)
     EXPECT_FALSE(m_commands.execute(u"asset.importModel", {{u"path"_s, u"Models/Missing.gltf"_s}}));
     EXPECT_FALSE(m_commands.execute(u"asset.importModel", {{u"path"_s, u"WithModel.m2scene"_s}})) << "not a model";
 }
+
+TEST_F(SceneDocumentTest, ModelsOutsideTheProjectAreCopiedIn)
+{
+    // A model in a folder of its own outside the project, with a file next to it (its textures, say).
+    const std::filesystem::path outside = m_project.parent_path() / "Downloads" / "Triangle";
+    std::filesystem::create_directories(outside);
+    std::ofstream{outside / "Triangle.gltf", std::ios::binary} << triangleGltf();
+    std::ofstream{outside / "Texture.png", std::ios::binary} << "png";
+
+    EXPECT_TRUE(m_document->projectPath(outside / "Triangle.gltf").isEmpty()) << "not in the project";
+    EXPECT_FALSE(m_commands.execute(u"asset.importModel", {{u"path"_s, QString{}}})) << "commands stay in the project";
+
+    const Meow2::Result<QString> copied = m_document->copyIntoProject(outside / "Triangle.gltf");
+    ASSERT_TRUE(copied) << copied.error().message;
+    EXPECT_EQ(*copied, u"Models/Triangle/Triangle.gltf"_s);
+    EXPECT_TRUE(std::filesystem::exists(m_project / "Models" / "Triangle" / "Texture.png")) << "the folder comes along";
+    ASSERT_TRUE(m_commands.execute(u"asset.importModel", {{u"path"_s, *copied}}));
+    EXPECT_EQ(*m_document->copyIntoProject(outside / "Triangle.gltf"), *copied) << "a second import reuses the copy";
+    EXPECT_FALSE(m_document->copyIntoProject(outside / "Texture.png")) << "only models";
+}
