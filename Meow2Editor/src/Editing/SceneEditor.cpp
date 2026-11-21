@@ -9,6 +9,7 @@
 #include <Meow2/Scene/TransformHierarchy.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <format>
 #include <map>
@@ -16,6 +17,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <set>
+#include <string_view>
 #include <unordered_map>
 
 namespace Meow2::Editor
@@ -51,6 +53,66 @@ std::string nameOf(const Scene::Scene& scene, entt::entity entity)
 {
     const auto* name = scene.registry().try_get<Scene::NameComponent>(entity);
     return name != nullptr ? name->name : std::string{};
+}
+
+/// @brief `count` numbers from a JSON array, or an error naming the key.
+Result<std::array<float, 4>> numbersFrom(const QJsonValue& value, std::size_t count, std::string_view key)
+{
+    const QJsonArray array = value.toArray();
+    if (!value.isArray() || static_cast<std::size_t>(array.size()) != count)
+    {
+        return fail(ErrorCode::InvalidArgument, std::format("{} needs an array of {} numbers", key, count));
+    }
+    std::array<float, 4> out{};
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const QJsonValue element = array.at(static_cast<qsizetype>(i));
+        if (!element.isDouble() || !std::isfinite(element.toDouble()))
+        {
+            return fail(ErrorCode::InvalidArgument, std::format("{}[{}] isn't a number", key, i));
+        }
+        out[i] = static_cast<float>(element.toDouble());
+    }
+    return out;
+}
+
+/// @brief A transform from `position`, `rotation` (a quaternion) and `scale` keys; missing ones come from `base`.
+Result<Math::Transform> transformFromJson(const QJsonObject& object, const Math::Transform& base)
+{
+    Math::Transform out = base;
+    if (object.contains(u"position"))
+    {
+        Result<std::array<float, 4>> v = numbersFrom(object.value(u"position"), 3, "position");
+        if (!v)
+        {
+            return Unexpected<Error>{v.error()};
+        }
+        out.position = {(*v)[0], (*v)[1], (*v)[2]};
+    }
+    if (object.contains(u"rotation"))
+    {
+        Result<std::array<float, 4>> q = numbersFrom(object.value(u"rotation"), 4, "rotation");
+        if (!q)
+        {
+            return Unexpected<Error>{q.error()};
+        }
+        const float length = std::sqrt((*q)[0] * (*q)[0] + (*q)[1] * (*q)[1] + (*q)[2] * (*q)[2] + (*q)[3] * (*q)[3]);
+        if (length < 1e-6F)
+        {
+            return fail(ErrorCode::InvalidArgument, "rotation must not be all zeros");
+        }
+        out.rotation = Math::Quat{(*q)[0] / length, (*q)[1] / length, (*q)[2] / length, (*q)[3] / length};
+    }
+    if (object.contains(u"scale"))
+    {
+        Result<std::array<float, 4>> s = numbersFrom(object.value(u"scale"), 3, "scale");
+        if (!s)
+        {
+            return Unexpected<Error>{s.error()};
+        }
+        out.scale = {(*s)[0], (*s)[1], (*s)[2]};
+    }
+    return out;
 }
 } // namespace
 
@@ -583,6 +645,93 @@ void SceneEditor::registerCommands()
                                                        {
                                                            setName(after);
                                                        }}};
+        });
+
+    // The gizmos' command: one undo step per drag. While dragging, `preview` steps move the entity without touching
+    // the history; the last step names the transform the drag began from in `from`, so undo goes back there at once.
+    const auto transformSchema = [](const QString& description)
+    {
+        QJsonObject schema = objectSchema(
+            {{.name = u"position"_s, .schema = propertySchema(u"array"_s, u"Local position: 3 numbers (metres)."_s)},
+             {.name = u"rotation"_s,
+              .schema = propertySchema(u"array"_s, u"Local rotation: a quaternion, 4 numbers (x, y, z, w)."_s)},
+             {.name = u"scale"_s, .schema = propertySchema(u"array"_s, u"Local scale: 3 numbers."_s)}});
+        schema.insert(u"description", description);
+        return schema;
+    };
+    add({.name = u"entity.setTransform"_s,
+         .description = u"Sets an entity's local transform (any of position, rotation, scale; the rest is kept). "
+                        u"preview: apply without recording an undo step (while dragging). from: the transform undo "
+                        u"goes back to (where a drag began); by default the one before this call."_s,
+         .parameters = objectSchema(
+             {idSchema(u"The entity's ID."_s, true),
+              {.name = u"position"_s, .schema = propertySchema(u"array"_s, u"Local position: 3 numbers (metres)."_s)},
+              {.name = u"rotation"_s,
+               .schema = propertySchema(u"array"_s, u"Local rotation: a quaternion, 4 numbers (x, y, z, w)."_s)},
+              {.name = u"scale"_s, .schema = propertySchema(u"array"_s, u"Local scale: 3 numbers."_s)},
+              {.name = u"preview"_s, .schema = propertySchema(u"boolean"_s, u"Apply without an undo step."_s)},
+              {.name = u"from"_s, .schema = transformSchema(u"What undo restores."_s)}})},
+        [this](const QJsonObject& parameters) -> Result<CommandOutcome>
+        {
+            Result<entt::entity> entity = entityParameter(parameters, u"id"_s);
+            if (!entity)
+            {
+                return Unexpected<Error>{entity.error()};
+            }
+            Scene::Scene& scene = m_deps.world.scene();
+            const auto* local = scene.registry().try_get<Scene::LocalTransform>(*entity);
+            if (local == nullptr)
+            {
+                return fail(ErrorCode::NotFound, "the entity has no LocalTransform");
+            }
+            const Math::Transform before = local->value;
+            Result<Math::Transform> after = transformFromJson(parameters, before);
+            if (!after)
+            {
+                return Unexpected<Error>{after.error()};
+            }
+            Result<Math::Transform> from = parameters.contains(u"from")
+                                               ? transformFromJson(parameters.value(u"from").toObject(), before)
+                                               : Result<Math::Transform>{before};
+            if (!from)
+            {
+                return fail(ErrorCode::InvalidArgument, "from: " + from.error().message);
+            }
+            const EntityId id = scene.idOf(*entity);
+            // `announce`: say the scene changed (the docks rebuild). Not for previews: a drag would rebuild the
+            // Hierarchy and Inspector every frame; they catch up with the final step.
+            const auto setTransform = [this, id](const Math::Transform& to, bool announce)
+            {
+                const entt::entity target = find(id);
+                if (target == entt::null)
+                {
+                    return;
+                }
+                if (auto* transform = m_deps.world.scene().registry().try_get<Scene::LocalTransform>(target))
+                {
+                    transform->value = to;
+                    m_deps.world.hierarchy().markDirty(target); // the world transform follows at the next update
+                    if (announce)
+                    {
+                        m_deps.world.markChanged();
+                    }
+                }
+            };
+            const bool preview = parameters.value(u"preview").toBool();
+            setTransform(*after, !preview);
+            if (preview)
+            {
+                return CommandOutcome{};
+            }
+            return CommandOutcome{.result = {},
+                                  .undoStep =
+                                      UndoStep{.label = u"Move "_s + QString::fromStdString(nameOf(scene, *entity)),
+                                               .undo = [setTransform, start = *from] { setTransform(start, true); },
+                                               .redo =
+                                                   [setTransform, end = *after]
+                                               {
+                                                   setTransform(end, true);
+                                               }}};
         });
 
     add({.name = u"entity.setParent"_s,

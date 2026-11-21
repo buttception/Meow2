@@ -72,6 +72,14 @@ public:
         return Math::sceneLens(m_radius);
     }
 
+    /// @brief Whether it's flying now: Fly mode, or the right button held in Orbit mode (WASD moves it then, so
+    ///        letter shortcuts such as the gizmo's W/E/R must not fire).
+    /// @return True while flying.
+    [[nodiscard]] bool flying() const
+    {
+        return m_flying || m_mode == CameraMode::Fly;
+    }
+
 private:
     CameraMode m_mode = CameraMode::Orbit;
     Math::OrbitCamera m_orbit;

@@ -8,6 +8,7 @@
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/Logger.h>
 #include <Meow2/Core/Result.h>
+#include <Meow2/Graphics/Renderer/DebugLines.h>
 #include <Meow2/Graphics/Renderer/FrameResources.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
@@ -182,6 +183,12 @@ public:
     /// @param outline  Whether to draw it; with nothing selected the passes are skipped anyway.
     void setOutline(ViewportId viewport, bool outline);
 
+    /// @brief Lines to draw over a viewport's scene each frame until changed (the gizmo), on top of everything,
+    ///        before the tone map. Their colours are divided by the exposure, so they keep their brightness.
+    /// @param viewport The viewport.
+    /// @param lines    The lines in world space; empty draws none.
+    void setLines(ViewportId viewport, std::vector<Renderer::DebugLine> lines);
+
     /// @brief Tells the renderer whether any instance is marked selected, so the outline passes can be skipped.
     /// @param any True if some InstanceDesc has `selected`.
     void setHasSelection(bool any);
@@ -247,6 +254,8 @@ private:
         Rhi::ResourceState maskState = Rhi::ResourceState::Undefined; ///< The mask's state after the last frame.
         std::uint32_t maskWidth = 0;                                  ///< The mask's size.
         std::uint32_t maskHeight = 0;
+        std::vector<Renderer::DebugLine> lines;           ///< setLines().
+        std::unique_ptr<Renderer::DebugLines> debugLines; ///< Draws them; made on first use.
     };
 
     /// @brief A pick asked for. Plain data.

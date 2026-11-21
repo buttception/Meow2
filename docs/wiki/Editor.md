@@ -76,7 +76,9 @@ commands.execute(u"scene.rename", {{u"entity"_s, id}, {u"name"_s, u"Lamp"_s}});
 ## Menus and toolbar
 
 - **File:** New scene, Open scene…, Open recent, Save, Save as…, Open project folder…, Import model… ([Project and scenes](#project-and-scenes)), Settings… (Ctrl+,). **Edit:** Undo (Ctrl+Z), Redo (Ctrl+Y). **Window:** Console, Game view, Assets, Hierarchy, Inspector. **Edit** also has Create entity, Duplicate (Ctrl+D) and Delete (Del).
-- **Toolbar:** Save, Undo, Redo, Settings.
+- **Toolbar:** Save, Undo, Redo, Move (W), Rotate (E), Scale (R), Local axes, Snap, Settings. **View** has the same gizmo items after the camera modes.
+- **Dock tabs** go on top: docks stacked in one place show their tabs above them (`setTabPosition(…, North)`), not below as Qt does by default. A dock that shares its place with others hides its own title bar, since its tab already names it (an empty `titleBarWidget`); it gets the title back when it stands alone or floats. Drag a tab to move or undock it.
+- **The mouse wheel edits a field only while it has focus** (click or Tab into it first). Over an unfocused spin box, drop-down or slider the wheel scrolls the panel instead, so scrolling down the Inspector never changes values on the way (`WheelGuard`, an application event filter: those widgets get `Qt::StrongFocus`, and a wheel event over an unfocused one goes to the scroll area around it).
 - Each action is bound to a command name. `EditorMainWindow::tick()`, every frame, enables an action exactly when its command exists and is enabled. File actions that may ask first (unsaved changes, a file name) ask, then run their command. Undo and Redo name their step: "Undo Set position".
 
 ## Console
@@ -96,6 +98,9 @@ Edit → Settings…: one field per editor setting. A change runs `settings.set`
 |---|---|---|---|
 | `editor.undoLimit` | 200 | 10–10000 | applies at once |
 | `editor.gameRenderScale` | 100 | 25–100 (%) | applies at once; also the Game dock's drop-down |
+| `editor.snap.translate` | 50 | 1–100000 (cm) | the move gizmo's snap step |
+| `editor.snap.angle` | 15 | 1–180 (°) | the rotate gizmo's snap step |
+| `editor.snap.scale` | 10 | 1–1000 (%) | the scale gizmo snaps to multiples of it |
 | `editor.console.followNewest` | true | | restart |
 | `jobs.threadCount` | 0 (one per hardware thread) | 0–256 | restart |
 | `loop.fixedStepHz` | 60 | 1–1000 | restart |
@@ -163,6 +168,7 @@ The editor works on a **project folder**: the scenes, models and their `.meta` f
 | `entity.duplicate` | action | `id` | Copies it and everything under it with new IDs, under the same parent; returns the copy's `id` |
 | `entity.rename` | action | `id`, `name` | Renames it |
 | `entity.setParent` | action | `id`, `parent` ("" for the root) | Moves it; its local transform is kept. Making an entity its own ancestor is refused |
+| `entity.setTransform` | action (`preview`: not recorded) | `id`, `position` [3], `rotation` [4, a quaternion], `scale` [3] (each optional), `preview`, `from` | Sets the local transform; undo goes back to `from` (where a drag began), or to what it was. The gizmos' command |
 | `component.add` | action | `id`, `component` | Adds a component with defaults (`Parent` goes through `entity.setParent`) |
 | `component.remove` | action | `id`, `component` | Removes it (a transform with a parent or children stays) |
 | `component.setField` | action | `id`, `component`, `field`, `value` | Sets one field: a number, true/false, text, or an array of 3 or 4 numbers |
@@ -210,6 +216,30 @@ The **editor viewport** (the window's centre) shows the scene through the editor
 - **The outline:** `EditorWorld::update()` marks the instances of selected entities (and their children) `InstanceDesc::selected`. In the editor viewport (`EditorRenderer::setOutline()`), a pass draws them into a mask without a depth test, and `SelectionOutline.hlsl` draws a 2-pixel orange edge around the mask over the scene's HDR colour, before the tone map. With nothing selected, both passes are skipped.
 - **Why the GPU and not rays on the CPU:** the GPU draws exactly what's on screen, alpha cutouts included, with no copy of the meshes on the CPU and no acceleration structure to keep up to date; meshlet and indirect paths pick the same. The cost is one small pass on the frame after a click, and an answer a frame or two later, which a click never notices.
 
+### Gizmos
+
+The last selected entity gets a gizmo in the editor viewport, always on top and the same size on screen however far away it is:
+
+| Mode | Key | Handles | Dragging |
+|---|---|---|---|
+| Move | W | three arrows | moves along the axis, following the point under the cursor |
+| Rotate | E | three rings | turns about the axis by the angle the cursor sweeps round the centre |
+| Scale | R | three axes with boxes, a centre box | scales along the axis; the centre box scales all three (drag right to grow, left to shrink) |
+
+- X is red, Y green, Z blue; the handle under the cursor (or being dragged) turns yellow. A gizmo handle wins over a click that would pick.
+- **Local axes** (toolbar, View menu) move and rotate along the entity's own axes instead of the world's; scale always uses its own.
+- **Snapping:** the toolbar's Snap, or hold Ctrl while dragging. Moves go in steps of `editor.snap.translate` cm along the axis, turns in `editor.snap.angle` degrees, and scales snap to multiples of `editor.snap.scale` %.
+- W/E/R work while the editor viewport has focus and the camera isn't flying (WASD moves it then); the toolbar buttons always work.
+- **A drag is one undo step.** While the button is held, each change runs `entity.setTransform` with `preview: true`, which moves the entity without touching the history; on release one recorded step names the transform the drag began from (`from`), so Ctrl+Z puts it back in one go. An agent can do the same in one call.
+- **How it works** (`Editing/Gizmo`, plain maths with no Qt or GPU): the gizmo works on the entity's *world* transform from when the drag began.
+  - Move: the closest point on the axis line to the cursor's ray, minus where it was grabbed.
+  - Rotate: where the ray meets the plane across the axis, and the signed angle from where it was grabbed.
+  - Scale: how far along the axis the cursor is now, divided by where it grabbed.
+  - Snapping rounds the change, not the result, so an entity at 0.3 m moves to 0.8 m, 1.3 m…
+  - `ViewportController` turns the new world transform into a local one through the parent's world matrix (local = world × parent⁻¹), exact unless a parent is scaled unevenly and rotated.
+  - The handles are lines (`Renderer::DebugLines`) drawn into the editor viewport's HDR colour before the tone map, their colours divided by the exposure so they stay bright in any scene. Their size comes from how many pixels a metre covers at the entity: 100 px.
+  - Hit tests are in screen space: the closest handle within 8 px, the centre box within 12 px of the centre.
+
 ### Input: QtInputSource
 
 The engine's `InputSystem` is fed by `QtInputSource`, an event filter on both viewport widgets ([Input → The Qt source](Input.md#the-qt-source)):
@@ -226,7 +256,8 @@ The engine's `InputSystem` is fed by `QtInputSource`, an event filter on both vi
 | `viewport.focus` | action | — | Frames the whole scene in the editor viewport (F). |
 | `viewport.setCameraMode` | action | `mode` (`orbit`, `fly`) | The editor camera's mode (View menu). |
 | `viewport.setRenderScale` | action | `percent` (25–100) | The game view's render scale; saved as `editor.gameRenderScale`. |
-| `viewport.info` | query | — | Each viewport's size, visibility, whether it drew, its scene size; the camera mode and position; the render scale. |
+| `viewport.setGizmo` | action | `mode` (`translate`, `rotate`, `scale`), `space` (`world`, `local`), `snap` (each optional) | The gizmo's mode, axes and snapping (toolbar, W/E/R). |
+| `viewport.info` | query | — | Each viewport's size, visibility, whether it drew, its scene size; the camera mode and position; the render scale; the gizmo's mode, space and snapping. |
 
 None is recorded in the undo history: they change how the scene is *viewed*, not the scene. `view.showPanel` also takes `game` now.
 
@@ -234,7 +265,7 @@ None is recorded in the undo history: they change how the scene is *viewed*, not
 
 - **Startup order.** `main` builds the engine infrastructure first: logging, crash handler, leak check, config. Then it creates the `QApplication`, then the main window, which is placed with `showWithDesc(window, windowDescFromConfig(config, …), log)`.
 - **Then the commands.** After the `QApplication`: `EditorSettings` over the config, the `UndoStack` (limit from `editor.undoLimit`), the `EditorCommandRegistry`, `registerEditorCommands()`, and then the main window, which gets them through `EditorMainWindowDeps`.
-- **Qt owns the event loop.** `QApplication::exec()` runs until the window is closed. A `QTimer` (16 ms) is the frame tick: it runs the engine's game loop `tick()` (techstack.md §23), then the window's `tick()` (console lines, action states). `app.quitAfterFrames` ends smoke runs.
+- **Qt owns the event loop.** `QApplication::exec()` runs until the window is closed. A `QTimer` is the frame tick ([Frame pacing](#frame-pacing)): it runs the engine's game loop `tick()` (techstack.md §23), then the window's `tick()` (console lines, action states). `app.quitAfterFrames` ends smoke runs.
 - **The viewports draw from the window's tick.** `ViewportController::tick()` begins the input frame, moves the editor camera (only while the editor viewport has focus), updates the world's transforms and GPU instances, checks each viewport's size and visibility, takes the game camera from the scene's main `Camera`, and calls `EditorRenderer::renderFrame()`, which draws every visible viewport in one render graph: per viewport a `GpuScene` view and a tone-map pass into its swapchain.
 - **`EditorRenderer` owns the GPU side:** the device, the pipeline library, the sky and one `GpuScene` (deferred, with shadows) shared by both viewports. It's made only on a real platform with `editor.render` on (`rhi.backend` and `rhi.validation` as in Renderer); otherwise the editor runs without it.
 - **The viewport is a native window.** Qt normally paints all widgets of a window into one shared surface. A swapchain needs an OS window of its own (an `HWND`, an X11 window) that nothing else paints. `ViewportWidget` asks for one (`Qt::WA_NativeWindow`) and turns Qt's painting off for it (`WA_PaintOnScreen`, no paint engine).
@@ -244,6 +275,13 @@ None is recorded in the undo history: they change how the scene is *viewed*, not
   - `setGeometry()` places the client area (without the frame), matching what the `window.*` keys mean.
   - `setWindowState()` (maximized/fullscreen) is called **before** `show()`, so Qt keeps the normal geometry to restore to.
 - **Qt's DLLs next to the exe.** After every build, `windeployqt` copies the Qt DLLs and plugins (including `qoffscreen`) into `bin/`. See [Building → Qt](Building.md#qt).
+
+### Frame pacing
+
+- A frame that drew a viewport is followed at once (a zero-interval timer: as soon as Qt's queued events are handled), and drawing waits for the display (vsync), so the editor runs at the display's refresh rate, 144 Hz on a 144 Hz screen.
+- With nothing drawn (viewports hidden or minimised) nothing waits, so a 16 ms timer paces the loop instead of spinning a core.
+- The timer is a `Qt::PreciseTimer`. Qt's default coarse timers run on the Windows timer tick of about 15.6 ms, so the old 16 ms timer fired every 15 or 31 ms: uneven frames, at most 60 a second, which felt choppy.
+- Gizmo drags don't rebuild the docks every frame: `entity.setTransform` previews don't bump `EditorWorld::revision()`, and the Hierarchy and Inspector catch up with the drag's final step.
 
 ## Look
 
@@ -276,9 +314,12 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.QtInputSourceTest.*`: keys, mouse and wheel reach the `InputSystem` only from the focused viewport, and losing focus releases them; `Editor.QtInputSourceKeys.MapsNativeScanCodes`: the Windows and evdev tables.
 - `Editor.EditorCameraTest.*`: right drag flies and letting go orbits without a jump; Fly mode; focus frames the bounds and stops the spin; `OrbitNeedsAlt`: a left drag orbits only with Alt held.
 - `Editor.ViewportPickingTest.ClicksSelect`: the nearest hit is selected, the same spot again steps behind it and wraps round, another spot or other hits start over, Ctrl adds and removes, nothing under the cursor clears; gone and repeated entities are dropped.
+- `Editor.GizmoTest.TranslatesAlongTheAxis`, `RotatesAroundTheAxis`, `ScalesAndHitTests`: a drag moves along the axis by what's under the cursor (only along it, in whole steps with snapping, along the entity's own axis in local space); turns by the swept angle (15° steps, added to an existing rotation); scales one axis or all from the centre, never to nothing; hit tests find each handle and nothing far away; the gizmo keeps its size on screen.
+- `Editor.SceneEditorTest.SetTransformCommand`: only the given parts change; previews aren't recorded; the last step undoes back to `from` in one step; quaternions normalised; wrong shapes refused. `Editor.ViewportCommandsTest.GizmoCommand`: `viewport.setGizmo` and `viewport.info`, bad values refused, the toolbar follows and runs it. `Editor.MainWindowTest.DockTabsOnTop`. `Editor.MainWindowTest.TabbedDocksHideTheirTitle`: a dock tabbed with another loses its title bar, gets it back when the other tab closes or it's split off. `Editor.WheelGuardTest.WheelEditsOnlyFocusedFields`: the wheel over an unfocused spin box or drop-down leaves its value and scrolls the panel; focused, it edits.
 - `Editor.ViewportCommandsTest.*`: `viewport.setRenderScale` saves the setting and updates the drop-down, out-of-range values are refused, `viewport.setCameraMode` and `viewport.info`; the test scene has a main camera.
 - `Editor.MainWindowTest.LayoutRoundTrips`: the dock layout saved in `editor.layout` is restored by the next window.
 - `EditorGpu.EditorRendererTest.TwoViewportsAndRenderScale` (label `gpu`): an editor and a game viewport drawn offscreen in one frame, both filled; at 50 % the game scene is half size and still fills its viewport; a hidden viewport isn't drawn.
+- `EditorGpu.EditorRendererTest.DrawsLines`: lines given to the editor viewport change its image along them, the game view not at all, and go when cleared.
 - `EditorGpu.EditorRendererTest.PicksWhatIsUnderTheCursor`: a pick at the centre finds the middle cube first and the ground behind it, each once and in order; a pick in the sky finds nothing. `OutlinesTheSelection`: selecting the cube changes only orange pixels around it in the editor view, none in the game view, and clearing the selection removes them.
 - `EditorGpu.EditorRendererWindowTest.WindowViewportResizes`: a window viewport resized between frames (#216). `EditorGpu.EditorRendererTest.OpensASavedScene`: a scene with a model, saved and opened again, is drawn from an emptied GPU scene with only its model, in both viewports.
 - `Editor.SceneDocumentTest.*`: save and open round trip; unsaved changes need `discard`, saving marks clean, opening clears the history; paths outside the project refused; recent scenes (order, no repeats, at most 8, reopened at start); importing a model with stable mesh IDs, undo and redo.
@@ -289,7 +330,7 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 
 ## Not yet
 
-- Gizmos: translate, rotate, scale, with snapping (M7 PR 4, last part); an asset picker for mesh fields; editing several entities at once.
+- Gizmos on several selected entities at once, plane handles (two axes), solid handles, pivot options; an asset picker for mesh fields; editing several entities at once in the Inspector.
 - The MCP server (M7 PR 6).
 - Prefabs: a model as one asset whose instances keep their edits when it's re-imported; textures cooked into the project at import.
 - Renaming, moving and deleting assets in the Assets dock (each needs its `.meta` kept with it).

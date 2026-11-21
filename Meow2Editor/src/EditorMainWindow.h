@@ -207,6 +207,9 @@ private:
 
     /// @brief Refreshes the actions: enabled state, Undo/Redo labels, checked panels and camera mode, the render scale.
     void refreshActions();
+    /// @brief Hides the title bar of a dock that shares its place with other docks as tabs (its tab already names
+    ///        it), and shows it again when it stands alone or floats. Run every tick; changes only what changed.
+    void updateDockTitles();
 
     EditorCommandRegistry& m_commands;
     Log::Logger& m_log;
@@ -220,6 +223,11 @@ private:
     QAction* m_gameAction = nullptr;                     ///< Checked while the game dock is shown.
     QAction* m_orbitAction = nullptr;                    ///< Checked in Orbit mode.
     QAction* m_flyAction = nullptr;                      ///< Checked in Fly mode.
+    QAction* m_translateAction = nullptr;                ///< Gizmo: move (W).
+    QAction* m_rotateAction = nullptr;                   ///< Gizmo: rotate (E).
+    QAction* m_scaleAction = nullptr;                    ///< Gizmo: scale (R).
+    QAction* m_localAction = nullptr;                    ///< Gizmo: checked for local axes.
+    QAction* m_snapAction = nullptr;                     ///< Gizmo: checked while snapping is on.
     std::vector<CommandAction> m_commandActions;         ///< Every action bound to a command.
     QAction* m_undoAction = nullptr;                     ///< Its text names the step it undoes.
     QAction* m_redoAction = nullptr;                     ///< Its text names the step it redoes.

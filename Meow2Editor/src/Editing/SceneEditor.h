@@ -57,16 +57,17 @@ struct EntitySnapshot
 
 /// @brief Edits the scene through commands, all undoable but the selection and the queries:
 ///
-/// | Command | Parameters | What it does |
-/// |---|---|---|
-/// | `entity.create` | `name`, `parent` | A new entity with a transform, under `parent` or at the root; returns its ID
-/// | | `entity.delete` | `id` | Deletes an entity and everything under it | | `entity.duplicate` | `id` | Copies an
-/// entity and everything under it, with new IDs, under the same parent | | `entity.rename` | `id`, `name` | Renames an
-/// entity | | `entity.setParent` | `id`, `parent` | Hangs an entity under another ("" for the root); its local
-/// transform is kept | | `component.add` | `id`, `component` | Adds a component with default values | |
-/// `component.remove` | `id`, `component` | Removes a component | | `component.setField` | `id`, `component`, `field`,
-/// `value` | Sets one field | | `selection.set` | `ids` | Selects entities (not recorded in the history) | |
-/// `selection.get`, `scene.hierarchy`, `entity.get`, `component.list` | | Queries |
+/// - `entity.create {name, parent}`: a new entity with a transform, under `parent` or at the root; returns its ID.
+/// - `entity.delete {id}`: deletes an entity and everything under it.
+/// - `entity.duplicate {id}`: copies an entity and everything under it, with new IDs, under the same parent.
+/// - `entity.rename {id, name}`: renames an entity.
+/// - `entity.setParent {id, parent}`: hangs an entity under another ("" for the root); its local transform is kept.
+/// - `entity.setTransform {id, position, rotation, scale, preview, from}`: sets the local transform (the gizmos'
+///   command); `preview` steps aren't recorded, and undo goes back to `from`.
+/// - `component.add {id, component}`, `component.remove {id, component}`: adds (with default values) or removes one.
+/// - `component.setField {id, component, field, value}`: sets one field.
+/// - `selection.set {ids}`: selects entities (not recorded in the history).
+/// - Queries: `selection.get`, `scene.hierarchy`, `entity.get`, `component.list`.
 ///
 /// Entities are named by EntityId text. Undo brings back the same IDs, components and children (EntitySnapshot), so
 /// steps further back in the history still find their entities.

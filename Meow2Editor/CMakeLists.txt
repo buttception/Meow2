@@ -46,6 +46,8 @@ add_library(Meow2EditorCore STATIC
     src/Commands/UndoStack.h
     src/Editing/ClickSelection.cpp
     src/Editing/ClickSelection.h
+    src/Editing/Gizmo.cpp
+    src/Editing/Gizmo.h
     src/Editing/SceneEditor.cpp
     src/Editing/SceneEditor.h
     src/EditorMainWindow.cpp
@@ -62,6 +64,8 @@ add_library(Meow2EditorCore STATIC
     src/Panels/InspectorDock.h
     src/Panels/SettingsDialog.cpp
     src/Panels/SettingsDialog.h
+    src/Panels/WheelGuard.cpp
+    src/Panels/WheelGuard.h
     src/Project/SceneDocument.cpp
     src/Project/SceneDocument.h
     src/ViewportWidget.cpp

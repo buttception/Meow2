@@ -1,10 +1,10 @@
 /// @file
 /// @brief The debug overlays' maths, on the CPU: the frustum's lines and the grid's constants.
 
-#include "DebugLines.h"
 #include "FrameScreenshot.h"
 #include "InfiniteGrid.h"
 
+#include <Meow2/Graphics/Renderer/DebugLines.h>
 #include <Meow2/Math/Camera.h>
 
 #include <DirectXMath.h>
@@ -14,6 +14,10 @@
 
 namespace Meow2::RendererApp
 {
+using Renderer::DebugLine;
+using Renderer::DebugLines;
+using Renderer::frustumLines;
+
 namespace
 {
 /// @brief A camera at (1, 2, 3) looking along +Z, square, 90° vertical field of view, near plane 0.5.
