@@ -204,7 +204,7 @@ TEST_F(SceneEditorTest, SetTransformCommand)
     {
         return m_world.scene().registry().get<Meow2::Scene::LocalTransform>(entityOf(m_world, id)).value;
     };
-    const std::size_t stepsBefore = m_history.undoLabels().size();
+    const qsizetype stepsBefore = m_history.undoLabels().size(); // Qt sizes are signed
 
     // Only what's given changes.
     ok(m_commands, u"entity.setTransform", {{u"id"_s, id}, {u"position"_s, QJsonArray{1.0, 2.0, 3.0}}});
