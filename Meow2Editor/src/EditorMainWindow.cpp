@@ -10,6 +10,7 @@
 #include "Panels/HierarchyDock.h"
 #include "Panels/InspectorDock.h"
 #include "Panels/SettingsDialog.h"
+#include "Panels/WheelGuard.h"
 #include "Project/SceneDocument.h"
 #include "Viewports/GameViewportDock.h"
 #include "Viewports/QtInputSource.h"
@@ -17,11 +18,14 @@
 
 #include <Meow2/Core/Assert.h>
 
+#include <algorithm>
 #include <QAction>
 #include <QActionGroup>
+#include <QApplication>
 #include <QByteArray>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -71,6 +75,9 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     setCentralWidget(m_viewport);
     // Tabs of docks stacked in one place go on top (owner request), as in most editors; Qt's default is below.
     setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
+    // Scrolling a panel mustn't edit the fields it passes over (owner request): value widgets take the wheel only when
+    // focused. On the application, so dialogs and every dock get it; removed when the window (its parent) goes.
+    qApp->installEventFilter(new WheelGuard(this));
     addDockWidget(Qt::RightDockWidgetArea, m_gameDock);
     addDockWidget(Qt::BottomDockWidgetArea, m_console);
     addDockWidget(Qt::LeftDockWidgetArea, m_hierarchyDock);
@@ -151,8 +158,32 @@ ViewportController& EditorMainWindow::viewports()
     return *m_viewports;
 }
 
+void EditorMainWindow::updateDockTitles()
+{
+    for (QDockWidget* dock : findChildren<QDockWidget*>(Qt::FindDirectChildrenOnly))
+    {
+        // Tab mates the user hasn't closed (a dock behind another tab isn't hidden, only not current).
+        const QList<QDockWidget*> mates = tabifiedDockWidgets(dock);
+        const bool tabbed = !dock->isFloating() &&
+                            std::ranges::any_of(mates, [](const QDockWidget* mate) { return !mate->isHidden(); });
+        // An empty widget as the title bar hides it; the dock still moves by dragging its tab.
+        const bool hidden = dock->titleBarWidget() != nullptr;
+        if (tabbed && !hidden)
+        {
+            dock->setTitleBarWidget(new QWidget(dock));
+        }
+        else if (!tabbed && hidden)
+        {
+            QWidget* empty = dock->titleBarWidget();
+            dock->setTitleBarWidget(nullptr);
+            empty->deleteLater();
+        }
+    }
+}
+
 void EditorMainWindow::refreshActions()
 {
+    updateDockTitles();
     for (const CommandAction& bound : m_commandActions)
     {
         bound.action->setEnabled(m_commands.isEnabled(bound.command));

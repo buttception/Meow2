@@ -207,6 +207,9 @@ private:
 
     /// @brief Refreshes the actions: enabled state, Undo/Redo labels, checked panels and camera mode, the render scale.
     void refreshActions();
+    /// @brief Hides the title bar of a dock that shares its place with other docks as tabs (its tab already names
+    ///        it), and shows it again when it stands alone or floats. Run every tick; changes only what changed.
+    void updateDockTitles();
 
     EditorCommandRegistry& m_commands;
     Log::Logger& m_log;

@@ -93,6 +93,14 @@ public:
         return m_gizmo;
     }
 
+    /// @brief Whether the last tick() drew a viewport. Drawing waits for the display (vsync), so the editor's frame
+    ///        timer can run as fast as it likes then; without it, the timer must pace frames itself.
+    /// @return True if a viewport was drawn.
+    [[nodiscard]] bool drewLastFrame() const
+    {
+        return m_drew;
+    }
+
     /// @brief Whether snapping is switched on (Ctrl snaps while held either way).
     /// @return True if it is.
     [[nodiscard]] bool snapping() const
@@ -141,6 +149,7 @@ private:
     bool m_pressToggle = false;                ///< Ctrl was held at that press.
     bool m_pickToggle = false;                 ///< Ctrl was held for the pick in flight.
     Gizmo m_gizmo;                             ///< The editor viewport's gizmo.
+    bool m_drew = false;                       ///< drewLastFrame().
     bool m_snap = false;                       ///< `viewport.setGizmo {snap}`.
     GizmoHandle m_hover = GizmoHandle::None;   ///< The handle under the cursor this frame.
     EntityId m_dragEntity{};                   ///< What the drag moves.

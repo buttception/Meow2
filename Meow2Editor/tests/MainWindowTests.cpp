@@ -138,3 +138,34 @@ TEST_F(MainWindowTest, DockTabsOnTop)
         EXPECT_EQ(window.tabPosition(area), QTabWidget::North) << "area " << static_cast<int>(area);
     }
 }
+
+// Owner request: a dock stacked with others as tabs shows no title bar of its own (its tab names it); alone again,
+// it gets it back.
+TEST_F(MainWindowTest, TabbedDocksHideTheirTitle)
+{
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    QDockWidget& console = window.console();
+    QDockWidget& assets = window.assetsDock();
+    window.tick();
+    EXPECT_EQ(console.titleBarWidget(), nullptr) << "alone at the bottom: its title shows";
+
+    window.tabifyDockWidget(&console, &assets);
+    window.tick();
+    ASSERT_NE(console.titleBarWidget(), nullptr) << "tabbed: hidden behind an empty title bar";
+    ASSERT_NE(assets.titleBarWidget(), nullptr);
+    EXPECT_TRUE(console.titleBarWidget()->children().isEmpty()) << "an empty widget";
+
+    // Closing the other tab leaves it alone: the title comes back.
+    assets.hide();
+    window.tick();
+    EXPECT_EQ(console.titleBarWidget(), nullptr);
+
+    // Split off again: titles back on both.
+    assets.show();
+    window.tick();
+    EXPECT_NE(console.titleBarWidget(), nullptr);
+    window.addDockWidget(Qt::LeftDockWidgetArea, &assets);
+    window.tick();
+    EXPECT_EQ(console.titleBarWidget(), nullptr);
+    EXPECT_EQ(assets.titleBarWidget(), nullptr);
+}

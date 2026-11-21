@@ -12,6 +12,7 @@
 #include "Project/SceneDocument.h"
 #include "Viewports/EditorRenderer.h"
 #include "Viewports/EditorWorld.h"
+#include "Viewports/ViewportController.h"
 #include "WindowPlacement.h"
 
 #include <Meow2/Assets/AssetManager.h>
@@ -195,12 +196,19 @@ int main(int argc, char** argv)
                                 {
                                     MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker());
                                 }}}; // memory plots in Tracy
+    // Frame pacing. Qt's default (coarse) timers run on the Windows timer tick of ~15.6 ms, so a 16 ms timer fired
+    // every 15 or 31 ms: uneven frames, at most 60 a second whatever the display. Now a frame that drew a viewport is
+    // followed at once (interval 0: as soon as Qt's queued events are handled), and drawing waits for the display's
+    // vsync, which paces the editor at the display's refresh rate. With nothing drawn (hidden or minimised viewports)
+    // nothing would wait, so a precise 16 ms timer paces the loop instead of spinning a core.
     QTimer frameTimer;
+    frameTimer.setTimerType(Qt::PreciseTimer);
     QObject::connect(&frameTimer, &QTimer::timeout,
                      [&]
                      {
                          loop.tick();
                          window.tick(clock.deltaSecondsFloat()); // console, viewports, toolbar state
+                         frameTimer.setInterval(window.viewports().drewLastFrame() ? 0 : 16);
                          if (quitAfterFrames > 0 && static_cast<std::int64_t>(clock.frameCount()) >= quitAfterFrames)
                          {
                              QApplication::quit();

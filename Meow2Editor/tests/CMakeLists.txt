@@ -21,6 +21,7 @@ meow2_add_test_suite(
         UndoStackTests.cpp
         ViewportCommandsTests.cpp
         ViewportWidgetTests.cpp
+        WheelGuardTests.cpp
         WindowPlacementTests.cpp
     LIBRARIES Meow2EditorCore)
 # The theme tests load the bundled font from the source tree.

@@ -216,11 +216,13 @@ TEST_F(SceneEditorTest, SetTransformCommand)
     const QJsonObject start{{u"position"_s, QJsonArray{1.0, 2.0, 3.0}},
                             {u"rotation"_s, QJsonArray{0.0, 0.0, 0.0, 1.0}},
                             {u"scale"_s, QJsonArray{1.0, 1.0, 1.0}}};
+    const std::uint64_t revision = m_world.revision();
     for (const double x : {1.5, 2.0, 2.5})
     {
         ok(m_commands, u"entity.setTransform",
            {{u"id"_s, id}, {u"position"_s, QJsonArray{x, 2.0, 3.0}}, {u"preview"_s, true}});
     }
+    EXPECT_EQ(m_world.revision(), revision) << "previews don't rebuild the docks every frame";
     EXPECT_FLOAT_EQ(local().position.x, 2.5F);
     EXPECT_EQ(m_history.undoLabels().size(), stepsBefore + 1) << "previews aren't recorded";
     ok(m_commands, u"entity.setTransform",

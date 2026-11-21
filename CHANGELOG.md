@@ -22,9 +22,12 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - Meow2Editor draws the scene: an editor viewport in the middle with orbit and fly cameras (right drag flies, F frames the scene) and a Game dock that shows the scene through its main camera, with a render-scale drop-down (100, 75, 50, 25 %) that draws the game smaller and scales it up for less GPU load. A viewport that can't be seen draws nothing, keyboard and mouse reach a viewport only while it has focus (physical keys, so WASD works on any layout), and the dock layout is kept between runs. Until scene files arrive the editor shows a small test scene. New for every app: a `Camera` component with a main camera, and the orbit and fly camera rigs in the engine (#215).
 
 ### Changed
+- Meow2Editor: a dock stacked with others as tabs no longer shows its own title bar above the tab that already names it (#229).
 - The roadmap: M7, the Editor, is planned in six steps (commands and undo, an editor and a game viewport with a faster GPU scene, scene files and an asset browser, gizmos and picking, the Renderer's debug tools in Qt, MCP for AI agents), M13 gains inferred static or movable objects, and Audio becomes M10, after Scripting; Game UI, Export, Advanced rendering and Platforms move to M11–M14 (#201).
 
 ### Fixed
+- Meow2Editor no longer feels choppy: its frame timer ran on the Windows timer tick (frames every 15 or 31 ms, at most 60 a second); frames now follow the display's refresh rate, and gizmo drags no longer rebuild the Hierarchy and Inspector every frame (#229).
+- Meow2Editor: scrolling over a panel no longer changes the values under the mouse; the wheel edits a spin box, drop-down or slider only while it has focus (#229).
 - Meow2Editor's File → Import model… works for a model outside the project folder (such as the Khronos samples): it's copied into the project with its folder, then imported, instead of failing with "'' isn't a path inside the project" (#225).
 - Meow2Renderer's Render graph window lays the passes out from top to bottom (each dependency level a row, wide levels wrapped) instead of in one long line to the right, so the nodes no longer stretch far off the window (#221).
 - Meow2Editor no longer stops on an assertion ("A swapchain can't be resized while a frame is recording") when it starts or a viewport changes size: a viewport's swapchain is now resized before the frame begins (#217).

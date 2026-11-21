@@ -698,7 +698,9 @@ void SceneEditor::registerCommands()
                 return fail(ErrorCode::InvalidArgument, "from: " + from.error().message);
             }
             const EntityId id = scene.idOf(*entity);
-            const auto setTransform = [this, id](const Math::Transform& to)
+            // `announce`: say the scene changed (the docks rebuild). Not for previews: a drag would rebuild the
+            // Hierarchy and Inspector every frame; they catch up with the final step.
+            const auto setTransform = [this, id](const Math::Transform& to, bool announce)
             {
                 const entt::entity target = find(id);
                 if (target == entt::null)
@@ -709,22 +711,26 @@ void SceneEditor::registerCommands()
                 {
                     transform->value = to;
                     m_deps.world.hierarchy().markDirty(target); // the world transform follows at the next update
-                    m_deps.world.markChanged();
+                    if (announce)
+                    {
+                        m_deps.world.markChanged();
+                    }
                 }
             };
-            setTransform(*after);
-            if (parameters.value(u"preview").toBool())
+            const bool preview = parameters.value(u"preview").toBool();
+            setTransform(*after, !preview);
+            if (preview)
             {
                 return CommandOutcome{};
             }
             return CommandOutcome{.result = {},
                                   .undoStep =
                                       UndoStep{.label = u"Move "_s + QString::fromStdString(nameOf(scene, *entity)),
-                                               .undo = [setTransform, start = *from] { setTransform(start); },
+                                               .undo = [setTransform, start = *from] { setTransform(start, true); },
                                                .redo =
                                                    [setTransform, end = *after]
                                                {
-                                                   setTransform(end);
+                                                   setTransform(end, true);
                                                }}};
         });
 

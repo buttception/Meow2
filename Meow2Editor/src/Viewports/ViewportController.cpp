@@ -339,6 +339,7 @@ void ViewportController::tick(float deltaSeconds)
 {
     // The editor camera moves only while its viewport has focus: input meant for the game view or a dock stays there.
     m_deps.input.beginFrame();
+    m_drew = false;
     const bool editorFocused = m_deps.inputSource.activeViewport() == &m_deps.editorViewport;
     m_camera.update(editorFocused ? cameraInputFrom(m_deps.input) : Math::CameraInput{}, deltaSeconds);
     // The gizmo first: a press on one of its handles is a drag, not a click that picks.
@@ -409,6 +410,8 @@ void ViewportController::tick(float deltaSeconds)
     {
         MEOW2_LOG_ERROR(m_deps.log, "Drawing the viewports failed: {}", drawn.error());
     }
+    m_drew = (m_editorViewport && renderer->wasDrawn(*m_editorViewport)) ||
+             (m_gameViewport && renderer->wasDrawn(*m_gameViewport));
 }
 
 void ViewportController::registerCommands()
@@ -475,10 +478,10 @@ void ViewportController::registerCommands()
             }
             if (parameters.contains(u"mode"))
             {
-                const QString mode = parameters.value(u"mode").toString();
-                m_gizmo.setMode(mode == u"rotate"  ? GizmoMode::Rotate
-                                : mode == u"scale" ? GizmoMode::Scale
-                                                   : GizmoMode::Translate);
+                const QString chosen = parameters.value(u"mode").toString();
+                m_gizmo.setMode(chosen == u"rotate"  ? GizmoMode::Rotate
+                                : chosen == u"scale" ? GizmoMode::Scale
+                                                     : GizmoMode::Translate);
             }
             if (parameters.contains(u"space"))
             {
