@@ -299,7 +299,7 @@ QWidget* InspectorDock::fieldEditor(const QString& component, const QJsonObject&
                 const Math::Vec3 radians = Math::toEuler(rotation);
                 degrees = {Math::toDegrees(radians.x), Math::toDegrees(radians.y), Math::toDegrees(radians.z)};
             }
-            shown = {degrees.x, degrees.y, degrees.z};
+            shown = {static_cast<double>(degrees.x), static_cast<double>(degrees.y), static_cast<double>(degrees.z)};
             row->setToolTip(u"Degrees: X pitch, Y yaw, Z roll"_s);
         }
         else
@@ -342,7 +342,9 @@ QWidget* InspectorDock::fieldEditor(const QString& component, const QJsonObject&
                 m_typedAngles[hintKey] = degrees;
                 const Math::Quat rotation = Math::fromEuler(
                     {Math::toRadians(degrees.x), Math::toRadians(degrees.y), Math::toRadians(degrees.z)});
-                setField(component, fieldName, QJsonArray{rotation.x, rotation.y, rotation.z, rotation.w});
+                setField(component, fieldName,
+                         QJsonArray{static_cast<double>(rotation.x), static_cast<double>(rotation.y),
+                                    static_cast<double>(rotation.z), static_cast<double>(rotation.w)});
                 return;
             }
             QJsonArray values;

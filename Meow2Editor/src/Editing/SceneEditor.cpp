@@ -634,10 +634,10 @@ void SceneEditor::registerCommands()
             const EntityId after = parent != entt::null ? scene.idOf(parent) : EntityId{};
             const auto setParent = [this, id](EntityId target)
             {
-                const entt::entity entity = find(id);
-                if (entity != entt::null)
+                const entt::entity moved = find(id);
+                if (moved != entt::null)
                 {
-                    m_deps.world.hierarchy().setParent(entity, target.isValid() ? find(target) : entt::null);
+                    m_deps.world.hierarchy().setParent(moved, target.isValid() ? find(target) : entt::null);
                     m_deps.world.markChanged();
                 }
             };
@@ -742,10 +742,10 @@ void SceneEditor::registerCommands()
                                                    }
                                                    addComponent(*component, target);
                                                    std::vector<std::string> warnings;
-                                                   Scene::Scene& scene = m_deps.world.scene();
+                                                   Scene::Scene& current = m_deps.world.scene();
                                                    static_cast<void>(Scene::fromFieldTable(
-                                                       *component, component->getOrEmplace(scene.registry(), target),
-                                                       fields, scene, warnings));
+                                                       *component, component->getOrEmplace(current.registry(), target),
+                                                       fields, current, warnings));
                                                    if (component->name == c_transformName)
                                                    {
                                                        m_deps.world.hierarchy().markDirty(target);
