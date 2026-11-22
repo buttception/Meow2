@@ -131,6 +131,18 @@ TEST_F(InputSystemTest, RepeatIsNotAnEdge)
     EXPECT_EQ(m_log, expected) << "but UI code sees the repeat on the bus";
 }
 
+// Qt repeats a held key as release + press pairs, both marked repeat (#229): the release doesn't let go.
+TEST_F(InputSystemTest, RepeatReleaseKeepsTheKeyDown)
+{
+    m_input.submit(KeyInput{.key = Key::W, .down = true});
+    frame();
+    m_input.submit(KeyInput{.key = Key::W, .down = false, .repeat = true});
+    m_input.submit(KeyInput{.key = Key::W, .down = true, .repeat = true});
+    frame();
+    EXPECT_TRUE(m_input.isDown(Key::W));
+    EXPECT_FALSE(m_input.wasReleased(Key::W));
+}
+
 TEST_F(InputSystemTest, MouseState)
 {
     m_input.submit(MouseMotionInput{.x = 10.0F, .y = 20.0F, .dx = 3.0F, .dy = 4.0F});

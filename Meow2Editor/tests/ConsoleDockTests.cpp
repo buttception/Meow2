@@ -93,3 +93,12 @@ TEST_F(ConsoleDockTest, CopiesShownLines)
     EXPECT_EQ(QApplication::clipboard()->text(),
               u"[10:00:00.000]<info> Engine: Started\n[10:00:01.000]<warn> Editor: Disk almost full"_s);
 }
+
+// Owner request (#229): long lines wrap at the panel's edge, no horizontal scroll bar.
+TEST_F(ConsoleDockTest, LongLinesWrap)
+{
+    auto* view = m_dock.findChild<QPlainTextEdit*>();
+    ASSERT_NE(view, nullptr);
+    EXPECT_EQ(view->lineWrapMode(), QPlainTextEdit::WidgetWidth);
+    EXPECT_EQ(view->horizontalScrollBarPolicy(), Qt::ScrollBarAlwaysOff);
+}

@@ -4,6 +4,7 @@
 #include "Viewports/EditorCamera.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace Meow2::Editor
 {
@@ -69,9 +70,36 @@ void EditorCamera::focus(const Math::Vec3& center, float radius)
 {
     m_radius = std::max(radius, 1e-3F);
     m_orbit = Math::frameScene(center, m_radius);
+    // Far enough back for the whole sphere to fit the view: a sphere of radius r fills a lens of vertical field of
+    // view f at r / sin(f / 2) (2 r at 60°); 10 % more leaves a margin. (frameScene()'s 1.7 r clipped tall models.)
+    m_orbit.distance = m_radius / std::sin(lens().verticalFov * 0.5F) * 1.1F;
     m_orbit.spin = false; // an editor camera stays where it's put
     m_fly = Math::flyFrom(Math::orbitTransform(m_orbit), std::max(m_radius * 0.5F, 0.1F));
     m_flying = m_mode == CameraMode::Fly;
+}
+
+void EditorCamera::viewAlong(const Math::Vec3& forward)
+{
+    const float length = std::sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
+    if (length <= 0.0F)
+    {
+        return;
+    }
+    // Yaw 0 looks towards +Z and π towards −Z; pitch is the angle above the horizon (CameraRig.h).
+    constexpr float c_pitchLimit = 1.5F;
+    const Math::Vec3 d{forward.x / length, forward.y / length, forward.z / length};
+    if (m_flying)
+    {
+        m_orbit = Math::orbitFrom(Math::flyTransform(m_fly), m_orbit.distance);
+    }
+    // Straight up or down has no yaw of its own: keep the current one, so the view doesn't spin.
+    if (std::abs(d.x) > 1e-4F || std::abs(d.z) > 1e-4F)
+    {
+        m_orbit.yaw = std::atan2(d.x, d.z);
+    }
+    m_orbit.pitch = std::clamp(std::asin(std::clamp(d.y, -1.0F, 1.0F)), -c_pitchLimit, c_pitchLimit);
+    m_orbit.spin = false;
+    m_fly = Math::flyFrom(Math::orbitTransform(m_orbit), m_fly.speed);
 }
 
 void EditorCamera::setMode(CameraMode mode)

@@ -97,11 +97,10 @@ protected:
             m_child, Math::Transform{.position = {1.5F, 0.0F, 0.25F}, .rotation = {}, .scale = {2.0F, 1.0F, 1.0F}},
             m_root);
         scene.registry().emplace<Health>(m_child, Health{.value = 42.5F});
-        const entt::entity environment = scene.create("Environment");
-        Scene::Environment sun;
+        Scene::Environment sun; // a scene setting, not an entity
         sun.sunElevation = 20.0F;
         sun.exposure = 1.5F;
-        scene.registry().emplace<Scene::Environment>(environment, sun);
+        Scene::setEnvironment(scene, sun);
         const entt::entity helper = scene.createTransient("Helper");
         world.hierarchy->add(helper);
     }
@@ -153,7 +152,7 @@ TEST_F(SceneFileTest, RoundTripIsIdentical)
 
     SceneReadReport report;
     const std::unique_ptr<World> loaded = load(text, &report);
-    EXPECT_EQ(report.entities, 3U) << "the transient helper isn't saved";
+    EXPECT_EQ(report.entities, 2U) << "the transient helper isn't saved";
     EXPECT_TRUE(report.warnings.empty()) << report.warnings.front();
     EXPECT_EQ(write(*loaded), text) << "saving what was loaded gives the same file";
 
@@ -168,9 +167,9 @@ TEST_F(SceneFileTest, RoundTripIsIdentical)
     loaded->hierarchy->update();
     const Math::Mat4& world = scene.registry().get<Scene::WorldTransform>(child).matrix;
     EXPECT_FLOAT_EQ(world._42, 2.0F) << "the child follows its parent once the hierarchy updates";
-    const std::optional<entt::entity> environment = Scene::findEnvironment(scene);
-    ASSERT_TRUE(environment);
-    EXPECT_FLOAT_EQ(scene.registry().get<Scene::Environment>(*environment).exposure, 1.5F);
+    ASSERT_TRUE(Scene::hasEnvironment(scene)) << "the scene's setting";
+    EXPECT_FLOAT_EQ(Scene::environment(scene).exposure, 1.5F);
+    EXPECT_FALSE(Scene::findEnvironment(scene)) << "not on an entity";
 }
 
 TEST_F(SceneFileTest, EntitiesSortedAndOneBlockEach)
@@ -186,7 +185,7 @@ TEST_F(SceneFileTest, EntitiesSortedAndOneBlockEach)
             ids.push_back(line);
         }
     }
-    ASSERT_EQ(ids.size(), 3U);
+    ASSERT_EQ(ids.size(), 2U);
     EXPECT_TRUE(std::ranges::is_sorted(ids)) << "IDs grow with creation time, so the text sorts the same way";
     EXPECT_NE(text.find("[components]\nCamera = 1\nEnvironment = 1\nHealth = 2\nLocalTransform = 1\nParent = 1\n"),
               std::string::npos)
@@ -347,5 +346,37 @@ TEST_F(SceneFileTest, BadInputIsAnError)
     }
     EXPECT_LE(parents, 1U) << "the cycle is broken; the unknown parent is dropped";
     world.hierarchy->update(); // and the hierarchy copes with what's left
+}
+} // namespace Meow2::Assets
+
+namespace Meow2::Assets
+{
+// Owner request (#229): the Environment is the scene's setting, saved as its own table; an older file's Environment
+// entity becomes the setting when read, and goes if it held nothing else.
+TEST_F(SceneFileTest, EnvironmentIsASetting)
+{
+    World original{m_ids, m_jobs, m_registry};
+    buildScene(original);
+    const std::string text = write(original);
+    EXPECT_NE(text.find("[settings.Environment]\nsunElevation = 20.0\n"), std::string::npos) << text;
+    EXPECT_LT(text.find("[settings.Environment]"), text.find("[[entity]]")) << "before the entities";
+
+    const std::string id = m_ids.next<IdKind::Entity>().uuid().toString();
+    const std::string kept = m_ids.next<IdKind::Entity>().uuid().toString();
+    const std::string old = std::format(
+        "format = \"meow2.scene\"\nversion = 1\n[components]\nEnvironment = 1\n"
+        "[[entity]]\nid = \"{}\"\nname = \"Environment\"\n[entity.Environment]\nsunElevation = 55.0\nexposure = 2.0\n"
+        "[[entity]]\nid = \"{}\"\nname = \"Lamp post\"\n[entity.LocalTransform]\nposition = [0.0, 0.0, 0.0]\n",
+        id, kept);
+    SceneReadReport report;
+    const std::unique_ptr<World> loaded = load(old, &report);
+    Scene::Scene& scene = *loaded->scene;
+    ASSERT_TRUE(Scene::hasEnvironment(scene));
+    EXPECT_FLOAT_EQ(Scene::environment(scene).sunElevation, 55.0F);
+    EXPECT_FLOAT_EQ(Scene::environment(scene).exposure, 2.0F);
+    EXPECT_FALSE(Scene::findEnvironment(scene));
+    EXPECT_FALSE(scene.find(EntityId::fromUuid(*Uuid::parse(id)).value())) << "the holder entity is gone";
+    EXPECT_TRUE(scene.find(EntityId::fromUuid(*Uuid::parse(kept)).value())) << "the others stay";
+    EXPECT_EQ(report.entities, 1U);
 }
 } // namespace Meow2::Assets

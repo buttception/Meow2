@@ -2,7 +2,6 @@
 /// @brief The debug overlays on the GPU, on each backend: the infinite grid below the horizon and hidden behind
 ///        geometry, and the frozen frustum's lines. Drawn headlessly into a small HDR target and read back.
 
-#include "DebugLines.h"
 #include "InfiniteGrid.h"
 
 #include <Meow2/Assets/AssetManager.h>
@@ -11,6 +10,7 @@
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
+#include <Meow2/Graphics/Renderer/DebugLines.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
@@ -30,6 +30,10 @@
 
 namespace Meow2::RendererApp
 {
+using Renderer::DebugLine;
+using Renderer::DebugLines;
+using Renderer::frustumLines;
+
 namespace
 {
 /// @brief The target's width and height in pixels: enough for grid lines, small enough to be quick.

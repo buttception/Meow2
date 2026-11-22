@@ -49,6 +49,7 @@ target_sources(Meow2Engine
         src/Core/Time/GameLoopConfig.cpp
         src/Core/Version.cpp
         src/Graphics/Renderer/FramePacket.cpp
+        src/Graphics/Renderer/DebugLines.cpp
         src/Graphics/Renderer/FrameResources.cpp
         src/Graphics/Renderer/GpuScene.cpp
         src/Graphics/Renderer/GpuSceneShadows.cpp
@@ -128,6 +129,7 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
             include/Meow2/Graphics/Renderer/FramePacket.h
+            include/Meow2/Graphics/Renderer/DebugLines.h
             include/Meow2/Graphics/Renderer/FrameResources.h
             include/Meow2/Graphics/Renderer/GpuScene.h
             include/Meow2/Graphics/Renderer/MeshProcessing.h

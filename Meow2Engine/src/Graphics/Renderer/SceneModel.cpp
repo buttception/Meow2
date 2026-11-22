@@ -219,11 +219,14 @@ std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshe
         {
             continue;
         }
+        // Movable things are drawn into the sun's shadow every frame; the rest into its cache (until M13 infers it,
+        // Auto counts as static).
+        const auto* local = registry.try_get<Scene::LocalTransform>(entity);
+        const bool movable = local != nullptr && local->mobility == Scene::Mobility::Movable;
         const XMMATRIX matrix = XMLoadFloat4x4(&world->matrix);
         for (const GpuSubmesh& part : meshes.find(renderer.mesh))
         {
-            out.push_back(
-                {.world = world->matrix, .mesh = part.mesh, .material = part.material, .movable = renderer.movable});
+            out.push_back({.world = world->matrix, .mesh = part.mesh, .material = part.material, .movable = movable});
             if (entities != nullptr)
             {
                 entities->push_back(entity);
@@ -250,10 +253,19 @@ std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshe
 
 void registerRenderComponents(Scene::ComponentRegistry& registry)
 {
-    registry.add(Scene::component<MeshRenderer>(
-        "MeshRenderer", 1,
-        {Scene::field<MeshRenderer>("mesh", [](MeshRenderer& c) -> auto& { return c.mesh; }),
-         Scene::field<MeshRenderer>("movable", [](MeshRenderer& c) -> auto& { return c.movable; })}));
+    Scene::ComponentDesc meshRenderer = Scene::component<MeshRenderer>(
+        "MeshRenderer", 2, {Scene::field<MeshRenderer>("mesh", [](MeshRenderer& c) -> auto& { return c.mesh; })});
+    // Version 2 dropped `movable`: whether something moves is the transform's `mobility`, one field for every
+    // system. A flag in an older file isn't carried over (a migration sees one component only); Meow2Renderer marks
+    // animated nodes again each time it loads them.
+    meshRenderer.migrations.push_back({.from = 1,
+                                       .up = [](Scene::FieldTable& table) { table.erase("movable"); },
+                                       .down =
+                                           [](Scene::FieldTable& table)
+                                       {
+                                           table.emplace("movable", false);
+                                       }});
+    registry.add(std::move(meshRenderer));
 }
 
 SceneModels importSceneModels(Scene::Scene& scene, Assets::AssetManager& assets, const RenderMeshes& meshes,

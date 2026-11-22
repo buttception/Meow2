@@ -100,9 +100,14 @@ void InputSystem::apply(const InputEvent& event)
         Overloaded{
             [this](const KeyInput& input)
             {
-                if (input.down && input.repeat)
+                if (input.repeat)
                 {
-                    m_events.enqueue(KeyPressed{.key = input.key, .repeat = true}); // not a new press: no edge
+                    // Not a new press: no edge. A repeat "release" (some sources send release + press pairs) never lets
+                    // go of the key either.
+                    if (input.down)
+                    {
+                        m_events.enqueue(KeyPressed{.key = input.key, .repeat = true});
+                    }
                     return;
                 }
                 const std::size_t index = indexOf(input.key);

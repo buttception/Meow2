@@ -3,6 +3,7 @@
 
 #include <Meow2/Assets/SceneFile.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
+#include <Meow2/Scene/Environment.h>
 
 #include <toml++/toml.h>
 
@@ -226,6 +227,10 @@ Result<std::string> writeScene(const Scene::Scene& scene, const Scene::Component
         std::vector<WrittenComponent> components;
         for (const Scene::ComponentDesc& desc : registry.components())
         {
+            if (desc.setting)
+            {
+                continue; // settings are the scene's, written as [settings.*] below
+            }
             if (!desc.has(entities, entity))
             {
                 continue;
@@ -279,6 +284,22 @@ Result<std::string> writeScene(const Scene::Scene& scene, const Scene::Component
         perEntity.push_back(std::move(components));
     }
 
+    // The scene's settings (the Environment): one table each, in the registry's field order, listed in [components]
+    // with their version like components.
+    std::vector<WrittenComponent> settings;
+    if (const Scene::ComponentDesc* desc = registry.find("Environment");
+        desc != nullptr && Scene::hasEnvironment(scene))
+    {
+        const Scene::Environment environment = Scene::environment(scene);
+        WrittenComponent written{.name = desc->name, .fields = {}};
+        for (const Scene::FieldDesc& field : desc->fields)
+        {
+            written.fields.emplace_back(field.name, field.get(&environment, scene));
+        }
+        versions[desc->name] = desc->version;
+        settings.push_back(std::move(written));
+    }
+
     std::string out;
     out += "# Meow2 scene. Entities are sorted by ID and each is one block, so edits to different entities merge.\n";
     out += std::format("format = \"{}\"\nversion = {}\n", c_formatName, c_sceneFormatVersion);
@@ -287,6 +308,19 @@ Result<std::string> writeScene(const Scene::Scene& scene, const Scene::Component
     {
         appendKey(out, name);
         out += std::format(" = {}\n", version);
+    }
+    for (const WrittenComponent& setting : settings)
+    {
+        out += "\n[settings.";
+        appendKey(out, setting.name);
+        out += "]\n";
+        for (const auto& [key, value] : setting.fields)
+        {
+            appendKey(out, key);
+            out += " = ";
+            appendValue(out, value);
+            out += '\n';
+        }
     }
     for (std::size_t i = 0; i < ordered.size(); ++i)
     {
@@ -354,6 +388,54 @@ Result<SceneReadReport> readScene(std::string_view text, Scene::Scene& scene, Sc
             const std::int64_t version = node.value_or(std::int64_t{1});
             versions.emplace(std::string{key.str()}, static_cast<std::uint32_t>(std::clamp<std::int64_t>(
                                                          version, 1, std::numeric_limits<std::uint32_t>::max())));
+        }
+    }
+
+    // Scene settings ([settings.Environment]), read like a component's table. Applied after the entities, so a file
+    // that can't be read changes nothing.
+    std::optional<Scene::Environment> readEnvironment;
+    if (const toml::table* settings = root["settings"].as_table())
+    {
+        for (const auto& [key, node] : *settings)
+        {
+            const std::string name{key.str()};
+            const Scene::ComponentDesc* desc = registry.find(name);
+            const toml::table* fields = node.as_table();
+            if (desc == nullptr || !desc->setting || name != "Environment" || fields == nullptr)
+            {
+                report.warnings.push_back(std::format("{}: setting '{}' isn't known here; skipped", where, name));
+                continue;
+            }
+            Scene::FieldTable values;
+            for (const auto& [fieldKey, fieldNode] : *fields)
+            {
+                if (std::optional<Scene::FieldValue> value = toFieldValue(fieldNode))
+                {
+                    values.emplace(std::string{fieldKey.str()}, std::move(*value));
+                }
+            }
+            const auto listed = versions.find(name);
+            const std::uint32_t version = listed != versions.end() ? listed->second : 1;
+            if (version < desc->version)
+            {
+                if (Result<void> migrated = Scene::migrate(*desc, values, version, desc->version); !migrated)
+                {
+                    report.warnings.push_back(
+                        std::format("{}: {}; the defaults are used", where, migrated.error().message));
+                    continue;
+                }
+            }
+            Scene::Environment environment;
+            std::vector<std::string> fieldWarnings;
+            if (Result<void> set = Scene::fromFieldTable(*desc, &environment, values, scene, fieldWarnings); !set)
+            {
+                fieldWarnings.push_back(set.error().message);
+            }
+            for (std::string& warning : fieldWarnings)
+            {
+                report.warnings.push_back(std::format("{}: settings: {}", where, std::move(warning)));
+            }
+            readEnvironment = environment;
         }
     }
 
@@ -442,6 +524,7 @@ Result<SceneReadReport> readScene(std::string_view text, Scene::Scene& scene, Sc
     report.entities = created.size();
 
     // Pass 3: components.
+    std::vector<entt::entity> holdersOnly; // old files: entities that only held an Environment
     for (std::size_t i = 0; i < read.size(); ++i)
     {
         const entt::entity entity = created[i];
@@ -476,6 +559,23 @@ Result<SceneReadReport> readScene(std::string_view text, Scene::Scene& scene, Sc
                     continue;
                 }
                 ++report.migrated;
+            }
+            if (desc->setting)
+            {
+                // A file from before Environment became a scene setting kept it on an entity: it becomes the
+                // setting (unless the file has the setting too), and the entity goes if it held nothing else.
+                if (name == "Environment" && !readEnvironment)
+                {
+                    Scene::Environment environment;
+                    std::vector<std::string> ignored;
+                    static_cast<void>(Scene::fromFieldTable(*desc, &environment, table, scene, ignored));
+                    readEnvironment = environment;
+                }
+                if (read[i].components.size() == 1)
+                {
+                    holdersOnly.push_back(entity);
+                }
+                continue;
             }
             void* component = desc->getOrEmplace(entities, entity);
             std::vector<std::string> fieldWarnings;
@@ -539,6 +639,15 @@ Result<SceneReadReport> readScene(std::string_view text, Scene::Scene& scene, Sc
         {
             hierarchy.attach(entity);
         }
+    }
+    if (readEnvironment)
+    {
+        Scene::setEnvironment(scene, *readEnvironment);
+    }
+    for (const entt::entity holder : holdersOnly)
+    {
+        scene.destroy(holder); // an old file's "Environment" entity: its sun is the scene setting now
+        --report.entities;
     }
     return report;
 }

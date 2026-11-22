@@ -46,6 +46,8 @@ add_library(Meow2EditorCore STATIC
     src/Commands/UndoStack.h
     src/Editing/ClickSelection.cpp
     src/Editing/ClickSelection.h
+    src/Editing/Gizmo.cpp
+    src/Editing/Gizmo.h
     src/Editing/SceneEditor.cpp
     src/Editing/SceneEditor.h
     src/EditorMainWindow.cpp
@@ -56,12 +58,19 @@ add_library(Meow2EditorCore STATIC
     src/Panels/AssetsDock.h
     src/Panels/ConsoleDock.cpp
     src/Panels/ConsoleDock.h
+    src/Panels/FieldWidgets.h
+    src/Panels/FittingScrollArea.cpp
+    src/Panels/FittingScrollArea.h
     src/Panels/HierarchyDock.cpp
     src/Panels/HierarchyDock.h
     src/Panels/InspectorDock.cpp
     src/Panels/InspectorDock.h
+    src/Panels/SceneSettingsDock.cpp
+    src/Panels/SceneSettingsDock.h
     src/Panels/SettingsDialog.cpp
     src/Panels/SettingsDialog.h
+    src/Panels/WheelGuard.cpp
+    src/Panels/WheelGuard.h
     src/Project/SceneDocument.cpp
     src/Project/SceneDocument.h
     src/ViewportWidget.cpp
@@ -82,6 +91,19 @@ add_library(Meow2EditorCore STATIC
     src/WindowPlacement.h)
 target_include_directories(Meow2EditorCore PUBLIC src)
 target_link_libraries(Meow2EditorCore PUBLIC Meow2::Engine Qt6::Widgets)
+# The asset icons (assets/icons/assets/*.svg, docs/wiki/Theme.md) built into the editor as resources
+# (:/icons/<Name>.svg). Drawing SVG needs Qt's Svg module, part of a standard Qt install; without it the Assets dock
+# falls back to Qt's own file icons.
+find_package(Qt6 QUIET COMPONENTS Svg)
+if(TARGET Qt6::Svg)
+    target_link_libraries(Meow2EditorCore PUBLIC Qt6::Svg)
+    target_compile_definitions(Meow2EditorCore PUBLIC MEOW2_EDITOR_SVG_ICONS=1)
+else()
+    message(STATUS "Qt Svg not found: the editor's Assets dock uses Qt's own file icons")
+endif()
+file(GLOB meow2AssetIcons CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/assets/icons/assets/*.svg")
+qt_add_resources(Meow2EditorCore "assetIcons" PREFIX "/icons" BASE "${PROJECT_SOURCE_DIR}/assets/icons/assets"
+                 FILES ${meow2AssetIcons})
 meow2_set_warnings(Meow2EditorCore)
 set_target_properties(Meow2EditorCore PROPERTIES FOLDER "Apps")
 meow2_source_groups(Meow2EditorCore)

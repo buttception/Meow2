@@ -7,8 +7,15 @@
 #include "Panels/SettingsDialog.h"
 #include "Viewports/GameViewportDock.h"
 
+#include <Meow2/Scene/Environment.h>
+
 #include <QAction>
+#include <QDockWidget>
+#include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileInfo>
 #include <QPlainTextEdit>
+#include <QTabWidget>
 
 namespace
 {
@@ -125,4 +132,74 @@ TEST_F(MainWindowTest, AssetsDockOpensScenes)
     EXPECT_EQ(m_document->scenePath(), u"Levels/Dock.m2scene"_s) << "a double-click opens the scene";
     ASSERT_TRUE(m_commands.execute(u"view.showPanel", {{u"panel"_s, u"assets"_s}, {u"visible"_s, false}}));
     EXPECT_FALSE(window.assetsDock().isVisible());
+}
+
+// #228 (owner request): docks stacked as tabs show their tabs on top.
+TEST_F(MainWindowTest, DockTabsOnTop)
+{
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    for (const Qt::DockWidgetArea area :
+         {Qt::LeftDockWidgetArea, Qt::RightDockWidgetArea, Qt::TopDockWidgetArea, Qt::BottomDockWidgetArea})
+    {
+        EXPECT_EQ(window.tabPosition(area), QTabWidget::North) << "area " << static_cast<int>(area);
+    }
+}
+
+// Owner request: a dock stacked with others as tabs shows no title bar of its own (its tab names it); alone again,
+// it gets it back.
+TEST_F(MainWindowTest, TabbedDocksHideTheirTitle)
+{
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    QDockWidget& console = window.console();
+    QDockWidget& assets = window.assetsDock();
+    window.tick();
+    EXPECT_EQ(console.titleBarWidget(), nullptr) << "alone at the bottom: its title shows";
+
+    window.tabifyDockWidget(&console, &assets);
+    window.tick();
+    ASSERT_NE(console.titleBarWidget(), nullptr) << "tabbed: hidden behind an empty title bar";
+    ASSERT_NE(assets.titleBarWidget(), nullptr);
+    EXPECT_TRUE(console.titleBarWidget()->children().isEmpty()) << "an empty widget";
+
+    // Closing the other tab leaves it alone: the title comes back.
+    assets.hide();
+    window.tick();
+    EXPECT_EQ(console.titleBarWidget(), nullptr);
+
+    // Split off again: titles back on both.
+    assets.show();
+    window.tick();
+    EXPECT_NE(console.titleBarWidget(), nullptr);
+    window.addDockWidget(Qt::LeftDockWidgetArea, &assets);
+    window.tick();
+    EXPECT_EQ(console.titleBarWidget(), nullptr);
+    EXPECT_EQ(assets.titleBarWidget(), nullptr);
+}
+
+// Owner requests (#229): the scene's settings in a dock of their own (File → Scene settings…), edited through
+// scene.setSetting; the Assets dock's icons.
+TEST_F(MainWindowTest, SceneSettingsDockAndAssetIcons)
+{
+    m_world.newScene();
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    ASSERT_TRUE(m_commands.execute(u"view.showPanel", {{u"panel"_s, u"sceneSettings"_s}, {u"visible"_s, true}}));
+    window.tick();
+    auto* dock = window.findChild<QDockWidget*>(u"SceneSettingsDock"_s);
+    ASSERT_NE(dock, nullptr);
+    auto* elevation = dock->findChild<QDoubleSpinBox*>(u"Environment.sunElevation"_s);
+    ASSERT_NE(elevation, nullptr);
+    EXPECT_DOUBLE_EQ(elevation->value(), 35.0);
+    elevation->setValue(50.0);
+    emit elevation->editingFinished();
+    EXPECT_FLOAT_EQ(Meow2::Scene::environment(m_world.scene()).sunElevation, 50.0F);
+    EXPECT_TRUE(m_history.canUndo()) << "an undoable step";
+    ASSERT_NE(dock->findChild<QDoubleSpinBox*>(u"Environment.sunColor.2"_s), nullptr) << "colours as four boxes";
+
+    EXPECT_EQ(Meow2::Editor::assetIconName(QFileInfo{u"Level.m2scene"_s}), u"Scene"_s);
+    EXPECT_EQ(Meow2::Editor::assetIconName(QFileInfo{u"Sponza.GLTF"_s}), u"Mesh"_s);
+    EXPECT_EQ(Meow2::Editor::assetIconName(QFileInfo{u"bricks.png"_s}), u"Texture"_s);
+    EXPECT_EQ(Meow2::Editor::assetIconName(QFileInfo{u"Lit.hlsl"_s}), u"Shader"_s);
+    EXPECT_TRUE(Meow2::Editor::assetIconName(QFileInfo{u"notes.txt"_s}).isEmpty());
+    EXPECT_FALSE(QFile::exists(u":/icons/Nope.svg"_s));
+    EXPECT_TRUE(QFile::exists(u":/icons/Scene.svg"_s)) << "the icon set is built into the editor";
 }

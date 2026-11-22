@@ -125,7 +125,7 @@ Result<QString> SceneDocument::copyIntoProject(const std::filesystem::path& mode
         return fail(ErrorCode::NotFound, model.string());
     }
     // The whole folder: a .gltf names its buffers and textures by paths relative to itself.
-    const std::filesystem::path target = m_projectFolder / "Models" / model.stem();
+    const std::filesystem::path target = m_projectFolder / "Assets" / "Models" / model.stem();
     if (!std::filesystem::exists(target / model.filename(), error))
     {
         std::filesystem::create_directories(target, error);
@@ -161,6 +161,28 @@ Result<void> SceneDocument::mountProject(const std::filesystem::path& folder)
             !mounted)
         {
             return Unexpected<Error>{mounted.error()};
+        }
+    }
+    // The project's layout (as in Unity): Assets/ for everything imported, Scenes/ for scenes, and a project file
+    // that names it. Made when missing, so any folder opened becomes a project.
+    std::filesystem::create_directories(normal / "Assets", error);
+    std::filesystem::create_directories(normal / "Scenes", error);
+    bool hasProjectFile = false;
+    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(normal, error))
+    {
+        hasProjectFile = hasProjectFile || entry.path().extension() == c_projectExtension;
+    }
+    if (!hasProjectFile)
+    {
+        const std::string name = normal.filename().string();
+        const std::string text = std::format("# Meow2 project: Assets/ holds what's imported, Scenes/ the scenes.\n"
+                                             "format = \"meow2-project\"\nversion = 1\nname = \"{}\"\n",
+                                             name);
+        if (Result<void> written =
+                m_deps.files.writeText(std::format("{}/{}{}", mount, name, c_projectExtension), text);
+            !written)
+        {
+            MEOW2_LOG_WARN(m_deps.log, "Project {}: no project file: {}", normal.string(), written.error());
         }
     }
     if (Result<std::size_t> scanned = m_deps.assets.scan(mount); !scanned)
@@ -307,7 +329,9 @@ void SceneDocument::registerCommands()
     };
 
     add({.name = u"project.open"_s,
-         .description = u"Opens a project folder (made if it doesn't exist) and starts a new scene in it."_s,
+         .description =
+             u"Opens a project: a folder (made if it doesn't exist) with Assets/ for what's imported, Scenes/ for "
+             u"scenes and a <name>.m2project file, added if missing. Starts a new scene in it."_s,
          .parameters = objectSchema(
              {{.name = u"path"_s, .schema = pathParameter(u"The folder, a full native path."_s), .required = true},
               {.name = u"discard"_s, .schema = discardParameter(), .required = false}})},

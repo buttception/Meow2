@@ -119,6 +119,9 @@ struct ComponentDesc
     std::vector<std::string> aliases;  ///< Names it was saved under before; read as this component, saved as `name`.
     std::vector<FieldDesc> fields;     ///< In the order files list them.
     std::vector<Migration> migrations; ///< One per version step, any order.
+    /// @brief A scene setting, not a component: one value per scene (in the registry's context), saved as the scene
+    ///        file's `[settings.<name>]` table and edited in Scene settings, never added to entities.
+    bool setting = false;
     /// @brief Whether an entity has the component.
     bool (*has)(const Scene::Registry& registry, entt::entity entity) = nullptr;
     /// @brief The entity's component; it must have one.

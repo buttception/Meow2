@@ -260,12 +260,16 @@ void registerSceneComponents(ComponentRegistry& registry)
          field<Camera>("nearZ", [](Camera& c) -> auto& { return c.lens.nearZ; }),
          field<Camera>("farZ", [](Camera& c) -> auto& { return c.lens.farZ; }),
          field<Camera>("main", [](Camera& c) -> auto& { return c.main; })}));
-    registry.add(component<Environment>(
+    // A scene setting (in the registry's context, Environment.h), described here like a component so files, the
+    // Scene settings dock and agents read and write its fields the same way.
+    ComponentDesc environmentDesc = component<Environment>(
         "Environment", 1,
         {field<Environment>("sunElevation", [](Environment& c) -> auto& { return c.sunElevation; }),
          field<Environment>("sunAzimuth", [](Environment& c) -> auto& { return c.sunAzimuth; }),
          field<Environment>("sunColor", [](Environment& c) -> auto& { return c.sunColor; }),
          field<Environment>("sunIntensity", [](Environment& c) -> auto& { return c.sunIntensity; }),
-         field<Environment>("exposure", [](Environment& c) -> auto& { return c.exposure; })}));
+         field<Environment>("exposure", [](Environment& c) -> auto& { return c.exposure; })});
+    environmentDesc.setting = true;
+    registry.add(std::move(environmentDesc));
 }
 } // namespace Meow2::Scene

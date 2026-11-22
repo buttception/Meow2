@@ -47,8 +47,10 @@ enum class Mobility : std::uint8_t
 /// Write it through TransformHierarchy::setLocal(), or write it directly and call TransformHierarchy::markDirty().
 struct LocalTransform
 {
-    Math::Transform value;              ///< Position, rotation and scale relative to the parent.
-    Mobility mobility = Mobility::Auto; ///< Whether it moves at runtime (reserved: not used by the renderer yet).
+    Math::Transform value; ///< Position, rotation and scale relative to the parent.
+    /// @brief Whether it moves at runtime. Movable meshes are drawn into the sun's shadow every frame instead of its
+    ///        cache (MEOW2_INSTANCE_MOVABLE); Auto counts as Static until it's inferred from components (M13).
+    Mobility mobility = Mobility::Auto;
 };
 
 /// @brief An entity's transform in the world: the product of its local transform and all its ancestors'. Plain data.

@@ -6,8 +6,6 @@ add_library(Meow2RendererCore STATIC
     src/CameraControls.h
     src/ConsoleWindow.cpp
     src/ConsoleWindow.h
-    src/DebugLines.cpp
-    src/DebugLines.h
     src/DepthPositionView.cpp
     src/DepthPositionView.h
     src/FrameInspector.cpp

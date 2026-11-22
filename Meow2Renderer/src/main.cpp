@@ -4,7 +4,6 @@
 ///        a grid of cubes through the GPU-driven path, and shows an ImGui shell to pick scenes and read stats.
 
 #include "ConsoleWindow.h"
-#include "DebugLines.h"
 #include "DepthPositionView.h"
 #include "FrameInspector.h"
 #include "FrameScreenshot.h"
@@ -34,6 +33,7 @@
 #include <Meow2/Core/Time/GameLoop.h>
 #include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
+#include <Meow2/Graphics/Renderer/DebugLines.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
@@ -307,7 +307,7 @@ int main(int argc, char** argv)
     std::unique_ptr<Meow2::RendererApp::RenderDebug> renderDebug;        // debug views, wireframes, frozen culling
     std::unique_ptr<Meow2::RendererApp::FrameInspector> inspector;       // render-graph view, pass view, frame capture
     std::unique_ptr<Meow2::RendererApp::InfiniteGrid> grid;              // the ground grid (renderer.grid)
-    std::unique_ptr<Meow2::RendererApp::DebugLines> debugLines;          // the frozen camera's frustum
+    std::unique_ptr<Meow2::Renderer::DebugLines> debugLines;             // the frozen camera's frustum
     std::unique_ptr<Meow2::RendererApp::DepthPositionView> positionView; // the Position debug view's texture
     std::unique_ptr<Meow2::RendererApp::FrameScreenshot> screenshot;     // PrintScreen: the window's pixels to a PNG
     // The starting sun: renderer.sunElevation and renderer.sunDirection, in degrees (the Stats window's sliders).
@@ -431,7 +431,7 @@ int main(int argc, char** argv)
             inspector->watch(config.getString("renderer.watchPass", "")); // for checks without the mouse
             grid = std::make_unique<Meow2::RendererApp::InfiniteGrid>(
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c1b-8000-80a4-7b19d2e6c05c"), c_sceneFormat, appLog);
-            debugLines = std::make_unique<Meow2::RendererApp::DebugLines>(
+            debugLines = std::make_unique<Meow2::Renderer::DebugLines>(
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c1a-8000-80a4-7b19d2e6c05b"), c_sceneFormat, appLog);
             positionView = std::make_unique<Meow2::RendererApp::DepthPositionView>(
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c1d-8000-80a4-7b19d2e6c05e"), appLog);
@@ -990,7 +990,7 @@ int main(int argc, char** argv)
                             renderDebug ? renderDebug->frozenCamera() : std::nullopt)
                     {
                         constexpr Meow2::Math::Color c_frustumColor{.r = 1.0F, .g = 0.85F, .b = 0.1F, .a = 1.0F};
-                        for (const Meow2::RendererApp::DebugLine& line : Meow2::RendererApp::frustumLines(
+                        for (const Meow2::Renderer::DebugLine& line : Meow2::Renderer::frustumLines(
                                  *frozen, std::max(view->radius() * 4.0F, frozen->projection._43 * 10.0F),
                                  c_frustumColor))
                         {

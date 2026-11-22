@@ -4,6 +4,7 @@
 #include "EditorTestRig.h"
 
 #include <Meow2/Scene/Camera.h>
+#include <Meow2/Scene/Environment.h>
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -194,4 +195,100 @@ TEST_F(SceneEditorTest, QueriesDescribeTheScene)
     ok(m_commands, u"entity.delete", {{u"id"_s, id}});
     EXPECT_TRUE(ok(m_commands, u"selection.get").value(u"ids").toArray().isEmpty())
         << "a deleted entity isn't selected";
+}
+
+// #228: the gizmos' command: previews while dragging aren't recorded; the last step undoes back to `from`.
+TEST_F(SceneEditorTest, SetTransformCommand)
+{
+    const QString id = ok(m_commands, u"entity.create", {{u"name"_s, u"Box"_s}}).value(u"id").toString();
+    const auto local = [this, &id]
+    {
+        return m_world.scene().registry().get<Meow2::Scene::LocalTransform>(entityOf(m_world, id)).value;
+    };
+    const qsizetype stepsBefore = m_history.undoLabels().size(); // Qt sizes are signed
+
+    // Only what's given changes.
+    ok(m_commands, u"entity.setTransform", {{u"id"_s, id}, {u"position"_s, QJsonArray{1.0, 2.0, 3.0}}});
+    EXPECT_FLOAT_EQ(local().position.y, 2.0F);
+    EXPECT_FLOAT_EQ(local().scale.x, 1.0F) << "scale kept";
+    EXPECT_EQ(m_history.undoLabels().size(), stepsBefore + 1);
+
+    // A drag: previews move it without steps; the last step names where it began.
+    const QJsonObject start{{u"position"_s, QJsonArray{1.0, 2.0, 3.0}},
+                            {u"rotation"_s, QJsonArray{0.0, 0.0, 0.0, 1.0}},
+                            {u"scale"_s, QJsonArray{1.0, 1.0, 1.0}}};
+    const std::uint64_t revision = m_world.revision();
+    for (const double x : {1.5, 2.0, 2.5})
+    {
+        ok(m_commands, u"entity.setTransform",
+           {{u"id"_s, id}, {u"position"_s, QJsonArray{x, 2.0, 3.0}}, {u"preview"_s, true}});
+    }
+    EXPECT_EQ(m_world.revision(), revision) << "previews don't rebuild the docks every frame";
+    EXPECT_FLOAT_EQ(local().position.x, 2.5F);
+    EXPECT_EQ(m_history.undoLabels().size(), stepsBefore + 1) << "previews aren't recorded";
+    ok(m_commands, u"entity.setTransform",
+       {{u"id"_s, id},
+        {u"position"_s, QJsonArray{3.0, 2.0, 3.0}},
+        {u"rotation"_s, QJsonArray{0.0, 0.0, 0.0, 2.0}},
+        {u"from"_s, start}});
+    EXPECT_FLOAT_EQ(local().position.x, 3.0F);
+    EXPECT_FLOAT_EQ(local().rotation.w, 1.0F) << "rotations are normalised";
+    EXPECT_EQ(m_history.undoLabels().size(), stepsBefore + 2) << "one step for the drag";
+    ASSERT_TRUE(m_commands.execute(u"edit.undo"));
+    EXPECT_FLOAT_EQ(local().position.x, 1.0F) << "undo goes back to where the drag began, not the last preview";
+    ASSERT_TRUE(m_commands.execute(u"edit.redo"));
+    EXPECT_FLOAT_EQ(local().position.x, 3.0F);
+
+    // The world transform follows at the next update.
+    m_world.update(nullptr);
+    const Meow2::Math::Mat4& world =
+        m_world.scene().registry().get<Meow2::Scene::WorldTransform>(entityOf(m_world, id)).matrix;
+    EXPECT_FLOAT_EQ(world._41, 3.0F);
+
+    // Wrong shapes are refused and change nothing.
+    EXPECT_FALSE(m_commands.execute(u"entity.setTransform", {{u"id"_s, id}, {u"position"_s, QJsonArray{1.0, 2.0}}}));
+    EXPECT_FALSE(
+        m_commands.execute(u"entity.setTransform", {{u"id"_s, id}, {u"rotation"_s, QJsonArray{0.0, 0.0, 0.0, 0.0}}}));
+    EXPECT_FALSE(
+        m_commands.execute(u"entity.setTransform", {{u"id"_s, id}, {u"scale"_s, QJsonArray{1.0, u"a"_s, 1.0}}}));
+    EXPECT_FALSE(
+        m_commands.execute(u"entity.setTransform", {{u"id"_s, u"nope"_s}, {u"position"_s, QJsonArray{0.0, 0.0, 0.0}}}));
+    EXPECT_FLOAT_EQ(local().position.x, 3.0F);
+}
+
+// Owner request (#229): the Environment is a scene setting, not an entity: its own commands, undoable, and never a
+// component to add.
+TEST_F(SceneEditorTest, EnvironmentIsASceneSetting)
+{
+    m_world.newScene();
+    EXPECT_TRUE(Meow2::Scene::hasEnvironment(m_world.scene()));
+    EXPECT_FALSE(Meow2::Scene::findEnvironment(m_world.scene())) << "no Environment entity in a new scene";
+
+    const QJsonObject list = ok(m_commands, u"component.list");
+    bool listedAsComponent = false;
+    for (const QJsonValue& entry : list.value(u"components").toArray())
+    {
+        listedAsComponent = listedAsComponent || entry.toObject().value(u"name").toString() == u"Environment"_s;
+    }
+    EXPECT_FALSE(listedAsComponent);
+    ASSERT_EQ(list.value(u"settings").toArray().size(), 1);
+    EXPECT_EQ(list.value(u"settings").toArray().at(0).toObject().value(u"name").toString(), u"Environment"_s);
+
+    const QString id = ok(m_commands, u"entity.create", {{u"name"_s, u"Box"_s}}).value(u"id").toString();
+    EXPECT_FALSE(m_commands.execute(u"component.add", {{u"id"_s, id}, {u"component"_s, u"Environment"_s}}))
+        << "a setting isn't added to entities";
+
+    EXPECT_DOUBLE_EQ(ok(m_commands, u"scene.settings").value(u"Environment")[u"sunElevation"].toDouble(), 35.0);
+    const std::uint64_t revision = m_world.revision();
+    ok(m_commands, u"scene.setSetting",
+       {{u"setting"_s, u"Environment"_s}, {u"field"_s, u"sunElevation"_s}, {u"value"_s, 60.0}});
+    EXPECT_FLOAT_EQ(Meow2::Scene::environment(m_world.scene()).sunElevation, 60.0F);
+    EXPECT_GT(m_world.revision(), revision) << "the docks and the viewports follow";
+    ASSERT_TRUE(m_commands.execute(u"edit.undo"));
+    EXPECT_FLOAT_EQ(Meow2::Scene::environment(m_world.scene()).sunElevation, 35.0F);
+    EXPECT_FALSE(m_commands.execute(
+        u"scene.setSetting",
+        {{u"setting"_s, u"Environment"_s}, {u"field"_s, u"sunElevation"_s}, {u"value"_s, u"high"_s}}));
+    EXPECT_FALSE(m_commands.execute(u"scene.setSetting",
+                                    {{u"setting"_s, u"Weather"_s}, {u"field"_s, u"rain"_s}, {u"value"_s, 1.0}}));
 }

@@ -9,9 +9,11 @@
 #include <Meow2/Scene/Environment.h>
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <QByteArray>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -50,9 +52,10 @@ QJsonObject info(Meow2::Editor::EditorCommandRegistry& commands)
 
 TEST_F(SceneDocumentTest, SaveAndOpenRoundTrip)
 {
-    // The document starts with a new, untitled scene: a main camera and an Environment.
+    // The document starts with a new, untitled scene: a main camera, and the Environment as its setting.
     EXPECT_TRUE(info(m_commands).value(u"path").toString().isEmpty());
-    EXPECT_EQ(m_world.scene().entityCount(), 2U);
+    EXPECT_EQ(m_world.scene().entityCount(), 1U);
+    EXPECT_TRUE(Meow2::Scene::hasEnvironment(m_world.scene()));
     ASSERT_TRUE(Meow2::Scene::findMainCamera(m_world.scene()));
     EXPECT_FALSE(m_commands.execute(u"scene.save")) << "untitled: scene.saveAs first";
     EXPECT_FALSE(m_commands.isEnabled(u"scene.save"));
@@ -65,7 +68,8 @@ TEST_F(SceneDocumentTest, SaveAndOpenRoundTrip)
     ASSERT_TRUE(m_commands.execute(u"scene.new"));
     const Meow2::EntityId camera = m_world.scene().idOf(*Meow2::Scene::findMainCamera(m_world.scene()));
     ASSERT_TRUE(m_commands.execute(u"scene.open", {{u"path"_s, u"Levels/First.m2scene"_s}}));
-    EXPECT_EQ(m_world.scene().entityCount(), 2U);
+    EXPECT_EQ(m_world.scene().entityCount(), 1U);
+    EXPECT_TRUE(Meow2::Scene::hasEnvironment(m_world.scene())) << "read from the file's settings";
     EXPECT_NE(m_world.scene().idOf(*Meow2::Scene::findMainCamera(m_world.scene())), camera)
         << "the saved camera, not the new scene's";
     EXPECT_TRUE(m_world.environment().has_value());
@@ -188,9 +192,61 @@ TEST_F(SceneDocumentTest, ModelsOutsideTheProjectAreCopiedIn)
 
     const Meow2::Result<QString> copied = m_document->copyIntoProject(outside / "Triangle.gltf");
     ASSERT_TRUE(copied) << copied.error().message;
-    EXPECT_EQ(*copied, u"Models/Triangle/Triangle.gltf"_s);
-    EXPECT_TRUE(std::filesystem::exists(m_project / "Models" / "Triangle" / "Texture.png")) << "the folder comes along";
+    EXPECT_EQ(*copied, u"Assets/Models/Triangle/Triangle.gltf"_s) << "imports go in the project's Assets/";
+    EXPECT_TRUE(std::filesystem::exists(m_project / "Assets" / "Models" / "Triangle" / "Texture.png"))
+        << "the folder comes along";
     ASSERT_TRUE(m_commands.execute(u"asset.importModel", {{u"path"_s, *copied}}));
     EXPECT_EQ(*m_document->copyIntoProject(outside / "Triangle.gltf"), *copied) << "a second import reuses the copy";
     EXPECT_FALSE(m_document->copyIntoProject(outside / "Texture.png")) << "only models";
+}
+
+// Owner decision (#229): projects are laid out as in Unity: Assets/, Scenes/ and a project file, made when missing.
+TEST_F(SceneDocumentTest, ProjectsHaveAssetsAndScenes)
+{
+    EXPECT_TRUE(std::filesystem::is_directory(m_project / "Assets"));
+    EXPECT_TRUE(std::filesystem::is_directory(m_project / "Scenes"));
+    EXPECT_TRUE(std::filesystem::exists(m_project / "project.m2project")) << "named after the folder";
+
+    // A new project somewhere else: made with the same layout.
+    const std::filesystem::path other = m_project.parent_path() / "Fresh Game";
+    std::error_code ignored;
+    std::filesystem::remove_all(other, ignored);
+    ASSERT_TRUE(m_commands.execute(u"project.open",
+                                   {{u"path"_s, QString::fromStdWString(other.wstring())}, {u"discard"_s, true}}));
+    EXPECT_TRUE(std::filesystem::is_directory(other / "Assets"));
+    EXPECT_TRUE(std::filesystem::is_directory(other / "Scenes"));
+    std::ifstream file(other / "Fresh Game.m2project");
+    const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    EXPECT_NE(text.find("name = \"Fresh Game\""), std::string::npos) << text;
+    file.close();
+    std::filesystem::remove_all(other, ignored);
+}
+
+// Owner request (#229): a model edited on disk while the editor runs is reloaded (here without a GPU: re-imported,
+// so its mesh's new name shows).
+TEST_F(SceneDocumentTest, ChangedModelsReload)
+{
+    std::filesystem::create_directories(m_project / "Assets" / "Models");
+    const std::filesystem::path model = m_project / "Assets" / "Models" / "Triangle.gltf";
+    std::ofstream{model, std::ios::binary} << triangleGltf();
+    ASSERT_TRUE(m_commands.execute(u"asset.importModel", {{u"path"_s, u"Assets/Models/Triangle.gltf"_s}}));
+    const std::vector<std::pair<Meow2::AssetId, std::string>> before = m_world.meshNames();
+    ASSERT_EQ(before.size(), 1U);
+    EXPECT_EQ(before.front().second, "Triangle: Triangle");
+    EXPECT_EQ(m_world.reloadChangedModels(nullptr, true), 0U) << "nothing changed yet";
+
+    // Saved again with another mesh name, a little later than the first (file times must differ).
+    std::string edited = triangleGltf();
+    edited.replace(edited.find("\"name\": \"Triangle\""), 18, "\"name\": \"Renamed!\"");
+    std::ofstream{model, std::ios::binary} << edited;
+    std::filesystem::last_write_time(model, std::filesystem::last_write_time(model) + std::chrono::seconds(2));
+    EXPECT_EQ(m_world.reloadChangedModels(nullptr, true), 1U);
+    EXPECT_EQ(m_world.meshName(before.front().first), "Triangle: Renamed!") << "the same mesh ID, the new contents";
+    EXPECT_EQ(m_world.reloadChangedModels(nullptr, true), 0U) << "once per change";
+
+    // A broken save keeps the old model.
+    std::ofstream{model, std::ios::binary} << "not json";
+    std::filesystem::last_write_time(model, std::filesystem::last_write_time(model) + std::chrono::seconds(4));
+    EXPECT_EQ(m_world.reloadChangedModels(nullptr, true), 0U);
+    EXPECT_EQ(m_world.meshName(before.front().first), "Triangle: Renamed!");
 }

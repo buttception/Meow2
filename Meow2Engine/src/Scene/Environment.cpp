@@ -32,4 +32,21 @@ std::optional<entt::entity> findEnvironment(const Scene& scene)
     // A storage iterates its components; each() gives the entity with each.
     return std::get<0>(*storage->each().begin());
 }
+
+// The setting lives in the registry's context: one value per scene, outside any entity, gone with the scene.
+Environment environment(const Scene& scene)
+{
+    const Environment* found = scene.registry().ctx().find<Environment>();
+    return found != nullptr ? *found : Environment{};
+}
+
+void setEnvironment(Scene& scene, const Environment& environment)
+{
+    scene.registry().ctx().insert_or_assign(environment);
+}
+
+bool hasEnvironment(const Scene& scene)
+{
+    return scene.registry().ctx().contains<Environment>();
+}
 } // namespace Meow2::Scene

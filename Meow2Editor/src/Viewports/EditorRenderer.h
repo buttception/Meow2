@@ -8,6 +8,7 @@
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/Logger.h>
 #include <Meow2/Core/Result.h>
+#include <Meow2/Graphics/Renderer/DebugLines.h>
 #include <Meow2/Graphics/Renderer/FrameResources.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
@@ -75,6 +76,15 @@ struct PickResult
     std::uint32_t y = 0;         ///< The pixel asked for.
     std::vector<PickHit> hits{}; ///< Each instance under the cursor once, closest to the cursor, then nearest, first;
                                  ///< empty: nothing there.
+};
+
+/// @brief Shapes drawn over a viewport: the gizmos. Plain data.
+struct ViewportOverlay
+{
+    std::vector<Renderer::DebugLine> lines{};               ///< In world space.
+    std::vector<Renderer::DebugTriangle> triangles{};       ///< In world space (the transform gizmo).
+    std::vector<Renderer::DebugLine> screenLines{};         ///< In viewport pixels: x right, y down.
+    std::vector<Renderer::DebugTriangle> screenTriangles{}; ///< In viewport pixels (the view-axis gizmo).
 };
 
 /// @brief The editor's renderer: one device, one GpuScene shared by every viewport, and a view per viewport.
@@ -182,6 +192,12 @@ public:
     /// @param outline  Whether to draw it; with nothing selected the passes are skipped anyway.
     void setOutline(ViewportId viewport, bool outline);
 
+    /// @brief Shapes to draw over a viewport's scene each frame until changed (the gizmos), on top of everything,
+    ///        before the tone map. Their colours are divided by the exposure, so they keep their brightness.
+    /// @param viewport The viewport.
+    /// @param overlay  The shapes; empty draws none.
+    void setOverlay(ViewportId viewport, ViewportOverlay overlay);
+
     /// @brief Tells the renderer whether any instance is marked selected, so the outline passes can be skipped.
     /// @param any True if some InstanceDesc has `selected`.
     void setHasSelection(bool any);
@@ -247,6 +263,9 @@ private:
         Rhi::ResourceState maskState = Rhi::ResourceState::Undefined; ///< The mask's state after the last frame.
         std::uint32_t maskWidth = 0;                                  ///< The mask's size.
         std::uint32_t maskHeight = 0;
+        ViewportOverlay overlay;                           ///< setOverlay().
+        std::unique_ptr<Renderer::DebugLines> debugLines;  ///< Draws its world shapes; made on first use.
+        std::unique_ptr<Renderer::DebugLines> screenLines; ///< Draws its screen shapes; made with debugLines.
     };
 
     /// @brief A pick asked for. Plain data.

@@ -18,12 +18,17 @@
 #include <Meow2/Scene/Scene.h>
 #include <Meow2/Scene/TransformHierarchy.h>
 
+#include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace Meow2::Editor
@@ -65,7 +70,8 @@ public:
     /// @brief Gives an empty GPU scene for a new or opened scene (EditorRenderer::resetScene()), or null without a GPU.
     using FreshGpu = std::function<Renderer::GpuScene*()>;
 
-    /// @brief Replaces the scene with a new one: a main camera looking at the origin and an Environment.
+    /// @brief Replaces the scene with a new one: a main camera looking at the origin, and the default Environment
+    ///        setting.
     /// @param freshGpu Empties the GPU scene; unset without a GPU.
     void newScene(const FreshGpu& freshGpu = {});
 
@@ -149,6 +155,38 @@ public:
         return *m_scene;
     }
 
+    /// @brief Reloads the models whose files changed on disk since they were loaded (the .gltf, its .bin or a
+    ///        texture), at most twice a second: re-imported and uploaded again under the same mesh IDs, so every
+    ///        entity drawing them shows the new meshes, materials and textures. The model's node tree isn't
+    ///        changed (entities keep their edits); a file that can't be read keeps the old model.
+    /// @param gpu Where to upload; null re-imports only (tests, no GPU).
+    /// @param now Look at once, without waiting for the half second or for a fresh file to settle (tests).
+    /// @return How many models were reloaded.
+    std::size_t reloadChangedModels(Renderer::GpuScene* gpu, bool now = false);
+
+    /// @brief A sphere around an entity and everything under it, as drawn (its meshes' boxes in world space), for
+    ///        framing it (double-click in the Hierarchy, F).
+    /// @param entity The entity.
+    /// @return The sphere; a 1 m one at its position when nothing under it is drawn; nothing for an entity that's gone
+    ///         or has no transform.
+    [[nodiscard]] std::optional<Math::Sphere> boundsOf(entt::entity entity) const;
+
+    /// @brief The scene, read-only.
+    /// @return It.
+    [[nodiscard]] const Scene::Scene& scene() const
+    {
+        return *m_scene;
+    }
+
+    /// @brief A mesh's name for people: "<model file>: <mesh>" for imported models, as the Inspector shows it.
+    /// @param mesh The mesh's AssetId.
+    /// @return The name, or empty for a mesh this scene hasn't loaded.
+    [[nodiscard]] std::string meshName(AssetId mesh) const;
+
+    /// @brief Every mesh the scene has loaded, with its name, sorted by name (the Inspector's mesh drop-down).
+    /// @return The meshes.
+    [[nodiscard]] std::vector<std::pair<AssetId, std::string>> meshNames() const;
+
     /// @brief Its transform hierarchy.
     /// @return It.
     [[nodiscard]] Scene::TransformHierarchy& hierarchy()
@@ -169,13 +207,35 @@ private:
     /// @brief Makes `fresh` the current scene; its meshes start empty.
     void adopt(Fresh fresh);
 
+    /// @brief Starts watching a model's folder for reloadChangedModels(); once per model.
+    /// @param source  The model's virtual path (a folder mount, so it has a native path).
+    /// @param meshIds Its stable mesh IDs.
+    void watchModel(std::string_view source, std::span<const AssetId> meshIds);
+
+    /// @brief Remembers the names of a model's meshes (meshName()).
+    /// @param source  The model's virtual path; its file name prefixes the names.
+    /// @param model   The imported model (its meshes' names).
+    /// @param meshIds Its stable mesh IDs, one per mesh.
+    void nameMeshes(std::string_view source, const Assets::ImportedModel& model, std::span<const AssetId> meshIds);
+
     EditorWorldDeps m_deps;
     std::unique_ptr<Scene::Scene> m_scene;                  ///< Behind a pointer: Scene can't move.
     std::unique_ptr<Scene::TransformHierarchy> m_hierarchy; ///< Likewise; destroyed before the scene.
     Renderer::RenderMeshes m_meshes;                        ///< Mesh AssetId → GPU mesh and material.
-    std::vector<Renderer::InstanceDesc> m_instances;        ///< Reused each update.
-    std::vector<entt::entity> m_instanceEntities;           ///< The entity of each of m_instances (its slot).
-    bool m_anySelected = false;                             ///< anySelectedInstance().
+    std::unordered_map<AssetId, std::string> m_meshNames;   ///< meshName().
+    /// @brief A loaded model reloadChangedModels() watches. Plain data.
+    struct WatchedModel
+    {
+        std::string source;                     ///< Its virtual path.
+        std::filesystem::path folder;           ///< Its folder on disk.
+        std::vector<AssetId> meshIds;           ///< Its stable mesh IDs.
+        std::filesystem::file_time_type newest; ///< The newest file time in the folder when last loaded.
+    };
+    std::vector<WatchedModel> m_models;                        ///< The scene's models.
+    std::chrono::steady_clock::time_point m_lastReloadCheck{}; ///< reloadChangedModels()'s last look.
+    std::vector<Renderer::InstanceDesc> m_instances;           ///< Reused each update.
+    std::vector<entt::entity> m_instanceEntities;              ///< The entity of each of m_instances (its slot).
+    bool m_anySelected = false;                                ///< anySelectedInstance().
     Math::Sphere m_bounds{.center = {0.0F, 0.0F, 0.0F}, .radius = 5.0F};
     std::uint64_t m_revision = 0; ///< revision().
 };

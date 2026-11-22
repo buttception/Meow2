@@ -9,7 +9,9 @@
 #include "Panels/ConsoleDock.h"
 #include "Panels/HierarchyDock.h"
 #include "Panels/InspectorDock.h"
+#include "Panels/SceneSettingsDock.h"
 #include "Panels/SettingsDialog.h"
+#include "Panels/WheelGuard.h"
 #include "Project/SceneDocument.h"
 #include "Viewports/GameViewportDock.h"
 #include "Viewports/QtInputSource.h"
@@ -17,11 +19,14 @@
 
 #include <Meow2/Core/Assert.h>
 
+#include <algorithm>
 #include <QAction>
 #include <QActionGroup>
+#include <QApplication>
 #include <QByteArray>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -47,6 +52,7 @@ constexpr QLatin1StringView c_gamePanel{"game"};
 constexpr QLatin1StringView c_assetsPanel{"assets"};
 constexpr QLatin1StringView c_hierarchyPanel{"hierarchy"};
 constexpr QLatin1StringView c_inspectorPanel{"inspector"};
+constexpr QLatin1StringView c_sceneSettingsPanel{"sceneSettings"};
 /// @brief Where the dock layout is kept (QMainWindow::saveState(), base64).
 constexpr std::string_view c_layoutKey = "editor.layout";
 } // namespace
@@ -65,16 +71,33 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     , m_editor(deps.editor)
     , m_hierarchyDock(new HierarchyDock(deps.commands, deps.editor, deps.world, deps.log, this))
     , m_inspectorDock(new InspectorDock(deps.commands, deps.editor, deps.world, deps.log, this))
+    , m_sceneSettingsDock(new SceneSettingsDock(deps.commands, deps.world, deps.log, this))
     , m_assetsDock(new AssetsDock(this))
 {
     m_viewport->setObjectName(u"EditorViewport"_s);
     setCentralWidget(m_viewport);
+    // Tabs of docks stacked in one place go on top (owner request), as in most editors; Qt's default is below.
+    setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
+    // Scrolling a panel mustn't edit the fields it passes over (owner request): value widgets take the wheel only when
+    // focused. On the application, so dialogs and every dock get it; removed when the window (its parent) goes.
+    qApp->installEventFilter(new WheelGuard(this));
     addDockWidget(Qt::RightDockWidgetArea, m_gameDock);
     addDockWidget(Qt::BottomDockWidgetArea, m_console);
     addDockWidget(Qt::LeftDockWidgetArea, m_hierarchyDock);
     addDockWidget(Qt::LeftDockWidgetArea, m_assetsDock);
     addDockWidget(Qt::RightDockWidgetArea, m_inspectorDock);
     splitDockWidget(m_gameDock, m_inspectorDock, Qt::Vertical); // the game view above, the inspector below
+    tabifyDockWidget(m_inspectorDock, m_sceneSettingsDock);     // scene settings a tab beside the Inspector
+    m_inspectorDock->raise();
+    // Minimum sizes (owner request): a panel can't be squeezed until it stops working. The Inspector and Scene
+    // settings also keep their width to their fields (their build()).
+    m_viewport->setMinimumSize(320, 200); // room for the gizmo and the view-axis corner
+    m_gameDock->setMinimumSize(240, 160);
+    m_hierarchyDock->setMinimumSize(180, 140);
+    m_assetsDock->setMinimumSize(180, 140);
+    m_inspectorDock->setMinimumHeight(160);
+    m_sceneSettingsDock->setMinimumHeight(160);
+    m_console->setMinimumSize(320, 110);
     m_assetsDock->setProject(QString::fromStdString(m_document.projectFolder().string()));
     m_assetsDock->onActivate([this](const QString& path) { activateAsset(path); });
     // How the window asks; tests replace both (setUnsavedPrompt(), setSaveAsPrompt()).
@@ -89,9 +112,10 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     };
     m_pickSaveAs = [this]
     {
-        const QString file = QFileDialog::getSaveFileName(this, u"Save scene as"_s,
-                                                          QString::fromStdString(m_document.projectFolder().string()),
-                                                          u"Meow2 scene (*.m2scene)"_s);
+        // Scenes go in the project's Scenes/ folder unless chosen otherwise.
+        const QString file = QFileDialog::getSaveFileName(
+            this, u"Save scene as"_s, QString::fromStdString((m_document.projectFolder() / "Scenes").string()),
+            u"Meow2 scene (*.m2scene)"_s);
         return file.isEmpty() ? QString{} : m_document.projectPath(file.toStdWString());
     };
     // A saved layout puts the docks back where the user left them; the defaults above are the first run's.
@@ -130,6 +154,7 @@ void EditorMainWindow::tick(float deltaSeconds)
     m_console->tick();
     m_hierarchyDock->refresh();
     m_inspectorDock->refresh();
+    m_sceneSettingsDock->refresh();
     m_viewports->tick(deltaSeconds);
     refreshActions();
 }
@@ -149,8 +174,32 @@ ViewportController& EditorMainWindow::viewports()
     return *m_viewports;
 }
 
+void EditorMainWindow::updateDockTitles()
+{
+    for (QDockWidget* dock : findChildren<QDockWidget*>(Qt::FindDirectChildrenOnly))
+    {
+        // Tab mates the user hasn't closed (a dock behind another tab isn't hidden, only not current).
+        const QList<QDockWidget*> mates = tabifiedDockWidgets(dock);
+        const bool tabbed = !dock->isFloating() &&
+                            std::ranges::any_of(mates, [](const QDockWidget* mate) { return !mate->isHidden(); });
+        // An empty widget as the title bar hides it; the dock still moves by dragging its tab.
+        const bool hidden = dock->titleBarWidget() != nullptr;
+        if (tabbed && !hidden)
+        {
+            dock->setTitleBarWidget(new QWidget(dock));
+        }
+        else if (!tabbed && hidden)
+        {
+            QWidget* empty = dock->titleBarWidget();
+            dock->setTitleBarWidget(nullptr);
+            empty->deleteLater();
+        }
+    }
+}
+
 void EditorMainWindow::refreshActions()
 {
+    updateDockTitles();
     for (const CommandAction& bound : m_commandActions)
     {
         bound.action->setEnabled(m_commands.isEnabled(bound.command));
@@ -160,6 +209,7 @@ void EditorMainWindow::refreshActions()
     m_assetsAction->setChecked(m_assetsDock->isVisible());
     m_hierarchyAction->setChecked(m_hierarchyDock->isVisible());
     m_inspectorAction->setChecked(m_inspectorDock->isVisible());
+    m_sceneSettingsAction->setChecked(m_sceneSettingsDock->isVisible());
     // The title names the scene's file, with a * while it has unsaved changes.
     const QString name = m_document.scenePath().isEmpty() ? u"Untitled"_s : m_document.scenePath();
     const QString title = name + (m_document.hasUnsavedChanges() ? u"*"_s : QString{}) + u" — Meow2Editor"_s;
@@ -171,6 +221,18 @@ void EditorMainWindow::refreshActions()
     refreshRecent();
     m_orbitAction->setChecked(m_viewports->camera().mode() == CameraMode::Orbit);
     m_flyAction->setChecked(m_viewports->camera().mode() == CameraMode::Fly);
+    const Gizmo& gizmo = m_viewports->gizmo();
+    m_translateAction->setChecked(gizmo.mode() == GizmoMode::Translate);
+    m_rotateAction->setChecked(gizmo.mode() == GizmoMode::Rotate);
+    m_scaleAction->setChecked(gizmo.mode() == GizmoMode::Scale);
+    m_localAction->setChecked(gizmo.space() == GizmoSpace::Local);
+    m_snapAction->setChecked(m_viewports->snapping());
+    // While the camera flies, W and E move it: the gizmo keys step aside so the viewport gets them.
+    const bool flying = m_viewports->camera().flying();
+    for (QAction* key : m_gizmoKeys)
+    {
+        key->setEnabled(!flying);
+    }
     m_gameDock->showRenderScale(m_viewports->renderScalePercent());
 
     // The labels name the next step: "Undo Set position". Only rebuilt when the history changed.
@@ -271,7 +333,21 @@ void EditorMainWindow::createMenusAndToolbar()
                     tryRun(u"scene.saveAs"_s, {{u"path"_s, path}});
                 }
             });
-    auto* openProject = new QAction(u"Open project folder…"_s, this);
+    auto* newProject = new QAction(u"New project…"_s, this);
+    connect(newProject, &QAction::triggered, this,
+            [this]
+            {
+                // A name in a folder: the project is made there, with Assets/, Scenes/ and its project file.
+                const QString folder = QFileDialog::getSaveFileName(
+                    this, u"New project: choose a folder and a name"_s,
+                    QString::fromStdString(m_document.projectFolder().parent_path().string()), QString{}, nullptr,
+                    QFileDialog::ShowDirsOnly);
+                if (!folder.isEmpty() && resolveUnsaved())
+                {
+                    tryRun(u"project.open"_s, {{u"path"_s, folder}, {u"discard"_s, true}});
+                }
+            });
+    auto* openProject = new QAction(u"Open project…"_s, this);
     connect(openProject, &QAction::triggered, this,
             [this]
             {
@@ -351,6 +427,13 @@ void EditorMainWindow::createMenusAndToolbar()
     m_inspectorAction->setCheckable(true);
     connect(m_inspectorAction, &QAction::triggered, this,
             [this](bool shown) { run(u"view.showPanel"_s, {{u"panel"_s, c_inspectorPanel}, {u"visible"_s, shown}}); });
+    m_sceneSettingsAction = new QAction(u"Scene settings"_s, this);
+    m_sceneSettingsAction->setCheckable(true);
+    connect(m_sceneSettingsAction, &QAction::triggered, this, [this](bool shown)
+            { run(u"view.showPanel"_s, {{u"panel"_s, c_sceneSettingsPanel}, {u"visible"_s, shown}}); });
+    // File → Scene settings… opens the dock (the scene's sun and exposure live with the scene, not on an entity).
+    QAction* sceneSettings = addCommandAction(u"Scene settings…"_s, u"view.showPanel"_s,
+                                              {{u"panel"_s, c_sceneSettingsPanel}, {u"visible"_s, true}});
     m_assetsAction = new QAction(u"Assets"_s, this);
     m_assetsAction->setCheckable(true);
     connect(m_assetsAction, &QAction::triggered, this,
@@ -374,7 +457,7 @@ void EditorMainWindow::createMenusAndToolbar()
             [this](bool shown) { run(u"view.showPanel"_s, {{u"panel"_s, c_gamePanel}, {u"visible"_s, shown}}); });
 
     // F frames the scene, but only while the editor viewport has focus: typed into a dock, F is just a letter.
-    QAction* focus = addCommandAction(u"Frame scene"_s, u"viewport.focus"_s);
+    QAction* focus = addCommandAction(u"Frame selection"_s, u"viewport.focus"_s); // or the scene, with nothing selected
     focus->setShortcut(QKeySequence{Qt::Key_F});
     focus->setShortcutContext(Qt::WidgetShortcut);
     m_viewport->addAction(focus);
@@ -387,6 +470,40 @@ void EditorMainWindow::createMenusAndToolbar()
         modes->addAction(mode);
     }
 
+    // Gizmo modes, as in Unity: W move, E rotate, R scale. The toolbar and menu items have no shortcut of their own:
+    // a Qt shortcut takes its key before the viewport sees it, so W and E would never reach the flying camera (WASD,
+    // QE). The keys are separate actions on the viewport instead, switched off while the camera flies
+    // (refreshActions()).
+    const auto gizmoAction = [this](const QString& text, const QString& mode, Qt::Key key)
+    {
+        auto* action = new QAction(text, this);
+        action->setCheckable(true);
+        action->setToolTip(u"%1 (%2)"_s.arg(text, QKeySequence{key}.toString()));
+        connect(action, &QAction::triggered, this, [this, mode] { run(u"viewport.setGizmo"_s, {{u"mode"_s, mode}}); });
+        auto* shortcut = new QAction(text + u" (key)"_s, this);
+        shortcut->setObjectName(u"GizmoKey"_s + QKeySequence{key}.toString());
+        shortcut->setShortcut(QKeySequence{key});
+        shortcut->setShortcutContext(Qt::WidgetShortcut);
+        connect(shortcut, &QAction::triggered, this,
+                [this, mode] { run(u"viewport.setGizmo"_s, {{u"mode"_s, mode}}); });
+        m_viewport->addAction(shortcut);
+        m_gizmoKeys.push_back(shortcut);
+        return action;
+    };
+    m_translateAction = gizmoAction(u"Move"_s, u"translate"_s, Qt::Key_W);
+    m_rotateAction = gizmoAction(u"Rotate"_s, u"rotate"_s, Qt::Key_E);
+    m_scaleAction = gizmoAction(u"Scale"_s, u"scale"_s, Qt::Key_R);
+    m_localAction = new QAction(u"Local axes"_s, this);
+    m_localAction->setCheckable(true);
+    m_localAction->setToolTip(u"Move and rotate along the entity's own axes instead of the world's"_s);
+    connect(m_localAction, &QAction::triggered, this,
+            [this](bool local) { run(u"viewport.setGizmo"_s, {{u"space"_s, local ? u"local"_s : u"world"_s}}); });
+    m_snapAction = new QAction(u"Snap"_s, this);
+    m_snapAction->setCheckable(true);
+    m_snapAction->setToolTip(u"Snap to the steps in Settings (or hold Ctrl while dragging)"_s);
+    connect(m_snapAction, &QAction::triggered, this,
+            [this](bool snap) { run(u"viewport.setGizmo"_s, {{u"snap"_s, snap}}); });
+
     QMenu* file = menuBar()->addMenu(u"&File"_s);
     file->addAction(newAction);
     file->addAction(open);
@@ -394,9 +511,11 @@ void EditorMainWindow::createMenusAndToolbar()
     file->addAction(save);
     file->addAction(saveAs);
     file->addSeparator();
+    file->addAction(newProject);
     file->addAction(openProject);
     file->addAction(importModel);
     file->addSeparator();
+    file->addAction(sceneSettings);
     file->addAction(settings);
     QMenu* edit = menuBar()->addMenu(u"&Edit"_s);
     edit->addAction(m_undoAction);
@@ -410,12 +529,19 @@ void EditorMainWindow::createMenusAndToolbar()
     view->addSeparator();
     view->addAction(m_orbitAction);
     view->addAction(m_flyAction);
+    view->addSeparator();
+    view->addAction(m_translateAction);
+    view->addAction(m_rotateAction);
+    view->addAction(m_scaleAction);
+    view->addAction(m_localAction);
+    view->addAction(m_snapAction);
     QMenu* window = menuBar()->addMenu(u"&Window"_s);
     window->addAction(m_consoleAction);
     window->addAction(m_gameAction);
     window->addAction(m_assetsAction);
     window->addAction(m_hierarchyAction);
     window->addAction(m_inspectorAction);
+    window->addAction(m_sceneSettingsAction);
 
     QToolBar* toolbar = addToolBar(u"Main"_s);
     toolbar->setObjectName(u"MainToolbar"_s);
@@ -425,6 +551,12 @@ void EditorMainWindow::createMenusAndToolbar()
     toolbar->addAction(m_undoAction);
     toolbar->addAction(m_redoAction);
     toolbar->addSeparator();
+    toolbar->addAction(m_translateAction);
+    toolbar->addAction(m_rotateAction);
+    toolbar->addAction(m_scaleAction);
+    toolbar->addAction(m_localAction);
+    toolbar->addAction(m_snapAction);
+    toolbar->addSeparator();
     toolbar->addAction(settings);
 }
 
@@ -432,11 +564,12 @@ void EditorMainWindow::registerViewCommands()
 {
     QJsonObject panel = propertySchema(u"string"_s, u"Which panel."_s);
     panel.insert(u"enum", QJsonArray{c_assetsPanel, c_consolePanel, c_gamePanel, c_hierarchyPanel, c_inspectorPanel,
-                                     c_settingsPanel});
+                                     c_sceneSettingsPanel, c_settingsPanel});
     [[maybe_unused]] const Result<void> added = m_commands.add(
         {.name = u"view.showPanel"_s,
-         .description =
-             u"Shows or hides a panel: the Assets, console, game view, Hierarchy or Inspector dock, or the settings window."_s,
+         .description = u"Shows or hides a panel: the Assets, console, game view, Hierarchy, Inspector or Scene "
+                        u"settings dock, or the "
+                        u"settings window."_s,
          .parameters = objectSchema({{.name = u"panel"_s, .schema = panel, .required = true},
                                      {.name = u"visible"_s,
                                       .schema = propertySchema(u"boolean"_s, u"Shown or hidden."_s),
@@ -445,12 +578,13 @@ void EditorMainWindow::registerViewCommands()
         {
             const bool visible = parameters.value(u"visible").toBool();
             const QString name = parameters.value(u"panel").toString();
-            QWidget* widget = name == c_consolePanel     ? static_cast<QWidget*>(m_console)
-                              : name == c_gamePanel      ? static_cast<QWidget*>(m_gameDock)
-                              : name == c_assetsPanel    ? static_cast<QWidget*>(m_assetsDock)
-                              : name == c_hierarchyPanel ? static_cast<QWidget*>(m_hierarchyDock)
-                              : name == c_inspectorPanel ? static_cast<QWidget*>(m_inspectorDock)
-                                                         : static_cast<QWidget*>(m_settingsDialog);
+            QWidget* widget = name == c_consolePanel         ? static_cast<QWidget*>(m_console)
+                              : name == c_gamePanel          ? static_cast<QWidget*>(m_gameDock)
+                              : name == c_assetsPanel        ? static_cast<QWidget*>(m_assetsDock)
+                              : name == c_hierarchyPanel     ? static_cast<QWidget*>(m_hierarchyDock)
+                              : name == c_inspectorPanel     ? static_cast<QWidget*>(m_inspectorDock)
+                              : name == c_sceneSettingsPanel ? static_cast<QWidget*>(m_sceneSettingsDock)
+                                                             : static_cast<QWidget*>(m_settingsDialog);
             if (widget == m_settingsDialog && visible)
             {
                 m_settingsDialog->refresh(); // an agent may have changed a setting since it was last open

@@ -1479,7 +1479,7 @@ TEST_F(GpuSceneTest, SceneFileLoadsTheModelsItUses)
     ASSERT_TRUE(again);
     EXPECT_EQ(again->models, 0U);
     const entt::entity stray = world.create("Stray");
-    world.registry().emplace<MeshRenderer>(stray, MeshRenderer{.mesh = m_ids.next<IdKind::Asset>(), .movable = false});
+    world.registry().emplace<MeshRenderer>(stray, MeshRenderer{.mesh = m_ids.next<IdKind::Asset>()});
     const Result<SceneModelsReport> missing = loadSceneModels(*m_scene, world, assets, meshes, m_ids, m_log);
     ASSERT_TRUE(missing);
     EXPECT_EQ(missing->warnings.size(), 1U);
