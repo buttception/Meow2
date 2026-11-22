@@ -313,7 +313,9 @@ bool QtInputSource::eventFilter(QObject* watched, QEvent* event)
         default:
             break;
     }
-    if (!viewport->hasFocus())
+    // The viewport just clicked counts as focused even before Qt says so: hasFocus() waits for its window to be
+    // activated, which can come after the press, and the press would be lost.
+    if (m_active != viewport && !viewport->hasFocus())
     {
         return false; // typing in a dock never reaches the game or the camera
     }
@@ -348,6 +350,16 @@ bool QtInputSource::eventFilter(QObject* watched, QEvent* event)
         case QEvent::MouseButtonRelease:
         {
             const auto* mouse = static_cast<QMouseEvent*>(event);
+            // Where the click is: moves are ignored while the viewport isn't focused, so without this the first
+            // click into it picked at wherever the cursor last moved while it was focused (owner report, #229).
+            const QPointF position = mouse->position();
+            const QPointF delta = m_haveMouse ? position - m_lastMouse : QPointF{};
+            m_lastMouse = position;
+            m_haveMouse = true;
+            m_input.submit(Input::MouseMotionInput{.x = static_cast<float>(position.x()),
+                                                   .y = static_cast<float>(position.y()),
+                                                   .dx = static_cast<float>(delta.x()),
+                                                   .dy = static_cast<float>(delta.y())});
             if (const std::optional<Input::MouseButton> button = buttonFromQt(mouse->button()))
             {
                 const bool down = event->type() == QEvent::MouseButtonPress;

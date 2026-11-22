@@ -3,6 +3,7 @@
 ///        (offscreen, no GPU).
 
 #include "EditorTestRig.h"
+#include "EditorTheme.h"
 #include "Panels/HierarchyDock.h"
 #include "Panels/InspectorDock.h"
 #include "Viewports/ViewportController.h"
@@ -14,6 +15,7 @@
 #include <cmath>
 #include <QComboBox>
 #include <QCompleter>
+#include <QCoreApplication>
 #include <QDoubleSpinBox>
 #include <QFrame>
 #include <QJsonArray>
@@ -269,4 +271,36 @@ TEST_F(HierarchyDockTest, KeysDontSearchAndDoubleClickFrames)
     EXPECT_NEAR(camera.position.x + forward.x * distance, 40.0F, 0.05F);
     EXPECT_LT(distance, 5.0F) << "close, for a 1 m sphere";
     EXPECT_FALSE(m_commands.execute(u"viewport.focus", {{u"id"_s, u"nope"_s}}));
+}
+
+// Owner reports (#229): with the theme, the number boxes showed no value (Qt's style sheet left their text box 1 px
+// wide), and the panel could be squeezed past its fields.
+TEST_F(InspectorDockTest, NumberBoxesShowTheirValuesAndFit)
+{
+    qApp->setStyleSheet(Meow2::Editor::editorStyleSheet());
+    {
+        Meow2::Editor::EditorMainWindow window{windowDeps()};
+        const QString id = create(m_commands, u"Box"_s);
+        ASSERT_TRUE(m_commands.execute(u"selection.set", {{u"ids"_s, QJsonArray{id}}}));
+        window.resize(1600, 900);
+        window.show();
+        window.tick();
+        QCoreApplication::processEvents();
+        QCoreApplication::processEvents(); // the dock asks for its new minimum after the fields are shown
+        Meow2::Editor::InspectorDock& inspector = window.inspectorDock();
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            auto* box = inspector.findChild<QDoubleSpinBox*>(u"LocalTransform.position.%1"_s.arg(axis));
+            ASSERT_NE(box, nullptr);
+            const QLineEdit* edit = box->findChild<QLineEdit*>();
+            ASSERT_NE(edit, nullptr);
+            EXPECT_GE(edit->width(), edit->fontMetrics().horizontalAdvance(edit->text())) << "axis " << axis;
+            EXPECT_GE(edit->height(), edit->fontMetrics().height());
+            // Inside the dock: it's kept at least as wide as its fields.
+            const QPoint right = box->mapTo(&inspector, QPoint{box->width(), 0});
+            EXPECT_LE(right.x(), inspector.width()) << "axis " << axis << " is cut off";
+        }
+        EXPECT_GE(window.hierarchyDock().minimumWidth(), 180) << "docks have minimum sizes";
+    }
+    qApp->setStyleSheet({});
 }

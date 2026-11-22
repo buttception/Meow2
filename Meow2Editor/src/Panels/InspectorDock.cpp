@@ -4,6 +4,7 @@
 #include "Panels/InspectorDock.h"
 
 #include "Panels/FieldWidgets.h"
+#include "Panels/FittingScrollArea.h"
 
 #include <Meow2/Math/Quaternion.h>
 #include <Meow2/Math/Scalar.h>
@@ -52,11 +53,9 @@ InspectorDock::InspectorDock(EditorCommandRegistry& commands, const SceneEditor&
     , m_world(world)
     , m_log(log)
 {
-    setObjectName(u"InspectorDock"_s); // QMainWindow::saveState() keys docks by object name
-    auto* scroll = new QScrollArea(this);
-    scroll->setWidgetResizable(true);
+    setObjectName(u"InspectorDock"_s);          // QMainWindow::saveState() keys docks by object name
+    auto* scroll = new FittingScrollArea(this); // never narrower than its fields
     scroll->setObjectName(u"InspectorScroll"_s);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff); // the panel is kept wide enough instead (build())
     setWidget(scroll);
     // Components as cards: a dark frame each, a header bar with the theme's red at its left edge.
     setStyleSheet(
@@ -101,11 +100,12 @@ void InspectorDock::refresh()
 
 void InspectorDock::build()
 {
-    auto* scroll = static_cast<QScrollArea*>(widget());
+    auto* scroll = static_cast<FittingScrollArea*>(widget());
     m_content = new QWidget();
     m_layout = new QVBoxLayout(m_content);
     m_layout->setContentsMargins(6, 6, 6, 6);
     scroll->setWidget(m_content); // deletes the previous editors
+    scroll->contentChanged();     // the dock's minimum width follows the new fields
     if (!m_shown)
     {
         m_layout->addWidget(new QLabel(u"Select one entity to see its components."_s, m_content));
@@ -186,6 +186,7 @@ void InspectorDock::build()
         auto* fold = new QToolButton(header);
         fold->setFixedSize(headerHeight - 2, headerHeight - 2);
         fold->setIconSize(QSize(8, 8));
+        fold->setProperty("slim", true); // no toolbar padding (EditorTheme.cpp), or the arrow has no room
         fold->setObjectName(u"Fold."_s + componentName);
         fold->setAutoRaise(true);
         fold->setCheckable(true);
@@ -202,6 +203,7 @@ void InspectorDock::build()
             remove->setText(u"×"_s); // a multiplication sign as the close cross
             remove->setAutoRaise(true);
             remove->setFixedSize(headerHeight - 2, headerHeight - 2);
+            remove->setProperty("slim", true);
             remove->setToolTip(u"Remove %1"_s.arg(componentName));
             connect(remove, &QToolButton::clicked, this, [this, id, componentName]
                     { run(u"component.remove"_s, {{u"id"_s, id}, {u"component"_s, componentName}}); });
@@ -279,12 +281,6 @@ void InspectorDock::build()
         m_layout->addWidget(add);
     }
     m_layout->addStretch(1);
-
-    // Wide enough for the fields and the scroll bar beside them: the panel can't be squeezed until the scroll bar
-    // covers the boxes.
-    const int needed = m_content->minimumSizeHint().width() + scroll->verticalScrollBar()->sizeHint().width() +
-                       2 * scroll->frameWidth();
-    scroll->setMinimumWidth(needed);
 }
 
 bool InspectorDock::eventFilter(QObject* watched, QEvent* event)
@@ -319,6 +315,7 @@ QWidget* InspectorDock::fieldEditor(const QString& component, const QJsonObject&
     {
         auto* box = new CompactBox<QSpinBox>(parent);
         box->setButtonSymbols(QAbstractSpinBox::NoButtons);
+        box->setProperty("compact", true); // see numberBox()
         box->setObjectName(objectName);
         box->setRange(std::numeric_limits<int>::min(), std::numeric_limits<int>::max());
         box->setKeyboardTracking(false);

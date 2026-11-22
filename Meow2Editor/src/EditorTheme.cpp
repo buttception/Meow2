@@ -73,6 +73,12 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit, QTextEdit {
     selection-background-color: #E01E2D; selection-color: #FFFFFF; }
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {
     border-color: #E01E2D; }
+/* Compact number boxes (the Inspector): no arrows, a little less padding; CompactBox places the text inside them
+   from this padding (FieldWidgets.h). */
+QAbstractSpinBox[compact="true"] { padding: 2px 4px; }
+/* Small buttons in bars (a component header's fold arrow and remove cross): the toolbar padding would hide them. */
+QToolButton[slim="true"] { padding: 0px; border-color: transparent; background: transparent; }
+QToolButton[slim="true"]:hover { border-color: #E01E2D; }
 QComboBox QAbstractItemView { background: #0C0C0D; border: 1px solid #34343A; selection-background-color: rgba(224, 30, 45, 0.30); }
 
 QTreeView, QListView, QTableView { background: #0C0C0D; border: 1px solid #34343A; alternate-background-color: #111113; outline: 0;

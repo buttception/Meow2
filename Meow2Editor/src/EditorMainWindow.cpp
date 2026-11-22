@@ -89,6 +89,15 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     splitDockWidget(m_gameDock, m_inspectorDock, Qt::Vertical); // the game view above, the inspector below
     tabifyDockWidget(m_inspectorDock, m_sceneSettingsDock);     // scene settings a tab beside the Inspector
     m_inspectorDock->raise();
+    // Minimum sizes (owner request): a panel can't be squeezed until it stops working. The Inspector and Scene
+    // settings also keep their width to their fields (their build()).
+    m_viewport->setMinimumSize(320, 200); // room for the gizmo and the view-axis corner
+    m_gameDock->setMinimumSize(240, 160);
+    m_hierarchyDock->setMinimumSize(180, 140);
+    m_assetsDock->setMinimumSize(180, 140);
+    m_inspectorDock->setMinimumHeight(160);
+    m_sceneSettingsDock->setMinimumHeight(160);
+    m_console->setMinimumSize(320, 110);
     m_assetsDock->setProject(QString::fromStdString(m_document.projectFolder().string()));
     m_assetsDock->onActivate([this](const QString& path) { activateAsset(path); });
     // How the window asks; tests replace both (setUnsavedPrompt(), setSaveAsPrompt()).

@@ -5,11 +5,12 @@
 ///        coloured axis letters in front of vector rows.
 
 #include <QDoubleSpinBox>
+#include <QEvent>
 #include <QLabel>
+#include <QLineEdit>
+#include <QResizeEvent>
 #include <QSpinBox>
 #include <QString>
-#include <QStyle>
-#include <QStyleOptionSpinBox>
 
 namespace Meow2::Editor
 {
@@ -34,15 +35,48 @@ public:
         return sizeFor(QStringLiteral("-000.000"));
     }
 
+protected:
+    /// @brief Lays the text out again after the base class did (see placeEdit()).
+    /// @param event The resize.
+    void resizeEvent(QResizeEvent* event) override
+    {
+        Box::resizeEvent(event);
+        placeEdit();
+    }
+
+    /// @brief Lays the text out again after a style change, where the base class places it too.
+    /// @param event The change.
+    void changeEvent(QEvent* event) override
+    {
+        Box::changeEvent(event);
+        if (event->type() == QEvent::StyleChange || event->type() == QEvent::FontChange)
+        {
+            placeEdit();
+        }
+    }
+
 private:
-    /// @brief The box's size for a sample text, through the style: the theme's padding and the frame come on top of
-    ///        the text (sizing from the text alone left no room, and the values didn't show).
+    static constexpr int c_insetX = 5; ///< The theme's 1 px border and 4 px padding (EditorTheme.cpp, compact boxes).
+    static constexpr int c_insetY = 1; ///< The border; the text is centred in the rest.
+
+    /// @brief Gives the text box inside all of the box but its frame and padding. With a style sheet, Qt places the
+    ///        text box of a spin box without arrow buttons 1 px wide (QStyleSheetStyle's SC_SpinBoxEditField), so
+    ///        no value showed whatever the box's width.
+    void placeEdit()
+    {
+        if (QLineEdit* edit = this->lineEdit(); edit != nullptr)
+        {
+            edit->setGeometry(this->rect().adjusted(c_insetX, c_insetY, -c_insetX, -c_insetY));
+        }
+    }
+
+    /// @brief The box's size for a sample text: the text, the line edit's own small margins and the insets above.
+    ///        Not through the style: with a style sheet it still counts the hidden arrow buttons (116 px for "0.000").
     [[nodiscard]] QSize sizeFor(const QString& sample) const
     {
-        QStyleOptionSpinBox option;
-        this->initStyleOption(&option);
-        const QSize text(this->fontMetrics().horizontalAdvance(sample) + 4, this->fontMetrics().height());
-        return this->style()->sizeFromContents(QStyle::CT_SpinBox, &option, text, this).expandedTo(QSize(0, 0));
+        constexpr int c_lineEditMargins = 6; // QLineEdit's 2 px text margin and 1 px frame on each side
+        return {this->fontMetrics().horizontalAdvance(sample) + c_lineEditMargins + 2 * c_insetX,
+                Box::sizeHint().height()};
     }
 };
 
@@ -57,7 +91,8 @@ inline QDoubleSpinBox* numberBox(double value, QWidget* parent)
     box->setDecimals(3);
     box->setSingleStep(0.1);
     box->setButtonSymbols(QAbstractSpinBox::NoButtons);
-    box->setKeyboardTracking(false); // edits land on Enter or when focus leaves, not on every key
+    box->setProperty("compact", true); // the theme then gives the hidden arrows no room (EditorTheme.cpp)
+    box->setKeyboardTracking(false);   // edits land on Enter or when focus leaves, not on every key
     box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     box->setValue(value);
     return box;
@@ -77,5 +112,4 @@ inline QLabel* axisLabel(const QString& text, QWidget* parent)
     label->setStyleSheet(QStringLiteral("color: %1; font-weight: 600;").arg(color));
     return label;
 }
-
 } // namespace Meow2::Editor

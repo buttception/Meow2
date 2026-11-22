@@ -59,6 +59,8 @@ add_library(Meow2EditorCore STATIC
     src/Panels/ConsoleDock.cpp
     src/Panels/ConsoleDock.h
     src/Panels/FieldWidgets.h
+    src/Panels/FittingScrollArea.cpp
+    src/Panels/FittingScrollArea.h
     src/Panels/HierarchyDock.cpp
     src/Panels/HierarchyDock.h
     src/Panels/InspectorDock.cpp

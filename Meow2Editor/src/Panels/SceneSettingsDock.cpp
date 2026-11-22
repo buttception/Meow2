@@ -4,6 +4,7 @@
 #include "Panels/SceneSettingsDock.h"
 
 #include "Panels/FieldWidgets.h"
+#include "Panels/FittingScrollArea.h"
 
 #include <memory>
 #include <QFormLayout>
@@ -11,6 +12,7 @@
 #include <QJsonArray>
 #include <QLabel>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QVBoxLayout>
 #include <vector>
 
@@ -47,10 +49,8 @@ SceneSettingsDock::SceneSettingsDock(EditorCommandRegistry& commands, const Edit
     , m_world(world)
     , m_log(log)
 {
-    setObjectName(u"SceneSettingsDock"_s); // QMainWindow::saveState() keys docks by object name
-    auto* scroll = new QScrollArea(this);
-    scroll->setWidgetResizable(true);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setObjectName(u"SceneSettingsDock"_s);      // QMainWindow::saveState() keys docks by object name
+    auto* scroll = new FittingScrollArea(this); // never narrower than its fields
     setWidget(scroll);
 }
 
@@ -74,11 +74,12 @@ void SceneSettingsDock::refresh()
 
 void SceneSettingsDock::build()
 {
-    auto* scroll = static_cast<QScrollArea*>(widget());
+    auto* scroll = static_cast<FittingScrollArea*>(widget());
     auto* content = new QWidget();
     auto* layout = new QVBoxLayout(content);
     layout->setContentsMargins(6, 6, 6, 6);
     scroll->setWidget(content); // deletes the previous fields
+    scroll->contentChanged();   // the dock's minimum width follows the new fields
 
     const Result<QJsonValue> list = m_commands.execute(u"component.list");
     const Result<QJsonValue> values = m_commands.execute(u"scene.settings");

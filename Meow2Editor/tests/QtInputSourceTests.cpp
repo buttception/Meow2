@@ -118,6 +118,9 @@ TEST_F(QtInputSourceTest, UnfocusedViewportIsIgnored)
     m_input.beginFrame();
     EXPECT_TRUE(m_viewport->hasFocus());
     EXPECT_TRUE(m_input.isDown(Meow2::Input::MouseButton::Left));
+    // And where it is, though no move reached the viewport before it (owner report, #229: the first click didn't pick).
+    EXPECT_FLOAT_EQ(m_input.mousePosition().x, 5.0F);
+    EXPECT_FLOAT_EQ(m_input.mousePosition().y, 5.0F);
 }
 
 TEST(QtInputSourceKeys, MapsNativeScanCodes)
