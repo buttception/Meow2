@@ -46,6 +46,7 @@ ViewportController::ViewportController(const ViewportControllerDeps& deps)
                     .renderer = deps.renderer,
                     .log = deps.log})
 {
+    registerDefaultIcons(m_icons); // the camera; other invisible kinds add theirs here
     registerCommands();
     addViewports();
     m_camera.focus(m_deps.world.bounds().center, m_deps.world.bounds().radius);
@@ -115,13 +116,27 @@ void ViewportController::handleClicks()
     const Input::Vec2 at = input.mousePosition();
     const Input::Vec2 from = *std::exchange(m_press, std::nullopt);
     constexpr float c_clickSlop = 4.0F; // logical pixels
-    if (std::abs(at.x - from.x) > c_clickSlop || std::abs(at.y - from.y) > c_clickSlop || m_deps.renderer == nullptr ||
-        !m_editorViewport)
+    if (std::abs(at.x - from.x) > c_clickSlop || std::abs(at.y - from.y) > c_clickSlop)
     {
         return;
     }
     // Qt's positions are logical; the viewport's pixels are scaled by the display.
     const double ratio = m_deps.editorViewport.devicePixelRatioF();
+    // An icon first (a camera): those entities have no mesh, so the GPU pick can't find them.
+    if (const std::optional<GizmoView> view = gizmoView())
+    {
+        const std::vector<PlacedIcon> icons = placedIcons();
+        if (const std::optional<entt::entity> hit =
+                pickIcon(*view, icons, static_cast<float>(at.x * ratio), static_cast<float>(at.y * ratio)))
+        {
+            selectClicked(*hit, m_pressToggle);
+            return;
+        }
+    }
+    if (m_deps.renderer == nullptr || !m_editorViewport)
+    {
+        return;
+    }
     const auto pixel = [ratio](float logical)
     {
         return static_cast<std::uint32_t>(std::max(0L, std::lround(static_cast<double>(logical) * ratio)));
@@ -156,6 +171,43 @@ void ViewportController::applyPick(const PickResult& result)
     }
 }
 
+void ViewportController::selectClicked(entt::entity entity, bool toggle)
+{
+    const EntityId id = m_deps.world.scene().idOf(entity);
+    std::vector<EntityId> next = m_deps.sceneEditor.selection();
+    if (!toggle)
+    {
+        next = {id};
+    }
+    else if (const auto found = std::ranges::find(next, id); found != next.end())
+    {
+        next.erase(found); // Ctrl + click on a selected camera takes it out, as with meshes
+    }
+    else
+    {
+        next.push_back(id);
+    }
+    QJsonArray ids;
+    for (const EntityId selected : next)
+    {
+        ids.append(QString::fromStdString(selected.uuid().toString()));
+    }
+    if (const Result<QJsonValue> set = m_deps.commands.execute(u"selection.set", {{u"ids"_s, ids}}); !set)
+    {
+        MEOW2_LOG_WARN(m_deps.log, "selection.set: {}", set.error());
+    }
+}
+
+std::vector<PlacedIcon> ViewportController::placedIcons() const
+{
+    return m_icons.collect(m_deps.world.scene(), m_deps.sceneEditor.selection(), {.aspect = gameAspect()});
+}
+
+float ViewportController::gameAspect() const
+{
+    const auto [width, height] = pixelSize(m_deps.gameViewport);
+    return width > 0 && height > 0 ? static_cast<float>(width) / static_cast<float>(height) : 16.0F / 9.0F;
+}
 std::pair<float, float> ViewportController::cursorPixels() const
 {
     // Qt's positions are logical; the viewport's pixels are scaled by the display.
@@ -376,11 +428,18 @@ void ViewportController::updateGizmoLines()
     }
     const GizmoHandle highlight = m_gizmo.dragged() != GizmoHandle::None ? m_gizmo.dragged() : m_hover;
     ViewportOverlay overlay;
+    if (view)
+    {
+        // Icons for what nothing draws (cameras), so it isn't invisible; before the gizmo, which draws over them.
+        GizmoShapes icons = iconShapes(*view, placedIcons());
+        overlay.lines = std::move(icons.lines);
+        overlay.triangles = std::move(icons.triangles);
+    }
     if (world)
     {
         GizmoShapes shapes = m_gizmo.shapes(*view, *world, highlight);
-        overlay.lines = std::move(shapes.lines);
-        overlay.triangles = std::move(shapes.triangles);
+        overlay.lines.insert(overlay.lines.end(), shapes.lines.begin(), shapes.lines.end());
+        overlay.triangles.insert(overlay.triangles.end(), shapes.triangles.begin(), shapes.triangles.end());
     }
     if (view)
     {

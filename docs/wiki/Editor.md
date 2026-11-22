@@ -9,7 +9,7 @@ Meow2Editor is a **Qt** application: a main window with an **editor viewport** i
   - `Meow2Editor/src/Viewports/`: `ViewportController`, `EditorRenderer`, `DebugTools` (the debug tools' commands);
   - built as the `Meow2EditorCore` library plus the exe, so the tests use the same code.
 - Requirements: Qt ≥ 6.8 (Widgets), tested with 6.12.0. Installing Qt and pointing CMake at it is on the [Building → Qt](Building.md#qt) page.
-- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222); the Hierarchy and Inspector docks and the edit commands (#224); picking and the selection outline (#226); gizmos, scene settings and projects (#228); the Debug and Stats docks (#230).
+- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222); the Hierarchy and Inspector docks and the edit commands (#224); picking and the selection outline (#226); gizmos, scene settings and projects (#228); the Debug and Stats docks (#230); camera icons (#231).
 - **Window size:** in logical units like every app ([Window](Window.md#settings)): 80 % of the screen the first time, and shrunk to fit when a saved size is too big for the screen (Qt sizes follow display scaling, so 1920 × 1080 at 150 % would be 2880 × 1620 real pixels).
 
 ## Settings
@@ -263,6 +263,23 @@ The last selected entity gets a gizmo in the editor viewport, always on top and 
   - The handles are filled triangles (`Renderer::DebugLines`, which draws triangles with alpha blending as well as lines): a thick line is a quad along it, turned to face the camera; a cone and a box are solid. They're drawn into the editor viewport's HDR colour before the tone map, their colours divided by the exposure so they stay bright in any scene. Their size comes from how many pixels a metre covers at the entity: 100 px.
   - Hit tests are in screen space: the closest handle within 8 px, the centre box within 12 px of the centre.
 
+### Icons for invisible objects
+
+Entities nothing draws get an **icon** in the editor viewport, so they aren't invisible and can be clicked. Today that's **cameras**: a wireframe camera (a box for the body, the lens opening out at its field of view and the game view's shape, a filled triangle on top for up), light grey for the main camera and darker grey for the others. A selected camera turns orange and shows what it sees: its view volume, 10 m out. Icons keep their size on screen (48 pixels) like the gizmo, are drawn only in the editor viewport, and a click on one selects its entity (Ctrl adds or removes), before the GPU pick, which can't see them.
+
+- **Not a component.** Icons belong to the editor: nothing is added to an entity, nothing is saved, and the game never sees them.
+- **A system for any kind** (`Editing/EntityIcons`). A kind is a component type nothing draws plus an `IconProvider` returning its `IconShape`: outlines and filled triangles in icon units (1.3 units = 48 pixels), lines in metres for when it's selected, the click target's centre, and whether it's emphasised. `EntityIcons` places every entity of every kind from its world transform (scale left out, so a scaled entity doesn't stretch its icon), sizes, colours, draws and hit-tests them. An entity with several kinds gets the first kind's icon.
+- **Adding one** (a light, a sound source) is one call in `registerDefaultIcons()`:
+
+  ```cpp
+  icons.add<Scene::PointLight>("Point light", [](Scene::Scene& scene, entt::entity entity, const IconContext&)
+                                {
+                                    IconShape shape;
+                                    // edges, fills, selectedLines (its range), centre ...
+                                    return std::optional{shape};
+                                });
+  ```
+
 ### Input: QtInputSource
 
 The engine's `InputSystem` is fed by `QtInputSource`, an event filter on both viewport widgets ([Input → The Qt source](Input.md#the-qt-source)):
@@ -292,7 +309,7 @@ The Renderer's rendering debug tools, for the **editor viewport only** (the game
 - **View**: a button per debug view, grouped as in Meow2Renderer (Geometry, Surface, Material, Lighting); the chosen one in red, and a line under the buttons on how to read it (overdraw's colours, the cascades'). **Position** has a dashed outline: a debug-only pass makes its texture from depth ([Renderer → Debug views](Renderer.md)).
 - **Wireframe**: off, overlay (edges over the scene), only (edges on black, hidden lines removed).
 - **Culling**: **Freeze** keeps culling with the camera's view of the moment, so you can fly away and see what was culled; **Show frustum** draws that frozen view volume in yellow (200 m long: the far plane is infinite).
-- **Grid**: the endless ground grid (y = 0, X red, Z blue).
+- **Grid**: the endless ground grid (y = 0, X red, Z blue), on until you turn it off.
 
 The **Stats** dock (a tab beside the console) shows frame time and FPS with a graph of the last 240 frames (a dashed line at 60 frames a second), the graphics API, GPU and its memory against its budget, validation errors, the scene's counts (entities, instances, meshes, materials, textures, the draw path) and memory per tag, CPU and GPU. It refreshes four times a second while it can be seen.
 
@@ -301,7 +318,7 @@ The **Stats** dock (a tab beside the console) shows frame time and FPS with a gr
 | `debug.setView` | action | `view` (`shaded`, `triangles`, `meshlets`, … `cascades`) | The editor viewport's view; saved as `editor.debug.view`. |
 | `debug.setWireframe` | action | `mode` (`off`, `overlay`, `only`) | Saved as `editor.debug.wireframe`. |
 | `debug.setCulling` | action | `freeze`, `showFrustum` (each optional) | Freezing isn't saved (it only means something while the editor runs); `showFrustum` is (`editor.debug.showFrustum`). |
-| `debug.setGrid` | action | `on` | Saved as `editor.debug.grid`. |
+| `debug.setGrid` | action | `on` | Saved as `editor.debug.grid` (on by default). |
 | `debug.state` | query | — | All of the above, and `failed` if a debug pipeline couldn't be built. |
 | `stats.frame` | query | — | `frameMs`, `fps`, `worstMs`, `frames` (oldest first), `entities`; with a GPU `backend`, `gpu`, `gpuMemoryUsed`, `gpuMemoryBudget`, `validationErrors`, `instances`, `meshes`, `materials`, `textures`, `drawPath`; `memory` (`tag`, `cpuBytes`, `gpuBytes`, tags in use only). |
 
@@ -379,6 +396,7 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.SceneEditorTest.*`: create, delete and undo keep IDs, components and parents; duplicate copies the subtree with new IDs; rename and re-parent (cycles refused); add, remove and set fields with undo, wrong shapes refused; the queries. `Editor.SceneDocumentTest.ModelsOutsideTheProjectAreCopiedIn`.
 - `Editor.HierarchyDockTest.FollowsTheScene`, `Editor.InspectorDockTest.EditsIssueCommands`: the tree nests, selects, renames and re-parents through commands and follows changes; finished edits run `component.setField` once; Euler angles stay as typed.
 - `Editor.DebugCommandsTest.SettingsRoundTripAndSave`, `RejectsUnknownValues`: the debug commands report and save their choices (not freezing), nothing goes on the undo stack, the next window starts from them; unknown views and modes are refused. `Editor.DebugDockTest.ButtonsIssueCommands`: a button per view (dashed where a debug pass makes it), clicks run the commands, a change from elsewhere shows with its hint. `Editor.StatsDockTest.ShowsFrameAndMemory`, `Editor.StatsDockFormat.BytesForPeople`: frame times and the memory table from `stats.frame`.
+- `Editor.CameraIcons.ShapeAroundTheCamera`, `SelectedShowsItsViewInOrange`, `ClickPicksTheNearest`: the camera icon keeps its size on screen, opens wider for a wider lens, shows its view volume in orange when selected, nothing behind the viewer; a click finds the nearest. `Editor.EntityIconsTest.EveryCameraGetsOneAndKindsCanBeAdded`: every camera of a scene gets one (the main one emphasised, the selected one marked), and a new kind is one `add()`; an entity of two kinds keeps the first's.
 - `EditorGpu.EditorRendererTest.DebugViewOnlyInEditorViewport`: a debug view changes the editor viewport and not one pixel of the game view; Position, Overdraw and Triangles draw with the validation layer quiet; back to shaded, the same image. `GridAndWireframeDraw`: the grid adds lines; wireframe only is edges on black, overlay edges over the scene. `FrozenCullingKeepsFrustum`: from outside, the frozen frustum's lines show, and go when culling is unfrozen.
 - `Smoke.Editor.Runs` and `Smoke.Editor.OpensWindow`: the app runs 3 frames offscreen and exits 0.
 

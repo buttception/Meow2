@@ -35,23 +35,24 @@ TEST_F(DebugCommandsTest, SettingsRoundTripAndSave)
     {
         Meow2::Editor::EditorMainWindow window{windowDeps()};
         EXPECT_EQ(debugState(m_commands).value(u"view").toString(), u"shaded"_s) << "the default";
+        EXPECT_TRUE(debugState(m_commands).value(u"grid").toBool()) << "the grid is on by default";
         ASSERT_TRUE(m_commands.execute(u"debug.setView", {{u"view"_s, u"baseColor"_s}}));
         ASSERT_TRUE(m_commands.execute(u"debug.setWireframe", {{u"mode"_s, u"overlay"_s}}));
         ASSERT_TRUE(m_commands.execute(u"debug.setCulling", {{u"freeze"_s, true}, {u"showFrustum"_s, false}}));
-        ASSERT_TRUE(m_commands.execute(u"debug.setGrid", {{u"on"_s, true}}));
+        ASSERT_TRUE(m_commands.execute(u"debug.setGrid", {{u"on"_s, false}}));
 
         const QJsonObject state = debugState(m_commands);
         EXPECT_EQ(state.value(u"view").toString(), u"baseColor"_s);
         EXPECT_EQ(state.value(u"wireframe").toString(), u"overlay"_s);
         EXPECT_TRUE(state.value(u"freezeCulling").toBool());
         EXPECT_FALSE(state.value(u"showFrustum").toBool());
-        EXPECT_TRUE(state.value(u"grid").toBool());
+        EXPECT_FALSE(state.value(u"grid").toBool());
         EXPECT_FALSE(m_history.canUndo()) << "nothing to undo";
 
         EXPECT_EQ(m_config.getString(Meow2::Editor::c_debugViewKey, ""), "baseColor");
         EXPECT_EQ(m_config.getString(Meow2::Editor::c_debugWireframeKey, ""), "overlay");
         EXPECT_FALSE(m_config.getBool(Meow2::Editor::c_debugShowFrustumKey, true));
-        EXPECT_TRUE(m_config.getBool(Meow2::Editor::c_debugGridKey, false));
+        EXPECT_FALSE(m_config.getBool(Meow2::Editor::c_debugGridKey, true));
     }
     // The next run starts from the saved choices, culling not frozen.
     Meow2::Editor::EditorMainWindow window{windowDeps()};
@@ -60,7 +61,7 @@ TEST_F(DebugCommandsTest, SettingsRoundTripAndSave)
     EXPECT_EQ(state.value(u"wireframe").toString(), u"overlay"_s);
     EXPECT_FALSE(state.value(u"freezeCulling").toBool());
     EXPECT_FALSE(state.value(u"showFrustum").toBool());
-    EXPECT_TRUE(state.value(u"grid").toBool());
+    EXPECT_FALSE(state.value(u"grid").toBool()) << "turned off, and kept off";
 }
 
 TEST_F(DebugCommandsTest, RejectsUnknownValues)
@@ -73,7 +74,7 @@ TEST_F(DebugCommandsTest, RejectsUnknownValues)
     const QJsonObject state = debugState(m_commands);
     EXPECT_EQ(state.value(u"view").toString(), u"depth"_s) << "unchanged";
     EXPECT_EQ(state.value(u"wireframe").toString(), u"off"_s);
-    EXPECT_FALSE(state.value(u"grid").toBool());
+    EXPECT_TRUE(state.value(u"grid").toBool()) << "the default, unchanged";
 }
 
 // Every view has a button, and every click is a command (so MCP can do the same).
@@ -98,7 +99,7 @@ TEST_F(DebugDockTest, ButtonsIssueCommands)
     QJsonObject state = debugState(m_commands);
     EXPECT_EQ(state.value(u"view").toString(), u"geometryNormal"_s);
     EXPECT_EQ(state.value(u"wireframe").toString(), u"only"_s);
-    EXPECT_TRUE(state.value(u"grid").toBool());
+    EXPECT_FALSE(state.value(u"grid").toBool()) << "on by default, so the click turned it off";
     EXPECT_TRUE(state.value(u"freezeCulling").toBool());
     EXPECT_TRUE(dock.findChild<QToolButton*>(u"View.geometryNormal"_s)->isChecked());
     EXPECT_FALSE(dock.findChild<QToolButton*>(u"View.shaded"_s)->isChecked()) << "one view at a time";

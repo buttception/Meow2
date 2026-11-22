@@ -6,6 +6,7 @@
 #include "Commands/EditorCommandRegistry.h"
 #include "Commands/EditorSettings.h"
 #include "Editing/ClickSelection.h"
+#include "Editing/EntityIcons.h"
 #include "Editing/Gizmo.h"
 #include "Editing/SceneEditor.h"
 #include "Viewports/DebugTools.h"
@@ -132,6 +133,16 @@ private:
     /// @brief Applies a pick's result to the selection through `selection.set`.
     /// @param result What the pick found.
     void applyPick(const PickResult& result);
+    /// @brief Selects an entity clicked in the viewport (a camera icon), as a pick does: alone, or toggled with Ctrl.
+    /// @param entity The entity.
+    /// @param toggle Ctrl was held: add or remove it instead.
+    void selectClicked(entt::entity entity, bool toggle);
+    /// @brief The editor viewport's icons for this frame (cameras and other entities nothing draws).
+    /// @return One per entity of a kind with an icon.
+    [[nodiscard]] std::vector<PlacedIcon> placedIcons() const;
+    /// @brief The game viewport's width / height, the shape the cameras are seen at (16:9 before it has a size).
+    /// @return The aspect ratio.
+    [[nodiscard]] float gameAspect() const;
     /// @brief Hovering and dragging the gizmo.
     /// @param editorFocused Whether the editor viewport has the keyboard and mouse.
     /// @return True if the gizmo took the mouse this frame (a press on a handle, or a drag), so it isn't a click.
@@ -153,6 +164,7 @@ private:
 
     ViewportControllerDeps m_deps;
     DebugTools m_debugTools; ///< The debug.* and stats.frame commands; applied to the renderer each frame.
+    EntityIcons m_icons;     ///< Which entities get an icon in the editor viewport (registerDefaultIcons()).
     EditorCamera m_camera;
     std::optional<ViewportId> m_editorViewport; ///< In the renderer; unset without one (or without native windows).
     std::optional<ViewportId> m_gameViewport;

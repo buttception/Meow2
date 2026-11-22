@@ -40,7 +40,7 @@ DebugTools::DebugTools(const DebugToolsDeps& deps)
     m_state.wireframe = Renderer::wireframeModeFromName(config.getString(c_debugWireframeKey, "off"))
                             .value_or(Renderer::WireframeMode::Off);
     m_state.showFrustum = config.getBool(c_debugShowFrustumKey, true);
-    m_grid = config.getBool(c_debugGridKey, false);
+    m_grid = config.getBool(c_debugGridKey, true); // on until turned off (owner request)
     registerCommands();
 }
 

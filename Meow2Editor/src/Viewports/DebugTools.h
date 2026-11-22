@@ -111,6 +111,6 @@ inline constexpr const char* c_debugViewKey = "editor.debug.view";
 inline constexpr const char* c_debugWireframeKey = "editor.debug.wireframe";
 /// @brief `editor.debug.showFrustum`: draw the frozen camera's frustum while culling is frozen.
 inline constexpr const char* c_debugShowFrustumKey = "editor.debug.showFrustum";
-/// @brief `editor.debug.grid`: the ground grid.
+/// @brief `editor.debug.grid`: the ground grid (on by default).
 inline constexpr const char* c_debugGridKey = "editor.debug.grid";
 } // namespace Meow2::Editor
