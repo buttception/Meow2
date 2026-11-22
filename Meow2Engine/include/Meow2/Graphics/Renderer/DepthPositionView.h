@@ -1,6 +1,6 @@
 /// @file
-/// @brief Meow2Renderer's Position debug view: a debug-only pass that writes the position each pixel's depth stands for
-///        into a texture of its own. Renderer only, never in games.
+/// @brief The Position debug view: a debug-only pass that writes the position each pixel's depth stands for into a
+///        texture of its own. A debugging tool of Meow2Renderer and the editor, never in games.
 
 #pragma once
 
@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace Meow2::RendererApp
+namespace Meow2::Renderer
 {
 /// @brief The pass's constants, as `shaders/DebugPosition.hlsl` reads them. Plain data; 80 bytes.
 struct PositionConstants
@@ -95,4 +95,4 @@ private:
     std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_constants{}; ///< PositionConstants, per frame slot.
     Renderer::DeviceUser m_deviceUser; ///< Last: stops its callbacks before the members they use go away.
 };
-} // namespace Meow2::RendererApp
+} // namespace Meow2::Renderer

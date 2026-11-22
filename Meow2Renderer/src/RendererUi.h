@@ -7,6 +7,7 @@
 
 #include <Meow2/Core/Jobs/JobSystem.h>
 #include <Meow2/Core/Log/Logger.h>
+#include <Meow2/Core/Time/FrameTimes.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Rhi/RhiTypes.h>
 #include <Meow2/Math/Types.h>
@@ -52,51 +53,23 @@ struct SceneRequest
     bool save = false;            ///< Save the open scene as `.m2scene` instead (`file` is ignored).
 };
 
-/// @brief The last few seconds of frame times, for the stats window.
-/// @par Thread safety
-/// Not thread-safe.
-class FrameTimes
-{
-public:
-    /// @brief Adds a frame.
-    /// @param milliseconds How long it took.
-    void add(float milliseconds);
-
-    /// @brief The average of the kept frames.
-    /// @return Milliseconds; 0 before the first frame.
-    [[nodiscard]] float average() const;
-
-    /// @brief The slowest kept frame.
-    /// @return Milliseconds.
-    [[nodiscard]] float worst() const;
-
-    /// @brief The kept frames in order, oldest first, for a graph.
-    /// @return A copy.
-    [[nodiscard]] std::array<float, 240> ordered() const;
-
-private:
-    std::array<float, 240> m_times{};
-    std::size_t m_next = 0;
-    std::size_t m_count = 0;
-};
-
 /// @brief What the stats window shows. Plain data, gathered by the app each frame.
 struct StatsInfo
 {
-    std::string_view backend{};         ///< "Vulkan" or "D3D12".
-    std::string_view gpu{};             ///< The adapter's name.
-    const FrameTimes* frames = nullptr; ///< Frame times.
-    std::uint32_t width = 0;            ///< Swapchain width in pixels.
-    std::uint32_t height = 0;           ///< Swapchain height in pixels.
-    std::string_view scene{};           ///< The open scene's name.
-    std::size_t entities = 0;           ///< Entities in the scene.
-    std::uint32_t instances = 0;        ///< Instances submitted (before culling).
-    std::uint32_t meshes = 0;           ///< GPU meshes.
-    std::uint32_t materials = 0;        ///< Materials.
-    std::uint32_t textures = 0;         ///< Textures.
-    std::string_view drawPath{};        ///< "meshlets" or "indirect": how the scene is drawn.
-    Renderer::MeshletStats meshlets{};  ///< What the meshlet path drew, when it's the path.
-    std::uint32_t shadowCascades = 0;   ///< The sun's cascades this frame; 0 without shadows.
+    std::string_view backend{};               ///< "Vulkan" or "D3D12".
+    std::string_view gpu{};                   ///< The adapter's name.
+    const Time::FrameTimes* frames = nullptr; ///< Frame times.
+    std::uint32_t width = 0;                  ///< Swapchain width in pixels.
+    std::uint32_t height = 0;                 ///< Swapchain height in pixels.
+    std::string_view scene{};                 ///< The open scene's name.
+    std::size_t entities = 0;                 ///< Entities in the scene.
+    std::uint32_t instances = 0;              ///< Instances submitted (before culling).
+    std::uint32_t meshes = 0;                 ///< GPU meshes.
+    std::uint32_t materials = 0;              ///< Materials.
+    std::uint32_t textures = 0;               ///< Textures.
+    std::string_view drawPath{};              ///< "meshlets" or "indirect": how the scene is drawn.
+    Renderer::MeshletStats meshlets{};        ///< What the meshlet path drew, when it's the path.
+    std::uint32_t shadowCascades = 0;         ///< The sun's cascades this frame; 0 without shadows.
     std::uint32_t staticShadowRedraws =
         0;                              ///< Cached static shadow maps drawn so far (GpuScene::staticShadowRedraws()).
     double importMilliseconds = 0.0;    ///< How long opening the scene took.

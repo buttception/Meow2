@@ -2,9 +2,9 @@
 /// @brief The debug overlays' maths, on the CPU: the frustum's lines and the grid's constants.
 
 #include "FrameScreenshot.h"
-#include "InfiniteGrid.h"
 
 #include <Meow2/Graphics/Renderer/DebugLines.h>
+#include <Meow2/Graphics/Renderer/InfiniteGrid.h>
 #include <Meow2/Math/Camera.h>
 
 #include <DirectXMath.h>
@@ -74,7 +74,7 @@ TEST(DebugOverlays, GridConstantsInvertTheCamera)
 {
     using namespace DirectX;
     const Shader::FrameConstants frame = testCamera();
-    const GridConstants constants = InfiniteGrid::constantsFor(frame, 640, 480);
+    const Renderer::GridConstants constants = Renderer::InfiniteGrid::constantsFor(frame, 640, 480);
     EXPECT_EQ(constants.width, 640U);
     EXPECT_EQ(constants.height, 480U);
     EXPECT_EQ(constants.camera.x, 1.0F);

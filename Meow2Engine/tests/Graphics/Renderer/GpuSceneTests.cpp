@@ -1322,6 +1322,72 @@ TEST_F(GpuSceneTest, TwoViewsInOneFrame)
     device.destroy(*backDepth);
 }
 
+// The editor draws its two viewports from one scene in one frame, with a debug view only in the first (#230): an
+// override set for one view must not reach the other's passes, which record after both were added.
+TEST_F(GpuSceneTest, OverridePerView)
+{
+    makeScene(4);
+    const Result<std::uint32_t> quad = m_scene->addMesh(makeQuad());
+    ASSERT_TRUE(quad);
+    const Result<std::uint32_t> glass =
+        m_scene->addMaterial({.baseColorFactor = {1.0F, 0.0F, 0.0F, 0.5F}, .metallic = 0.0F, .blend = true});
+    ASSERT_TRUE(glass);
+    m_scene->setInstances(std::vector{instanceOf(at({0.0F, 0.0F, 3.0F}), *quad, *glass)});
+    const Result<DrawPipelines> views = m_scene->makeDrawPipelines({.options = {{"DEBUG_VIEW", "1"}}, .name = "Views"});
+    ASSERT_TRUE(views) << views.error().message;
+    const Result<ViewId> second = m_scene->addView();
+    ASSERT_TRUE(second) << second.error().message;
+    Result<std::unique_ptr<OffscreenTarget>> secondTarget = OffscreenTarget::create(m_render->device(), c_size, c_size);
+    ASSERT_TRUE(secondTarget) << secondTarget.error().message;
+    Result<Rhi::TextureHandle> secondDepth = m_render->device().createTexture(
+        {.width = c_size, .height = c_size, .format = Rhi::RhiFormat::D32Float, .renderTarget = true, .name = "Depth"});
+    ASSERT_TRUE(secondDepth) << secondDepth.error().message;
+
+    // One frame of both views, the same camera; the first with a debug view when asked. The second view's centre.
+    const auto frame = [&](bool debugFirst)
+    {
+        Rhi::IRhiDevice& device = m_render->device();
+        EXPECT_TRUE(device.beginFrame());
+        const std::uint32_t slot = device.frameSlot();
+        const Math::CameraMatrices matrices = Math::cameraMatrices(Math::Transform{}, Math::CameraLens{}, 1.0F);
+        Shader::FrameConstants constants{};
+        constants.view = matrices.view;
+        constants.projection = matrices.projection;
+        constants.viewProjection = matrices.viewProjection;
+        RenderGraph graph;
+        Shader::FrameConstants first = constants;
+        first.debugView = debugFirst ? MEOW2_DEBUG_VIEW_BASE_COLOR : 0U;
+        m_scene->setPipelineOverride(debugFirst ? std::optional{*views} : std::nullopt);
+        m_scene->setView(slot, first, Math::frustumFromCamera(matrices));
+        static_cast<void>(m_scene->addPasses(graph, slot, nullptr, m_target->texture(), m_depth, m_clear));
+        m_scene->setPipelineOverride(std::nullopt); // the second view draws as usual
+        m_scene->setView(slot, constants, Math::frustumFromCamera(matrices), *second);
+        static_cast<void>(
+            m_scene->addPasses(graph, slot, nullptr, (*secondTarget)->texture(), *secondDepth, m_clear, *second));
+        graph.compile();
+        Result<std::vector<Rhi::IRhiCommandList*>> lists = graph.execute(device, m_jobs);
+        EXPECT_TRUE(lists);
+        m_scene->endFrame(graph);
+        Result<Rhi::IRhiCommandList*> last = device.commandList(0);
+        EXPECT_TRUE(last);
+        lists->push_back(*last);
+        (*last)->barrier((*secondTarget)->texture(), Rhi::ResourceState::ColorTarget, Rhi::ResourceState::CopySource);
+        (*secondTarget)->copyToCpu(**last);
+        EXPECT_TRUE(device.endFrame(*lists));
+        device.waitIdle();
+        std::array<std::uint8_t, 4> pixel{};
+        std::memcpy(pixel.data(),
+                    (*secondTarget)->pixels().data() + (std::size_t{c_size / 2} * c_size + c_size / 2) * 4, 4);
+        return pixel;
+    };
+    static_cast<void>(frame(false)); // settled
+    const std::array<std::uint8_t, 4> normal = frame(false);
+    const std::array<std::uint8_t, 4> withDebugFirst = frame(true);
+    EXPECT_GT(normal[0], 30) << "the glass shows";
+    EXPECT_EQ(withDebugFirst, normal) << "the first view's debug pipelines don't draw the second view's glass";
+    m_render->device().destroy(*secondDepth);
+}
+
 TEST_F(GpuSceneTest, PreviousTransformFollows)
 {
     makeScene(4);

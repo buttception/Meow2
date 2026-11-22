@@ -13,6 +13,7 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Platform.h>
 #include <Meow2/Math/CameraRig.h>
+#include <Meow2/Math/Quaternion.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
 #include <Meow2/Platform/Platform.h>
 #include <Meow2/Platform/Window/Window.h>
@@ -74,22 +75,42 @@ protected:
         m_renderer.reset();
     }
 
-    /// @brief One frame: the editor viewport from an orbit around the scene, the game one from its main camera.
-    void runFrame()
+    /// @brief One frame: the editor viewport from an orbit around the scene (or `editorCamera`), the game one from
+    ///        its main camera.
+    void runFrame(std::optional<ViewportCamera> editorCamera = std::nullopt)
     {
         m_world.update(&m_renderer->scene(), m_selection);
         m_renderer->setHasSelection(m_world.anySelectedInstance());
         const Math::Sphere bounds = m_world.bounds();
         std::array<std::optional<ViewportCamera>, 2> cameras{};
-        cameras.at(m_editor) =
+        cameras.at(m_editor) = editorCamera.value_or(
             ViewportCamera{.transform = Math::orbitTransform(Math::frameScene(bounds.center, bounds.radius)),
-                           .lens = Math::sceneLens(bounds.radius)};
+                           .lens = Math::sceneLens(bounds.radius)});
         const std::optional<entt::entity> main = Meow2::Scene::findMainCamera(m_world.scene());
         ASSERT_TRUE(main);
         cameras.at(m_game) =
             ViewportCamera{.transform = *Meow2::Scene::cameraTransform(m_world.scene(), *main), .lens = {}};
         ASSERT_TRUE(m_renderer->renderFrame(cameras));
         m_renderer->device().device().waitIdle();
+    }
+
+    /// @brief A copy of a viewport's last image (RGBA8).
+    std::vector<std::uint8_t> copyPixels(ViewportId viewport)
+    {
+        const auto pixels = m_renderer->offscreenTarget(viewport)->pixels();
+        return {reinterpret_cast<const std::uint8_t*>(pixels.data()),
+                reinterpret_cast<const std::uint8_t*>(pixels.data()) + pixels.size()};
+    }
+
+    /// @brief How many pixels differ between two images of one size.
+    static std::uint32_t changedPixels(const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b)
+    {
+        std::uint32_t changed = 0;
+        for (std::size_t i = 0; i + 3 < a.size() && i + 3 < b.size(); i += 4)
+        {
+            changed += (a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2]) ? 1U : 0U;
+        }
+        return changed;
     }
 
     /// @brief How many pixels of a viewport's image aren't black.
@@ -424,4 +445,93 @@ TEST_F(EditorRendererTest, DrawsLines)
     m_renderer->setOverlay(m_editor, {});
     runFrame();
     EXPECT_EQ(copy(m_editor), editorBefore);
+}
+
+// Owner request (#230): the debug tools are for the editor viewport; the game view keeps showing the game.
+TEST_F(EditorRendererTest, DebugViewOnlyInEditorViewport)
+{
+    m_renderer->setDebugViewport(m_editor);
+    runFrame();
+    runFrame(); // settled (shadow cache, sky tables)
+    const std::vector<std::uint8_t> editorShaded = copyPixels(m_editor);
+    const std::vector<std::uint8_t> gameShaded = copyPixels(m_game);
+
+    m_renderer->debugState().view = static_cast<int>(MEOW2_DEBUG_VIEW_BASE_COLOR);
+    runFrame();
+    EXPECT_GT(changedPixels(editorShaded, copyPixels(m_editor)), c_size * c_size / 8) << "the editor view shows it";
+    EXPECT_EQ(changedPixels(gameShaded, copyPixels(m_game)), 0U) << "the game view doesn't";
+
+    // The views with passes of their own: Position (a debug-only pass from depth) and Overdraw (additive, a heat
+    // map); each draws something, and the validation layer stays quiet (TearDown()).
+    for (const int view : {static_cast<int>(MEOW2_DEBUG_VIEW_POSITION), static_cast<int>(MEOW2_DEBUG_VIEW_OVERDRAW),
+                           static_cast<int>(MEOW2_DEBUG_VIEW_TRIANGLES)})
+    {
+        m_renderer->debugState().view = view;
+        runFrame();
+        EXPECT_GT(litPixels(m_editor), 0U) << "view " << view;
+        EXPECT_EQ(changedPixels(gameShaded, copyPixels(m_game)), 0U) << "view " << view;
+    }
+    EXPECT_FALSE(m_renderer->debugFailed());
+
+    // Back to shaded: the same image as before.
+    m_renderer->debugState().view = -1;
+    runFrame();
+    EXPECT_EQ(changedPixels(editorShaded, copyPixels(m_editor)), 0U);
+}
+
+TEST_F(EditorRendererTest, GridAndWireframeDraw)
+{
+    m_renderer->setDebugViewport(m_editor);
+    runFrame();
+    runFrame();
+    const std::vector<std::uint8_t> shaded = copyPixels(m_editor);
+    const std::uint32_t shadedLit = litPixels(m_editor);
+
+    m_renderer->setGrid(true);
+    runFrame();
+    EXPECT_GT(changedPixels(shaded, copyPixels(m_editor)), 0U) << "grid lines on the ground";
+    m_renderer->setGrid(false);
+
+    m_renderer->debugState().wireframe = Meow2::Renderer::WireframeMode::Only;
+    runFrame();
+    const std::uint32_t edges = litPixels(m_editor);
+    EXPECT_GT(edges, 0U) << "edges";
+    EXPECT_LT(edges, shadedLit) << "on black: no sky, no filled surfaces";
+
+    m_renderer->debugState().wireframe = Meow2::Renderer::WireframeMode::Overlay;
+    runFrame();
+    EXPECT_GT(changedPixels(shaded, copyPixels(m_editor)), 0U) << "edges over the shaded scene";
+}
+
+TEST_F(EditorRendererTest, FrozenCullingKeepsFrustum)
+{
+    m_renderer->setDebugViewport(m_editor);
+    m_renderer->debugState().freezeCulling = true;
+    m_renderer->debugState().showFrustum = true;
+    runFrame(); // frozen with the orbit camera
+    runFrame();
+
+    const Math::Sphere bounds = m_world.bounds();
+    const Math::Transform orbit = Math::orbitTransform(Math::frameScene(bounds.center, bounds.radius));
+    const Math::Vec3 away{orbit.position.x - bounds.center.x, orbit.position.y - bounds.center.y,
+                          orbit.position.z - bounds.center.z};
+    const Math::Vec3 back{-away.x, -away.y, -away.z};
+    // Further back, facing the scene: the frozen frustum is in view from outside.
+    const ViewportCamera outside{
+        .transform = {.position = {orbit.position.x + away.x, orbit.position.y + away.y, orbit.position.z + away.z},
+                      .rotation = Math::lookRotation(back)},
+        .lens = Math::sceneLens(bounds.radius)};
+    runFrame(outside);
+    const std::vector<std::uint8_t> withFrustum = copyPixels(m_editor);
+    m_renderer->debugState().showFrustum = false;
+    runFrame(outside);
+    const std::vector<std::uint8_t> withoutFrustum = copyPixels(m_editor);
+    EXPECT_GT(changedPixels(withFrustum, withoutFrustum), 0U) << "the frozen frustum's lines";
+
+    // Unfrozen, the frustum is forgotten: no lines, though showFrustum is on (the orbit's frustum held the whole
+    // scene, so culling with it or with this camera draws the same).
+    m_renderer->debugState().freezeCulling = false;
+    m_renderer->debugState().showFrustum = true;
+    runFrame(outside);
+    EXPECT_EQ(changedPixels(withoutFrustum, copyPixels(m_editor)), 0U);
 }

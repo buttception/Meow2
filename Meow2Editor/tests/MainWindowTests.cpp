@@ -5,6 +5,7 @@
 #include "Panels/AssetsDock.h"
 #include "Panels/ConsoleDock.h"
 #include "Panels/SettingsDialog.h"
+#include "Panels/StatsDock.h"
 #include "Viewports/GameViewportDock.h"
 
 #include <Meow2/Scene/Environment.h>
@@ -152,6 +153,9 @@ TEST_F(MainWindowTest, TabbedDocksHideTheirTitle)
     Meow2::Editor::EditorMainWindow window{windowDeps()};
     QDockWidget& console = window.console();
     QDockWidget& assets = window.assetsDock();
+    window.tick();
+    EXPECT_NE(console.titleBarWidget(), nullptr) << "a tab beside the Stats dock at first";
+    window.statsDock().hide();
     window.tick();
     EXPECT_EQ(console.titleBarWidget(), nullptr) << "alone at the bottom: its title shows";
 

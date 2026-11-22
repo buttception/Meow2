@@ -1,6 +1,6 @@
 /// @file
-/// @brief Meow2Renderer's infinite grid on the ground plane (y = 0), worked out by a compute shader. Renderer only,
-///        never in games.
+/// @brief An infinite grid on the ground plane (y = 0), worked out by a compute shader: a debugging tool of
+///        Meow2Renderer and the editor's viewport, never in games.
 
 #pragma once
 
@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace Meow2::RendererApp
+namespace Meow2::Renderer
 {
 /// @brief The grid's per-frame constants, as `shaders/DebugGrid.hlsl` reads them. Plain data; 176 bytes.
 struct GridConstants
@@ -110,4 +110,4 @@ private:
     std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_constants{}; ///< GridConstants, per frame slot.
     Renderer::DeviceUser m_deviceUser; ///< Last: stops its callbacks before the members they use go away.
 };
-} // namespace Meow2::RendererApp
+} // namespace Meow2::Renderer

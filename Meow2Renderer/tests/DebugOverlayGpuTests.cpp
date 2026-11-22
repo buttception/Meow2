@@ -2,8 +2,6 @@
 /// @brief The debug overlays on the GPU, on each backend: the infinite grid below the horizon and hidden behind
 ///        geometry, and the frozen frustum's lines. Drawn headlessly into a small HDR target and read back.
 
-#include "InfiniteGrid.h"
-
 #include <Meow2/Assets/AssetManager.h>
 #include <Meow2/Core/Events/EventBus.h>
 #include <Meow2/Core/Id/UuidGenerator.h>
@@ -11,6 +9,7 @@
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Graphics/Renderer/DebugLines.h>
+#include <Meow2/Graphics/Renderer/InfiniteGrid.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
@@ -142,8 +141,8 @@ protected:
         m_render = std::move(*device);
         m_pipelines = std::make_unique<Renderer::PipelineLibrary>(
             Renderer::PipelineLibraryDeps{*m_render, m_assets, m_events, m_log});
-        m_grid = std::make_unique<InfiniteGrid>(*m_render, *m_pipelines,
-                                                assetId("01a1b5e2-3c1b-8000-80a4-7b19d2e6c05c"), c_hdrFormat, m_log);
+        m_grid = std::make_unique<Renderer::InfiniteGrid>(
+            *m_render, *m_pipelines, assetId("01a1b5e2-3c1b-8000-80a4-7b19d2e6c05c"), c_hdrFormat, m_log);
         m_lines = std::make_unique<DebugLines>(*m_render, *m_pipelines, assetId("01a1b5e2-3c1a-8000-80a4-7b19d2e6c05b"),
                                                c_hdrFormat, m_log);
         ASSERT_TRUE(m_grid->ready());
@@ -231,7 +230,7 @@ protected:
     Jobs::JobSystem m_jobs;
     std::unique_ptr<Renderer::RenderDevice> m_render;
     std::unique_ptr<Renderer::PipelineLibrary> m_pipelines;
-    std::unique_ptr<InfiniteGrid> m_grid;
+    std::unique_ptr<Renderer::InfiniteGrid> m_grid;
     std::unique_ptr<DebugLines> m_lines;
     Rhi::TextureHandle m_hdr;
     Rhi::TextureHandle m_depth;

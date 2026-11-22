@@ -29,6 +29,7 @@ class QMenu;
 namespace Meow2::Editor
 {
 class AssetsDock;
+class DebugDock;
 class HierarchyDock;
 class InspectorDock;
 class SceneSettingsDock;
@@ -38,6 +39,7 @@ class GameViewportDock;
 class QtInputSource;
 class SceneDocument;
 class SettingsDialog;
+class StatsDock;
 class ViewportController;
 
 /// @brief The answer to "save the changes?": what the window asks before dropping unsaved changes.
@@ -140,6 +142,14 @@ public:
     /// @brief The Inspector dock.
     /// @return It.
     [[nodiscard]] InspectorDock& inspectorDock();
+
+    /// @brief The Debug dock.
+    /// @return It.
+    [[nodiscard]] DebugDock& debugDock();
+
+    /// @brief The Stats dock.
+    /// @return It.
+    [[nodiscard]] StatsDock& statsDock();
 
     /// @brief Starts a new scene, asking about unsaved changes first (File → New).
     /// @return True if a new scene was started.
@@ -245,6 +255,10 @@ private:
     QAction* m_sceneSettingsAction = nullptr;         ///< Checked while the Scene settings dock is shown.
     AssetsDock* m_assetsDock = nullptr;               ///< Owned by Qt, never null after construction.
     QAction* m_assetsAction = nullptr;                ///< Checked while the Assets dock is shown.
+    DebugDock* m_debugDock = nullptr;                 ///< Owned by Qt.
+    StatsDock* m_statsDock = nullptr;                 ///< Owned by Qt.
+    QAction* m_debugAction = nullptr;                 ///< Checked while the Debug dock is shown.
+    QAction* m_statsAction = nullptr;                 ///< Checked while the Stats dock is shown.
     QMenu* m_recentMenu = nullptr;                    ///< File → Open Recent.
     QStringList m_recentShown;                        ///< What m_recentMenu lists.
     std::function<UnsavedAnswer()> m_askUnsaved;      ///< setUnsavedPrompt().

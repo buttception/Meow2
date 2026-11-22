@@ -45,16 +45,20 @@ target_sources(Meow2Engine
         src/Core/Profiling/Tracy/ProfileTracy.cpp
         src/Core/Time/FixedTimestep.cpp
         src/Core/Time/FrameClock.cpp
+        src/Core/Time/FrameTimes.cpp
         src/Core/Time/GameLoop.cpp
         src/Core/Time/GameLoopConfig.cpp
         src/Core/Version.cpp
         src/Graphics/Renderer/FramePacket.cpp
         src/Graphics/Renderer/DebugLines.cpp
+        src/Graphics/Renderer/DepthPositionView.cpp
         src/Graphics/Renderer/FrameResources.cpp
         src/Graphics/Renderer/GpuScene.cpp
         src/Graphics/Renderer/GpuSceneShadows.cpp
+        src/Graphics/Renderer/InfiniteGrid.cpp
         src/Graphics/Renderer/MeshProcessing.cpp
         src/Graphics/Renderer/PipelineLibrary.cpp
+        src/Graphics/Renderer/RenderDebug.cpp
         src/Graphics/Renderer/RenderDevice.cpp
         src/Graphics/Renderer/RenderGraph.cpp
         src/Graphics/Renderer/SceneModel.cpp
@@ -126,14 +130,18 @@ target_sources(Meow2Engine
             include/Meow2/Core/SharedLibrary.h
             include/Meow2/Core/Time/FixedTimestep.h
             include/Meow2/Core/Time/FrameClock.h
+            include/Meow2/Core/Time/FrameTimes.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
             include/Meow2/Graphics/Renderer/FramePacket.h
             include/Meow2/Graphics/Renderer/DebugLines.h
+            include/Meow2/Graphics/Renderer/DepthPositionView.h
             include/Meow2/Graphics/Renderer/FrameResources.h
             include/Meow2/Graphics/Renderer/GpuScene.h
+            include/Meow2/Graphics/Renderer/InfiniteGrid.h
             include/Meow2/Graphics/Renderer/MeshProcessing.h
             include/Meow2/Graphics/Renderer/PipelineLibrary.h
+            include/Meow2/Graphics/Renderer/RenderDebug.h
             include/Meow2/Graphics/Renderer/RenderDevice.h
             include/Meow2/Graphics/Renderer/RenderGraph.h
             include/Meow2/Graphics/Renderer/SceneModel.h

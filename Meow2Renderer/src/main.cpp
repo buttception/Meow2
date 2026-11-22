@@ -4,12 +4,10 @@
 ///        a grid of cubes through the GPU-driven path, and shows an ImGui shell to pick scenes and read stats.
 
 #include "ConsoleWindow.h"
-#include "DepthPositionView.h"
+#include "DebugWindow.h"
 #include "FrameInspector.h"
 #include "FrameScreenshot.h"
 #include "ImGuiLayer.h"
-#include "InfiniteGrid.h"
-#include "RenderDebug.h"
 #include "RendererUi.h"
 #include "SceneView.h"
 #include "SettingsWindow.h"
@@ -34,7 +32,9 @@
 #include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
 #include <Meow2/Graphics/Renderer/DebugLines.h>
+#include <Meow2/Graphics/Renderer/DepthPositionView.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
+#include <Meow2/Graphics/Renderer/InfiniteGrid.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
@@ -303,13 +303,13 @@ int main(int argc, char** argv)
     std::optional<Meow2::Renderer::PipelineLibrary> pipelines;
     // The sky (renderer.sky): lights every scene and is drawn behind it. Scenes refer to it: declared before them.
     std::unique_ptr<Meow2::Renderer::SkyAtmosphere> sky;
-    std::unique_ptr<Meow2::Renderer::ToneMapPass> toneMap;               // the scene's HDR colour into the swapchain
-    std::unique_ptr<Meow2::RendererApp::RenderDebug> renderDebug;        // debug views, wireframes, frozen culling
-    std::unique_ptr<Meow2::RendererApp::FrameInspector> inspector;       // render-graph view, pass view, frame capture
-    std::unique_ptr<Meow2::RendererApp::InfiniteGrid> grid;              // the ground grid (renderer.grid)
-    std::unique_ptr<Meow2::Renderer::DebugLines> debugLines;             // the frozen camera's frustum
-    std::unique_ptr<Meow2::RendererApp::DepthPositionView> positionView; // the Position debug view's texture
-    std::unique_ptr<Meow2::RendererApp::FrameScreenshot> screenshot;     // PrintScreen: the window's pixels to a PNG
+    std::unique_ptr<Meow2::Renderer::ToneMapPass> toneMap;            // the scene's HDR colour into the swapchain
+    std::unique_ptr<Meow2::Renderer::RenderDebug> renderDebug;        // debug views, wireframes, frozen culling
+    std::unique_ptr<Meow2::RendererApp::FrameInspector> inspector;    // render-graph view, pass view, frame capture
+    std::unique_ptr<Meow2::Renderer::InfiniteGrid> grid;              // the ground grid (renderer.grid)
+    std::unique_ptr<Meow2::Renderer::DebugLines> debugLines;          // the frozen camera's frustum
+    std::unique_ptr<Meow2::Renderer::DepthPositionView> positionView; // the Position debug view's texture
+    std::unique_ptr<Meow2::RendererApp::FrameScreenshot> screenshot;  // PrintScreen: the window's pixels to a PNG
     // The starting sun: renderer.sunElevation and renderer.sunDirection, in degrees (the Stats window's sliders).
     Meow2::RendererApp::SunControls sun;
     sun.elevationDegrees =
@@ -429,26 +429,26 @@ int main(int argc, char** argv)
             inspector = std::make_unique<Meow2::RendererApp::FrameInspector>(
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c18-8000-80a4-7b19d2e6c059"), appLog);
             inspector->watch(config.getString("renderer.watchPass", "")); // for checks without the mouse
-            grid = std::make_unique<Meow2::RendererApp::InfiniteGrid>(
+            grid = std::make_unique<Meow2::Renderer::InfiniteGrid>(
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c1b-8000-80a4-7b19d2e6c05c"), c_sceneFormat, appLog);
             debugLines = std::make_unique<Meow2::Renderer::DebugLines>(
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c1a-8000-80a4-7b19d2e6c05b"), c_sceneFormat, appLog);
-            positionView = std::make_unique<Meow2::RendererApp::DepthPositionView>(
+            positionView = std::make_unique<Meow2::Renderer::DepthPositionView>(
                 *renderDevice, *pipelines, assetId("01a1b5e2-3c1d-8000-80a4-7b19d2e6c05e"), appLog);
             screenshot = std::make_unique<Meow2::RendererApp::FrameScreenshot>(*renderDevice, appLog);
-            renderDebug = std::make_unique<Meow2::RendererApp::RenderDebug>(
-                *pipelines, assetId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058"), colorFormat, appLog);
+            renderDebug = std::make_unique<Meow2::Renderer::RenderDebug>(
+                *pipelines, assetId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058"), appLog);
             // renderer.debugView (a MEOW2_DEBUG_VIEW_* number, -1 shaded) and renderer.wireframe (off, overlay, only):
             // how the views start, for checks and captures without the mouse.
             renderDebug->state().view = static_cast<int>(
                 std::clamp<std::int64_t>(config.getInt("renderer.debugView", -1), -1, MEOW2_DEBUG_VIEW_COUNT - 1));
             if (const std::string wireframe = config.getString("renderer.wireframe", "off"); wireframe == "overlay")
             {
-                renderDebug->state().wireframe = Meow2::RendererApp::WireframeMode::Overlay;
+                renderDebug->state().wireframe = Meow2::Renderer::WireframeMode::Overlay;
             }
             else if (wireframe == "only")
             {
-                renderDebug->state().wireframe = Meow2::RendererApp::WireframeMode::Only;
+                renderDebug->state().wireframe = Meow2::Renderer::WireframeMode::Only;
             }
         }
         else
@@ -578,7 +578,7 @@ int main(int argc, char** argv)
     Meow2::RendererApp::CameraWindowState cameraState = startCamera;
     const Meow2::RendererApp::SceneView* cameraScene = nullptr; // the scene they were last fitted to
     int posedAnimation = -1;                                    // the animation the scene is posed in; -1: rest
-    Meow2::RendererApp::FrameTimes frameTimes;
+    Meow2::Time::FrameTimes frameTimes;
     std::optional<Meow2::RendererApp::SceneRequest> pendingScene;
     bool showUi = true;
     const Meow2::Events::Subscription onUiKey = events.subscribe<Meow2::Input::KeyPressed>(
@@ -809,7 +809,7 @@ int main(int argc, char** argv)
                 }
                 if (renderDebug)
                 {
-                    renderDebug->drawWindow(ui->fonts());
+                    Meow2::RendererApp::drawDebugWindow(*renderDebug, ui->fonts());
                 }
                 if (inspector)
                 {

@@ -74,6 +74,8 @@ Result<std::unique_ptr<EditorRenderer>> EditorRenderer::create(const EditorRende
     }
     renderer->m_scene = std::move(*scene);
     renderer->m_toneMapShader = shaderId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058");
+    renderer->m_debug =
+        std::make_unique<Renderer::RenderDebug>(*renderer->m_pipelines, renderer->m_toneMapShader, deps.log);
     if (Result<void> overlays = renderer->makeOverlayPipelines(); !overlays)
     {
         return Unexpected<Error>{overlays.error()};
@@ -166,6 +168,40 @@ void EditorRenderer::setOutline(ViewportId viewport, bool outline)
 void EditorRenderer::setHasSelection(bool any)
 {
     m_hasSelection = any;
+}
+
+void EditorRenderer::setDebugViewport(std::optional<ViewportId> viewport)
+{
+    m_debugViewport = viewport;
+}
+
+Renderer::RenderDebugState& EditorRenderer::debugState()
+{
+    return m_debug->state();
+}
+
+void EditorRenderer::setGrid(bool on)
+{
+    m_gridOn = on;
+}
+
+bool EditorRenderer::debugFailed() const
+{
+    return m_debug->failed();
+}
+
+RenderStats EditorRenderer::stats() const
+{
+    Rhi::IRhiDevice& device = m_device->device(); // memoryStats() asks the driver: not const
+    return RenderStats{.backend = m_device->backend() == Rhi::RhiBackend::D3D12 ? "D3D12" : "Vulkan",
+                       .gpu = device.adapter().name,
+                       .gpuMemory = device.memoryStats(),
+                       .validationErrors = device.validationErrorCount(),
+                       .instances = m_scene->instanceCount(),
+                       .meshes = m_scene->meshCount(),
+                       .materials = m_scene->materialCount(),
+                       .textures = m_scene->textureCount(),
+                       .meshlets = m_scene->usesMeshlets()};
 }
 
 void EditorRenderer::setOverlay(ViewportId viewport, ViewportOverlay overlay)
@@ -293,6 +329,10 @@ Result<void> EditorRenderer::resetScene()
     // Draw pipelines belong to their scene; a pick in flight named the old scene's instances.
     m_pickInFlight = {};
     m_pickResult.reset();
+    // The debug views' pipelines are the old scene's too: new tools, the same settings (frozen culling starts over).
+    const Renderer::RenderDebugState debugState = m_debug->state();
+    m_debug = std::make_unique<Renderer::RenderDebug>(*m_pipelines, m_toneMapShader, m_deps.log);
+    m_debug->state() = debugState;
     return makeOverlayPipelines();
 }
 
@@ -312,6 +352,8 @@ EditorRenderer::~EditorRenderer()
     if (m_device && m_device->hasDevice())
     {
         m_device->device().waitIdle();
+        m_positionView.reset(); // their GPU objects go while the device is still there
+        m_grid.reset();
         for (Viewport& viewport : m_viewports)
         {
             m_device->device().destroy(viewport.color);
@@ -330,6 +372,7 @@ EditorRenderer::~EditorRenderer()
     }
     m_viewports.clear();
     m_toneMaps.clear();
+    m_debug.reset();
     m_scene.reset();
     m_sky.reset();
     m_pipelines.reset();
@@ -602,9 +645,50 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
             frame.pickBuffer = device.bindlessStorageIndex(m_pickBuffer);
             frame.pickPixel = (x & 0xFFFFU) | (y << 16U);
         }
-        m_scene->setView(slot, frame, Math::frustumFromCamera(matrices), viewport.view);
+        // The debug tools are for one viewport (the editor's): it gets their pipelines, frozen frustum and clear
+        // colour; any other view of the scene is set back to normal before its passes are added.
+        const bool debugging = m_debugViewport == id;
+        Math::Frustum frustum = Math::frustumFromCamera(matrices);
+        Math::Color clear = c_clear;
+        if (debugging)
+        {
+            m_debug->apply(*m_scene, frame);
+            frustum = m_debug->cullingFrustum(frustum, frame);
+            clear = m_debug->clearColor(c_clear);
+        }
+        else
+        {
+            Renderer::RenderDebug::restore(*m_scene);
+        }
+        m_scene->setView(slot, frame, frustum, viewport.view);
         const Renderer::GraphResource hdr =
-            m_scene->addPasses(graph, slot, nullptr, viewport.color, viewport.depth, c_clear, viewport.view);
+            m_scene->addPasses(graph, slot, nullptr, viewport.color, viewport.depth, clear, viewport.view);
+        std::optional<Renderer::GraphResource> position; // the Position view's texture, shown instead of the scene
+        if (debugging)
+        {
+            if (m_gridOn)
+            {
+                if (!m_grid)
+                {
+                    m_grid = std::make_unique<Renderer::InfiniteGrid>(*m_device, *m_pipelines,
+                                                                      shaderId("01a1b5e2-3c1b-8000-80a4-7b19d2e6c05c"),
+                                                                      c_sceneFormat, m_deps.log);
+                }
+                m_grid->addPasses(graph, slot, frame, hdr, viewport.color, m_scene->depthResource(viewport.view),
+                                  viewport.depth, viewport.sceneWidth, viewport.sceneHeight);
+            }
+            m_debug->addOverlays(graph, *m_scene, hdr, viewport.color, viewport.depth, slot, viewport.view);
+            if (m_debug->state().view == static_cast<int>(MEOW2_DEBUG_VIEW_POSITION))
+            {
+                if (!m_positionView)
+                {
+                    m_positionView = std::make_unique<Renderer::DepthPositionView>(
+                        *m_device, *m_pipelines, shaderId("01a1b5e2-3c1d-8000-80a4-7b19d2e6c05e"), m_deps.log);
+                }
+                position = m_positionView->addPass(graph, slot, frame, m_scene->depthResource(viewport.view),
+                                                   viewport.depth, viewport.sceneWidth, viewport.sceneHeight);
+            }
+        }
         if (overlays)
         {
             const Renderer::GraphResource mask =
@@ -674,8 +758,22 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
                      .debug = true});
             }
         }
+        // While culling is frozen, the frozen camera's view volume (yellow), so what was culled can be seen from
+        // outside.
+        std::vector<Renderer::DebugLine> frozenLines;
+        if (debugging)
+        {
+            if (const std::optional<Shader::FrameConstants> frozen = m_debug->frozenCamera())
+            {
+                constexpr float c_frozenFrustumLength = 200.0F; // metres: the far plane is infinite
+                constexpr Math::Color c_frustumColor{.r = 1.0F, .g = 0.85F, .b = 0.1F, .a = 1.0F};
+                const std::array<Renderer::DebugLine, 12> edges =
+                    Renderer::frustumLines(*frozen, c_frozenFrustumLength, c_frustumColor);
+                frozenLines.assign(edges.begin(), edges.end());
+            }
+        }
         if (!viewport.overlay.lines.empty() || !viewport.overlay.triangles.empty() ||
-            !viewport.overlay.screenLines.empty() || !viewport.overlay.screenTriangles.empty())
+            !viewport.overlay.screenLines.empty() || !viewport.overlay.screenTriangles.empty() || !frozenLines.empty())
         {
             const auto make = [this]
             {
@@ -714,6 +812,11 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
                 }
             };
             fill(*viewport.debugLines, viewport.overlay.lines, viewport.overlay.triangles);
+            for (Renderer::DebugLine line : frozenLines)
+            {
+                line.color = shown(line.color);
+                viewport.debugLines->add(line);
+            }
             viewport.debugLines->addPass(graph, slot, matrices.viewProjection, hdr, viewport.color);
             // Screen-space shapes (the view-axis gizmo) in the viewport's pixels: x right, y down, to clip space.
             fill(*viewport.screenLines, viewport.overlay.screenLines, viewport.overlay.screenTriangles);
@@ -724,18 +827,30 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
                                                           0.0F, 0.0F, 1.0F, 0.0F, -1.0F, 1.0F, 0.0F, 1.0F));
             viewport.screenLines->addPass(graph, slot, pixels, hdr, viewport.color);
         }
+        // A debug view is shown as it is, without the tone curve (the Position view from its own texture).
+        const Renderer::GraphResource shown = position.value_or(hdr);
+        const Rhi::TextureHandle shownTexture = position ? m_positionView->texture() : viewport.color;
         if (viewport.swapchain)
         {
-            if (Renderer::ToneMapPass* toneMap = toneMapFor(viewport.swapchain->format()))
+            const bool presented =
+                debugging && m_debug->addPresent(graph, shown, shownTexture, *viewport.swapchain, device);
+            Renderer::ToneMapPass* toneMap = presented ? nullptr : toneMapFor(viewport.swapchain->format());
+            if (toneMap != nullptr)
             {
                 toneMap->addPass(graph, hdr, viewport.color, *viewport.swapchain, device);
             }
         }
-        else if (Renderer::ToneMapPass* toneMap = toneMapFor(Renderer::OffscreenTarget::format()))
+        else
         {
             const Renderer::GraphResource target =
                 graph.import(viewport.offscreen->texture(), Rhi::ResourceState::Undefined, viewport.name);
-            toneMap->addPass(graph, hdr, viewport.color, target, viewport.offscreen->texture(), device);
+            const bool presented = debugging && m_debug->addPresent(graph, shown, shownTexture, target,
+                                                                    viewport.offscreen->texture(), device);
+            Renderer::ToneMapPass* toneMap = presented ? nullptr : toneMapFor(Renderer::OffscreenTarget::format());
+            if (toneMap != nullptr)
+            {
+                toneMap->addPass(graph, hdr, viewport.color, target, viewport.offscreen->texture(), device);
+            }
         }
         viewport.drawn = true;
     }
@@ -751,6 +866,10 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
     }
     Result<std::vector<Rhi::IRhiCommandList*>> lists = graph.execute(device, m_deps.jobs);
     m_scene->endFrame(graph);
+    if (m_positionView)
+    {
+        m_positionView->endFrame(graph);
+    }
     m_sky->endFrame();
     if (!lists)
     {
