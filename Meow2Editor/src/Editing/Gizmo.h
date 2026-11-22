@@ -90,7 +90,7 @@ class Gizmo
 public:
     static constexpr float c_sizePixels = 100.0F;    ///< How long the handles are on screen.
     static constexpr float c_hitPixels = 8.0F;       ///< How close the cursor must be to grab one.
-    static constexpr float c_lineWidthPixels = 3.0F; ///< How thick the handles are drawn (the hovered one 4).
+    static constexpr float c_lineWidthPixels = 2.0F; ///< How thick the handles are drawn (the hovered one 3).
     static constexpr float c_planeStart = 0.25F;     ///< Where the move planes' squares start, as a share of the size.
     static constexpr float c_planeEnd = 0.5F;        ///< Where they end.
 

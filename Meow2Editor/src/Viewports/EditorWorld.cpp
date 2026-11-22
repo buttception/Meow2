@@ -383,7 +383,9 @@ namespace
 /// @brief The newest write time of the files in a model's folder (its .gltf, .bin and textures), .meta sidecars aside.
 std::filesystem::file_time_type newestIn(const std::filesystem::path& folder)
 {
-    std::filesystem::file_time_type newest{};
+    // min(), not {}: libstdc++'s file clock counts from 2174, so today's file times are negative there and a
+    // zero start would always win (hot reload never saw a change on Linux).
+    std::filesystem::file_time_type newest = std::filesystem::file_time_type::min();
     std::error_code error;
     for (auto it = std::filesystem::recursive_directory_iterator(folder, error);
          !error && it != std::filesystem::recursive_directory_iterator(); it.increment(error))

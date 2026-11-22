@@ -63,7 +63,7 @@ public:
             {
                 QSvgRenderer renderer(u":/icons/%1.svg"_s.arg(name));
                 QIcon icon;
-                for (const int size : {16, 24, 32, 48})
+                for (const int size : {16, 24, 32, 48, 64, 96}) // sharp at the tree's size on high-DPI displays too
                 {
                     QPixmap pixmap(size, size);
                     pixmap.fill(Qt::transparent);
@@ -99,6 +99,7 @@ AssetsDock::AssetsDock(QWidget* parent)
     m_tree->setModel(m_model);
     m_tree->setObjectName(u"AssetsTree"_s);
     m_tree->setHeaderHidden(true);
+    m_tree->setIconSize(QSize(28, 28)); // the asset icons are pictures, too small to read at the default 16 px
     for (int column = 1; column < m_model->columnCount(); ++column)
     {
         m_tree->hideColumn(column); // size, type, date: the name is enough here

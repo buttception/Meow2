@@ -150,9 +150,9 @@ void DebugLines::addPass(RenderGraph& graph, std::uint32_t frameSlot, const Math
     std::byte* memory = device.mappedMemory(buffer).data();
     std::memcpy(memory, &viewProjection, c_headerBytes);
     auto* vertices = reinterpret_cast<LineVertex*>(memory + c_headerBytes);
-    const auto vertex = [](const Math::Vec3& at, const Math::Color& color)
+    const auto vertex = [](const Math::Vec3& at, const Math::Color& colour)
     {
-        return LineVertex{.position = {at.x, at.y, at.z, 1.0F}, .color = {color.r, color.g, color.b, color.a}};
+        return LineVertex{.position = {at.x, at.y, at.z, 1.0F}, .color = {colour.r, colour.g, colour.b, colour.a}};
     };
     // The triangles first, then the lines: one buffer, each draw told where its vertices start.
     for (const DebugTriangle& triangle : m_triangles)

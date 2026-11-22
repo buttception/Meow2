@@ -8,6 +8,8 @@
 #include <QLabel>
 #include <QSpinBox>
 #include <QString>
+#include <QStyle>
+#include <QStyleOptionSpinBox>
 
 namespace Meow2::Editor
 {
@@ -20,20 +22,27 @@ class CompactBox final : public Box
 public:
     using Box::Box;
 
-    /// @brief Room for about seven characters.
+    /// @brief Room for "-0000.000".
     [[nodiscard]] QSize sizeHint() const override
     {
-        QSize size = Box::sizeHint();
-        size.setWidth(this->fontMetrics().horizontalAdvance(QStringLiteral("-0000.000")) + 8);
-        return size;
+        return sizeFor(QStringLiteral("-0000.000"));
     }
 
-    /// @brief Shrinks further when the panel is narrow.
+    /// @brief Room for "-000.000" at least, so a value always shows whole when the panel is narrow.
     [[nodiscard]] QSize minimumSizeHint() const override
     {
-        QSize size = Box::minimumSizeHint();
-        size.setWidth(this->fontMetrics().horizontalAdvance(QStringLiteral("-00.0")) + 8);
-        return size;
+        return sizeFor(QStringLiteral("-000.000"));
+    }
+
+private:
+    /// @brief The box's size for a sample text, through the style: the theme's padding and the frame come on top of
+    ///        the text (sizing from the text alone left no room, and the values didn't show).
+    [[nodiscard]] QSize sizeFor(const QString& sample) const
+    {
+        QStyleOptionSpinBox option;
+        this->initStyleOption(&option);
+        const QSize text(this->fontMetrics().horizontalAdvance(sample) + 4, this->fontMetrics().height());
+        return this->style()->sizeFromContents(QStyle::CT_SpinBox, &option, text, this).expandedTo(QSize(0, 0));
     }
 };
 

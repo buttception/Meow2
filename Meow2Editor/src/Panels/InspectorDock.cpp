@@ -178,8 +178,14 @@ void InspectorDock::build()
         header->setProperty("componentHeader", true);
         header->setAttribute(Qt::WA_StyledBackground); // so the style sheet's header colour is drawn
         auto* headerLayout = new QHBoxLayout(header);
-        headerLayout->setContentsMargins(4, 2, 4, 2);
+        // A slim bar: tool buttons are sized for toolbars, which made the header far taller than a field row.
+        headerLayout->setContentsMargins(2, 0, 2, 0);
+        headerLayout->setSpacing(4);
+        const int headerHeight = fontMetrics().height() + 4;
+        header->setFixedHeight(headerHeight);
         auto* fold = new QToolButton(header);
+        fold->setFixedSize(headerHeight - 2, headerHeight - 2);
+        fold->setIconSize(QSize(8, 8));
         fold->setObjectName(u"Fold."_s + componentName);
         fold->setAutoRaise(true);
         fold->setCheckable(true);
@@ -193,8 +199,9 @@ void InspectorDock::build()
         {
             auto* remove = new QToolButton(header);
             remove->setObjectName(u"Remove."_s + componentName);
-            remove->setText(u"Remove"_s);
+            remove->setText(u"×"_s); // a multiplication sign as the close cross
             remove->setAutoRaise(true);
+            remove->setFixedSize(headerHeight - 2, headerHeight - 2);
             remove->setToolTip(u"Remove %1"_s.arg(componentName));
             connect(remove, &QToolButton::clicked, this, [this, id, componentName]
                     { run(u"component.remove"_s, {{u"id"_s, id}, {u"component"_s, componentName}}); });

@@ -587,7 +587,7 @@ GizmoShapes Gizmo::shapes(const GizmoView& view, const Math::Transform& target, 
     };
     const auto widthOf = [highlight](GizmoHandle handle)
     {
-        return handle == highlight ? 4.0F : c_lineWidthPixels;
+        return handle == highlight ? c_lineWidthPixels + 1.0F : c_lineWidthPixels;
     };
     // A solid box: six faces, two triangles each.
     const auto solidBox = [&triangle](const Math::Vec3& at, const Math::Vec3& a, const Math::Vec3& b,
@@ -675,7 +675,7 @@ GizmoShapes Gizmo::shapes(const GizmoView& view, const Math::Transform& target, 
             edge.a = 1.0F;
             for (std::size_t i = 0; i < corners.size(); ++i)
             {
-                thick(corners[i], corners[(i + 1) % corners.size()], 1.5F, edge);
+                thick(corners[i], corners[(i + 1) % corners.size()], 1.0F, edge);
             }
         }
     }
@@ -696,8 +696,8 @@ GizmoShapes Gizmo::shapes(const GizmoView& view, const Math::Transform& target, 
             const float to = m_sweep * static_cast<float>(i + 1) / static_cast<float>(steps);
             triangle(center, around(from), around(to), slice);
         }
-        thick(center, around(0.0F), 2.0F, edge);
-        thick(center, around(m_sweep), 2.0F, edge);
+        thick(center, around(0.0F), 1.5F, edge);
+        thick(center, around(m_sweep), 1.5F, edge);
     }
     return out;
 }
