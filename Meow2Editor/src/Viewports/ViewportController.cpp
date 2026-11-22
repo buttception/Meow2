@@ -40,6 +40,11 @@ bool canBeSeen(const QWidget& widget)
 
 ViewportController::ViewportController(const ViewportControllerDeps& deps)
     : m_deps(deps)
+    , m_debugTools({.commands = deps.commands,
+                    .settings = deps.settings,
+                    .world = deps.world,
+                    .renderer = deps.renderer,
+                    .log = deps.log})
 {
     registerCommands();
     addViewports();
@@ -87,6 +92,7 @@ void ViewportController::addViewports()
     if (m_editorViewport)
     {
         m_deps.renderer->setOutline(*m_editorViewport, true); // the game view shows the game, without editor marks
+        m_deps.renderer->setDebugViewport(*m_editorViewport); // and the debug tools are for the editor view only
     }
 }
 
@@ -390,6 +396,7 @@ void ViewportController::tick(float deltaSeconds)
     // The editor camera moves only while its viewport has focus: input meant for the game view or a dock stays there.
     m_deps.input.beginFrame();
     m_drew = false;
+    m_debugTools.addFrame(deltaSeconds); // the Stats dock's frame times
     const bool editorFocused = m_deps.inputSource.activeViewport() == &m_deps.editorViewport;
     m_camera.update(editorFocused ? cameraInputFrom(m_deps.input) : Math::CameraInput{}, deltaSeconds);
     // The gizmo first: a press on one of its handles is a drag, not a click that picks.
@@ -458,6 +465,7 @@ void ViewportController::tick(float deltaSeconds)
             }
         }
     }
+    m_debugTools.apply(); // the Debug dock's choices, set through debug.* commands
     if (Result<void> drawn = renderer->renderFrame(cameras); !drawn)
     {
         MEOW2_LOG_ERROR(m_deps.log, "Drawing the viewports failed: {}", drawn.error());

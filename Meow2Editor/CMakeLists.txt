@@ -58,6 +58,8 @@ add_library(Meow2EditorCore STATIC
     src/Panels/AssetsDock.h
     src/Panels/ConsoleDock.cpp
     src/Panels/ConsoleDock.h
+    src/Panels/DebugDock.cpp
+    src/Panels/DebugDock.h
     src/Panels/FieldWidgets.h
     src/Panels/FittingScrollArea.cpp
     src/Panels/FittingScrollArea.h
@@ -69,12 +71,16 @@ add_library(Meow2EditorCore STATIC
     src/Panels/SceneSettingsDock.h
     src/Panels/SettingsDialog.cpp
     src/Panels/SettingsDialog.h
+    src/Panels/StatsDock.cpp
+    src/Panels/StatsDock.h
     src/Panels/WheelGuard.cpp
     src/Panels/WheelGuard.h
     src/Project/SceneDocument.cpp
     src/Project/SceneDocument.h
     src/ViewportWidget.cpp
     src/ViewportWidget.h
+    src/Viewports/DebugTools.cpp
+    src/Viewports/DebugTools.h
     src/Viewports/EditorCamera.cpp
     src/Viewports/EditorCamera.h
     src/Viewports/EditorRenderer.cpp

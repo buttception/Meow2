@@ -1700,14 +1700,17 @@ GraphResource GpuScene::addPasses(RenderGraph& graph, std::uint32_t frameSlot, R
     view.blendDraws = blended; // for overlay passes this frame
     if (!blended.empty())
     {
+        // The pipeline is chosen now, not when the pass records: another view of this scene may be added with a
+        // different override (or none) before the graph runs (the editor's debug views are for one viewport).
+        const PipelineId blendPipeline = m_override ? m_override->blend : *m_blendPipeline;
         graph.addPass({.name = "Blended",
                        .accesses = targets(false),
                        .record =
-                           [this, begin, push, blended = std::move(blended)](Rhi::IRhiCommandList& list)
+                           [this, begin, push, blendPipeline, blended = std::move(blended)](Rhi::IRhiCommandList& list)
                        {
                            // After everything opaque, so they mix with it; vsBlend reads the instance from g_push.
                            begin(list, std::nullopt, std::nullopt);
-                           list.setPipeline(m_pipelines.get(m_override ? m_override->blend : *m_blendPipeline));
+                           list.setPipeline(m_pipelines.get(blendPipeline));
                            for (const auto& [slot, indexCount] : blended)
                            {
                                Shader::PushConstants draw = push;

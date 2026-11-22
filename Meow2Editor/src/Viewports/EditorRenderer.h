@@ -9,9 +9,12 @@
 #include <Meow2/Core/Log/Logger.h>
 #include <Meow2/Core/Result.h>
 #include <Meow2/Graphics/Renderer/DebugLines.h>
+#include <Meow2/Graphics/Renderer/DepthPositionView.h>
 #include <Meow2/Graphics/Renderer/FrameResources.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
+#include <Meow2/Graphics/Renderer/InfiniteGrid.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
+#include <Meow2/Graphics/Renderer/RenderDebug.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/SkyAtmosphere.h>
 #include <Meow2/Graphics/Renderer/ToneMapPass.h>
@@ -33,6 +36,20 @@ namespace Meow2::Editor
 {
 /// @brief Identifies a viewport of an EditorRenderer, in the order they were added (0, 1, ...).
 using ViewportId = std::uint32_t;
+
+/// @brief The GPU and its scene, for the Stats dock. Plain data.
+struct RenderStats
+{
+    std::string backend;                ///< "Vulkan" or "D3D12".
+    std::string gpu;                    ///< The adapter's name.
+    Rhi::GpuMemoryStats gpuMemory{};    ///< GPU memory: used, budget, and live resources per MemTag.
+    std::uint64_t validationErrors = 0; ///< From the API's validation layer.
+    std::uint32_t instances = 0;        ///< Instances in the GPU scene (before culling).
+    std::uint32_t meshes = 0;           ///< GPU meshes.
+    std::uint32_t materials = 0;        ///< Materials.
+    std::uint32_t textures = 0;         ///< Textures.
+    bool meshlets = false;              ///< Drawn through the meshlet path (mesh shaders), else the indirect one.
+};
 
 /// @brief What an EditorRenderer uses. Plain data (references); everything must outlive it.
 struct EditorRendererDeps
@@ -202,6 +219,34 @@ public:
     /// @param any True if some InstanceDesc has `selected`.
     void setHasSelection(bool any);
 
+    /// @brief Which viewport the debug tools (debug views, wireframes, frozen culling, the grid) apply to; the others
+    ///        draw as usual. The editor viewport; none until set.
+    /// @param viewport The viewport, or nothing for none.
+    void setDebugViewport(std::optional<ViewportId> viewport);
+
+    /// @brief The debug tools' settings, to change; they apply from the next renderFrame().
+    /// @return Them.
+    [[nodiscard]] Renderer::RenderDebugState& debugState();
+
+    /// @brief Turns the ground grid on or off in the debug viewport.
+    /// @param on True to draw it.
+    void setGrid(bool on);
+
+    /// @brief Whether the ground grid is on.
+    /// @return True if it's drawn.
+    [[nodiscard]] bool grid() const
+    {
+        return m_gridOn;
+    }
+
+    /// @brief Whether a debug-view pipeline couldn't be built (logged); the views stay off until the next scene.
+    /// @return True after a failure.
+    [[nodiscard]] bool debugFailed() const;
+
+    /// @brief What the Stats dock shows about the GPU and the scene on it.
+    /// @return The figures, as of the last frame.
+    [[nodiscard]] RenderStats stats() const;
+
     /// @brief Whether a viewport was drawn by the last renderFrame().
     /// @param viewport The viewport.
     /// @return True if its passes ran.
@@ -323,5 +368,12 @@ private:
     std::optional<PickRequest> m_pickRequest;                                          ///< Asked for, not drawn yet.
     std::optional<PickResult> m_pickResult;                                            ///< Come back, not taken yet.
     bool m_hasSelection = false;                                                       ///< setHasSelection().
+
+    /// @brief Debug views, wireframes and frozen culling; remade with the scene (its pipelines are the scene's).
+    std::unique_ptr<Renderer::RenderDebug> m_debug;
+    std::unique_ptr<Renderer::InfiniteGrid> m_grid;              ///< The ground grid; made on first use.
+    std::unique_ptr<Renderer::DepthPositionView> m_positionView; ///< The Position view's pass; made on first use.
+    std::optional<ViewportId> m_debugViewport;                   ///< setDebugViewport().
+    bool m_gridOn = false;                                       ///< setGrid().
 };
 } // namespace Meow2::Editor

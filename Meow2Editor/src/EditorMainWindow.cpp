@@ -7,10 +7,12 @@
 #include "Editing/SceneEditor.h"
 #include "Panels/AssetsDock.h"
 #include "Panels/ConsoleDock.h"
+#include "Panels/DebugDock.h"
 #include "Panels/HierarchyDock.h"
 #include "Panels/InspectorDock.h"
 #include "Panels/SceneSettingsDock.h"
 #include "Panels/SettingsDialog.h"
+#include "Panels/StatsDock.h"
 #include "Panels/WheelGuard.h"
 #include "Project/SceneDocument.h"
 #include "Viewports/GameViewportDock.h"
@@ -53,6 +55,8 @@ constexpr QLatin1StringView c_assetsPanel{"assets"};
 constexpr QLatin1StringView c_hierarchyPanel{"hierarchy"};
 constexpr QLatin1StringView c_inspectorPanel{"inspector"};
 constexpr QLatin1StringView c_sceneSettingsPanel{"sceneSettings"};
+constexpr QLatin1StringView c_debugPanel{"debug"};
+constexpr QLatin1StringView c_statsPanel{"stats"};
 /// @brief Where the dock layout is kept (QMainWindow::saveState(), base64).
 constexpr std::string_view c_layoutKey = "editor.layout";
 } // namespace
@@ -73,6 +77,8 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     , m_inspectorDock(new InspectorDock(deps.commands, deps.editor, deps.world, deps.log, this))
     , m_sceneSettingsDock(new SceneSettingsDock(deps.commands, deps.world, deps.log, this))
     , m_assetsDock(new AssetsDock(this))
+    , m_debugDock(new DebugDock(deps.commands, deps.log, this))
+    , m_statsDock(new StatsDock(deps.commands, this))
 {
     m_viewport->setObjectName(u"EditorViewport"_s);
     setCentralWidget(m_viewport);
@@ -88,6 +94,9 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     addDockWidget(Qt::RightDockWidgetArea, m_inspectorDock);
     splitDockWidget(m_gameDock, m_inspectorDock, Qt::Vertical); // the game view above, the inspector below
     tabifyDockWidget(m_inspectorDock, m_sceneSettingsDock);     // scene settings a tab beside the Inspector
+    tabifyDockWidget(m_sceneSettingsDock, m_debugDock);         // the debug tools there too
+    tabifyDockWidget(m_console, m_statsDock);                   // and the stats beside the console
+    m_console->raise();
     m_inspectorDock->raise();
     // Minimum sizes (owner request): a panel can't be squeezed until it stops working. The Inspector and Scene
     // settings also keep their width to their fields (their build()).
@@ -98,6 +107,8 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     m_inspectorDock->setMinimumHeight(160);
     m_sceneSettingsDock->setMinimumHeight(160);
     m_console->setMinimumSize(320, 110);
+    m_debugDock->setMinimumHeight(160);
+    m_statsDock->setMinimumSize(240, 110);
     m_assetsDock->setProject(QString::fromStdString(m_document.projectFolder().string()));
     m_assetsDock->onActivate([this](const QString& path) { activateAsset(path); });
     // How the window asks; tests replace both (setUnsavedPrompt(), setSaveAsPrompt()).
@@ -156,6 +167,8 @@ void EditorMainWindow::tick(float deltaSeconds)
     m_inspectorDock->refresh();
     m_sceneSettingsDock->refresh();
     m_viewports->tick(deltaSeconds);
+    m_debugDock->refresh(); // after the tick: a command run there shows at once
+    m_statsDock->refresh();
     refreshActions();
 }
 
@@ -210,6 +223,8 @@ void EditorMainWindow::refreshActions()
     m_hierarchyAction->setChecked(m_hierarchyDock->isVisible());
     m_inspectorAction->setChecked(m_inspectorDock->isVisible());
     m_sceneSettingsAction->setChecked(m_sceneSettingsDock->isVisible());
+    m_debugAction->setChecked(m_debugDock->isVisible());
+    m_statsAction->setChecked(m_statsDock->isVisible());
     // The title names the scene's file, with a * while it has unsaved changes.
     const QString name = m_document.scenePath().isEmpty() ? u"Untitled"_s : m_document.scenePath();
     const QString title = name + (m_document.hasUnsavedChanges() ? u"*"_s : QString{}) + u" — Meow2Editor"_s;
@@ -431,6 +446,14 @@ void EditorMainWindow::createMenusAndToolbar()
     m_sceneSettingsAction->setCheckable(true);
     connect(m_sceneSettingsAction, &QAction::triggered, this, [this](bool shown)
             { run(u"view.showPanel"_s, {{u"panel"_s, c_sceneSettingsPanel}, {u"visible"_s, shown}}); });
+    m_debugAction = new QAction(u"Debug"_s, this);
+    m_debugAction->setCheckable(true);
+    connect(m_debugAction, &QAction::triggered, this,
+            [this](bool shown) { run(u"view.showPanel"_s, {{u"panel"_s, c_debugPanel}, {u"visible"_s, shown}}); });
+    m_statsAction = new QAction(u"Stats"_s, this);
+    m_statsAction->setCheckable(true);
+    connect(m_statsAction, &QAction::triggered, this,
+            [this](bool shown) { run(u"view.showPanel"_s, {{u"panel"_s, c_statsPanel}, {u"visible"_s, shown}}); });
     // File → Scene settings… opens the dock (the scene's sun and exposure live with the scene, not on an entity).
     QAction* sceneSettings = addCommandAction(u"Scene settings…"_s, u"view.showPanel"_s,
                                               {{u"panel"_s, c_sceneSettingsPanel}, {u"visible"_s, true}});
@@ -542,6 +565,8 @@ void EditorMainWindow::createMenusAndToolbar()
     window->addAction(m_hierarchyAction);
     window->addAction(m_inspectorAction);
     window->addAction(m_sceneSettingsAction);
+    window->addAction(m_debugAction);
+    window->addAction(m_statsAction);
 
     QToolBar* toolbar = addToolBar(u"Main"_s);
     toolbar->setObjectName(u"MainToolbar"_s);
@@ -563,13 +588,12 @@ void EditorMainWindow::createMenusAndToolbar()
 void EditorMainWindow::registerViewCommands()
 {
     QJsonObject panel = propertySchema(u"string"_s, u"Which panel."_s);
-    panel.insert(u"enum", QJsonArray{c_assetsPanel, c_consolePanel, c_gamePanel, c_hierarchyPanel, c_inspectorPanel,
-                                     c_sceneSettingsPanel, c_settingsPanel});
+    panel.insert(u"enum", QJsonArray{c_assetsPanel, c_consolePanel, c_debugPanel, c_gamePanel, c_hierarchyPanel,
+                                     c_inspectorPanel, c_sceneSettingsPanel, c_settingsPanel, c_statsPanel});
     [[maybe_unused]] const Result<void> added = m_commands.add(
         {.name = u"view.showPanel"_s,
-         .description = u"Shows or hides a panel: the Assets, console, game view, Hierarchy, Inspector or Scene "
-                        u"settings dock, or the "
-                        u"settings window."_s,
+         .description = u"Shows or hides a panel: the Assets, console, Debug, game view, Hierarchy, Inspector, Scene "
+                        u"settings or Stats dock, or the settings window."_s,
          .parameters = objectSchema({{.name = u"panel"_s, .schema = panel, .required = true},
                                      {.name = u"visible"_s,
                                       .schema = propertySchema(u"boolean"_s, u"Shown or hidden."_s),
@@ -584,6 +608,8 @@ void EditorMainWindow::registerViewCommands()
                               : name == c_hierarchyPanel     ? static_cast<QWidget*>(m_hierarchyDock)
                               : name == c_inspectorPanel     ? static_cast<QWidget*>(m_inspectorDock)
                               : name == c_sceneSettingsPanel ? static_cast<QWidget*>(m_sceneSettingsDock)
+                              : name == c_debugPanel         ? static_cast<QWidget*>(m_debugDock)
+                              : name == c_statsPanel         ? static_cast<QWidget*>(m_statsDock)
                                                              : static_cast<QWidget*>(m_settingsDialog);
             if (widget == m_settingsDialog && visible)
             {
@@ -612,6 +638,16 @@ HierarchyDock& EditorMainWindow::hierarchyDock()
 InspectorDock& EditorMainWindow::inspectorDock()
 {
     return *m_inspectorDock;
+}
+
+DebugDock& EditorMainWindow::debugDock()
+{
+    return *m_debugDock;
+}
+
+StatsDock& EditorMainWindow::statsDock()
+{
+    return *m_statsDock;
 }
 
 bool EditorMainWindow::tryRun(const QString& command, const QJsonObject& parameters)

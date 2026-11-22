@@ -90,14 +90,12 @@ Settings given with `--set` are saved to `Meow2Renderer.toml` like the rest ([Co
 | `main.cpp` | The composition root and the frame |
 | `SceneView.*` | One open scene: its `Scene`, transform hierarchy, `GpuScene` and camera target. Opening another makes a new view |
 | `ImGuiLayer.*` | Dear ImGui on the engine: input, textures, drawing |
-| `RendererUi.*` | The Stats and Scenes windows, the sample list, frame times |
+| `RendererUi.*` | The Stats and Scenes windows, the sample list (frame times are the engine's `Time::FrameTimes`) |
 | `ConsoleWindow.*` | The Console window over the engine's `Log::ConsoleBuffer` ([Logging](Logging.md#in-app-console)) |
 | `SettingsWindow.*` | The Settings window, and the table of settings with their defaults: `main.cpp` reads the same table, so the app and the window never disagree |
 | `CameraControls.*` | Orbit and fly cameras, glTF camera poses and lenses, the Camera window |
-| `RenderDebug.*` | The Debug window: debug views, wireframe, frozen culling, the debug present pass |
+| `DebugWindow.*` | The Debug window over the engine's `Renderer::RenderDebug` (debug views, wireframe, frozen culling, the debug present pass; in the engine since #230, shared with the editor, with the ground grid `Renderer::InfiniteGrid` and the Position view's pass `Renderer::DepthPositionView`) |
 | `FrameInspector.*` | The Render graph, Pass and Frame capture windows: the node graph (`layoutFlow`, `passPins`, `placeFlow`, `resourceKind`: plain functions, tested without ImGui), the live pass view, captures |
-| `InfiniteGrid.*` | The ground grid: a compute pass into a layer, composited over the scene |
-| `DepthPositionView.*` | The Position view's debug pass: positions rebuilt from depth, into a texture of its own |
 | `FrameScreenshot.*` | Screenshots: the swapchain read back after the frame, written as a PNG |
 
 Dear ImGui (v1.93.0-docking, a submodule) is built as `meow2_imgui` only with the Renderer: the engine and Player never see it. Its memory is counted under `MemTag::ImGui`.

@@ -5,10 +5,11 @@ Meow2Editor is a **Qt** application: a main window with an **editor viewport** i
 - Code:
   - `Meow2Editor/src/`: `EditorMainWindow`, `ViewportWidget`, `WindowPlacement`, `EditorTheme`, `main.cpp`;
   - `Meow2Editor/src/Commands/`: `EditorCommandRegistry`, `UndoStack`, `CommandSchema`, `EditorSettings`, `EditorCommands` (the built-in commands);
-  - `Meow2Editor/src/Panels/`: `ConsoleDock`, `SettingsDialog`;
+  - `Meow2Editor/src/Panels/`: `ConsoleDock`, `SettingsDialog`, `DebugDock`, `StatsDock` (and the other docks);
+  - `Meow2Editor/src/Viewports/`: `ViewportController`, `EditorRenderer`, `DebugTools` (the debug tools' commands);
   - built as the `Meow2EditorCore` library plus the exe, so the tests use the same code.
 - Requirements: Qt ≥ 6.8 (Widgets), tested with 6.12.0. Installing Qt and pointing CMake at it is on the [Building → Qt](Building.md#qt) page.
-- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222); the Hierarchy and Inspector docks and the edit commands (#224).
+- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222); the Hierarchy and Inspector docks and the edit commands (#224); picking and the selection outline (#226); gizmos, scene settings and projects (#228); the Debug and Stats docks (#230).
 - **Window size:** in logical units like every app ([Window](Window.md#settings)): 80 % of the screen the first time, and shrunk to fit when a saved size is too big for the screen (Qt sizes follow display scaling, so 1920 × 1080 at 150 % would be 2880 × 1620 real pixels).
 
 ## Settings
@@ -284,6 +285,31 @@ The engine's `InputSystem` is fed by `QtInputSource`, an event filter on both vi
 
 None is recorded in the undo history: they change how the scene is *viewed*, not the scene. `view.showPanel` also takes `game` now.
 
+### Debug tools and stats
+
+The Renderer's rendering debug tools, for the **editor viewport only** (the game view keeps showing the game), in the **Debug** dock (a tab beside the Inspector and Scene settings):
+
+- **View**: a button per debug view, grouped as in Meow2Renderer (Geometry, Surface, Material, Lighting); the chosen one in red, and a line under the buttons on how to read it (overdraw's colours, the cascades'). **Position** has a dashed outline: a debug-only pass makes its texture from depth ([Renderer → Debug views](Renderer.md)).
+- **Wireframe**: off, overlay (edges over the scene), only (edges on black, hidden lines removed).
+- **Culling**: **Freeze** keeps culling with the camera's view of the moment, so you can fly away and see what was culled; **Show frustum** draws that frozen view volume in yellow (200 m long: the far plane is infinite).
+- **Grid**: the endless ground grid (y = 0, X red, Z blue).
+
+The **Stats** dock (a tab beside the console) shows frame time and FPS with a graph of the last 240 frames (a dashed line at 60 frames a second), the graphics API, GPU and its memory against its budget, validation errors, the scene's counts (entities, instances, meshes, materials, textures, the draw path) and memory per tag, CPU and GPU. It refreshes four times a second while it can be seen.
+
+| Command | Kind | Parameters | What it does |
+|---|---|---|---|
+| `debug.setView` | action | `view` (`shaded`, `triangles`, `meshlets`, … `cascades`) | The editor viewport's view; saved as `editor.debug.view`. |
+| `debug.setWireframe` | action | `mode` (`off`, `overlay`, `only`) | Saved as `editor.debug.wireframe`. |
+| `debug.setCulling` | action | `freeze`, `showFrustum` (each optional) | Freezing isn't saved (it only means something while the editor runs); `showFrustum` is (`editor.debug.showFrustum`). |
+| `debug.setGrid` | action | `on` | Saved as `editor.debug.grid`. |
+| `debug.state` | query | — | All of the above, and `failed` if a debug pipeline couldn't be built. |
+| `stats.frame` | query | — | `frameMs`, `fps`, `worstMs`, `frames` (oldest first), `entities`; with a GPU `backend`, `gpu`, `gpuMemoryUsed`, `gpuMemoryBudget`, `validationErrors`, `instances`, `meshes`, `materials`, `textures`, `drawPath`; `memory` (`tag`, `cpuBytes`, `gpuBytes`, tags in use only). |
+
+- **Not undoable**, like the viewport commands: they change how the scene is looked at. The docks only run these commands and show what the queries say, so a change over MCP shows in them too.
+- **Saved by name** in the editor's config (`editor.debug.view = "baseColor"`), not in the settings window: they're switched from the Debug dock.
+- **How it works.** The tools moved from Meow2Renderer into the engine (`Renderer::RenderDebug`, `InfiniteGrid`, `DepthPositionView`), so both apps draw them with the same code. `ViewportController` hands `DebugTools`' choices to `EditorRenderer` every frame. Before the editor viewport's passes, `RenderDebug::apply()` sets the scene's debug pipelines and sky; before the game viewport's, `RenderDebug::restore()` sets them back. One `GpuScene` draws both views in one frame, so a pass must pick its pipeline when it's added, not when it records: the Blended pass did the latter, and was fixed ([Rendering](Rendering.md#overlay-passes-picking-and-the-selection-mask)). A debug view is presented without the tone curve, into the swapchain or an offscreen target alike.
+- `view.showPanel` takes `debug` and `stats` too (Window → Debug, Stats).
+
 ## How it works
 
 - **Startup order.** `main` builds the engine infrastructure first: logging, crash handler, leak check, config. Then it creates the `QApplication`, then the main window, which is placed with `showWithDesc(window, windowDescFromConfig(config, …), log)`.
@@ -352,6 +378,8 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.MainWindowTest.UnsavedChangesAsk`, `AssetsDockOpensScenes`: Save / Discard / Cancel before a new or opened scene, the `*` in the title; a double-click in the Assets dock opens a scene.
 - `Editor.SceneEditorTest.*`: create, delete and undo keep IDs, components and parents; duplicate copies the subtree with new IDs; rename and re-parent (cycles refused); add, remove and set fields with undo, wrong shapes refused; the queries. `Editor.SceneDocumentTest.ModelsOutsideTheProjectAreCopiedIn`.
 - `Editor.HierarchyDockTest.FollowsTheScene`, `Editor.InspectorDockTest.EditsIssueCommands`: the tree nests, selects, renames and re-parents through commands and follows changes; finished edits run `component.setField` once; Euler angles stay as typed.
+- `Editor.DebugCommandsTest.SettingsRoundTripAndSave`, `RejectsUnknownValues`: the debug commands report and save their choices (not freezing), nothing goes on the undo stack, the next window starts from them; unknown views and modes are refused. `Editor.DebugDockTest.ButtonsIssueCommands`: a button per view (dashed where a debug pass makes it), clicks run the commands, a change from elsewhere shows with its hint. `Editor.StatsDockTest.ShowsFrameAndMemory`, `Editor.StatsDockFormat.BytesForPeople`: frame times and the memory table from `stats.frame`.
+- `EditorGpu.EditorRendererTest.DebugViewOnlyInEditorViewport`: a debug view changes the editor viewport and not one pixel of the game view; Position, Overdraw and Triangles draw with the validation layer quiet; back to shaded, the same image. `GridAndWireframeDraw`: the grid adds lines; wireframe only is edges on black, overlay edges over the scene. `FrozenCullingKeepsFrustum`: from outside, the frozen frustum's lines show, and go when culling is unfrozen.
 - `Smoke.Editor.Runs` and `Smoke.Editor.OpensWindow`: the app runs 3 frames offscreen and exits 0.
 
 ## Not yet
@@ -360,7 +388,8 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - The MCP server (M7 PR 6).
 - Prefabs: a model as one asset whose instances keep their edits when it's re-imported; textures cooked into the project at import.
 - Renaming, moving and deleting assets in the Assets dock (each needs its `.meta` kept with it).
-- Switching the graphics backend in the editor (the viewports would need to be a `RenderDevice` user); the Renderer's debug tools (M7 PR 5).
+- Switching the graphics backend in the editor (the viewports would need to be a `RenderDevice` user).
+- The render graph and an in-memory frame capture (F9), with captured textures shown as images (M7 PR 5b). No live pass view in the editor: Meow2Renderer is the tool for watching passes live.
 - Mouse capture while flying (the cursor stays visible and can leave the viewport).
 - Routing Qt's own messages (`qWarning`, …) to the engine log.
 - Qt and its plugins in the release zip.

@@ -1,13 +1,13 @@
 /// @file
 /// @brief DepthPositionView (DepthPositionView.h).
 
-#include "DepthPositionView.h"
+#include <Meow2/Graphics/Renderer/DepthPositionView.h>
 
 #include <DirectXMath.h>
 
 #include <cstring>
 
-namespace Meow2::RendererApp
+namespace Meow2::Renderer
 {
 DepthPositionView::DepthPositionView(Renderer::RenderDevice& device, Renderer::PipelineLibrary& pipelines,
                                      AssetId shader, Log::Logger& log)
@@ -145,4 +145,4 @@ void DepthPositionView::endFrame(const Renderer::RenderGraph& graph)
         m_resource.reset(); // a frame without the pass mustn't read this index from its own graph
     }
 }
-} // namespace Meow2::RendererApp
+} // namespace Meow2::Renderer

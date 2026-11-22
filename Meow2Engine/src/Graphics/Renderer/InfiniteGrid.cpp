@@ -1,13 +1,13 @@
 /// @file
 /// @brief InfiniteGrid (InfiniteGrid.h).
 
-#include "InfiniteGrid.h"
+#include <Meow2/Graphics/Renderer/InfiniteGrid.h>
 
 #include <DirectXMath.h>
 
 #include <cstring>
 
-namespace Meow2::RendererApp
+namespace Meow2::Renderer
 {
 InfiniteGrid::InfiniteGrid(Renderer::RenderDevice& device, Renderer::PipelineLibrary& pipelines, AssetId shader,
                            Rhi::RhiFormat colorFormat, Log::Logger& log)
@@ -170,4 +170,4 @@ void InfiniteGrid::addPasses(Renderer::RenderGraph& graph, std::uint32_t frameSl
                    .small = true,
                    .debug = true});
 }
-} // namespace Meow2::RendererApp
+} // namespace Meow2::Renderer

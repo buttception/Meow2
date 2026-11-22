@@ -5,6 +5,7 @@ meow2_add_test_suite(
     SOURCES
         ClickSelectionTests.cpp
         ConsoleDockTests.cpp
+        DebugToolsTests.cpp
         EditingDocksTests.cpp
         EditorCommandRegistryTests.cpp
         EditorCameraTests.cpp

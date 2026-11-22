@@ -144,7 +144,7 @@ TEST(ScenePicker, FindsGltfBeforeGlb)
 
 TEST(FrameTimes, AveragesAndKeepsOrder)
 {
-    FrameTimes times;
+    Time::FrameTimes times;
     EXPECT_FLOAT_EQ(times.average(), 0.0F);
     times.add(10.0F);
     times.add(20.0F);

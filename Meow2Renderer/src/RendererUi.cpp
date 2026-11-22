@@ -139,39 +139,6 @@ std::vector<SampleEntry> listSamples(const std::filesystem::path& sampleRoot)
     return samples;
 }
 
-void FrameTimes::add(float milliseconds)
-{
-    m_times[m_next] = milliseconds;
-    m_next = (m_next + 1) % m_times.size();
-    m_count = std::min(m_count + 1, m_times.size());
-}
-
-float FrameTimes::average() const
-{
-    if (m_count == 0)
-    {
-        return 0.0F;
-    }
-    const std::array<float, 240> times = ordered();
-    return std::accumulate(times.end() - static_cast<std::ptrdiff_t>(m_count), times.end(), 0.0F) /
-           static_cast<float>(m_count);
-}
-
-float FrameTimes::worst() const
-{
-    return *std::ranges::max_element(m_times);
-}
-
-std::array<float, 240> FrameTimes::ordered() const
-{
-    std::array<float, 240> ordered{};
-    for (std::size_t i = 0; i < m_times.size(); ++i)
-    {
-        ordered[i] = m_times[(m_next + i) % m_times.size()];
-    }
-    return ordered;
-}
-
 Math::Vec3 sunDirection(const SunControls& sun)
 {
     const float elevation = Math::toRadians(sun.elevationDegrees);
@@ -217,7 +184,7 @@ StatsActions drawStatsWindow(const StatsInfo& info, const UiFonts& fonts, SunCon
                 average > 0.0F ? 1000.0 / static_cast<double>(average) : 0.0);
     if (info.frames != nullptr)
     {
-        const std::array<float, 240> times = info.frames->ordered();
+        const std::array<float, Time::FrameTimes::c_capacity> times = info.frames->ordered();
         const float top = std::max(info.frames->worst(), 1.0F);
         ImGui::PlotLines("##frames", times.data(), static_cast<int>(times.size()), 0, nullptr, 0.0F, top * 1.1F,
                          ImVec2{-1.0F, 50.0F * scale});

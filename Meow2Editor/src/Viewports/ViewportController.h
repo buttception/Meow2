@@ -8,6 +8,7 @@
 #include "Editing/ClickSelection.h"
 #include "Editing/Gizmo.h"
 #include "Editing/SceneEditor.h"
+#include "Viewports/DebugTools.h"
 #include "Viewports/EditorCamera.h"
 #include "Viewports/EditorRenderer.h"
 #include "Viewports/EditorWorld.h"
@@ -114,6 +115,13 @@ public:
     /// @return 25 to 100.
     [[nodiscard]] int renderScalePercent() const;
 
+    /// @brief The editor viewport's debug tools and the Stats dock's figures (their commands are registered).
+    /// @return Them.
+    [[nodiscard]] const DebugTools& debugTools() const
+    {
+        return m_debugTools;
+    }
+
 private:
     /// @brief Registers `viewport.*`.
     void registerCommands();
@@ -144,6 +152,7 @@ private:
     [[nodiscard]] std::pair<float, float> cursorPixels() const;
 
     ViewportControllerDeps m_deps;
+    DebugTools m_debugTools; ///< The debug.* and stats.frame commands; applied to the renderer each frame.
     EditorCamera m_camera;
     std::optional<ViewportId> m_editorViewport; ///< In the renderer; unset without one (or without native windows).
     std::optional<ViewportId> m_gameViewport;

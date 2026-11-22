@@ -7,7 +7,6 @@
 /// goldens folder instead of compared: new goldens are only committed after the owner has looked at them.
 
 #include "CameraControls.h"
-#include "DepthPositionView.h"
 #include "RendererUi.h"
 #include "SceneView.h"
 
@@ -19,6 +18,7 @@
 #include <Meow2/Core/Log/LogSystem.h>
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Platform.h>
+#include <Meow2/Graphics/Renderer/DepthPositionView.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
@@ -661,7 +661,8 @@ TEST_P(DeferredTest, PositionFromDepthLiesOnTheSurface)
     {
         return;
     }
-    DepthPositionView positions(*m_render, *m_pipelines, assetId("01a1b5e2-3c1d-8000-80a4-7b19d2e6c05e"), m_log);
+    Renderer::DepthPositionView positions(*m_render, *m_pipelines, assetId("01a1b5e2-3c1d-8000-80a4-7b19d2e6c05e"),
+                                          m_log);
     const Rhi::BufferHandle buffer = readback(8, "Position readback");
     std::optional<Renderer::GraphResource> resource;
     DrawHooks hooks;
