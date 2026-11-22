@@ -41,7 +41,9 @@ protected:
 
     /// @brief Sends the viewport a W key event with the platform's native scan code (0x11 on Windows, evdev 17 + 8
     ///        on X11). Qt events can't be copied, so it's built and sent here.
-    void sendKeyW(QEvent::Type type)
+    /// @param type       Press or release.
+    /// @param autoRepeat One of the release + press pairs a held key repeats as.
+    void sendKeyW(QEvent::Type type, bool autoRepeat = false)
     {
 #if defined(_WIN32)
         constexpr quint32 c_nativeW = 0x11;
@@ -54,7 +56,8 @@ protected:
                       c_nativeW,
                       0,
                       0,
-                      type == QEvent::KeyPress ? QStringLiteral("w") : QString{}};
+                      type == QEvent::KeyPress ? QStringLiteral("w") : QString{},
+                      autoRepeat};
         QApplication::sendEvent(m_viewport, &key);
     }
 
@@ -152,4 +155,26 @@ TEST(QtInputSourceKeys, MapsNativeScanCodes)
     EXPECT_EQ(Meow2::Editor::keyFromQt(0, Qt::Key_D), Key::D);
     EXPECT_EQ(Meow2::Editor::keyFromQt(0, Qt::Key_Shift), Key::LeftShift);
     EXPECT_EQ(Meow2::Editor::keyFromQt(0, Qt::Key_Question), Key::Unknown);
+}
+
+// Owner report (#229): the fly camera stopped a second or two into holding W. A held key repeats as release + press
+// pairs marked auto-repeat; the release was taken as a real one.
+TEST_F(QtInputSourceTest, HeldKeyStaysDownThroughAutoRepeat)
+{
+    m_viewport->setFocus();
+    ASSERT_TRUE(m_viewport->hasFocus());
+    sendKeyW(QEvent::KeyPress);
+    m_input.beginFrame();
+    ASSERT_TRUE(m_input.isDown(Key::W));
+    for (int i = 0; i < 3; ++i)
+    {
+        sendKeyW(QEvent::KeyRelease, true);
+        sendKeyW(QEvent::KeyPress, true);
+        m_input.beginFrame();
+        EXPECT_TRUE(m_input.isDown(Key::W)) << "repeat " << i;
+        EXPECT_FALSE(m_input.wasPressed(Key::W)) << "a repeat isn't a new press";
+    }
+    sendKeyW(QEvent::KeyRelease);
+    m_input.beginFrame();
+    EXPECT_FALSE(m_input.isDown(Key::W)) << "the real release lets go";
 }

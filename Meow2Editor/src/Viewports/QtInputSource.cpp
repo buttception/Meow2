@@ -328,7 +328,9 @@ bool QtInputSource::eventFilter(QObject* watched, QEvent* event)
             const auto* key = static_cast<QKeyEvent*>(event);
             const bool down = event->type() == QEvent::KeyPress;
             const Input::Key engineKey = keyFromQt(key->nativeScanCode(), key->key());
-            if (engineKey != Input::Key::Unknown)
+            // A held key repeats as release + press pairs, both marked auto-repeat. The release isn't real: passed on,
+            // it let go of the key a moment after the repeat began, and the fly camera stopped (owner report, #229).
+            if (engineKey != Input::Key::Unknown && !(key->isAutoRepeat() && !down))
             {
                 m_input.submit(Input::KeyInput{.key = engineKey, .down = down, .repeat = key->isAutoRepeat()});
                 if (down && !key->isAutoRepeat())
