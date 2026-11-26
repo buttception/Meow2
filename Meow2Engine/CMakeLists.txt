@@ -49,6 +49,8 @@ target_sources(Meow2Engine
         src/Core/Time/GameLoop.cpp
         src/Core/Time/GameLoopConfig.cpp
         src/Core/Version.cpp
+        src/Graphics/Renderer/FrameCapture.cpp
+        src/Graphics/Renderer/FrameFlow.cpp
         src/Graphics/Renderer/FramePacket.cpp
         src/Graphics/Renderer/DebugLines.cpp
         src/Graphics/Renderer/DepthPositionView.cpp
@@ -133,6 +135,8 @@ target_sources(Meow2Engine
             include/Meow2/Core/Time/FrameTimes.h
             include/Meow2/Core/Time/GameLoop.h
             include/Meow2/Core/Time/GameLoopConfig.h
+            include/Meow2/Graphics/Renderer/FrameCapture.h
+            include/Meow2/Graphics/Renderer/FrameFlow.h
             include/Meow2/Graphics/Renderer/FramePacket.h
             include/Meow2/Graphics/Renderer/DebugLines.h
             include/Meow2/Graphics/Renderer/DepthPositionView.h
