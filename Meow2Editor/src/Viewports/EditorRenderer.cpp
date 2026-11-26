@@ -554,6 +554,7 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
     {
         Viewport& viewport = m_viewports[id];
         viewport.drawn = false;
+        viewport.offscreenResource.reset();
         if (viewport.visible && viewport.width > 0 && viewport.height > 0 && id < cameras.size() && cameras[id])
         {
             drawing.push_back(id);
@@ -848,6 +849,7 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
         {
             const Renderer::GraphResource target =
                 graph.import(viewport.offscreen->texture(), Rhi::ResourceState::Undefined, viewport.name);
+            viewport.offscreenResource = target;
             const bool presented = debugging && m_debug->addPresent(graph, shown, shownTexture, target,
                                                                     viewport.offscreen->texture(), device);
             Renderer::ToneMapPass* toneMap = presented ? nullptr : toneMapFor(Renderer::OffscreenTarget::format());
@@ -892,8 +894,12 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
         {
             if (viewport.drawn && viewport.offscreen)
             {
-                (*tail)->barrier(viewport.offscreen->texture(), Rhi::ResourceState::ColorTarget,
-                                 Rhi::ResourceState::CopySource);
+                // From where the graph left it: usually a colour target, but a frame capture reads it after the tone
+                // map (its copy pass), which leaves it shader-read.
+                const Rhi::ResourceState after = viewport.offscreenResource
+                                                     ? graph.finalState(*viewport.offscreenResource)
+                                                     : Rhi::ResourceState::ColorTarget;
+                (*tail)->barrier(viewport.offscreen->texture(), after, Rhi::ResourceState::CopySource);
                 viewport.offscreen->copyToCpu(**tail);
             }
         }

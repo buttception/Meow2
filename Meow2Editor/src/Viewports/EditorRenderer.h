@@ -316,9 +316,10 @@ private:
         Rhi::ResourceState maskState = Rhi::ResourceState::Undefined; ///< The mask's state after the last frame.
         std::uint32_t maskWidth = 0;                                  ///< The mask's size.
         std::uint32_t maskHeight = 0;
-        ViewportOverlay overlay;                           ///< setOverlay().
-        std::unique_ptr<Renderer::DebugLines> debugLines;  ///< Draws its world shapes; made on first use.
-        std::unique_ptr<Renderer::DebugLines> screenLines; ///< Draws its screen shapes; made with debugLines.
+        ViewportOverlay overlay;                                  ///< setOverlay().
+        std::unique_ptr<Renderer::DebugLines> debugLines;         ///< Draws its world shapes; made on first use.
+        std::unique_ptr<Renderer::DebugLines> screenLines;        ///< Draws its screen shapes; made with debugLines.
+        std::optional<Renderer::GraphResource> offscreenResource; ///< Its offscreen target in this frame's graph.
     };
 
     /// @brief A pick asked for. Plain data.

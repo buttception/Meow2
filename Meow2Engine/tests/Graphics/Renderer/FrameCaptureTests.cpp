@@ -28,6 +28,7 @@ namespace
 {
 constexpr std::uint32_t c_width = 64;
 constexpr std::uint32_t c_height = 32;
+constexpr std::uint32_t c_threads = 2; ///< Job threads, and so threads that may record (one command list each).
 
 /// @brief A headless device, the pipeline library, a frame capture and a texture a pass clears to orange.
 class FrameCaptureTest : public ::testing::Test
@@ -36,9 +37,12 @@ protected:
     void SetUp() override
     {
         ASSERT_TRUE(m_files.mountDirectory("cooked", MEOW2_COOKED_DIR).has_value());
-        Result<std::unique_ptr<RenderDevice>> device = RenderDevice::create(
-            {.backend = Rhi::c_testBackend, .appName = "Meow2 tests", .validation = true, .presentation = false},
-            m_log);
+        Result<std::unique_ptr<RenderDevice>> device = RenderDevice::create({.backend = Rhi::c_testBackend,
+                                                                             .appName = "Meow2 tests",
+                                                                             .validation = true,
+                                                                             .presentation = false,
+                                                                             .recordingThreads = c_threads},
+                                                                            m_log);
         ASSERT_TRUE(device) << device.error().message;
         m_render = std::move(*device);
         m_library = std::make_unique<PipelineLibrary>(PipelineLibraryDeps{*m_render, m_assets, m_events, m_log});
@@ -98,7 +102,7 @@ protected:
     FileSystem::FileSystem m_files{m_log};
     UuidGenerator m_ids;
     Assets::AssetManager m_assets{m_files, m_ids, m_log};
-    Jobs::JobSystem m_jobs{{.threadCount = 2}, m_log};
+    Jobs::JobSystem m_jobs{{.threadCount = c_threads}, m_log};
     std::unique_ptr<RenderDevice> m_render;
     std::unique_ptr<PipelineLibrary> m_library;
     std::unique_ptr<FrameCapture> m_capture;
