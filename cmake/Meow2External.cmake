@@ -330,3 +330,43 @@ if(WIN32)
     target_link_libraries(meow2_httplib INTERFACE ws2_32)
 endif()
 add_library(httplib::httplib ALIAS meow2_httplib)
+
+# ---- Physics backend (techstack.md §14) ----------------------------------------------------------------------------
+# MEOW2_PHYSICS_BACKEND picks which src/Physics/<Backend>/ the engine compiles: Jolt (default), or None (the engine
+# without physics; PhysicsWorld::create() then reports Unsupported). Box3D can be added as another value later.
+set(MEOW2_PHYSICS_BACKEND "Jolt" CACHE STRING "Physics library: Jolt or None")
+set_property(CACHE MEOW2_PHYSICS_BACKEND PROPERTY STRINGS Jolt None)
+if(NOT MEOW2_PHYSICS_BACKEND MATCHES "^(Jolt|None)$")
+    message(FATAL_ERROR "MEOW2_PHYSICS_BACKEND must be Jolt or None, not '${MEOW2_PHYSICS_BACKEND}'")
+endif()
+message(STATUS "Physics: ${MEOW2_PHYSICS_BACKEND}")
+
+# ---- Jolt Physics (the physics backend) -----------------------------------------------------------------------------
+# Built from Jolt's own Jolt.cmake (it lists the sources and sets Jolt's public defines), not its Build/CMakeLists.txt
+# (samples, unit tests, install rules). Jolt.cmake sets CMAKE_CXX_STANDARD 17 at the scope it's included in, so it's
+# included inside a function: the setting stays there, and only the Jolt target (global, as targets are) comes out.
+# SIMD: its USE_* options are left off; Jolt's Core.h detects AVX2/FMA/F16C from the compiler flags MEOW2_SIMD already
+# sets for every target (cmake/Meow2Simd.cmake), so Jolt and the engine always agree on them.
+# Off: the debug renderer (we draw shapes ourselves), its profiler, object streams, floating-point exceptions, GPU
+# compute. Asserts on in Debug and RelWithDebInfo, routed to ours (src/Physics/Jolt/PhysicsLibraryJolt.cpp).
+function(meow2_add_jolt)
+    set(PHYSICS_REPO_ROOT "${PROJECT_SOURCE_DIR}/external/JoltPhysics")
+    meow2_require_submodule(JoltPhysics "${PHYSICS_REPO_ROOT}/Build") # its CMakeLists.txt is there
+    set(USE_ASSERTS OFF)
+    set(DOUBLE_PRECISION OFF)
+    set(CROSS_PLATFORM_DETERMINISTIC OFF)
+    set(ENABLE_OBJECT_STREAM OFF)
+    set(FLOATING_POINT_EXCEPTIONS_ENABLED OFF)
+    set(DEBUG_RENDERER_IN_DEBUG_AND_RELEASE OFF)
+    set(DEBUG_RENDERER_IN_DISTRIBUTION OFF)
+    set(PROFILER_IN_DEBUG_AND_RELEASE OFF)
+    set(PROFILER_IN_DISTRIBUTION OFF)
+    set(JPH_BUILD_SHARED_LIBS OFF)
+    include("${PHYSICS_REPO_ROOT}/Jolt/Jolt.cmake")
+    target_compile_definitions(Jolt PUBLIC "$<$<CONFIG:Debug,RelWithDebInfo>:JPH_ENABLE_ASSERTS>")
+    # Its headers are third-party: our warnings (meow2_set_warnings) don't apply to them in engine files.
+    set_target_properties(Jolt PROPERTIES SYSTEM TRUE FOLDER "External")
+endfunction()
+if(MEOW2_PHYSICS_BACKEND STREQUAL "Jolt")
+    meow2_add_jolt()
+endif()
