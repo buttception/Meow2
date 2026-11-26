@@ -342,6 +342,7 @@ Owner decisions 2026-11-26: Jolt first, behind an interface a later library (Box
 - Animation: skinning, morph targets, an animation system (Renderer's M6 player only poses nodes)
 - Compression: Draco and meshopt meshes, Basis Universal textures
 - `KHR_materials_*` extensions (clearcoat, transmission, sheen, …)
+- **Automatic exposure** (eye adaptation; owner request 2026-11-26): the exposure follows the scene's brightness over time, from a luminance histogram, with the scene's exposure as a compensation
 - HZB occlusion culling, HDR output, async compute, ray tracing (PIX and Nsight for the ray-tracing pipeline)
 
 ## M15 — Platforms ⬜
@@ -388,4 +389,4 @@ Owner decisions 2026-11-26: Jolt first, behind an interface a later library (Box
 - 2026-11-22 — M7 PR 5 split in two (owner decision): the debug views, grid and stats (#230), then the render graph and frame capture; no live pass view in the editor.
 - 2026-11-26 — M7 PR 5 done: the editor's debug tools and stats (#230 / PR #231), then its frame capture and render graph (#232 / PR #233).
 - 2026-11-26 — M7 done (0.8.0): the MCP server, headless mode and screenshots (#234 / PR #235).
-- 2026-11-26 — M8 PR 1: the physics interface and Jolt (#236 / PR #237). Owner decisions: Jolt first, Box3D possible later; 2D is its own milestone, the new M9 (Box2D, sprites, 2D projects); Scripting, Audio, Game UI, Export, Advanced rendering and Platforms renumbered M10–M15.
+- 2026-11-26 — M8 PR 1: the physics interface and Jolt (#236 / PR #237). Owner decisions: Jolt first, Box3D possible later; 2D is its own milestone, the new M9 (Box2D, sprites, 2D projects); Scripting, Audio, Game UI, Export, Advanced rendering and Platforms renumbered M10–M15. M14 gains automatic exposure (owner request).
