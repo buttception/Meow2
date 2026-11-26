@@ -264,7 +264,7 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
   - Selection and a selection outline
   - GPU picking through a framebuffer: on a click, a scissored pass around the cursor appends `{entity, depth}` per pixel; sorted on the CPU, repeated clicks step down through transparent layers; alpha cutoff in the pick shader; gizmos win; `registry.valid()` checked after the delayed readback
   - Gizmos: translate, rotate, scale; snapping (grid, angle, scale steps); local or world space
-- **PR 5 Debug tools in Qt**, split in two (owner decision 2026-11-22): the debug views, wireframe, frozen culling and its frustum, the grid and the Stats dock first, the tools moved into the engine (#230), then the render graph and frame capture (F9). No live pass view in the editor (Meow2Renderer is the tool for that): captured textures are read back and shown as images
+- ✅ **PR 5 Debug tools in Qt**, split in two (owner decision 2026-11-22): the debug views, wireframe, frozen culling and its frustum, the grid and the Stats dock first, the tools moved into the engine (#230 / PR #231, with camera icons), then the render graph and frame capture (F9) (#232 / PR #233). No live pass view in the editor (Meow2Renderer is the tool for that): captured textures are read back and shown as images
   - The Renderer's ImGui tools remade as Qt docks on the same engine data: the render graph node view (pins, kinds, dashed debug passes), frame capture (F9), debug-view buttons (Position dotted), wireframe, frozen culling and its frustum, the grid, frame and memory stats
   - Capture and debug-tool settings as editor commands (nothing to undo), so MCP can use them too; saved to the TOML config
 - **PR 6 MCP, headless and close**
@@ -370,3 +370,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-21 — M7 PR 4's second half split again: GPU picking and the selection outline (#226 / PR #227), then gizmos.
 - 2026-11-21 — M7 PR 4 done: gizmos with snapping (#228 / PR #229); the editor's dock tabs go on top (owner request).
 - 2026-11-22 — M7 PR 5 split in two (owner decision): the debug views, grid and stats (#230), then the render graph and frame capture; no live pass view in the editor.
+- 2026-11-26 — M7 PR 5 done: the editor's debug tools and stats (#230 / PR #231), then its frame capture and render graph (#232 / PR #233).

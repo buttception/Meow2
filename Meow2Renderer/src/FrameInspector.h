@@ -10,6 +10,8 @@
 
 #include <Meow2/Core/Id/Uuid.h>
 #include <Meow2/Core/Log/Logger.h>
+#include <Meow2/Graphics/Renderer/FrameCapture.h>
+#include <Meow2/Graphics/Renderer/FrameFlow.h>
 #include <Meow2/Graphics/Renderer/PipelineLibrary.h>
 #include <Meow2/Graphics/Renderer/RenderDevice.h>
 #include <Meow2/Graphics/Renderer/RenderGraph.h>
@@ -25,170 +27,29 @@
 
 namespace Meow2::RendererApp
 {
-/// @brief A resource of a frame, as the inspector shows it. Plain data.
-struct FlowResource
-{
-    std::string name{};      ///< As given to RenderGraph::import(), or "Resource n".
-    bool texture = false;    ///< A texture (it can be shown), or a buffer.
-    Rhi::TextureInfo info{}; ///< Size and format, for a texture.
-    bool debug = false; ///< Only debug passes write it (markDebugResources()): made for debugging, not by the frame.
-};
-
-/// @brief What a pass does with one resource. Plain data.
-struct FlowAccess
-{
-    std::uint32_t resource = 0;                                ///< Index into FrameFlow::resources.
-    Rhi::ResourceState state = Rhi::ResourceState::ShaderRead; ///< The state it declared.
-    bool writes = false;                                       ///< Renderer::isWriteState(state).
-};
-
-/// @brief A pass of a frame. Plain data.
-struct FlowPass
-{
-    std::string name{};                 ///< Its name.
-    std::vector<FlowAccess> accesses{}; ///< What it reads and writes.
-    bool debug = false;                 ///< Renderer::GraphPass::debug: a debugging tool's pass.
-    bool skipped = false;               ///< Renderer::GraphPass::skipped: in the graph, but not run this frame.
-};
-
-/// @brief A frame's render graph as plain data: passes in the order they run and the resources between them. Plain
-/// data.
-struct FrameFlow
-{
-    std::vector<FlowPass> passes{};        ///< In order.
-    std::vector<FlowResource> resources{}; ///< Every imported resource.
-};
-
-/// @brief Where each pass goes in the flow view. Plain data.
-struct FlowLayout
-{
-    std::vector<std::uint32_t>
-        column{}; ///< Per pass: one right of the latest pass whose output it reads (0: reads nothing written).
-    std::vector<std::uint32_t> row{}; ///< Per pass: its place among the passes in its column, top to bottom.
-    std::uint32_t columns = 0;        ///< How many columns.
-    std::uint32_t rows = 0;           ///< The tallest column's passes.
-};
-
-/// @brief What kind of resource a pin stands for; it picks the pin's and wire's colour.
-enum class ResourceKind : std::uint8_t
-{
-    ColorTexture,  ///< A texture of colour or other data, which the Pass view can show.
-    DepthTexture,  ///< A depth texture (shown as grey).
-    Buffer,        ///< A buffer: draw data, counts, constants.
-    IndirectBuffer ///< A buffer some pass reads as indirect draw or dispatch arguments.
-};
-
-/// @brief The kind of a resource of a flow.
-/// @param flow     The flow.
-/// @param resource Index into FrameFlow::resources.
-/// @return Its kind.
-[[nodiscard]] ResourceKind resourceKind(const FrameFlow& flow, std::uint32_t resource);
-
-/// @brief A kind's name, as the view shows it ("Colour texture", "Indirect arguments", …).
-/// @param kind The kind.
-/// @return The name.
-[[nodiscard]] const char* resourceKindName(ResourceKind kind);
-
-/// @brief A pass's pins in the flow view, each a resource index, in the order of its accesses. Plain data.
-struct FlowPins
-{
-    std::vector<std::uint32_t> inputs{};  ///< What it reads, and what it draws over (a write after another pass's).
-    std::vector<std::uint32_t> outputs{}; ///< What it writes.
-};
-
-/// @brief A pass's input and output pins: a read is an input; a write is an output, and also an input when an earlier
-///        pass wrote the resource (the pass draws over that, so the data flows through it).
-/// @param flow The flow.
-/// @param pass The pass.
-/// @return Its pins, without repeats.
-[[nodiscard]] FlowPins passPins(const FrameFlow& flow, std::uint32_t pass);
-
-/// @brief The flow view's spacing, in pixels (already scaled for the display). Plain data.
-struct FlowMetrics
-{
-    float pad = 8.0F;             ///< Inside a node, around its text.
-    float titleHeight = 22.0F;    ///< A node's title bar.
-    float pinRow = 20.0F;         ///< One pin's row.
-    float dot = 4.5F;             ///< A pin's radius.
-    float levelGap = 70.0F;       ///< Between one level's band and the next one down, where the wires run.
-    float nodeGap = 60.0F;        ///< Between nodes side by side in a band (wires pass there too).
-    float maxBandWidth = 1400.0F; ///< A band wider than this wraps onto another line (at least one node per line).
-    float margin = 16.0F;         ///< Around everything.
-    float minWidth = 140.0F;      ///< The narrowest node.
-    float sideGap = 24.0F;        ///< Between a node's input labels and its output labels.
-};
-
-/// @brief One node of the flow view: where it is, its size and pins. Plain data.
-struct FlowNode
-{
-    float x = 0.0F;      ///< Left edge, from the view's top left.
-    float y = 0.0F;      ///< Top edge.
-    float width = 0.0F;  ///< Width.
-    float height = 0.0F; ///< Height: the title bar and a row per pin on the side with more.
-    FlowPins pins{};     ///< Its pins.
-    std::string title{}; ///< "<index>  <name>".
-};
-
-/// @brief Every node of a flow view, placed. Plain data.
-struct FlowGeometry
-{
-    std::vector<FlowNode> nodes{}; ///< Per pass.
-    float width = 0.0F;            ///< The whole view's size.
-    float height = 0.0F;           ///< Ditto.
-};
-
-/// @brief Places a flow's nodes top to bottom: each level of layoutFlow() (its `column`) is a band, the bands stack
-///        downwards, and a level's passes sit side by side in their `row` order, wrapping onto another line when the
-///        band gets wider than FlowMetrics::maxBandWidth. Each node is wide enough for its title and its input and
-///        output labels.
-///
-/// A frame's dependency chain is long (shadow cascades alone add a dozen levels) but each level holds few passes, so
-/// stacking levels keeps the view a column you scroll down, rather than a strip far wider than the window.
-/// @param flow      The flow.
-/// @param metrics   The spacing.
-/// @param textWidth How wide a text is drawn, in pixels.
-/// @return The nodes.
-[[nodiscard]] FlowGeometry placeFlow(const FrameFlow& flow, const FlowMetrics& metrics,
-                                     const std::function<float(std::string_view)>& textWidth);
-
-/// @brief A pin of the flow view: a pass's input or output for one resource. Plain data.
-struct FlowPin
-{
-    std::uint32_t pass = 0;     ///< The pass.
-    std::uint32_t resource = 0; ///< Index into FrameFlow::resources.
-    bool output = false;        ///< An output (right side) or an input (left side).
-
-    /// @brief Pins are equal when every field is.
-    friend bool operator==(const FlowPin&, const FlowPin&) = default;
-};
-
-/// @brief Marks the resources only debug passes write (FlowResource::debug): textures made for debugging, which the
-///        frame itself doesn't produce (a position rebuilt from depth, the inspector's images). A resource no pass
-///        writes (imported as it is) isn't marked.
-/// @param flow The flow; its passes' `debug` set.
-void markDebugResources(FrameFlow& flow);
-
-/// @brief A render graph's passes and resources, before compile().
-/// @param graph  The frame's graph.
-/// @param device For the textures' sizes and formats.
-/// @return The flow.
-[[nodiscard]] FrameFlow describeGraph(const Renderer::RenderGraph& graph, Rhi::IRhiDevice& device);
-
-/// @brief Lays a flow out in levels (`column`): a pass that reads what another wrote goes one level after it, so
-///        independent passes (the sky's lookup tables beside the culling) share a level. placeFlow() draws levels as
-///        bands from top to bottom. Within a level, passes are ordered by where their inputs come from (the average
-///        row of their writers), so wires cross less; passes with no inputs keep their order.
-/// @param flow The flow.
-/// @return The layout.
-[[nodiscard]] FlowLayout layoutFlow(const FrameFlow& flow);
-
-/// @brief The pass that last wrote a resource before another pass, i.e. where that pass's input comes from.
-/// @param flow     The flow.
-/// @param resource The resource.
-/// @param before   The pass that reads it.
-/// @return The writing pass, or std::nullopt if it was written before the frame (imported as it was).
-[[nodiscard]] std::optional<std::uint32_t> writerBefore(const FrameFlow& flow, std::uint32_t resource,
-                                                        std::uint32_t before);
+// The render graph as plain data and its node layout live in the engine (Meow2/Graphics/Renderer/FrameFlow.h), shared
+// with the editor's frame capture; the inspector names them as before.
+using Renderer::describeGraph;
+using Renderer::FlowAccess;
+using Renderer::FlowGeometry;
+using Renderer::FlowLayout;
+using Renderer::FlowMetrics;
+using Renderer::FlowNode;
+using Renderer::FlowPass;
+using Renderer::FlowPin;
+using Renderer::FlowPins;
+using Renderer::FlowResource;
+using Renderer::formatName;
+using Renderer::FrameFlow;
+using Renderer::isDepthFormat;
+using Renderer::layoutFlow;
+using Renderer::markDebugResources;
+using Renderer::passPins;
+using Renderer::placeFlow;
+using Renderer::ResourceKind;
+using Renderer::resourceKind;
+using Renderer::resourceKindName;
+using Renderer::writerBefore;
 
 /// @brief The live render-graph view, its picture-in-picture pass view and frame captures.
 ///
@@ -238,7 +99,7 @@ public:
     /// @brief Asks for a capture of the next frame (F9, or the button).
     void requestCapture()
     {
-        m_captureRequested = true;
+        m_frameCapture.request();
     }
 
     /// @brief Draws the Render graph, Pass view and Frame capture windows.
@@ -287,15 +148,6 @@ private:
         DisplaySettings settings{};
     };
 
-    /// @brief One snapshot of a capture: a texture as a pass left it.
-    struct Snapshot
-    {
-        std::uint32_t pass = 0;     ///< The pass that wrote it.
-        std::uint32_t resource = 0; ///< Index into the capture's FrameFlow::resources.
-        bool depth = false;         ///< Raw R32 depth rather than RGBA16F.
-        OwnedTexture raw{};         ///< The copy.
-    };
-
     /// @brief Makes (or remakes, if the size or format changed) a texture.
     bool ensure(OwnedTexture& texture, const Rhi::TextureInfo& info, const char* name);
     /// @brief Imports a texture into this frame's graph, if it exists.
@@ -338,8 +190,6 @@ private:
     Renderer::PipelineLibrary& m_pipelines;
     Log::Logger& m_log;
     std::optional<Renderer::PipelineId> m_display;                              ///< psDisplay into RGBA8 sRGB.
-    std::optional<Renderer::PipelineId> m_copyColor;                            ///< psCopy into RGBA16F.
-    std::optional<Renderer::PipelineId> m_copyDepth;                            ///< psCopy into R32F.
     std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_displayBuffers{}; ///< DebugDisplay records per frame.
     std::uint32_t m_displayCount = 0;                                           ///< Records written this frame.
 
@@ -351,15 +201,12 @@ private:
     std::vector<LiveOutput> m_live;                 ///< Its outputs.
     std::vector<Renderer::GraphResource> m_uiReads; ///< This frame's textures shown by the UI.
 
-    bool m_captureRequested = false;
-    std::optional<FrameFlow> m_capture;           ///< The captured frame's flow.
-    std::vector<Snapshot> m_snapshots;            ///< Its textures, as each pass left them.
+    Renderer::FrameCapture m_frameCapture;        ///< The captured frame and its textures (shared with the editor).
     std::optional<std::uint32_t> m_capturePass;   ///< Selected in the capture.
     std::optional<std::size_t> m_captureSnapshot; ///< Shown full size.
     OwnedTexture m_captureDisplay;                ///< The selected snapshot as an image.
     DisplaySettings m_captureSettings;
-    std::uint64_t m_captureFrame = 0; ///< Which frame was captured (frame counter).
-    std::uint64_t m_frame = 0;        ///< Frames seen.
+    std::uint64_t m_frame = 0; ///< Frames seen.
     std::vector<Rhi::TextureHandle>
         m_retired; ///< Replaced this frame while the graph still names them; freed in endFrame().
 

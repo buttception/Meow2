@@ -4,6 +4,7 @@
 #include "EditorTestRig.h"
 #include "Panels/AssetsDock.h"
 #include "Panels/ConsoleDock.h"
+#include "Panels/RenderGraphDock.h"
 #include "Panels/SettingsDialog.h"
 #include "Panels/StatsDock.h"
 #include "Viewports/GameViewportDock.h"
@@ -154,8 +155,9 @@ TEST_F(MainWindowTest, TabbedDocksHideTheirTitle)
     QDockWidget& console = window.console();
     QDockWidget& assets = window.assetsDock();
     window.tick();
-    EXPECT_NE(console.titleBarWidget(), nullptr) << "a tab beside the Stats dock at first";
+    EXPECT_NE(console.titleBarWidget(), nullptr) << "a tab beside the Stats and Render graph docks at first";
     window.statsDock().hide();
+    window.renderGraphDock().hide();
     window.tick();
     EXPECT_EQ(console.titleBarWidget(), nullptr) << "alone at the bottom: its title shows";
 

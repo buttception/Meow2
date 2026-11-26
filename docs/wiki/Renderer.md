@@ -95,7 +95,7 @@ Settings given with `--set` are saved to `Meow2Renderer.toml` like the rest ([Co
 | `SettingsWindow.*` | The Settings window, and the table of settings with their defaults: `main.cpp` reads the same table, so the app and the window never disagree |
 | `CameraControls.*` | Orbit and fly cameras, glTF camera poses and lenses, the Camera window |
 | `DebugWindow.*` | The Debug window over the engine's `Renderer::RenderDebug` (debug views, wireframe, frozen culling, the debug present pass; in the engine since #230, shared with the editor, with the ground grid `Renderer::InfiniteGrid` and the Position view's pass `Renderer::DepthPositionView`) |
-| `FrameInspector.*` | The Render graph, Pass and Frame capture windows: the node graph (`layoutFlow`, `passPins`, `placeFlow`, `resourceKind`: plain functions, tested without ImGui), the live pass view, captures |
+| `FrameInspector.*` | The Render graph, Pass and Frame capture windows: the node graph drawn in ImGui, the live pass view, the capture viewer. The flow and its layout (`layoutFlow`, `passPins`, `placeFlow`, `resourceKind`) are the engine's `Renderer::FrameFlow`, and the capture is its `Renderer::FrameCapture` (since #232, shared with the editor) |
 | `FrameScreenshot.*` | Screenshots: the swapchain read back after the frame, written as a PNG |
 
 Dear ImGui (v1.93.0-docking, a submodule) is built as `meow2_imgui` only with the Renderer: the engine and Player never see it. Its memory is counted under `MemTag::ImGui`.

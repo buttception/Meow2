@@ -67,10 +67,14 @@ add_library(Meow2EditorCore STATIC
     src/Panels/FieldWidgets.h
     src/Panels/FittingScrollArea.cpp
     src/Panels/FittingScrollArea.h
+    src/Panels/FlowView.cpp
+    src/Panels/FlowView.h
     src/Panels/HierarchyDock.cpp
     src/Panels/HierarchyDock.h
     src/Panels/InspectorDock.cpp
     src/Panels/InspectorDock.h
+    src/Panels/RenderGraphDock.cpp
+    src/Panels/RenderGraphDock.h
     src/Panels/SceneSettingsDock.cpp
     src/Panels/SceneSettingsDock.h
     src/Panels/SettingsDialog.cpp
@@ -83,6 +87,8 @@ add_library(Meow2EditorCore STATIC
     src/Project/SceneDocument.h
     src/ViewportWidget.cpp
     src/ViewportWidget.h
+    src/Viewports/CaptureTools.cpp
+    src/Viewports/CaptureTools.h
     src/Viewports/DebugTools.cpp
     src/Viewports/DebugTools.h
     src/Viewports/EditorCamera.cpp

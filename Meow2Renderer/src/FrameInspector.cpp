@@ -19,38 +19,6 @@ namespace
 {
 constexpr std::uint32_t c_maxDisplays = 16; // DebugDisplay records per frame: live outputs plus the capture viewer
 
-bool isDepthFormat(Rhi::RhiFormat format)
-{
-    return format == Rhi::RhiFormat::D32Float || format == Rhi::RhiFormat::R32Float;
-}
-
-const char* formatName(Rhi::RhiFormat format)
-{
-    switch (format)
-    {
-        case Rhi::RhiFormat::Bgra8Srgb:
-            return "BGRA8 sRGB";
-        case Rhi::RhiFormat::Rgba8Srgb:
-            return "RGBA8 sRGB";
-        case Rhi::RhiFormat::Rgba8Unorm:
-            return "RGBA8";
-        case Rhi::RhiFormat::Rgba16Float:
-            return "RGBA16F";
-        case Rhi::RhiFormat::R32Float:
-            return "R32F";
-        case Rhi::RhiFormat::D32Float:
-            return "D32F";
-        case Rhi::RhiFormat::Bc7Unorm:
-        case Rhi::RhiFormat::Bc7Srgb:
-            return "BC7";
-        case Rhi::RhiFormat::Bc5Unorm:
-            return "BC5";
-        case Rhi::RhiFormat::Unknown:
-            break;
-    }
-    return "?";
-}
-
 /// @brief A resource kind's colour for pins and wires: textures warm, buffers cool.
 ImVec4 kindColour(ResourceKind kind)
 {
@@ -88,33 +56,6 @@ void dashedBezier(ImDrawList& draw, const std::array<ImVec2, 4>& control, ImU32 
     dashedPolyline(draw, points, colour, thickness, dash);
 }
 
-/// @brief A state's name, as the pin details show it.
-const char* stateName(Rhi::ResourceState state)
-{
-    switch (state)
-    {
-        case Rhi::ResourceState::Undefined:
-            return "undefined";
-        case Rhi::ResourceState::ColorTarget:
-            return "colour target";
-        case Rhi::ResourceState::DepthTarget:
-            return "depth target";
-        case Rhi::ResourceState::ShaderRead:
-            return "shader read";
-        case Rhi::ResourceState::ShaderWrite:
-            return "shader write";
-        case Rhi::ResourceState::CopySource:
-            return "copy source";
-        case Rhi::ResourceState::CopyTarget:
-            return "copy target";
-        case Rhi::ResourceState::IndirectArgs:
-            return "indirect arguments";
-        case Rhi::ResourceState::HostRead:
-            return "CPU read";
-    }
-    return "?";
-}
-
 /// @brief How a new display starts: depth spread over the near range (reversed Z puts most of a scene near 0), colour
 ///        as it is.
 FrameInspector::DisplaySettings defaultSettings(bool depth)
@@ -124,283 +65,12 @@ FrameInspector::DisplaySettings defaultSettings(bool depth)
 }
 } // namespace
 
-FrameFlow describeGraph(const Renderer::RenderGraph& graph, Rhi::IRhiDevice& device)
-{
-    FrameFlow flow;
-    for (std::uint32_t i = 0; i < graph.resourceCount(); ++i)
-    {
-        const Renderer::GraphResource resource{.index = i};
-        FlowResource out;
-        out.name = graph.resourceName(resource).empty() ? std::format("Resource {}", i) : graph.resourceName(resource);
-        if (const std::optional<Rhi::TextureHandle> texture = graph.resourceTexture(resource))
-        {
-            out.texture = true;
-            out.info = device.textureInfo(*texture);
-        }
-        flow.resources.push_back(std::move(out));
-    }
-    for (const Renderer::GraphPass& pass : graph.passes())
-    {
-        FlowPass out{.name = pass.name, .accesses = {}, .debug = pass.debug, .skipped = pass.skipped};
-        for (const Renderer::GraphAccess& access : pass.accesses)
-        {
-            out.accesses.push_back({.resource = access.resource.index,
-                                    .state = access.state,
-                                    .writes = Renderer::isWriteState(access.state)});
-        }
-        flow.passes.push_back(std::move(out));
-    }
-    markDebugResources(flow);
-    return flow;
-}
-
-void markDebugResources(FrameFlow& flow)
-{
-    std::vector<bool> written(flow.resources.size(), false);
-    std::vector<bool> onlyDebug(flow.resources.size(), true);
-    for (const FlowPass& pass : flow.passes)
-    {
-        for (const FlowAccess& access : pass.accesses)
-        {
-            if (access.writes && access.resource < flow.resources.size())
-            {
-                written[access.resource] = true;
-                onlyDebug[access.resource] = onlyDebug[access.resource] && pass.debug;
-            }
-        }
-    }
-    for (std::size_t i = 0; i < flow.resources.size(); ++i)
-    {
-        flow.resources[i].debug = written[i] && onlyDebug[i];
-    }
-}
-
-std::optional<std::uint32_t> writerBefore(const FrameFlow& flow, std::uint32_t resource, std::uint32_t before)
-{
-    for (std::uint32_t pass = std::min<std::uint32_t>(before, static_cast<std::uint32_t>(flow.passes.size()));
-         pass-- > 0;)
-    {
-        for (const FlowAccess& access : flow.passes[pass].accesses)
-        {
-            if (access.resource == resource && access.writes)
-            {
-                return pass;
-            }
-        }
-    }
-    return std::nullopt;
-}
-
-FlowLayout layoutFlow(const FrameFlow& flow)
-{
-    FlowLayout layout;
-    layout.column.assign(flow.passes.size(), 0);
-    layout.row.assign(flow.passes.size(), 0);
-    std::vector<std::uint32_t> perColumn;
-    for (std::uint32_t pass = 0; pass < flow.passes.size(); ++pass)
-    {
-        // Every access depends on the last writer: a read needs its data, and a later write (the sky over the opaque
-        // pass's colour) must come after the earlier one.
-        for (const FlowAccess& access : flow.passes[pass].accesses)
-        {
-            if (const std::optional<std::uint32_t> writer = writerBefore(flow, access.resource, pass))
-            {
-                layout.column[pass] = std::max(layout.column[pass], layout.column[*writer] + 1);
-            }
-        }
-        if (layout.column[pass] >= perColumn.size())
-        {
-            perColumn.resize(layout.column[pass] + 1, 0);
-        }
-        layout.row[pass] = perColumn[layout.column[pass]]++;
-    }
-    layout.columns = static_cast<std::uint32_t>(perColumn.size());
-    layout.rows = perColumn.empty() ? 0 : *std::ranges::max_element(perColumn);
-
-    // Fewer crossings: column by column, left to right, order passes by the average row of the passes their inputs
-    // come from (the barycentre heuristic). Earlier columns are final when a column is sorted. Passes with no
-    // inputs from the frame keep their place in the order they were added.
-    for (std::uint32_t column = 1; column < layout.columns; ++column)
-    {
-        struct Keyed
-        {
-            float key = 0.0F;
-            std::uint32_t pass = 0;
-        };
-        std::vector<Keyed> passes;
-        for (std::uint32_t pass = 0; pass < flow.passes.size(); ++pass)
-        {
-            if (layout.column[pass] != column)
-            {
-                continue;
-            }
-            float sum = 0.0F;
-            std::uint32_t count = 0;
-            for (const FlowAccess& access : flow.passes[pass].accesses)
-            {
-                if (const std::optional<std::uint32_t> writer = writerBefore(flow, access.resource, pass))
-                {
-                    sum += static_cast<float>(layout.row[*writer]);
-                    ++count;
-                }
-            }
-            passes.push_back({.key = count > 0 ? sum / static_cast<float>(count) : static_cast<float>(layout.row[pass]),
-                              .pass = pass});
-        }
-        std::ranges::stable_sort(passes, {}, &Keyed::key);
-        for (std::uint32_t row = 0; row < passes.size(); ++row)
-        {
-            layout.row[passes[row].pass] = row;
-        }
-    }
-    return layout;
-}
-
-ResourceKind resourceKind(const FrameFlow& flow, std::uint32_t resource)
-{
-    const FlowResource& info = flow.resources[resource];
-    if (info.texture)
-    {
-        return isDepthFormat(info.info.format) ? ResourceKind::DepthTexture : ResourceKind::ColorTexture;
-    }
-    for (const FlowPass& pass : flow.passes)
-    {
-        for (const FlowAccess& access : pass.accesses)
-        {
-            if (access.resource == resource && access.state == Rhi::ResourceState::IndirectArgs)
-            {
-                return ResourceKind::IndirectBuffer;
-            }
-        }
-    }
-    return ResourceKind::Buffer;
-}
-
-const char* resourceKindName(ResourceKind kind)
-{
-    switch (kind)
-    {
-        case ResourceKind::ColorTexture:
-            return "Colour texture";
-        case ResourceKind::DepthTexture:
-            return "Depth texture";
-        case ResourceKind::Buffer:
-            return "Buffer";
-        case ResourceKind::IndirectBuffer:
-            return "Indirect arguments";
-    }
-    return "?";
-}
-
-FlowGeometry placeFlow(const FrameFlow& flow, const FlowMetrics& metrics,
-                       const std::function<float(std::string_view)>& textWidth)
-{
-    const FlowLayout layout = layoutFlow(flow);
-    const auto passCount = static_cast<std::uint32_t>(flow.passes.size());
-    FlowGeometry geometry;
-    geometry.nodes.resize(passCount);
-
-    // Each node: wide enough for its title, and for its longest input and output label side by side.
-    const auto widest = [&](const std::vector<std::uint32_t>& resources)
-    {
-        float width = 0.0F;
-        for (const std::uint32_t resource : resources)
-        {
-            width = std::max(width, textWidth(flow.resources[resource].name));
-        }
-        return width;
-    };
-    for (std::uint32_t pass = 0; pass < passCount; ++pass)
-    {
-        FlowNode& node = geometry.nodes[pass];
-        node.pins = passPins(flow, pass);
-        // A skipped pass keeps its place (the layout doesn't jump) and says why nothing happened.
-        node.title =
-            std::format("{}  {}{}", pass, flow.passes[pass].name, flow.passes[pass].skipped ? " (cached)" : "");
-        const float pinsWidth = widest(node.pins.inputs) + widest(node.pins.outputs) + metrics.dot * 4.0F +
-                                metrics.pad * 2.0F + metrics.sideGap;
-        node.width = std::max({metrics.minWidth, textWidth(node.title) + metrics.pad * 2.0F, pinsWidth});
-        const auto rows = static_cast<float>(
-            std::max<std::size_t>({node.pins.inputs.size(), node.pins.outputs.size(), std::size_t{1}}));
-        node.height = metrics.titleHeight + rows * metrics.pinRow + metrics.pad * 0.5F;
-    }
-
-    // Levels (the layout's columns) as bands from top to bottom; a level's passes side by side in its row order. A
-    // line of a band ends before it would pass maxBandWidth, and the band goes on below; every line holds at least one
-    // node, however wide.
-    std::vector<std::uint32_t> order(passCount);
-    for (std::uint32_t pass = 0; pass < passCount; ++pass)
-    {
-        order[pass] = pass;
-    }
-    std::ranges::sort(
-        order, [&](std::uint32_t a, std::uint32_t b)
-        { return std::pair{layout.column[a], layout.row[a]} < std::pair{layout.column[b], layout.row[b]}; });
-    float lineTop = metrics.margin;    // where the current line starts
-    float lineBottom = metrics.margin; // its tallest node's bottom so far
-    float x = metrics.margin;
-    float right = metrics.margin; // the widest line's right edge
-    std::optional<std::uint32_t> level;
-    for (const std::uint32_t pass : order)
-    {
-        FlowNode& node = geometry.nodes[pass];
-        const bool newLevel = level != layout.column[pass];
-        const bool full = !newLevel && x > metrics.margin && x + node.width > metrics.margin + metrics.maxBandWidth;
-        if (newLevel || full)
-        {
-            if (level)
-            {
-                // Below the last line: the gap between levels leaves room for the wires going down; a wrapped line
-                // of the same level only needs the node gap.
-                lineTop = lineBottom + (newLevel ? metrics.levelGap : metrics.nodeGap * 0.5F);
-            }
-            lineBottom = lineTop;
-            x = metrics.margin;
-            level = layout.column[pass];
-        }
-        node.x = x;
-        node.y = lineTop;
-        x += node.width + metrics.nodeGap;
-        right = std::max(right, node.x + node.width);
-        lineBottom = std::max(lineBottom, node.y + node.height);
-    }
-    if (passCount > 0)
-    {
-        geometry.width = right + metrics.margin;
-        geometry.height = lineBottom + metrics.margin;
-    }
-    return geometry;
-}
-
-FlowPins passPins(const FrameFlow& flow, std::uint32_t pass)
-{
-    FlowPins pins;
-    const auto add = [](std::vector<std::uint32_t>& list, std::uint32_t resource)
-    {
-        if (std::ranges::find(list, resource) == list.end())
-        {
-            list.push_back(resource);
-        }
-    };
-    for (const FlowAccess& access : flow.passes[pass].accesses)
-    {
-        if (!access.writes || writerBefore(flow, access.resource, pass))
-        {
-            add(pins.inputs, access.resource);
-        }
-        if (access.writes)
-        {
-            add(pins.outputs, access.resource);
-        }
-    }
-    return pins;
-}
-
 FrameInspector::FrameInspector(Renderer::RenderDevice& device, Renderer::PipelineLibrary& pipelines, AssetId shader,
                                Log::Logger& log)
     : m_device(device)
     , m_pipelines(pipelines)
     , m_log(log)
+    , m_frameCapture(device, pipelines, shader, log)
 {
     const auto make = [&](const char* entry, Rhi::RhiFormat format,
                           const char* name) -> std::optional<Renderer::PipelineId>
@@ -415,10 +85,8 @@ FrameInspector::FrameInspector(Renderer::RenderDevice& device, Renderer::Pipelin
         return *pipeline;
     };
     m_display = make("psDisplay", Rhi::RhiFormat::Rgba8Srgb, "Inspector display");
-    m_copyColor = make("psCopy", Rhi::RhiFormat::Rgba16Float, "Capture copy (colour)");
-    m_copyDepth = make("psCopy", Rhi::RhiFormat::R32Float, "Capture copy (depth)");
-    // Textures are made on demand; on a backend switch they're freed and made again when next needed. The capture's
-    // snapshots can't be made again (the frame is gone), so a switch ends the capture.
+    // Textures are made on demand; on a backend switch they're freed and made again when next needed. The capture
+    // (FrameCapture) drops its snapshots itself: they can't be made again, the frame is gone.
     m_deviceUser = device.addUser(
         "FrameInspector", [this](Rhi::IRhiDevice& old) { release(old); },
         [](Rhi::IRhiDevice&) -> Result<void> { return {}; });
@@ -447,12 +115,6 @@ void FrameInspector::release(Rhi::IRhiDevice& device)
     {
         free(output.display);
     }
-    for (Snapshot& snapshot : m_snapshots)
-    {
-        free(snapshot.raw);
-    }
-    m_snapshots.clear();
-    m_capture.reset();
     m_capturePass.reset();
     m_capturePin.reset();
     m_captureSnapshot.reset();
@@ -598,20 +260,23 @@ void FrameInspector::beginFrame(Renderer::RenderGraph& graph, std::uint32_t fram
         }
     }
     // The capture viewer: the selected snapshot through the display settings, every frame (the sliders move).
-    if (m_captureSnapshot && *m_captureSnapshot < m_snapshots.size())
+    m_frameCapture.beginFrame(frameSlot);
+    const std::span<const Renderer::CaptureSnapshot> snapshots = m_frameCapture.snapshots();
+    if (m_captureSnapshot && *m_captureSnapshot < snapshots.size())
     {
-        Snapshot& snapshot = m_snapshots[*m_captureSnapshot];
-        if (snapshot.raw.texture.isSet() && ensure(m_captureDisplay,
-                                                   {.width = snapshot.raw.info.width,
-                                                    .height = snapshot.raw.info.height,
-                                                    .format = Rhi::RhiFormat::Rgba8Srgb},
-                                                   "Capture display"))
+        const auto index = static_cast<std::uint32_t>(*m_captureSnapshot);
+        const Renderer::CaptureSnapshot& snapshot = snapshots[index];
+        if (ensure(m_captureDisplay,
+                   {.width = snapshot.info.width, .height = snapshot.info.height, .format = Rhi::RhiFormat::Rgba8Srgb},
+                   "Capture display"))
         {
-            import(graph, snapshot.raw, "Capture snapshot");
-            import(graph, m_captureDisplay, "Capture display");
-            graph.addPass(displayPass("Capture viewer", snapshot.raw.resource, snapshot.raw.texture, m_captureDisplay,
-                                      snapshot.depth, m_captureSettings, frameSlot));
-            m_uiReads.push_back(m_captureDisplay.resource);
+            if (const std::optional<Renderer::GraphResource> source = m_frameCapture.importSnapshot(graph, index))
+            {
+                import(graph, m_captureDisplay, "Capture display");
+                graph.addPass(displayPass("Capture viewer", *source, snapshot.texture, m_captureDisplay, snapshot.depth,
+                                          m_captureSettings, frameSlot));
+                m_uiReads.push_back(m_captureDisplay.resource);
+            }
         }
     }
 }
@@ -621,75 +286,14 @@ void FrameInspector::afterPasses(Renderer::RenderGraph& graph, std::uint32_t fra
     Rhi::IRhiDevice& device = m_device.device();
     m_liveFlow = describeGraph(graph, device);
 
-    // A capture: after every pass that writes a texture, a raw copy of it. Last pass first, so inserting doesn't move
-    // the passes still to visit.
-    if (m_captureRequested)
+    // A capture (FrameCapture): a copy after every pass that writes a texture. A new one drops the old selection.
+    if (m_frameCapture.requested())
     {
-        m_captureRequested = false;
-        for (Snapshot& old : m_snapshots)
-        {
-            if (old.raw.texture.isSet())
-            {
-                m_retired.push_back(old.raw.texture); // the capture viewer may have imported it this frame
-            }
-        }
-        m_snapshots.clear();
         m_captureSnapshot.reset();
         m_capturePass.reset();
-        m_capture = m_liveFlow;
-        m_captureFrame = m_frame;
-        for (std::uint32_t pass = static_cast<std::uint32_t>(m_capture->passes.size()); pass-- > 0;)
-        {
-            for (const FlowAccess& access : m_capture->passes[pass].accesses)
-            {
-                const FlowResource& resource = m_capture->resources[access.resource];
-                if (!access.writes || !resource.texture)
-                {
-                    continue;
-                }
-                const bool depth = isDepthFormat(resource.info.format);
-                Snapshot snapshot{.pass = pass, .resource = access.resource, .depth = depth, .raw = {}};
-                if (!ensure(snapshot.raw,
-                            {.width = resource.info.width,
-                             .height = resource.info.height,
-                             .format = depth ? Rhi::RhiFormat::R32Float : Rhi::RhiFormat::Rgba16Float},
-                            "Capture snapshot"))
-                {
-                    continue;
-                }
-                import(graph, snapshot.raw,
-                       std::format("Capture: {} after {}", resource.name, m_capture->passes[pass].name));
-                const std::optional<Rhi::TextureHandle> source =
-                    graph.resourceTexture(Renderer::GraphResource{.index = access.resource});
-                const std::optional<Renderer::PipelineId> pipeline = depth ? m_copyDepth : m_copyColor;
-                Shader::PushConstants push{};
-                push.instance = device.bindlessIndex(*source);
-                graph.insertPassAfter(
-                    pass,
-                    {.name = std::format("Capture {}", resource.name),
-                     .accesses = {{Renderer::GraphResource{.index = access.resource}, Rhi::ResourceState::ShaderRead},
-                                  {snapshot.raw.resource, Rhi::ResourceState::ColorTarget}},
-                     .record =
-                         [this, push, pipeline, texture = snapshot.raw.texture](Rhi::IRhiCommandList& list)
-                     {
-                         list.beginRendering(Rhi::RenderTargets{.color = texture});
-                         if (pipeline)
-                         {
-                             list.setPipeline(m_pipelines.get(*pipeline));
-                             list.setPushConstants(push);
-                             list.draw(3);
-                         }
-                         list.endRendering();
-                     },
-                     .small = true,
-                     .debug = true});
-                m_snapshots.push_back(std::move(snapshot));
-            }
-        }
-        std::ranges::reverse(m_snapshots); // in pass order
-        MEOW2_LOG_INFO(m_log, "Frame captured: {} passes, {} textures kept", m_capture->passes.size(),
-                       m_snapshots.size());
+        m_capturePin.reset();
     }
+    m_frameCapture.afterPasses(graph, frameSlot);
 
     // The live view: the selected pass's texture outputs, made displayable right after it.
     if (!m_selectedPass)
@@ -780,11 +384,8 @@ void FrameInspector::endFrame(const Renderer::RenderGraph& graph)
     {
         keep(output.display);
     }
-    for (Snapshot& snapshot : m_snapshots)
-    {
-        keep(snapshot.raw);
-    }
     keep(m_captureDisplay);
+    m_frameCapture.endFrame(graph);
     for (const Rhi::TextureHandle texture : m_retired)
     {
         m_device.device().destroy(texture); // the device defers it until the GPU is done
@@ -1106,7 +707,7 @@ void FrameInspector::drawPinInfo(const FrameFlow& flow, const FlowPin& pin, cons
             {
                 ImGui::TextColored(pass == pin.pass ? UiColors::c_text : UiColors::c_textDim, "%-6s %2u %s (%s)",
                                    access.writes ? "WRITE" : "READ", pass, flow.passes[pass].name.c_str(),
-                                   stateName(access.state));
+                                   Renderer::resourceStateName(access.state));
             }
         }
     }
@@ -1232,7 +833,9 @@ void FrameInspector::drawWindows(ImGuiLayer& ui, const UiFonts& fonts)
     if (ImGui::Begin("FRAME CAPTURE###FrameCapture"))
     {
         drawWindowAccents();
-        if (!m_capture)
+        const std::optional<FrameFlow>& captured = m_frameCapture.flow();
+        const std::span<const Renderer::CaptureSnapshot> snapshots = m_frameCapture.snapshots();
+        if (!captured)
         {
             ImGui::TextColored(UiColors::c_textDim, "No capture. F9, or CAPTURE FRAME in the Render graph window,\n"
                                                     "keeps one frame in memory: every pass and every texture\n"
@@ -1241,18 +844,12 @@ void FrameInspector::drawWindows(ImGuiLayer& ui, const UiFonts& fonts)
         else
         {
             ImGui::TextColored(UiColors::c_textDim, "Frame %llu: %zu passes, %zu textures kept.",
-                               static_cast<unsigned long long>(m_captureFrame), m_capture->passes.size(),
-                               m_snapshots.size());
+                               static_cast<unsigned long long>(m_frameCapture.frame()), captured->passes.size(),
+                               snapshots.size());
             ImGui::SameLine();
             if (ImGui::SmallButton("CLEAR"))
             {
-                m_device.device().waitIdle();
-                for (Snapshot& snapshot : m_snapshots)
-                {
-                    m_device.device().destroy(snapshot.raw.texture);
-                }
-                m_snapshots.clear();
-                m_capture.reset();
+                m_frameCapture.clear();
                 m_capturePin.reset();
                 m_capturePass.reset();
                 m_captureSnapshot.reset();
@@ -1262,17 +859,14 @@ void FrameInspector::drawWindows(ImGuiLayer& ui, const UiFonts& fonts)
             // Shows a texture as a pass left it.
             const auto select = [&](std::uint32_t writer, std::uint32_t resource)
             {
-                for (std::size_t i = 0; i < m_snapshots.size(); ++i)
+                if (const std::optional<std::uint32_t> index = m_frameCapture.snapshotFor(writer, resource))
                 {
-                    if (m_snapshots[i].pass == writer && m_snapshots[i].resource == resource)
-                    {
-                        m_captureSnapshot = i;
-                        m_captureSettings = defaultSettings(m_snapshots[i].depth);
-                    }
+                    m_captureSnapshot = *index;
+                    m_captureSettings = defaultSettings(snapshots[*index].depth);
                 }
             };
             drawLegend();
-            const FlowClick click = drawFlow(*m_capture, m_capturePass, m_capturePin, "capture",
+            const FlowClick click = drawFlow(*captured, m_capturePass, m_capturePin, "capture",
                                              std::max(160.0F * scale, ImGui::GetContentRegionAvail().y * 0.45F));
             if (click.pass)
             {
@@ -1285,28 +879,28 @@ void FrameInspector::drawWindows(ImGuiLayer& ui, const UiFonts& fonts)
                 m_capturePass = click.pin->pass;
                 const std::optional<std::uint32_t> writer =
                     click.pin->output ? std::optional{click.pin->pass}
-                                      : writerBefore(*m_capture, click.pin->resource, click.pin->pass);
-                if (writer && m_capture->resources[click.pin->resource].texture)
+                                      : writerBefore(*captured, click.pin->resource, click.pin->pass);
+                if (writer && captured->resources[click.pin->resource].texture)
                 {
                     select(*writer, click.pin->resource);
                 }
             }
             if (m_capturePin)
             {
-                drawPinInfo(*m_capture, *m_capturePin, fonts);
+                drawPinInfo(*captured, *m_capturePin, fonts);
             }
             if (m_capturePass)
             {
-                const FlowPass& pass = m_capture->passes[*m_capturePass];
+                const FlowPass& pass = captured->passes[*m_capturePass];
                 ImGui::SeparatorText(std::format("{}  {}", *m_capturePass, pass.name).c_str());
                 // Inputs: what it reads, and which pass wrote it; outputs: what it wrote. Clicking shows the texture.
                 pushMonoFont(fonts);
                 for (const FlowAccess& access : pass.accesses)
                 {
-                    const FlowResource& resource = m_capture->resources[access.resource];
+                    const FlowResource& resource = captured->resources[access.resource];
                     const std::optional<std::uint32_t> writer =
                         access.writes ? std::optional{*m_capturePass}
-                                      : writerBefore(*m_capture, access.resource, *m_capturePass);
+                                      : writerBefore(*captured, access.resource, *m_capturePass);
                     std::string label = std::format("{} {}", access.writes ? "OUT" : "IN ", resource.name);
                     if (resource.texture)
                     {
@@ -1315,7 +909,7 @@ void FrameInspector::drawWindows(ImGuiLayer& ui, const UiFonts& fonts)
                     }
                     if (!access.writes)
                     {
-                        label += writer ? std::format("  from {}", m_capture->passes[*writer].name)
+                        label += writer ? std::format("  from {}", captured->passes[*writer].name)
                                         : "  (from before the frame)";
                     }
                     const bool showable = resource.texture && writer.has_value();
@@ -1328,11 +922,11 @@ void FrameInspector::drawWindows(ImGuiLayer& ui, const UiFonts& fonts)
                 }
                 popMonoFont();
             }
-            if (m_captureSnapshot && *m_captureSnapshot < m_snapshots.size() && m_captureDisplay.texture.isSet())
+            if (m_captureSnapshot && *m_captureSnapshot < snapshots.size() && m_captureDisplay.texture.isSet())
             {
-                const Snapshot& snapshot = m_snapshots[*m_captureSnapshot];
-                ImGui::SeparatorText(std::format("{} after {}", m_capture->resources[snapshot.resource].name,
-                                                 m_capture->passes[snapshot.pass].name)
+                const Renderer::CaptureSnapshot& snapshot = snapshots[*m_captureSnapshot];
+                ImGui::SeparatorText(std::format("{} after {}", captured->resources[snapshot.resource].name,
+                                                 captured->passes[snapshot.pass].name)
                                          .c_str());
                 drawDisplayControls(m_captureSettings, snapshot.depth);
                 const float aspect = static_cast<float>(m_captureDisplay.info.width) /

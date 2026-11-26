@@ -45,6 +45,7 @@ ViewportController::ViewportController(const ViewportControllerDeps& deps)
                     .world = deps.world,
                     .renderer = deps.renderer,
                     .log = deps.log})
+    , m_captureTools(deps.commands, deps.renderer, deps.log)
 {
     registerDefaultIcons(m_icons); // the camera; other invisible kinds add theirs here
     registerCommands();
@@ -127,7 +128,8 @@ void ViewportController::handleClicks()
     {
         const std::vector<PlacedIcon> icons = placedIcons();
         if (const std::optional<entt::entity> hit =
-                pickIcon(*view, icons, static_cast<float>(at.x * ratio), static_cast<float>(at.y * ratio)))
+                pickIcon(*view, icons, static_cast<float>(static_cast<double>(at.x) * ratio),
+                         static_cast<float>(static_cast<double>(at.y) * ratio)))
         {
             selectClicked(*hit, m_pressToggle);
             return;
@@ -531,6 +533,7 @@ void ViewportController::tick(float deltaSeconds)
     }
     m_drew = (m_editorViewport && renderer->wasDrawn(*m_editorViewport)) ||
              (m_gameViewport && renderer->wasDrawn(*m_gameViewport));
+    m_captureTools.tick(); // a capture picture that came back with this frame
 }
 
 void ViewportController::registerCommands()

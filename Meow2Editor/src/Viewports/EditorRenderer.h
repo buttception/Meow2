@@ -10,6 +10,7 @@
 #include <Meow2/Core/Result.h>
 #include <Meow2/Graphics/Renderer/DebugLines.h>
 #include <Meow2/Graphics/Renderer/DepthPositionView.h>
+#include <Meow2/Graphics/Renderer/FrameCapture.h>
 #include <Meow2/Graphics/Renderer/FrameResources.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Renderer/InfiniteGrid.h>
@@ -243,6 +244,13 @@ public:
     /// @return True after a failure.
     [[nodiscard]] bool debugFailed() const;
 
+    /// @brief The frame capture: request() captures the next frame drawn (every viewport's passes).
+    /// @return It.
+    [[nodiscard]] Renderer::FrameCapture& frameCapture()
+    {
+        return *m_capture;
+    }
+
     /// @brief What the Stats dock shows about the GPU and the scene on it.
     /// @return The figures, as of the last frame.
     [[nodiscard]] RenderStats stats() const;
@@ -308,9 +316,10 @@ private:
         Rhi::ResourceState maskState = Rhi::ResourceState::Undefined; ///< The mask's state after the last frame.
         std::uint32_t maskWidth = 0;                                  ///< The mask's size.
         std::uint32_t maskHeight = 0;
-        ViewportOverlay overlay;                           ///< setOverlay().
-        std::unique_ptr<Renderer::DebugLines> debugLines;  ///< Draws its world shapes; made on first use.
-        std::unique_ptr<Renderer::DebugLines> screenLines; ///< Draws its screen shapes; made with debugLines.
+        ViewportOverlay overlay;                                  ///< setOverlay().
+        std::unique_ptr<Renderer::DebugLines> debugLines;         ///< Draws its world shapes; made on first use.
+        std::unique_ptr<Renderer::DebugLines> screenLines;        ///< Draws its screen shapes; made with debugLines.
+        std::optional<Renderer::GraphResource> offscreenResource; ///< Its offscreen target in this frame's graph.
     };
 
     /// @brief A pick asked for. Plain data.
@@ -375,5 +384,6 @@ private:
     std::unique_ptr<Renderer::DepthPositionView> m_positionView; ///< The Position view's pass; made on first use.
     std::optional<ViewportId> m_debugViewport;                   ///< setDebugViewport().
     bool m_gridOn = false;                                       ///< setGrid().
+    std::unique_ptr<Renderer::FrameCapture> m_capture;           ///< The frame capture (F9).
 };
 } // namespace Meow2::Editor
