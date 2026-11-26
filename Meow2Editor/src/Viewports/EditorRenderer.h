@@ -10,6 +10,7 @@
 #include <Meow2/Core/Result.h>
 #include <Meow2/Graphics/Renderer/DebugLines.h>
 #include <Meow2/Graphics/Renderer/DepthPositionView.h>
+#include <Meow2/Graphics/Renderer/FrameCapture.h>
 #include <Meow2/Graphics/Renderer/FrameResources.h>
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Renderer/InfiniteGrid.h>
@@ -243,6 +244,13 @@ public:
     /// @return True after a failure.
     [[nodiscard]] bool debugFailed() const;
 
+    /// @brief The frame capture: request() captures the next frame drawn (every viewport's passes).
+    /// @return It.
+    [[nodiscard]] Renderer::FrameCapture& frameCapture()
+    {
+        return *m_capture;
+    }
+
     /// @brief What the Stats dock shows about the GPU and the scene on it.
     /// @return The figures, as of the last frame.
     [[nodiscard]] RenderStats stats() const;
@@ -375,5 +383,6 @@ private:
     std::unique_ptr<Renderer::DepthPositionView> m_positionView; ///< The Position view's pass; made on first use.
     std::optional<ViewportId> m_debugViewport;                   ///< setDebugViewport().
     bool m_gridOn = false;                                       ///< setGrid().
+    std::unique_ptr<Renderer::FrameCapture> m_capture;           ///< The frame capture (F9).
 };
 } // namespace Meow2::Editor

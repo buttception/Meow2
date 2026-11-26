@@ -38,6 +38,7 @@ class ConsoleDock;
 class GameViewportDock;
 class QtInputSource;
 class SceneDocument;
+class RenderGraphDock;
 class SettingsDialog;
 class StatsDock;
 class ViewportController;
@@ -151,6 +152,10 @@ public:
     /// @return It.
     [[nodiscard]] StatsDock& statsDock();
 
+    /// @brief The Render graph dock (the frame capture).
+    /// @return It.
+    [[nodiscard]] RenderGraphDock& renderGraphDock();
+
     /// @brief Starts a new scene, asking about unsaved changes first (File → New).
     /// @return True if a new scene was started.
     bool newScene();
@@ -259,6 +264,8 @@ private:
     StatsDock* m_statsDock = nullptr;                 ///< Owned by Qt.
     QAction* m_debugAction = nullptr;                 ///< Checked while the Debug dock is shown.
     QAction* m_statsAction = nullptr;                 ///< Checked while the Stats dock is shown.
+    RenderGraphDock* m_renderGraphDock = nullptr;     ///< Owned by Qt.
+    QAction* m_renderGraphAction = nullptr;           ///< Checked while the Render graph dock is shown.
     QMenu* m_recentMenu = nullptr;                    ///< File → Open Recent.
     QStringList m_recentShown;                        ///< What m_recentMenu lists.
     std::function<UnsavedAnswer()> m_askUnsaved;      ///< setUnsavedPrompt().

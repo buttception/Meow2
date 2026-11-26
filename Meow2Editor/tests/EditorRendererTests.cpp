@@ -22,6 +22,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -534,4 +535,46 @@ TEST_F(EditorRendererTest, FrozenCullingKeepsFrustum)
     m_renderer->debugState().showFrustum = true;
     runFrame(outside);
     EXPECT_EQ(changedPixels(withoutFrustum, copyPixels(m_editor)), 0U);
+}
+
+// Owner request (#232): the editor captures a frame of both viewports and reads a captured texture back as a picture.
+TEST_F(EditorRendererTest, CapturesAFrame)
+{
+    runFrame();
+    Meow2::Renderer::FrameCapture& capture = m_renderer->frameCapture();
+    capture.request();
+    runFrame();
+    ASSERT_TRUE(capture.flow());
+    const Meow2::Renderer::FrameFlow& flow = *capture.flow();
+    EXPECT_GT(flow.passes.size(), 10U) << "both viewports' passes";
+    ASSERT_FALSE(capture.snapshots().empty());
+
+    // The last texture snapshot of a colour texture, as a picture: not all black.
+    std::optional<std::uint32_t> pick;
+    for (std::uint32_t i = 0; i < capture.snapshots().size(); ++i)
+    {
+        if (!capture.snapshots()[i].depth)
+        {
+            pick = i;
+        }
+    }
+    ASSERT_TRUE(pick);
+    capture.requestImage(*pick, Meow2::Renderer::defaultDisplaySettings(false), 64);
+    std::optional<Meow2::Renderer::CapturedImage> image;
+    for (std::uint32_t i = 0; i < Meow2::Rhi::c_maxFramesInFlight + 2 && !image; ++i)
+    {
+        runFrame();
+        image = capture.takeImage();
+    }
+    ASSERT_TRUE(image) << "came back";
+    EXPECT_LE(std::max(image->width, image->height), 64U);
+    std::uint32_t lit = 0;
+    for (std::size_t i = 0; i + 3 < image->pixels.size(); i += 4)
+    {
+        lit += (static_cast<int>(image->pixels[i]) + static_cast<int>(image->pixels[i + 1]) +
+                static_cast<int>(image->pixels[i + 2])) > 0
+                   ? 1U
+                   : 0U;
+    }
+    EXPECT_GT(lit, 0U);
 }

@@ -76,6 +76,8 @@ Result<std::unique_ptr<EditorRenderer>> EditorRenderer::create(const EditorRende
     renderer->m_toneMapShader = shaderId("01a1b5e2-3c17-8000-80a4-7b19d2e6c058");
     renderer->m_debug =
         std::make_unique<Renderer::RenderDebug>(*renderer->m_pipelines, renderer->m_toneMapShader, deps.log);
+    renderer->m_capture = std::make_unique<Renderer::FrameCapture>(
+        *renderer->m_device, *renderer->m_pipelines, shaderId("01a1b5e2-3c18-8000-80a4-7b19d2e6c059"), deps.log);
     if (Result<void> overlays = renderer->makeOverlayPipelines(); !overlays)
     {
         return Unexpected<Error>{overlays.error()};
@@ -353,6 +355,7 @@ EditorRenderer::~EditorRenderer()
     {
         m_device->device().waitIdle();
         m_positionView.reset(); // their GPU objects go while the device is still there
+        m_capture.reset();
         m_grid.reset();
         for (Viewport& viewport : m_viewports)
         {
@@ -586,7 +589,8 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
         return Unexpected<Error>{first.error()};
     }
     const std::uint32_t slot = device.frameSlot();
-    readPick(slot); // beginFrame() waited for this slot's last frame, so its copy has landed
+    readPick(slot);              // beginFrame() waited for this slot's last frame, so its copy has landed
+    m_capture->beginFrame(slot); // and so has a capture picture drawn in it
     Renderer::RenderGraph graph;
     bool skyAdded = false;
     // Resources whose states carry over to the next frame, read back after compile().
@@ -855,6 +859,7 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
         viewport.drawn = true;
     }
 
+    m_capture->afterPasses(graph, slot); // after every viewport's passes: a capture sees the whole frame
     graph.compile();
     if (pickResource)
     {
@@ -866,6 +871,7 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
     }
     Result<std::vector<Rhi::IRhiCommandList*>> lists = graph.execute(device, m_deps.jobs);
     m_scene->endFrame(graph);
+    m_capture->endFrame(graph);
     if (m_positionView)
     {
         m_positionView->endFrame(graph);

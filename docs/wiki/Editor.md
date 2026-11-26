@@ -6,10 +6,10 @@ Meow2Editor is a **Qt** application: a main window with an **editor viewport** i
   - `Meow2Editor/src/`: `EditorMainWindow`, `ViewportWidget`, `WindowPlacement`, `EditorTheme`, `main.cpp`;
   - `Meow2Editor/src/Commands/`: `EditorCommandRegistry`, `UndoStack`, `CommandSchema`, `EditorSettings`, `EditorCommands` (the built-in commands);
   - `Meow2Editor/src/Panels/`: `ConsoleDock`, `SettingsDialog`, `DebugDock`, `StatsDock` (and the other docks);
-  - `Meow2Editor/src/Viewports/`: `ViewportController`, `EditorRenderer`, `DebugTools` (the debug tools' commands);
+  - `Meow2Editor/src/Viewports/`: `ViewportController`, `EditorRenderer`, `DebugTools` (the debug tools' commands), `CaptureTools` (the frame capture's);
   - built as the `Meow2EditorCore` library plus the exe, so the tests use the same code.
 - Requirements: Qt ≥ 6.8 (Widgets), tested with 6.12.0. Installing Qt and pointing CMake at it is on the [Building → Qt](Building.md#qt) page.
-- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222); the Hierarchy and Inspector docks and the edit commands (#224); picking and the selection outline (#226); gizmos, scene settings and projects (#228); the Debug and Stats docks (#230); camera icons (#231).
+- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222); the Hierarchy and Inspector docks and the edit commands (#224); picking and the selection outline (#226); gizmos, scene settings and projects (#228); the Debug and Stats docks (#230); camera icons (#231); the frame capture and its render graph (#232).
 - **Window size:** in logical units like every app ([Window](Window.md#settings)): 80 % of the screen the first time, and shrunk to fit when a saved size is too big for the screen (Qt sizes follow display scaling, so 1920 × 1080 at 150 % would be 2880 × 1620 real pixels).
 
 ## Settings
@@ -263,6 +263,27 @@ The last selected entity gets a gizmo in the editor viewport, always on top and 
   - The handles are filled triangles (`Renderer::DebugLines`, which draws triangles with alpha blending as well as lines): a thick line is a quad along it, turned to face the camera; a cone and a box are solid. They're drawn into the editor viewport's HDR colour before the tone map, their colours divided by the exposure so they stay bright in any scene. Their size comes from how many pixels a metre covers at the entity: 100 px.
   - Hit tests are in screen space: the closest handle within 8 px, the centre box within 12 px of the centre.
 
+### Frame capture and the render graph
+
+**Capture frame** (F9, View → Capture frame, or the button in the **Render graph** dock, a tab beside the console) keeps one frame in memory: its render graph, both viewports' passes, and a copy of every texture as each pass left it.
+
+- **The graph:** the same node graph as Meow2Renderer's (levels top to bottom, inputs left, outputs right, wires coloured by kind: orange colour, cyan depth, green buffer, violet indirect arguments; debug passes dashed; skipped passes greyed and marked *(cached)*), drawn by `FlowView` from the engine's `Renderer::FrameFlow` and `placeFlow()`.
+- **Click a pass** to list what it reads (and which pass wrote it) and writes. **Click a pin** (or a texture in that list) to see the texture as the pass left it: an output as this pass wrote it, an input as the pass before left it. R, G, B, A buttons choose the channels (one alone shows as grey) and a range sets what's black and white. Depth starts as one channel over 0 … 0.05 (reversed Z puts most of a scene near 0).
+- **No live view** (owner decision): the graph is the captured frame's. For watching passes live, Meow2Renderer's Render graph window is the tool. RenderDoc (F11 in the Renderer) keeps captures on disk; this one is gone when the editor closes.
+- **Textures as pictures:** Qt can't show GPU textures, so the picked copy is drawn into an RGBA8 sRGB picture of at most 512 pixels a side and copied into a readback buffer. When that frame slot comes round again (its fence has signalled), the bytes are taken, so nothing waits on the GPU and the picture arrives a frame or two after the click. Only the picked texture is read back, at preview size: a frame's full-size HDR textures would be tens of megabytes.
+
+| Command | Kind | Parameters | What it does |
+|---|---|---|---|
+| `capture.frame` | action | — | Captures the next frame drawn (F9). Fails without a GPU. |
+| `capture.clear` | action | — | Drops the capture and frees its copies. |
+| `capture.info` | query | `brief` (optional) | Whether there's a capture, its frame number; unless `brief`, its graph (`flow`: passes with their accesses, resources with their kind, size and format) and `snapshots` (the pass and resource of each kept texture). |
+| `capture.show` | action | `pass`, `resource`, `channels`, `rangeMin`, `rangeMax`, `maxSize` | Asks for the texture `pass` left of `resource` as a picture. |
+| `capture.image` | query | `data` (optional) | The last picture: `serial` (rises with each new one), `snapshot`, size, settings, `pending`; with `data`, the picture as a base64 PNG. |
+
+None is undoable. The dock only runs these and reads the queries, so an agent sees the same graph and pictures (PR 6).
+
+- **How it works.** The capture is the engine's `Renderer::FrameCapture`, shared with Meow2Renderer. `EditorRenderer` calls its `beginFrame()` after the device's (taking a picture that came back), `afterPasses()` after every viewport's passes (capturing: a copy pass inserted after each pass that writes a texture, last pass first, so inserting doesn't move the passes still to visit; and the asked-for picture's display and readback passes), and `endFrame()` after execution. `CaptureTools` takes each picture after a frame and serves the commands.
+
 ### Icons for invisible objects
 
 Entities nothing draws get an **icon** in the editor viewport, so they aren't invisible and can be clicked. Today that's **cameras**: a wireframe camera (a box for the body, the lens opening out at its field of view and the game view's shape, a filled triangle on top for up), light grey for the main camera and darker grey for the others. A selected camera turns orange and shows what it sees: its view volume, 10 m out. Icons keep their size on screen (48 pixels) like the gizmo, are drawn only in the editor viewport, and a click on one selects its entity (Ctrl adds or removes), before the GPU pick, which can't see them.
@@ -397,6 +418,7 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.HierarchyDockTest.FollowsTheScene`, `Editor.InspectorDockTest.EditsIssueCommands`: the tree nests, selects, renames and re-parents through commands and follows changes; finished edits run `component.setField` once; Euler angles stay as typed.
 - `Editor.DebugCommandsTest.SettingsRoundTripAndSave`, `RejectsUnknownValues`: the debug commands report and save their choices (not freezing), nothing goes on the undo stack, the next window starts from them; unknown views and modes are refused. `Editor.DebugDockTest.ButtonsIssueCommands`: a button per view (dashed where a debug pass makes it), clicks run the commands, a change from elsewhere shows with its hint. `Editor.StatsDockTest.ShowsFrameAndMemory`, `Editor.StatsDockFormat.BytesForPeople`: frame times and the memory table from `stats.frame`.
 - `Editor.CameraIcons.ShapeAroundTheCamera`, `SelectedShowsItsViewInOrange`, `ClickPicksTheNearest`: the camera icon keeps its size on screen, opens wider for a wider lens, shows its view volume in orange when selected, nothing behind the viewer; a click finds the nearest. `Editor.EntityIconsTest.EveryCameraGetsOneAndKindsCanBeAdded`: every camera of a scene gets one (the main one emphasised, the selected one marked), and a new kind is one `add()`; an entity of two kinds keeps the first's.
+- `Editor.CaptureCommandsTest.WithoutGpu`: without a GPU, capturing and showing fail with a message, info and image say there's nothing. `Editor.CaptureFlowJson.RoundTrips`: the graph survives JSON both ways; an access to a missing resource is dropped. `Editor.RenderGraphDockTest.ShowsAFlowAndPicks` (against stand-in commands): a node per pass, a click on an input pin asks for the texture as the pass before left it, a buffer pin asks for nothing, the pass's reads and writes listed, the picture shown when it comes back. `EditorGpu.EditorRendererTest.CapturesAFrame`: a capture of both viewports has their passes and texture copies, and a picked copy comes back as a picture that isn't black.
 - `EditorGpu.EditorRendererTest.DebugViewOnlyInEditorViewport`: a debug view changes the editor viewport and not one pixel of the game view; Position, Overdraw and Triangles draw with the validation layer quiet; back to shaded, the same image. `GridAndWireframeDraw`: the grid adds lines; wireframe only is edges on black, overlay edges over the scene. `FrozenCullingKeepsFrustum`: from outside, the frozen frustum's lines show, and go when culling is unfrozen.
 - `Smoke.Editor.Runs` and `Smoke.Editor.OpensWindow`: the app runs 3 frames offscreen and exits 0.
 
@@ -407,7 +429,6 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - Prefabs: a model as one asset whose instances keep their edits when it's re-imported; textures cooked into the project at import.
 - Renaming, moving and deleting assets in the Assets dock (each needs its `.meta` kept with it).
 - Switching the graphics backend in the editor (the viewports would need to be a `RenderDevice` user).
-- The render graph and an in-memory frame capture (F9), with captured textures shown as images (M7 PR 5b). No live pass view in the editor: Meow2Renderer is the tool for watching passes live.
 - Mouse capture while flying (the cursor stays visible and can leave the viewport).
 - Routing Qt's own messages (`qWarning`, …) to the engine log.
 - Qt and its plugins in the release zip.

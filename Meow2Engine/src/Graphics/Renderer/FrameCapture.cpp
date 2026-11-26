@@ -2,7 +2,6 @@
 /// @brief FrameCapture (FrameCapture.h).
 
 #include <Meow2/Graphics/Renderer/FrameCapture.h>
-
 #include <Meow2/Graphics/Shader/BindlessLayout.h>
 
 #include <algorithm>
@@ -187,8 +186,8 @@ void FrameCapture::afterPasses(RenderGraph& graph, std::uint32_t frameSlot)
     {
         capture(graph);
     }
-    if (m_imageRequest && m_imageRequest->snapshot < m_snapshots.size() &&
-        m_states[m_imageRequest->snapshot].ready && m_display)
+    if (m_imageRequest && m_imageRequest->snapshot < m_snapshots.size() && m_states[m_imageRequest->snapshot].ready &&
+        m_display)
     {
         addImagePasses(graph, frameSlot, *std::exchange(m_imageRequest, std::nullopt));
     }
@@ -227,10 +226,11 @@ void FrameCapture::capture(RenderGraph& graph)
                 MEOW2_LOG_ERROR(m_log, "Capture snapshot not made: {}", copy.error());
                 continue;
             }
-            const GraphResource target = graph.import(
-                *copy, Rhi::ResourceState::Undefined,
-                std::format("Capture: {} after {}", resource.name, m_flow->passes[pass].name));
-            const std::optional<Rhi::TextureHandle> source = graph.resourceTexture(GraphResource{.index = access.resource});
+            const GraphResource target =
+                graph.import(*copy, Rhi::ResourceState::Undefined,
+                             std::format("Capture: {} after {}", resource.name, m_flow->passes[pass].name));
+            const std::optional<Rhi::TextureHandle> source =
+                graph.resourceTexture(GraphResource{.index = access.resource});
             const std::optional<PipelineId> pipeline = depth ? m_copyDepth : m_copyColor;
             Shader::PushConstants push{};
             push.instance = source ? device.bindlessIndex(*source) : 0U;
@@ -269,7 +269,8 @@ void FrameCapture::addImagePasses(RenderGraph& graph, std::uint32_t frameSlot, c
     // At most maxSide pixels a side, never larger than the texture: a preview, not a copy of it.
     const float scale = std::min(1.0F, static_cast<float>(request.maxSide) /
                                            static_cast<float>(std::max(snapshot.info.width, snapshot.info.height)));
-    const auto width = std::max(1U, static_cast<std::uint32_t>(std::lround(static_cast<float>(snapshot.info.width) * scale)));
+    const auto width =
+        std::max(1U, static_cast<std::uint32_t>(std::lround(static_cast<float>(snapshot.info.width) * scale)));
     const auto height =
         std::max(1U, static_cast<std::uint32_t>(std::lround(static_cast<float>(snapshot.info.height) * scale)));
 
@@ -346,7 +347,8 @@ void FrameCapture::addImagePasses(RenderGraph& graph, std::uint32_t frameSlot, c
     std::memcpy(device.mappedMemory(m_displayRecords[frameSlot]).data(), &record, sizeof(record));
 
     m_imageTargetResource = graph.import(m_imageTarget, m_imageTargetState, "Capture picture");
-    const GraphResource readback = graph.import(m_readback[frameSlot], Rhi::ResourceState::Undefined, "Capture readback");
+    const GraphResource readback =
+        graph.import(m_readback[frameSlot], Rhi::ResourceState::Undefined, "Capture readback");
     Shader::PushConstants push{};
     push.frameBuffer = device.bindlessIndex(m_displayRecords[frameSlot]);
     push.instance = 0;

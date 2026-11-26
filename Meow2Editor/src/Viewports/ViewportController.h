@@ -9,6 +9,7 @@
 #include "Editing/EntityIcons.h"
 #include "Editing/Gizmo.h"
 #include "Editing/SceneEditor.h"
+#include "Viewports/CaptureTools.h"
 #include "Viewports/DebugTools.h"
 #include "Viewports/EditorCamera.h"
 #include "Viewports/EditorRenderer.h"
@@ -163,8 +164,9 @@ private:
     [[nodiscard]] std::pair<float, float> cursorPixels() const;
 
     ViewportControllerDeps m_deps;
-    DebugTools m_debugTools; ///< The debug.* and stats.frame commands; applied to the renderer each frame.
-    EntityIcons m_icons;     ///< Which entities get an icon in the editor viewport (registerDefaultIcons()).
+    DebugTools m_debugTools;     ///< The debug.* and stats.frame commands; applied to the renderer each frame.
+    CaptureTools m_captureTools; ///< The capture.* commands (F9, the Render graph dock).
+    EntityIcons m_icons;         ///< Which entities get an icon in the editor viewport (registerDefaultIcons()).
     EditorCamera m_camera;
     std::optional<ViewportId> m_editorViewport; ///< In the renderer; unset without one (or without native windows).
     std::optional<ViewportId> m_gameViewport;

@@ -206,7 +206,7 @@ private:
     std::optional<std::size_t> m_captureSnapshot; ///< Shown full size.
     OwnedTexture m_captureDisplay;                ///< The selected snapshot as an image.
     DisplaySettings m_captureSettings;
-    std::uint64_t m_frame = 0;        ///< Frames seen.
+    std::uint64_t m_frame = 0; ///< Frames seen.
     std::vector<Rhi::TextureHandle>
         m_retired; ///< Replaced this frame while the graph still names them; freed in endFrame().
 

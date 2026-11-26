@@ -134,6 +134,7 @@ endif()
 # per backend (Graphics/Rhi/RhiTestBackend.h), so every behaviour is checked on both: RhiGpu.* on Vulkan,
 # RhiGpuD3D12.* on D3D12.
 set(meow2RhiGpuTestSources
+    Graphics/Renderer/FrameCaptureTests.cpp
     Graphics/Renderer/FrameResourcesTests.cpp Graphics/Renderer/GpuSceneTests.cpp
     Graphics/Renderer/RenderDeviceTests.cpp Graphics/Renderer/SkyAtmosphereTests.cpp
     Graphics/Renderer/ToneMapPassTests.cpp Graphics/Rhi/RhiDrawTests.cpp

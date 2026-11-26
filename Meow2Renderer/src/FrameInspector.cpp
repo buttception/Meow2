@@ -65,7 +65,6 @@ FrameInspector::DisplaySettings defaultSettings(bool depth)
 }
 } // namespace
 
-
 FrameInspector::FrameInspector(Renderer::RenderDevice& device, Renderer::PipelineLibrary& pipelines, AssetId shader,
                                Log::Logger& log)
     : m_device(device)

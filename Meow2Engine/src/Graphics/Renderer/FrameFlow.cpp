@@ -41,7 +41,6 @@ const char* formatName(Rhi::RhiFormat format)
     return "?";
 }
 
-
 /// @brief A state's name, as the pin details show it.
 const char* resourceStateName(Rhi::ResourceState state)
 {

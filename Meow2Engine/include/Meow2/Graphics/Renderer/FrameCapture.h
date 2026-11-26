@@ -41,21 +41,21 @@ struct TextureDisplaySettings
 /// @brief One texture of a capture, as a pass left it. Plain data.
 struct CaptureSnapshot
 {
-    std::uint32_t pass = 0;        ///< The pass that wrote it (index into the capture's FrameFlow::passes).
-    std::uint32_t resource = 0;    ///< Which resource (index into FrameFlow::resources).
-    bool depth = false;            ///< Kept as R32F depth, else as RGBA16F.
-    Rhi::TextureHandle texture{};  ///< The copy, the source's size.
-    Rhi::TextureInfo info{};       ///< Its size and format.
+    std::uint32_t pass = 0;       ///< The pass that wrote it (index into the capture's FrameFlow::passes).
+    std::uint32_t resource = 0;   ///< Which resource (index into FrameFlow::resources).
+    bool depth = false;           ///< Kept as R32F depth, else as RGBA16F.
+    Rhi::TextureHandle texture{}; ///< The copy, the source's size.
+    Rhi::TextureInfo info{};      ///< Its size and format.
 };
 
 /// @brief A snapshot as a picture on the CPU. Plain data.
 struct CapturedImage
 {
-    std::uint32_t snapshot = 0;             ///< Which snapshot (index into FrameCapture::snapshots()).
-    TextureDisplaySettings settings{};      ///< How it was shown.
-    std::uint32_t width = 0;                ///< Pixels across.
-    std::uint32_t height = 0;               ///< Pixels down.
-    std::vector<std::byte> pixels{};        ///< RGBA8, sRGB-encoded (ready for a screen), top row first, rows packed.
+    std::uint32_t snapshot = 0;        ///< Which snapshot (index into FrameCapture::snapshots()).
+    TextureDisplaySettings settings{}; ///< How it was shown.
+    std::uint32_t width = 0;           ///< Pixels across.
+    std::uint32_t height = 0;          ///< Pixels down.
+    std::vector<std::byte> pixels{};   ///< RGBA8, sRGB-encoded (ready for a screen), top row first, rows packed.
 };
 
 /// @brief One frame kept for inspection: request(), and the next frame that goes through afterPasses() is captured.
@@ -175,8 +175,8 @@ private:
     struct SnapshotState
     {
         Rhi::ResourceState state = Rhi::ResourceState::Undefined; ///< After the last frame that touched it.
-        std::optional<GraphResource> resource;                     ///< In this frame's graph, if imported.
-        bool ready = false;                                        ///< Written by a finished frame's graph.
+        std::optional<GraphResource> resource;                    ///< In this frame's graph, if imported.
+        bool ready = false;                                       ///< Written by a finished frame's graph.
     };
 
     /// @brief A picture asked for. Plain data.
@@ -207,26 +207,26 @@ private:
     RenderDevice& m_device;
     PipelineLibrary& m_pipelines;
     Log::Logger& m_log;
-    std::optional<PipelineId> m_copyColor;    ///< psCopy into RGBA16F.
-    std::optional<PipelineId> m_copyDepth;    ///< psCopy into R32F.
-    std::optional<PipelineId> m_display;      ///< psDisplay into RGBA8 sRGB.
-    bool m_requested = false;                 ///< request() since the last capture.
-    std::optional<FrameFlow> m_flow;          ///< The captured frame's graph.
-    std::vector<CaptureSnapshot> m_snapshots; ///< Its textures, in pass order.
-    std::vector<SnapshotState> m_states;      ///< Per snapshot.
-    std::uint64_t m_frame = 0;                ///< Frames seen.
-    std::uint64_t m_capturedFrame = 0;        ///< m_frame when captured.
+    std::optional<PipelineId> m_copyColor;     ///< psCopy into RGBA16F.
+    std::optional<PipelineId> m_copyDepth;     ///< psCopy into R32F.
+    std::optional<PipelineId> m_display;       ///< psDisplay into RGBA8 sRGB.
+    bool m_requested = false;                  ///< request() since the last capture.
+    std::optional<FrameFlow> m_flow;           ///< The captured frame's graph.
+    std::vector<CaptureSnapshot> m_snapshots;  ///< Its textures, in pass order.
+    std::vector<SnapshotState> m_states;       ///< Per snapshot.
+    std::uint64_t m_frame = 0;                 ///< Frames seen.
+    std::uint64_t m_capturedFrame = 0;         ///< m_frame when captured.
     std::vector<Rhi::TextureHandle> m_retired; ///< Freed after this frame (a graph may still name them).
 
-    std::optional<ImageRequest> m_imageRequest; ///< Asked for, not drawn yet.
+    std::optional<ImageRequest> m_imageRequest;                                           ///< Asked for, not drawn yet.
     std::array<std::optional<ImageInFlight>, Rhi::c_maxFramesInFlight> m_imageInFlight{}; ///< Per frame slot.
-    std::optional<CapturedImage> m_image;                                                  ///< Came back.
-    Rhi::TextureHandle m_imageTarget{};         ///< The picture on the GPU (RGBA8 sRGB).
-    Rhi::TextureInfo m_imageTargetInfo{};       ///< Its size.
+    std::optional<CapturedImage> m_image;                                                 ///< Came back.
+    Rhi::TextureHandle m_imageTarget{};                                    ///< The picture on the GPU (RGBA8 sRGB).
+    Rhi::TextureInfo m_imageTargetInfo{};                                  ///< Its size.
     Rhi::ResourceState m_imageTargetState = Rhi::ResourceState::Undefined; ///< After the last frame.
-    std::optional<GraphResource> m_imageTargetResource; ///< In this frame's graph.
-    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_readback{};      ///< Per slot.
-    std::array<std::uint64_t, Rhi::c_maxFramesInFlight> m_readbackBytes{};     ///< Their sizes.
+    std::optional<GraphResource> m_imageTargetResource;                    ///< In this frame's graph.
+    std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_readback{};  ///< Per slot.
+    std::array<std::uint64_t, Rhi::c_maxFramesInFlight> m_readbackBytes{}; ///< Their sizes.
     std::array<Rhi::BufferHandle, Rhi::c_maxFramesInFlight> m_displayRecords{}; ///< One DebugDisplay per slot.
 
     DeviceUser m_deviceUser; ///< Last: unregisters first, before what its callbacks use.

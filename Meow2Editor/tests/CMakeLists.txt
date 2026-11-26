@@ -4,6 +4,7 @@ meow2_add_test_suite(
     MODULE    Editor
     SOURCES
         CameraIconsTests.cpp
+        CaptureToolsTests.cpp
         ClickSelectionTests.cpp
         ConsoleDockTests.cpp
         DebugToolsTests.cpp
