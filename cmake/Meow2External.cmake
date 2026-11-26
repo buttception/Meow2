@@ -364,6 +364,13 @@ function(meow2_add_jolt)
     set(JPH_BUILD_SHARED_LIBS OFF)
     include("${PHYSICS_REPO_ROOT}/Jolt/Jolt.cmake")
     target_compile_definitions(Jolt PUBLIC "$<$<CONFIG:Debug,RelWithDebInfo>:JPH_ENABLE_ASSERTS>")
+    # With AVX2, Jolt also uses the LZCNT and TZCNT (BMI1) instructions. MSVC compiles their intrinsics as they are;
+    # GCC and Clang only with -mlzcnt and -mbmi, which our AVX2 flags don't include. PUBLIC: the engine's Jolt files
+    # inline the same functions from Jolt's headers. Every AVX2 CPU has both (Intel since Haswell, AMD since before
+    # its first AVX2 parts), so this doesn't raise the baseline the startup CPU check enforces.
+    if(NOT MSVC AND meow2SimdIsX64 AND MEOW2_SIMD STREQUAL "AVX2")
+        target_compile_options(Jolt PUBLIC -mlzcnt -mbmi)
+    endif()
     # Its headers are third-party: our warnings (meow2_set_warnings) don't apply to them in engine files.
     set_target_properties(Jolt PROPERTIES SYSTEM TRUE FOLDER "External")
 endfunction()
