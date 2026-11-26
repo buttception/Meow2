@@ -496,4 +496,11 @@ TEST_F(McpHeadlessTest, AgentBuildsAScene)
     std::ifstream file(folder / "project" / "Scenes" / "Agent.m2scene");
     const std::string scene{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
     EXPECT_NE(scene.find("Built by an agent"), std::string::npos) << scene;
+
+    // A headless run's window was never shown: it saves no placement or dock layout, which would move the user's
+    // next window (#240).
+    std::ifstream settingsFile(folder / "Meow2Editor.toml");
+    const std::string settings{std::istreambuf_iterator<char>(settingsFile), std::istreambuf_iterator<char>()};
+    EXPECT_EQ(settings.find("[window]"), std::string::npos) << settings;
+    EXPECT_EQ(settings.find("layout = "), std::string::npos) << settings;
 }

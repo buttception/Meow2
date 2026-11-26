@@ -76,6 +76,18 @@ TEST_F(WindowPlacementTest, OffDisplayIsCentred)
     EXPECT_NE(logText().find("is off every screen; centring it"), std::string::npos);
 }
 
+// A saved position at the work area's top-left corner is on screen, but the title bar above it wouldn't be, and a
+// window without its title bar can't be moved (#240): it comes down just enough, and keeps its x.
+TEST_F(WindowPlacementTest, TitleBarStaysOnScreen)
+{
+    const QRect screen = QGuiApplication::primaryScreen()->availableGeometry();
+    Meow2::Editor::showWithDesc(m_window, {.width = 400, .height = 300, .x = screen.left(), .y = screen.top()}, m_log);
+    const Meow2::Platform::WindowRect bounds = Meow2::Editor::restoredBounds(m_window);
+    EXPECT_EQ(bounds.x, screen.left());
+    EXPECT_GE(bounds.y, screen.top() + 32) << "room for the title bar";
+    EXPECT_LE(bounds.y, screen.top() + 32);
+}
+
 TEST_F(WindowPlacementTest, HiddenStaysHidden)
 {
     Meow2::Editor::showWithDesc(m_window, {.width = 400, .height = 300, .hidden = true}, m_log);

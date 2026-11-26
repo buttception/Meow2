@@ -25,7 +25,7 @@ Run it once in a terminal, start Claude Code, and the editor's tools are there (
 | `--mcp` | `editor.mcp.enabled` (false) | Starts the server. |
 | `--mcp-port <n>` | `editor.mcp.port` (47717) | Its port, on 127.0.0.1. With the setting at 0, a free port is used (the editor prints the address). |
 | `--mcp-token <text>` | — | The bearer token, at least 16 characters. Without it, each run makes a random 64-character one. |
-| `--headless` | `editor.headless.width`, `editor.headless.height` (1280 × 720) | No window: the viewports draw into offscreen textures of this size. Combined with `--mcp`, an agent drives an editor nobody sees. |
+| `--headless` | `editor.headless.width`, `editor.headless.height` (1280 × 720) | No window: the viewports draw into offscreen textures of this size. Combined with `--mcp`, an agent drives an editor nobody sees. It saves no window position or dock layout. |
 
 A random token is never written to the log, because logs get shared. Help → Copy MCP setup has it, and an agent that starts the editor itself passes its own with `--mcp-token`.
 

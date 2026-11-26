@@ -338,8 +338,13 @@ int main(int argc, char** argv)
     std::printf("Ran %llu frames\n", static_cast<unsigned long long>(clock.frameCount()));
     MEOW2_LOG_INFO(appLog, "Ran {} frames ({} fixed steps) in {:.2f} s", clock.frameCount(), loop.fixedStepCount(),
                    clock.totalSeconds());
-    Meow2::Editor::storeWindowState(config, window); // reopen where the user left it
-    window.saveLayout();                             // and the docks where they were
+    // Reopen where the user left it, docks included. Not after a headless run: its window was never shown (the
+    // offscreen platform gives it 0, 0 and a made-up size), and saving that would move the user's next window.
+    if (!arguments->headless)
+    {
+        Meow2::Editor::storeWindowState(config, window);
+        window.saveLayout();
+    }
     if (const Meow2::Result<void> saved = config.save(); !saved)
     {
         MEOW2_LOG_WARN(appLog, "Settings not saved: {}", saved.error());

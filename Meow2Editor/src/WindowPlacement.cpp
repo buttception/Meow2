@@ -19,6 +19,10 @@ Platform::WindowRect toWindowRect(const QRect& rect)
     return {rect.x(), rect.y(), rect.width(), rect.height()};
 }
 
+/// @brief Room kept above a window's client area for its title bar, in logical pixels (Windows 11's is about 31).
+///        setGeometry() places the client area, so the frame sits above the position it's given.
+constexpr int c_titleBarRoom = 32;
+
 /// @brief Every screen's bounds, for Platform::isReachable().
 std::vector<Platform::WindowRect> screenBounds()
 {
@@ -72,7 +76,13 @@ void showWithDesc(QWidget& window, const Platform::WindowDesc& desc, Log::Logger
         if (!reachable || !area.contains(rect))
         {
             rect.moveCenter(area.center());
-            rect.moveTop(std::max(rect.top(), area.top() + 32)); // keep the title bar on screen
+            rect.moveTop(std::max(rect.top(), area.top() + c_titleBarRoom)); // keep the title bar on screen
+        }
+        else if (rect.top() < area.top() + c_titleBarRoom)
+        {
+            // On screen, but too high for its title bar (a client area at y 0 puts the frame above the screen, and a
+            // window without a reachable title bar can't be moved): down just enough, keeping x.
+            rect.moveTop(area.top() + c_titleBarRoom);
         }
     }
     window.setGeometry(rect);
