@@ -11,6 +11,9 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 ### Changed
 - Meow2Editor: new scenes start in daylight (the sun 55° high behind the main camera, exposure 2.5) instead of looking like dusk; scenes you saved keep their own light (#239).
 
+### Fixed
+- Meow2Editor no longer opens with its title bar above the screen, where the window couldn't be moved: a saved position too close to the top is moved down for the title bar, and headless runs (`--headless`) no longer save their hidden window's position and dock layout over yours (#241).
+
 ## [0.8.0] — 2026-11-26
 
 ### Added

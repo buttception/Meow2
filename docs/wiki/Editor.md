@@ -30,7 +30,8 @@ videoDriver = ""      # empty = the OS default; "offscreen" = no visible window 
 ```
 
 - At exit the editor writes back the window's **normal** geometry (Qt's `normalGeometry()`), so a window closed while maximized reopens maximized and restores to its normal size.
-- A position that is no longer on any screen falls back to centred. The check (`Platform::isReachable`) is the same one the SDL apps use.
+- A position that is no longer on any screen falls back to centred. The check (`Platform::isReachable`) is the same one the SDL apps use. A position on screen but too close to the top for the title bar (a window whose client area starts at y 0) is moved down just enough (`c_titleBarRoom`, 32 logical pixels): `setGeometry()` places the client area, so the frame sits above it, and a window without a reachable title bar can't be moved.
+- A headless run (`--headless`) never saves the window's placement or the dock layout: its window was never shown.
 - `platform.videoDriver` is passed to Qt as its `-platform` option. The key uses SDL's names, so `x11` becomes Qt's `xcb`; the others (`windows`, `wayland`, `offscreen`) are the same.
 
 ## Commands
@@ -394,6 +395,7 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
   - normal geometry kept while maximized;
   - fullscreen;
   - off-screen position centred;
+  - a position too high for the title bar moved down (`TitleBarStaysOnScreen`);
   - hidden.
 - `Editor.EditorCommandRegistryTest.*`: listing, duplicate names, unknown commands, parameter checks, execute/undo/redo, failures and queries not recorded, disabled commands.
 - `Editor.UndoStackTest.*`: redo dropped by a new step, the limit, the clean mark, the revision.
