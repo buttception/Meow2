@@ -79,7 +79,7 @@ Engine code is grouped by **subsystem**, then **module**, then (in `src/` only) 
 | `Graphics` | `Rhi`, `Shader`, `Renderer` | `Vulkan`, `D3D12` (Rhi), `Dxc` (Shader) |
 | `Assets` | files directly in `Assets/` (asset core), `Shader`, `Texture`, `Gltf` | — |
 | `Physics` | files directly in `Physics/` | one per library (`Box3D`, `Jolt`, `PhysX`; §14) |
-| `Audio` | files directly in `Audio/` (planned, M10) | one per library |
+| `Audio` | files directly in `Audio/` (planned, M11) | one per library |
 | `GameUi` | files directly in `GameUi/` | — |
 | `Packaging` | files directly in `Packaging/` | — |
 
@@ -109,7 +109,7 @@ Examples:
 | `MEOW2_BUILD_PLAYER` | ON | |
 | `MEOW2_BUILD_TESTS` | ON | |
 | `MEOW2_GPU_TESTS` | OFF | Tests needing a GPU (labels `gpu`, `visual`) |
-| `MEOW2_PHYSICS_BACKEND` | **⚠ OPEN** (M8) | The physics library: Box3D, Jolt or PhysX, decided in M8; `None` builds without physics |
+| `MEOW2_PHYSICS_BACKEND` | `Jolt` | The physics library (§14): `Jolt`, or `None` to build the engine without physics (`PhysicsWorld::create()` then fails with `Unsupported`) |
 | `MEOW2_SIMD` | `AVX2` | x64 instruction set for the whole build: `AVX2` (+ FMA3, F16C) or `SSE4.2`; every app checks the CPU at startup (§10) |
 | `MEOW2_SHADER_TOOLS` | ON | Downloads the pinned DXC (`MEOW2_DXC_DIR` uses an unpacked release instead); off, shaders can't be compiled, only loaded |
 | `MEOW2_MSVC_MP` | OFF | MSVC `/MP` for Visual Studio solutions (owner request 2026-11-14); no effect with Ninja, which compiles files in parallel itself |
@@ -149,10 +149,10 @@ ctest --preset windows-msvc-debug -L unit
 | Shader | `ShaderCompiler` | DXC (HLSL → DXIL / SPIR-V) | Interface leaves room for a custom shader language (§12) |
 | Renderer | `Renderer`, render graph | on RHI only | |
 | Assets | `AssetManager`, `importGltf`, `decodeImage` | asset core and shader assets (M4, §13a); glTF **2.0** importer, `.gltf` and `.glb`, through **cgltf**; PNG/JPEG through **stb_image**; textures cooked to BC7/BC5 `.m2texture` through **DirectXTex** | §13, §13a |
-| Physics | `PhysicsWorld`, `RigidBody`, `Shape`, `PhysicsDebugDraw` | **⚠ OPEN**: Box3D, Jolt or PhysX | selected at build time, or `None` (§14) |
+| Physics | `PhysicsLibrary`, `PhysicsWorld` (bodies, shapes, layers, queries, contact and sensor events) | **Jolt** (M8); Box3D possible later | selected at build time, or `None` (§14); 2D through Box2D in its own module (M9) |
 | GameUI | `UiContext`, widgets | in-house, drawn via Renderer | Used by `Meow2Player` |
 | Packaging | `GamePackager` | in-house | Editor export |
-| Audio | `AudioSystem`, `AudioSource`, `AudioListener` | **⚠ OPEN** (M10): miniaudio considered | selected at build time; mixing off the main thread, `MemTag::Audio` |
+| Audio | `AudioSystem`, `AudioSource`, `AudioListener` | **⚠ OPEN** (M11): miniaudio considered | selected at build time; mixing off the main thread, `MemTag::Audio` |
 
 **Interface policy — build-time selection everywhere, except the graphics API**
 
@@ -162,7 +162,7 @@ ctest --preset windows-msvc-debug -L unit
 | Everything else (window, physics, logging, crash, filesystem, shader compiler, asset importers, memory) | **at build time** | One public header per subsystem declares a concrete class (e.g. `Meow2::Physics::PhysicsWorld`) with a private `Impl` (pimpl). A CMake option (`MEOW2_PHYSICS_BACKEND=Jolt`) chooses which `src/<Subsystem>/<Module>/<Backend>/` sources are compiled. No virtual calls. |
 
 - Backend contracts are written down in the header, and enforced by shared "contract" tests that every backend must pass.
-- Tests that need a fake build with a `Null`/`Fake` backend (e.g. `MEOW2_PHYSICS_BACKEND=Null`), instead of mocking through virtuals.
+- Tests that need a fake build with a `Null`/`Fake` backend (e.g. `MEOW2_PHYSICS_BACKEND=None`), instead of mocking through virtuals.
 - Third-party types never appear in public engine headers (except DirectXMath in `Meow2/Math`; tl::expected through `Meow2/Core/Result.h`, because `Result<T>` is part of the API itself; and EnTT in `Meow2/Scene`, because its registry and views are the Scene API, §25).
 - The one other place with virtual calls is memory: allocators implement `std::pmr::memory_resource`, whose interface the C++ standard defines as virtual (§6).
 
@@ -178,7 +178,7 @@ Upgrading one is its own `chore/` PR. **Adding any submodule requires owner perm
 | SDL3 release-3.4.18 | window, input, gamepad | zlib | submodule; static, audio/camera/GPU/render subsystems off; only included under `src/Platform/**/Sdl/`. Linux needs X11/Wayland dev packages to build it ([Building](docs/wiki/Building.md#linux-packages)) |
 | DirectXMath may2026 | math | MIT | submodule; header-only, own INTERFACE target (`DirectXMath::DirectXMath`, linked PUBLIC: the `Meow2/Math` public-header exception); a `sal.h` shim (`Meow2Engine/shims/`) on its include path off Windows |
 | spdlog v1.17.0 | logging (bundled fmt; static library, no default logger, wchar file names on Windows) | MIT | submodule |
-| Physics library | physics | — | **⚠ OPEN** (M8, §14): Box3D, Jolt or PhysX, a submodule once chosen (needs approval) |
+| Jolt Physics v5.7.0 | rigid-body physics (§14) | MIT | submodule (owner-approved 2026-11-26); built from its own `Jolt/Jolt.cmake` (inside a CMake function, since it sets `CMAKE_CXX_STANDARD` 17 for its scope) as a SYSTEM target outside the engine's warnings; asserts on in Debug and RelWithDebInfo; its SIMD level comes from our global flags (`MEOW2_SIMD`), its memory under `MemTag::Physics`, its jobs on our JobSystem. Only included under `src/Physics/Jolt/` |
 | Dear ImGui v1.93.0-docking | Meow2Renderer UI | MIT | submodule (owner request, 2026-11-07); built as `meow2_imgui` only with the Renderer, never in the engine or Player; memory under `MemTag::ImGui`; its own backends aren't used: input comes from engine events and it draws through the RHI (`shaders/ImGui.hlsl`). `IMGUI_DISABLE_OBSOLETE_FUNCTIONS` |
 | Vulkan-Headers, volk vulkan-sdk-1.4.363.0 | Vulkan headers + loader-less function loading | Apache-2.0 / MIT | submodule; volk static, own target, X11 and Wayland types declared by volk (no X headers needed) |
 | VulkanMemoryAllocator v3.5.0 | VK memory | MIT | submodule; implementation in its own library, outside the engine's warnings |
@@ -342,12 +342,12 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
   5. A switch that fails (no device, or an owner can't restore) goes back to the old backend, so the app keeps running.
   - Rule this implies: nothing above the RHI may cache backend-native handles or pointers. Only engine handles, which are re-bound after the swap.
   - It costs a hitch of seconds, not a seamless switch. That is fine for comparing backends in Meow2Renderer.
-- **Bindless and GPU-driven** (owner decision 2026-11-06): one global descriptor heap and one fixed binding layout (Vulkan: set 0, binding 0 the sampler heap, binding 1 the mutable resource heap, passed to DXC explicitly); shaders get indices through push constants and index `ResourceDescriptorHeap`. On Vulkan DXC emulates that with descriptor indexing and `VK_EXT_mutable_descriptor_type`; on D3D12 it needs SM 6.6. Drawing is indirect with a count buffer, vertices are pulled from buffers, culling runs in compute. Older GPUs and Android need a check before M14.
+- **Bindless and GPU-driven** (owner decision 2026-11-06): one global descriptor heap and one fixed binding layout (Vulkan: set 0, binding 0 the sampler heap, binding 1 the mutable resource heap, passed to DXC explicitly); shaders get indices through push constants and index `ResourceDescriptorHeap`. On Vulkan DXC emulates that with descriptor indexing and `VK_EXT_mutable_descriptor_type`; on D3D12 it needs SM 6.6. Drawing is indirect with a count buffer, vertices are pulled from buffers, culling runs in compute. Older GPUs and Android need a check before M15.
 - **Deferred shading** (owner request 2026-11-14): opaque surfaces go through a G-buffer (albedo RGBA8 sRGB, normal RGBA16F, material RGBA8, emissive RGBA16F) and one lighting pass that rebuilds positions from depth; forward stays as a setting, and both share one lighting function and must match the same golden images. Blended surfaces stay forward. Up to four colour targets per pass (`c_maxColorTargets`).
-- **GPU instance buffer** (owner request, M7): Unreal's GPU Scene model. A persistent instance buffer with stable slots; each frame only changed transforms go through the upload ring, and a compute scatter pass writes them before culling, so cost follows what moved, not the scene's size. Transforms are 3×4 with the previous frame's beside them; mesh and material indices sit in a separate, rarely changing buffer; the camera is subtracted on the GPU (so moving the camera changes no instance). Static or movable is inferred from components with a runtime safety net and an optional override (M13), and only matters for caches (shadows, ray tracing, baked data).
+- **GPU instance buffer** (owner request, M7): Unreal's GPU Scene model. A persistent instance buffer with stable slots; each frame only changed transforms go through the upload ring, and a compute scatter pass writes them before culling, so cost follows what moved, not the scene's size. Transforms are 3×4 with the previous frame's beside them; mesh and material indices sit in a separate, rarely changing buffer; the camera is subtracted on the GPU (so moving the camera changes no instance). Static or movable is inferred from components with a runtime safety net and an optional override (M14), and only matters for caches (shadows, ray tracing, baked data).
 - **Meshlets** (owner request, M6): meshes are optimised and split into meshlets (≤ 64 vertices, ≤ 124 triangles, with a sphere and a normal cone) by meshoptimizer at import. Where the GPU has mesh shaders (optional: Vulkan's `VK_EXT_mesh_shader`, D3D12's mesh shader tier 1), opaque surfaces are drawn through task shaders that cull meshlets by frustum and normal cone and mesh shaders that draw the rest; elsewhere, and for blended surfaces, the indirect path stays. Both draw the same image.
 - **Pipeline cache** and up-front pipeline creation: the driver compiles DXIL/SPIR-V to machine code for the exact GPU when a pipeline is created, so that result is cached on disk, once per GPU and driver version.
-- **Shadows** (owner request 2026-11-14, M6): the sun casts cascaded shadow maps (up to four, reversed Z, stable: a slice sphere and texel snapping), read by the shared lighting function with a normal-offset bias and PCF. Static casters are drawn into a cached map per cascade only when it goes stale (the cascade moved, the sun turned, a static instance changed); movable casters (`MEOW2_INSTANCE_MOVABLE`) are drawn every frame over a copy of it, so lighting reads one combined map. Until mobility is inferred from components (M13), the app marks what moves. Point and spot light shadows come with lights in the editor.
+- **Shadows** (owner request 2026-11-14, M6): the sun casts cascaded shadow maps (up to four, reversed Z, stable: a slice sphere and texel snapping), read by the shared lighting function with a normal-offset bias and PCF. Static casters are drawn into a cached map per cascade only when it goes stale (the cascade moved, the sun turned, a static instance changed); movable casters (`MEOW2_INSTANCE_MOVABLE`) are drawn every frame over a copy of it, so lighting reads one combined map. Until mobility is inferred from components (M14), the app marks what moves. Point and spot light shadows come with lights in the editor.
 - Resources are referenced by handles owned by the device (32-bit index + generation). **GPU resources don't get UUIDs** (§24): they exist only while the program runs, are recreated on every hot swap and are looked up every frame, so a 128-bit key would cost hashing for nothing. A resource may record the `AssetId` it was loaded from, for debugging and Tracy names.
 - **D3D12** (M5): one root signature (the push constants as root constants at b0, heaps indexed directly), **enhanced barriers** (the same stages, accesses and layouts as Vulkan's synchronization2, so `ResourceState` maps one to one), and buffer ↔ texture copies with tightly packed rows. A GPU without them is refused with a message, as on Vulkan. Shaders that write a buffer use a second heap slot (`bindlessStorageIndex`), because D3D12 keeps read and write views apart.
 - Debug: validation layers / D3D12 debug layer, object names, validation messages routed to the `RHI` logger.
@@ -382,7 +382,9 @@ All three:           SDL gamepads ─► SdlGamepadSource ─┘            │
 ## 14. Physics
 
 - **Modular** (owner decision 2026-11-09): `PhysicsWorld` etc. are designed around concepts shared by Box3D, Jolt and PhysX (bodies, shapes, layers/filters, queries, character controller); the backend is chosen at build time (§3) and can be `None`, which builds the engine without physics. Shared contract tests run on every backend.
-- **⚠ OPEN** (M8): which backend comes first (the owner is considering Box3D; Jolt was the earlier plan; PhysX later), and whether 2D games get a 2D library (Box2D) or a 3D world locked to a plane, decided by measuring both.
+- **Jolt first** (owner decision 2026-11-26): mature, used in shipped games and Godot, a job interface that maps onto our JobSystem, and a double-precision mode for large worlds. Box3D (Erin Catto, MIT, alpha since 2026-06) may replace it later: the interface uses only what both libraries offer, so that's a new `src/Physics/Box3D/` folder and an option value. PhysX stays a later option.
+- **Events** mean physical touching: one Begin and one End per body pair, sorted by id so every run gives the same order. A backend that drops contacts when bodies fall asleep (Jolt) keeps the pair touching until a body wakes and has parted.
+- **2D** (owner decision 2026-11-26): a native 2D library (Box2D v3) in its own `Physics2D` module, in the 2D milestone (M9), rather than a 3D world locked to a plane: 2D shapes and tools (chain shapes, one-way platforms) and roughly 2–4× less work per contact. See [Physics](docs/wiki/Physics.md).
 - Engine-side types only in the interface; each library's types stay in its `src/Physics/<Backend>/` folder.
 
 ## 15. Game export
@@ -550,7 +552,7 @@ Requirement: **anything a user can do in the editor, an AI agent can do through 
 
 | Part | Changes when | Who |
 |---|---|---|
-| MAJOR | stays **0** until the public API and the game package format are promised stable (M12, export, at the earliest). Under 0.x, any MINOR may break things. | owner decides |
+| MAJOR | stays **0** until the public API and the game package format are promised stable (M13, export, at the earliest). Under 0.x, any MINOR may break things. | owner decides |
 | MINOR | **once per milestone.** The PR that closes a milestone sets `0.<milestone+1>.0`: M0 → 0.1.0, M1 → 0.2.0, M2 → 0.3.0, … | the milestone-closing PR |
 | PATCH | **only for a fix to an already-tagged release**, e.g. a bug in `v0.2.0` shipped as 0.2.1 before the next milestone is done. Normal feature PRs never touch it. | a `fix/` PR on a release branch |
 
@@ -773,3 +775,4 @@ The engine's entities and components use **[EnTT](https://github.com/skypjack/En
 - 2026-11-22 — §11: the rendering debug tools moved into the engine for the editor (M7 PR 5a); the editor gets a frame capture with textures read back as images, no live pass view (owner decision).
 - 2026-11-26 — §11: the frame capture and the render graph's data moved into the engine (`FrameCapture`, `FrameFlow`); the editor shows captured textures as pictures read back from the GPU (M7 PR 5b).
 - 2026-11-26 — §4/§20: cpp-httplib v0.66.0 added (owner-approved 2026-11-14); the MCP server implemented (both protocol eras, deferred results, localhost + token + Origin), headless mode and viewport screenshots (M7 PR 6). M7 done (0.8.0).
+- 2026-11-26 — §3/§4/§14: Jolt v5.7.0 added (owner-approved) as the first physics backend behind `PhysicsWorld`, `MEOW2_PHYSICS_BACKEND=Jolt|None`; Box3D possible later; 2D through Box2D in its own milestone. Roadmap: 2D is M9, Scripting M10, Audio M11, Game UI M12, Export M13, Advanced rendering M14, Platforms M15.

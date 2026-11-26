@@ -41,6 +41,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Game loop (fixed timestep, update, render) | [GameLoop](GameLoop.md) | ✅ M2 |
 | Input (keys, mouse, gamepads, events, SDL sources) | [Input](Input.md) | ✅ M2 |
 | File system (virtual paths, mounts) | [FileSystem](FileSystem.md) | ✅ M2 |
+| Physics (`PhysicsWorld`: bodies, shapes, layers, queries, contact events; Jolt or None) | [Physics](Physics.md) | 🟨 M8 |
 | Window (SDL3, settings in the config) | [Window](Window.md) | ✅ M2 |
 | Editor (Qt main window, viewports, commands and undo, scenes, editing docks, gizmos, debug tools, frame capture) | [Editor](Editor.md) | ✅ M7 |
 | MCP server: the editor driven by AI agents, headless mode, screenshots | [Mcp](Mcp.md) | ✅ M7 |

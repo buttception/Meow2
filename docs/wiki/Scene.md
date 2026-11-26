@@ -75,7 +75,7 @@ scene.applyCommands();
 
 | Component | Holds | Written by |
 |---|---|---|
-| `LocalTransform` | `Math::Transform` relative to the parent, and its `Mobility` (`Auto`, `Static`, `Movable`: saved in scene files now, inferred from components later, M13) | you: `setLocal()`, or directly + `markDirty()` |
+| `LocalTransform` | `Math::Transform` relative to the parent, and its `Mobility` (`Auto`, `Static`, `Movable`: saved in scene files now, inferred from components later, M14) | you: `setLocal()`, or directly + `markDirty()` |
 | `WorldTransform` | local → world matrix | `update()` |
 | `PreviousWorldTransform` | the world matrix at the previous fixed step | `savePrevious()` |
 | `Parent` | the parent entity (absent on roots) | `add()`, `setParent()` |
