@@ -58,6 +58,12 @@ add_library(Meow2EditorCore STATIC
     src/EditorMainWindow.h
     src/EditorTheme.cpp
     src/EditorTheme.h
+    src/Mcp/EditorArguments.cpp
+    src/Mcp/EditorArguments.h
+    src/Mcp/McpHttpServer.cpp
+    src/Mcp/McpHttpServer.h
+    src/Mcp/McpProtocol.cpp
+    src/Mcp/McpProtocol.h
     src/Panels/AssetsDock.cpp
     src/Panels/AssetsDock.h
     src/Panels/ConsoleDock.cpp
@@ -107,6 +113,8 @@ add_library(Meow2EditorCore STATIC
     src/WindowPlacement.h)
 target_include_directories(Meow2EditorCore PUBLIC src)
 target_link_libraries(Meow2EditorCore PUBLIC Meow2::Engine Qt6::Widgets)
+# The MCP server's HTTP transport (techstack.md §20); only McpHttpServer.cpp includes it.
+target_link_libraries(Meow2EditorCore PRIVATE httplib::httplib)
 # The asset icons (assets/icons/assets/*.svg, docs/wiki/Theme.md) built into the editor as resources
 # (:/icons/<Name>.svg). Drawing SVG needs Qt's Svg module, part of a standard Qt install; without it the Assets dock
 # falls back to Qt's own file icons.

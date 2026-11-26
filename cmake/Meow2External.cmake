@@ -314,3 +314,19 @@ if(MEOW2_SANITIZER STREQUAL "address")
 endif()
 set_target_properties(meow2_directxtex PROPERTIES FOLDER "External")
 add_library(DirectXTex::DirectXTex ALIAS meow2_directxtex)
+
+# ---- cpp-httplib (the editor's MCP server, techstack.md §20) --------------------------------------------------------
+# Header-only (one httplib.h); its own CMakeLists.txt is skipped (install rules, OpenSSL/zlib/brotli options we don't
+# use: the server is plain HTTP on 127.0.0.1). Only Meow2Editor/src/Mcp/McpHttpServer.cpp includes it. Its sockets need
+# ws2_32 on Windows and its thread pool a threads library elsewhere.
+set(meow2HttplibDir "${PROJECT_SOURCE_DIR}/external/cpp-httplib")
+meow2_require_submodule(cpp-httplib "${meow2HttplibDir}")
+find_package(Threads REQUIRED)
+
+add_library(meow2_httplib INTERFACE)
+target_include_directories(meow2_httplib SYSTEM INTERFACE "${meow2HttplibDir}")
+target_link_libraries(meow2_httplib INTERFACE Threads::Threads)
+if(WIN32)
+    target_link_libraries(meow2_httplib INTERFACE ws2_32)
+endif()
+add_library(httplib::httplib ALIAS meow2_httplib)

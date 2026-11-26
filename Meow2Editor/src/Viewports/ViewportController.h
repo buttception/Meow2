@@ -19,7 +19,10 @@
 #include <Meow2/Core/Log/Logger.h>
 #include <Meow2/Platform/Input/InputSystem.h>
 
+#include <cstdint>
 #include <optional>
+#include <QJsonObject>
+#include <utility>
 
 namespace Meow2::Editor
 {
@@ -41,6 +44,9 @@ struct ViewportControllerDeps
     ViewportWidget& editorViewport;  ///< The editor viewport's widget.
     ViewportWidget& gameViewport;    ///< The game viewport's widget.
     Log::Logger& log;                ///< Receives drawing failures.
+    /// Headless (`--headless`): no native windows, so both viewports draw into offscreen textures of this size in
+    /// pixels, always visible (agents see them through `viewport.screenshot`). Unset: the widgets' windows.
+    std::optional<std::pair<std::uint32_t, std::uint32_t>> headlessSize = std::nullopt;
 };
 
 /// @brief Runs the two viewports: the editor camera from the input, each viewport's size and visibility, the scene's
@@ -64,6 +70,11 @@ struct ViewportControllerDeps
 /// - `viewport.setGizmo {mode, space, snap}`: the gizmo's mode (`translate`, `rotate`, `scale`), axes (`world`,
 ///   `local`) and snapping (each optional);
 /// - query `viewport.info`: each viewport's size, visibility, whether it drew, the camera mode and the render scale.
+/// - query `viewport.screenshot {viewport, maxSize}`: a PNG of a viewport, deferred (an MCP call waits for it):
+///   the renderer copies the next frame of it back (EditorRenderer::requestScreenshot()), and the query
+///   `viewport.screenshotResult {serial}` answers `{waiting: true}` until it has come back and been encoded.
+/// Headless (ViewportControllerDeps::headlessSize), both viewports are offscreen textures of a fixed size, always
+/// drawn.
 /// @par Thread safety
 /// Not thread-safe; GUI thread only.
 class ViewportController
@@ -159,6 +170,16 @@ private:
     /// @brief The editor camera as the gizmo sees it this frame.
     /// @return It, or nothing while the editor viewport has no size.
     [[nodiscard]] std::optional<GizmoView> gizmoView() const;
+    /// @brief Encodes a screenshot that came back from the renderer as m_shot (a PNG, scaled to m_shotMaxSize).
+    void takeScreenshot();
+    /// @brief A viewport widget's size in pixels; the fixed size when headless.
+    /// @param widget The widget.
+    /// @return Width and height.
+    [[nodiscard]] std::pair<std::uint32_t, std::uint32_t> sizeOf(const QWidget& widget) const;
+    /// @brief Whether a viewport can be seen (and so is drawn); always when headless.
+    /// @param widget The widget.
+    /// @return True if it's drawn.
+    [[nodiscard]] bool shown(const QWidget& widget) const;
     /// @brief The cursor in the editor viewport's pixels.
     /// @return x and y.
     [[nodiscard]] std::pair<float, float> cursorPixels() const;
@@ -182,5 +203,9 @@ private:
     EntityId m_dragEntity{};                   ///< What the drag moves.
     Math::Transform m_dragFrom{};              ///< Its local transform when the drag began.
     std::optional<Math::Transform> m_dragLast; ///< The last local transform the drag previewed.
+    std::uint64_t m_shotSerial = 0;            ///< Screenshots asked for (`viewport.screenshot`).
+    std::uint64_t m_shotReady = 0;             ///< The serial m_shot answers; 0: none yet.
+    int m_shotMaxSize = 1024;                  ///< The asked-for picture's longest side.
+    QJsonObject m_shot;                        ///< The last screenshot, as `viewport.screenshotResult` answers.
 };
 } // namespace Meow2::Editor

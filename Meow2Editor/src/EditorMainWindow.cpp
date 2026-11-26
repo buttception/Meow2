@@ -150,7 +150,8 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
                                                                               .renderer = deps.renderer,
                                                                               .editorViewport = *m_viewport,
                                                                               .gameViewport = m_gameDock->viewport(),
-                                                                              .log = deps.log});
+                                                                              .log = deps.log,
+                                                                              .headlessSize = deps.headlessSize});
     connect(
         &m_gameDock->renderScaleBox(), &QComboBox::activated, this, [this](int index)
         { run(u"viewport.setRenderScale"_s, {{u"percent"_s, m_gameDock->renderScaleBox().itemData(index).toInt()}}); });
@@ -585,6 +586,9 @@ void EditorMainWindow::createMenusAndToolbar()
     window->addAction(m_debugAction);
     window->addAction(m_statsAction);
     window->addAction(m_renderGraphAction);
+    QMenu* help = menuBar()->addMenu(u"&Help"_s);
+    // The line that connects Claude Code to this editor (its address and token); greyed out without --mcp.
+    help->addAction(addCommandAction(u"Copy MCP setup"_s, u"mcp.copySetup"_s));
 
     QToolBar* toolbar = addToolBar(u"Main"_s);
     toolbar->setObjectName(u"MainToolbar"_s);

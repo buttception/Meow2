@@ -230,7 +230,7 @@ Planned as four PRs (PR 2, scene files, moved to M7), plus PRs 6, 7 and 8 for th
 
 **Not in M6** (M13): skinning, morph targets, Draco and meshopt compression, Basis Universal textures, `KHR_materials_*` extensions. Node animation is played in Renderer only, without an animation system.
 
-## M7 — Editor 🟨
+## M7 — Editor ✅
 **Goal:** a Qt (≥ 6.8) editor with an editor and a game viewport, fully drivable by AI agents over MCP, saving scenes as mergeable, versioned `.m2scene` files (moved here from M6, owner decision 2026-11-09), with the Renderer's debug tools rebuilt in Qt.
 **Depends on:** M6, M5, M1
 
@@ -267,12 +267,14 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - ✅ **PR 5 Debug tools in Qt**, split in two (owner decision 2026-11-22): the debug views, wireframe, frozen culling and its frustum, the grid and the Stats dock first, the tools moved into the engine (#230 / PR #231, with camera icons), then the render graph and frame capture (F9) (#232 / PR #233). No live pass view in the editor (Meow2Renderer is the tool for that): captured textures are read back and shown as images
   - The Renderer's ImGui tools remade as Qt docks on the same engine data: the render graph node view (pins, kinds, dashed debug passes), frame capture (F9), debug-view buttons (Position dotted), wireframe, frozen culling and its frustum, the grid, frame and memory stats
   - Capture and debug-tool settings as editor commands (nothing to undo), so MCP can use them too; saved to the TOML config
-- **PR 6 MCP, headless and close**
+- ✅ **PR 6 MCP, headless and close** — #234 / PR #235
   - **MCP server** on cpp-httplib (submodule, pinned release): commands and queries as MCP tools, a viewport screenshot query (swapchain readback), localhost only, a per-session token, `Origin` checked, off unless `--mcp`
   - Headless mode (`--headless`): drawing without a swapchain; MCP integration tests in CI
   - Closing PR bumps the version to **0.8.0**
 
 **Done when** (besides the list): a scene saved as `.m2scene` loads in Renderer with unknown components skipped, and an old-version scene file upgrades; an agent builds and saves a scene over MCP; moving one object uploads one transform.
+
+**Released as `v0.8.0`** once PR #235, M7's last PR, is merged and tagged on its merge commit (with the owner's go-ahead). An agent building and saving a scene over MCP is the `Editor.McpHeadlessTest.AgentBuildsAScene` test. Not in M7, moved to later PRs: prefabs and cooking textures at import, MCP resources and prompts.
 
 ## M8 — Physics ⬜
 **Goal:** rigid bodies, modular: the backend is chosen at build time and can be turned off entirely. Before scripting, so scripts can use physics (owner decision 2026-11-09).
@@ -371,3 +373,4 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 - 2026-11-21 — M7 PR 4 done: gizmos with snapping (#228 / PR #229); the editor's dock tabs go on top (owner request).
 - 2026-11-22 — M7 PR 5 split in two (owner decision): the debug views, grid and stats (#230), then the render graph and frame capture; no live pass view in the editor.
 - 2026-11-26 — M7 PR 5 done: the editor's debug tools and stats (#230 / PR #231), then its frame capture and render graph (#232 / PR #233).
+- 2026-11-26 — M7 done (0.8.0): the MCP server, headless mode and screenshots (#234 / PR #235).

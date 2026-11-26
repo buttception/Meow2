@@ -262,20 +262,39 @@ void CaptureTools::registerCommands()
             }
             capture.requestImage(*snapshot, settings,
                                  parameters.contains(u"maxSize") ? index(parameters.value(u"maxSize")) : 512U);
-            return CommandOutcome{.result = QJsonObject{{u"snapshot"_s, number(*snapshot)}}};
+            // Deferred for MCP: the call waits until this picture is back (capture.image with `after`), then answers
+            // with it. The dock ignores that part and watches capture.image's serial itself.
+            return CommandOutcome{
+                .result = QJsonObject{
+                    {u"snapshot"_s, number(*snapshot)},
+                    {u"deferred"_s,
+                     QJsonObject{
+                         {u"query"_s, u"capture.image"_s},
+                         {u"parameters"_s,
+                          QJsonObject{{u"data"_s, true}, {u"after"_s, number(static_cast<double>(m_imageSerial))}}}}}}};
         });
 
     [[maybe_unused]] const Result<void> image = commands.add(
         {.name = u"capture.image"_s,
-         .description = u"The last captured texture shown as a picture: serial (rises with each new one), snapshot, "
-                        u"size, settings, pending; with data, the picture as a base64 PNG."_s,
+         .description =
+             u"The last captured texture shown as a picture: serial (rises with each new one), snapshot, "
+             u"size, settings, pending; with data, the picture as a base64 PNG; with after (a serial), {waiting: true} "
+             u"until a newer picture is back."_s,
          .kind = CommandKind::Query,
          .parameters = objectSchema(
-             {{.name = u"data"_s, .schema = propertySchema(u"boolean"_s, u"Include the PNG (base64)."_s)}})},
+             {{.name = u"data"_s, .schema = propertySchema(u"boolean"_s, u"Include the PNG (base64)."_s)},
+              {.name = u"after"_s,
+               .schema = propertySchema(u"integer"_s, u"Wait for a picture with a serial above this one."_s)}})},
         [this](const QJsonObject& parameters) -> Result<CommandOutcome>
         {
+            const bool pending = m_renderer != nullptr && m_renderer->frameCapture().imagePending();
+            if (parameters.contains(u"after") &&
+                (pending || static_cast<double>(m_imageSerial) <= parameters.value(u"after").toDouble()))
+            {
+                return CommandOutcome{.result = QJsonObject{{u"waiting"_s, true}}}; // not back yet (MCP polls)
+            }
             QJsonObject result{{u"serial"_s, number(static_cast<double>(m_imageSerial))},
-                               {u"pending"_s, m_renderer != nullptr && m_renderer->frameCapture().imagePending()},
+                               {u"pending"_s, pending},
                                {u"ready"_s, m_image.has_value()}};
             if (m_image)
             {

@@ -16,6 +16,7 @@ meow2_add_test_suite(
         EditorThemeTests.cpp
         GizmoTests.cpp
         MainWindowTests.cpp
+        McpTests.cpp
         QtInputSourceTests.cpp
         QtTestApplication.h
         SceneDocumentTests.cpp
@@ -29,6 +30,9 @@ meow2_add_test_suite(
     LIBRARIES Meow2EditorCore)
 # The theme tests load the bundled font from the source tree.
 target_compile_definitions(Meow2EditorTests PRIVATE MEOW2_FONTS_DIR="${PROJECT_SOURCE_DIR}/assets/fonts")
+# The MCP tests talk HTTP to the server (an httplib client), and start the editor itself headless.
+target_link_libraries(Meow2EditorTests PRIVATE httplib::httplib)
+target_compile_definitions(Meow2EditorTests PRIVATE MEOW2_EDITOR_EXE="$<TARGET_FILE:Meow2Editor>")
 # Deploy after the editor: both copy the same Qt DLLs into bin/, and two copies at once would collide.
 add_dependencies(Meow2EditorTests Meow2Editor)
 meow2_deploy_qt(Meow2EditorTests)
