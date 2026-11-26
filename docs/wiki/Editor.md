@@ -131,7 +131,7 @@ The editor works on a **project folder**: the scenes, models and their `.meta` f
 | Command | Kind | Parameters | What it does |
 |---|---|---|---|
 | `project.open` | action | `path` (full folder path), `discard` | Opens a project, made if the folder doesn't exist and given `Assets/`, `Scenes/` and a project file if missing; starts a new scene in it |
-| `scene.new` | action | `discard` | A new, untitled scene: a main camera and the default scene settings |
+| `scene.new` | action | `discard` | A new, untitled scene: a main camera 8 m back on −Z, and daylight: the sun 55° high behind that camera, exposure 2.5 (`c_newSceneEnvironment`; the engine's own defaults read as dusk) |
 | `scene.open` | action | `path`, `discard` | Opens a `.m2scene` of the project, with the models it uses |
 | `scene.save` | action | — | Saves to the scene's file; disabled for an untitled scene |
 | `scene.saveAs` | action | `path` | Saves to a `.m2scene` of the project, which becomes the scene's file |

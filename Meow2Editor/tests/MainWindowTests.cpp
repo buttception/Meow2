@@ -194,7 +194,8 @@ TEST_F(MainWindowTest, SceneSettingsDockAndAssetIcons)
     ASSERT_NE(dock, nullptr);
     auto* elevation = dock->findChild<QDoubleSpinBox*>(u"Environment.sunElevation"_s);
     ASSERT_NE(elevation, nullptr);
-    EXPECT_DOUBLE_EQ(elevation->value(), 35.0);
+    EXPECT_DOUBLE_EQ(elevation->value(), static_cast<double>(Meow2::Editor::c_newSceneEnvironment.sunElevation))
+        << "a new scene's sun";
     elevation->setValue(50.0);
     emit elevation->editingFinished();
     EXPECT_FLOAT_EQ(Meow2::Scene::environment(m_world.scene()).sunElevation, 50.0F);

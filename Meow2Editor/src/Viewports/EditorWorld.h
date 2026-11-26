@@ -33,6 +33,16 @@
 
 namespace Meow2::Editor
 {
+/// @brief The light a new scene starts with (`scene.new`): a sun 55° high, behind the default main camera (which
+///        stands on −Z looking +Z, so the sun's azimuth is about 180°), and an exposure for daylight. The engine's
+///        own Environment defaults (35° high, in front of that camera, exposure 1) read as dusk in the editor.
+///        Changing these doesn't touch saved scenes: each file keeps its own Environment.
+inline constexpr Scene::Environment c_newSceneEnvironment{.sunElevation = 55.0F,
+                                                          .sunAzimuth = 200.0F,
+                                                          .sunColor = {1.0F, 1.0F, 1.0F, 1.0F},
+                                                          .sunIntensity = 3.0F,
+                                                          .exposure = 2.5F};
+
 /// @brief What an EditorWorld uses. Plain data; everything must outlive the world.
 struct EditorWorldDeps
 {
@@ -70,8 +80,7 @@ public:
     /// @brief Gives an empty GPU scene for a new or opened scene (EditorRenderer::resetScene()), or null without a GPU.
     using FreshGpu = std::function<Renderer::GpuScene*()>;
 
-    /// @brief Replaces the scene with a new one: a main camera looking at the origin, and the default Environment
-    ///        setting.
+    /// @brief Replaces the scene with a new one: a main camera looking at the origin, and c_newSceneEnvironment.
     /// @param freshGpu Empties the GPU scene; unset without a GPU.
     void newScene(const FreshGpu& freshGpu = {});
 

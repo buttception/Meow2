@@ -180,7 +180,7 @@ void EditorWorld::newScene(const FreshGpu& freshGpu)
                                   .rotation = Math::lookRotation(Math::Vec3{-eye.x, -eye.y, -eye.z}),
                                   .scale = {1.0F, 1.0F, 1.0F}});
     fresh.scene->registry().emplace<Scene::Camera>(camera, Scene::Camera{.lens = {}, .main = true});
-    Scene::setEnvironment(*fresh.scene, {}); // the sun and exposure: a scene setting, not an entity
+    Scene::setEnvironment(*fresh.scene, c_newSceneEnvironment); // the sun and exposure: a scene setting
     adopt(std::move(fresh));
 }
 

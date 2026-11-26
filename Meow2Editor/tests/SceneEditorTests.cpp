@@ -278,14 +278,16 @@ TEST_F(SceneEditorTest, EnvironmentIsASceneSetting)
     EXPECT_FALSE(m_commands.execute(u"component.add", {{u"id"_s, id}, {u"component"_s, u"Environment"_s}}))
         << "a setting isn't added to entities";
 
-    EXPECT_DOUBLE_EQ(ok(m_commands, u"scene.settings").value(u"Environment")[u"sunElevation"].toDouble(), 35.0);
+    EXPECT_DOUBLE_EQ(ok(m_commands, u"scene.settings").value(u"Environment")[u"sunElevation"].toDouble(), 55.0)
+        << "a new scene starts in daylight (c_newSceneEnvironment)";
+    EXPECT_DOUBLE_EQ(ok(m_commands, u"scene.settings").value(u"Environment")[u"exposure"].toDouble(), 2.5);
     const std::uint64_t revision = m_world.revision();
     ok(m_commands, u"scene.setSetting",
        {{u"setting"_s, u"Environment"_s}, {u"field"_s, u"sunElevation"_s}, {u"value"_s, 60.0}});
     EXPECT_FLOAT_EQ(Meow2::Scene::environment(m_world.scene()).sunElevation, 60.0F);
     EXPECT_GT(m_world.revision(), revision) << "the docks and the viewports follow";
     ASSERT_TRUE(m_commands.execute(u"edit.undo"));
-    EXPECT_FLOAT_EQ(Meow2::Scene::environment(m_world.scene()).sunElevation, 35.0F);
+    EXPECT_FLOAT_EQ(Meow2::Scene::environment(m_world.scene()).sunElevation, 55.0F);
     EXPECT_FALSE(m_commands.execute(
         u"scene.setSetting",
         {{u"setting"_s, u"Environment"_s}, {u"field"_s, u"sunElevation"_s}, {u"value"_s, u"high"_s}}));
