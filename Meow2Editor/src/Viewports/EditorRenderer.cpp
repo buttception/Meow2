@@ -162,6 +162,106 @@ bool EditorRenderer::pickPending() const
            std::ranges::any_of(m_pickInFlight, [](const std::optional<PickRequest>& slot) { return slot.has_value(); });
 }
 
+void EditorRenderer::requestScreenshot(ViewportId viewport)
+{
+    m_shotRequest = viewport;
+}
+
+std::optional<ViewportImage> EditorRenderer::takeScreenshot()
+{
+    return std::exchange(m_shotResult, std::nullopt);
+}
+
+bool EditorRenderer::screenshotPending() const
+{
+    return m_shotRequest.has_value() || std::ranges::any_of(m_shotInFlight, [](const std::optional<ShotInFlight>& slot)
+                                                            { return slot.has_value(); });
+}
+
+Result<void> EditorRenderer::recordScreenshot(const Renderer::RenderGraph& graph, std::uint32_t slot,
+                                              std::vector<Rhi::IRhiCommandList*>& lists)
+{
+    if (!m_shotRequest || *m_shotRequest >= m_viewports.size() || !m_viewports[*m_shotRequest].drawn)
+    {
+        return {}; // not drawn this frame (hidden, no camera): the request waits for a frame that draws it
+    }
+    const ViewportId id = *std::exchange(m_shotRequest, std::nullopt);
+    Viewport& viewport = m_viewports[id];
+    Rhi::IRhiDevice& device = m_device->device();
+    const std::uint32_t width = viewport.swapchain ? viewport.swapchain->width() : viewport.width;
+    const std::uint32_t height = viewport.swapchain ? viewport.swapchain->height() : viewport.height;
+    if (m_shotInFlight[slot])
+    {
+        device.destroy(m_shotInFlight[slot]->buffer); // never read: a newer frame in the same slot replaces it
+        m_shotInFlight[slot].reset();
+    }
+    // Made per screenshot, at the viewport's size: screenshots are rare, and the size changes with the widget.
+    Result<Rhi::BufferHandle> buffer = device.createBuffer({.size = std::uint64_t{width} * height * 4,
+                                                            .memory = Rhi::RhiMemory::Readback,
+                                                            .tag = Memory::MemTag::Renderer,
+                                                            .name = std::format("Screenshot {}", viewport.name)});
+    if (!buffer)
+    {
+        return Unexpected<Error>{buffer.error()};
+    }
+    // A list of its own after every other, so it copies what the tone map and the overlays left. Thread 0: this one.
+    Result<Rhi::IRhiCommandList*> list = device.commandList(0);
+    if (!list)
+    {
+        device.destroy(*buffer);
+        return Unexpected<Error>{list.error()};
+    }
+    Rhi::RhiFormat format = Renderer::OffscreenTarget::format();
+    if (viewport.swapchain)
+    {
+        (*list)->copySwapchainToBuffer(*viewport.swapchain, *buffer);
+        format = viewport.swapchain->format();
+    }
+    else
+    {
+        // From where the frame left it: the offscreen readback (tests) already made it a copy source; otherwise as
+        // the graph left it (a colour target, or shader-read after a capture's copy).
+        const Rhi::ResourceState before = m_desc.readBackOffscreen     ? Rhi::ResourceState::CopySource
+                                          : viewport.offscreenResource ? graph.finalState(*viewport.offscreenResource)
+                                                                       : Rhi::ResourceState::ColorTarget;
+        if (before != Rhi::ResourceState::CopySource)
+        {
+            (*list)->barrier(viewport.offscreen->texture(), before, Rhi::ResourceState::CopySource);
+        }
+        (*list)->copyTextureToBuffer(viewport.offscreen->texture(), *buffer);
+    }
+    (*list)->barrier(*buffer, Rhi::ResourceState::CopyTarget, Rhi::ResourceState::HostRead);
+    lists.push_back(*list);
+    m_shotInFlight[slot] =
+        ShotInFlight{.viewport = id, .width = width, .height = height, .format = format, .buffer = *buffer};
+    return {};
+}
+
+void EditorRenderer::readScreenshot(std::uint32_t slot)
+{
+    std::optional<ShotInFlight> shot = std::exchange(m_shotInFlight[slot], std::nullopt);
+    if (!shot)
+    {
+        return;
+    }
+    const std::span<const std::byte> bytes = m_device->device().mappedMemory(shot->buffer);
+    ViewportImage image{.viewport = shot->viewport, .width = shot->width, .height = shot->height, .rgba = {}};
+    const std::size_t size = std::size_t{shot->width} * shot->height * 4;
+    image.rgba.assign(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(std::min(size, bytes.size())));
+    image.rgba.resize(size);
+    const bool bgra = shot->format == Rhi::RhiFormat::Bgra8Srgb;
+    for (std::size_t i = 0; i + 3 < image.rgba.size(); i += 4)
+    {
+        if (bgra)
+        {
+            std::swap(image.rgba[i], image.rgba[i + 2]);
+        }
+        image.rgba[i + 3] = std::byte{255}; // a swapchain's alpha means nothing on screen
+    }
+    m_device->device().destroy(shot->buffer);
+    m_shotResult = std::move(image);
+}
+
 void EditorRenderer::setOutline(ViewportId viewport, bool outline)
 {
     m_viewports.at(viewport).outline = outline;
@@ -368,6 +468,13 @@ EditorRenderer::~EditorRenderer()
             viewport.screenLines.reset();
         }
         m_device->device().destroy(m_pickBuffer);
+        for (std::optional<ShotInFlight>& shot : m_shotInFlight)
+        {
+            if (shot)
+            {
+                m_device->device().destroy(shot->buffer);
+            }
+        }
         for (const Rhi::BufferHandle readback : m_pickReadback)
         {
             m_device->device().destroy(readback);
@@ -591,6 +698,7 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
     }
     const std::uint32_t slot = device.frameSlot();
     readPick(slot);              // beginFrame() waited for this slot's last frame, so its copy has landed
+    readScreenshot(slot);        // and its screenshot
     m_capture->beginFrame(slot); // and so has a capture picture drawn in it
     Renderer::RenderGraph graph;
     bool skyAdded = false;
@@ -904,6 +1012,10 @@ Result<void> EditorRenderer::renderFrame(std::span<const std::optional<ViewportC
             }
         }
         lists->push_back(*tail);
+    }
+    if (Result<void> shot = recordScreenshot(graph, slot, *lists); !shot)
+    {
+        MEOW2_LOG_ERROR(m_deps.log, "Screenshot not taken: {}", shot.error());
     }
     return device.endFrame(*lists);
 }

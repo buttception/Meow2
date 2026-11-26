@@ -66,6 +66,12 @@ TEST_F(CaptureCommandsTest, WithoutGpu)
     EXPECT_FALSE(info.value(u"pending").toBool());
     const QJsonObject image = m_commands.execute(u"capture.image", {}).value().toObject();
     EXPECT_FALSE(image.value(u"ready").toBool());
+    // What a deferred capture.show polls over MCP: waiting until a picture newer than `after` is back.
+    const QJsonObject waiting = m_commands.execute(u"capture.image", {{u"after"_s, 0}}).value().toObject();
+    EXPECT_TRUE(waiting.value(u"waiting").toBool());
+    // No screenshot without a GPU either.
+    EXPECT_FALSE(m_commands.execute(u"viewport.screenshot", {}));
+    EXPECT_FALSE(m_commands.execute(u"viewport.screenshotResult", {{u"serial"_s, 1}}));
     EXPECT_TRUE(m_commands.execute(u"capture.clear", {})) << "nothing to clear is fine";
     EXPECT_FALSE(m_history.canUndo());
 }

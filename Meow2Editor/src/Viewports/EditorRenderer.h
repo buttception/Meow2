@@ -96,6 +96,15 @@ struct PickResult
                                  ///< empty: nothing there.
 };
 
+/// @brief A viewport's picture as its window shows it (requestScreenshot()). Plain data.
+struct ViewportImage
+{
+    ViewportId viewport = 0;       ///< Which viewport.
+    std::uint32_t width = 0;       ///< In pixels.
+    std::uint32_t height = 0;      ///< In pixels.
+    std::vector<std::byte> rgba{}; ///< RGBA8 (sRGB), top row first, tightly packed; alpha 255.
+};
+
 /// @brief Shapes drawn over a viewport: the gizmos. Plain data.
 struct ViewportOverlay
 {
@@ -204,6 +213,21 @@ public:
     /// @brief Whether a pick is waiting to be drawn or to come back.
     /// @return True while one is.
     [[nodiscard]] bool pickPending() const;
+
+    /// @brief Asks for a picture of a viewport as its next drawn frame leaves it (after the tone map and overlays).
+    ///        It's copied into a readback buffer of that frame slot and read when the slot comes round again, like a
+    ///        pick: nothing waits on the GPU, and takeScreenshot() has it a frame or two later. A new request replaces
+    ///        one that hasn't been drawn yet.
+    /// @param viewport The viewport.
+    void requestScreenshot(ViewportId viewport);
+
+    /// @brief The last screenshot, once it has come back from the GPU; it's handed out once.
+    /// @return The picture, or nothing yet.
+    [[nodiscard]] std::optional<ViewportImage> takeScreenshot();
+
+    /// @brief Whether a screenshot is waiting to be drawn or to come back.
+    /// @return True while one is.
+    [[nodiscard]] bool screenshotPending() const;
 
     /// @brief Draws the selection outline in a viewport (the editor viewport; not the game view).
     /// @param viewport The viewport.
@@ -385,5 +409,31 @@ private:
     std::optional<ViewportId> m_debugViewport;                   ///< setDebugViewport().
     bool m_gridOn = false;                                       ///< setGrid().
     std::unique_ptr<Renderer::FrameCapture> m_capture;           ///< The frame capture (F9).
+
+    /// @brief A screenshot copied in a frame slot, waiting for the slot to come round. Plain data.
+    struct ShotInFlight
+    {
+        ViewportId viewport = 0; ///< Which viewport.
+        std::uint32_t width = 0; ///< Its size when copied.
+        std::uint32_t height = 0;
+        Rhi::RhiFormat format = Rhi::RhiFormat::Rgba8Srgb; ///< The copied image's format (a swapchain's may be BGRA).
+        Rhi::BufferHandle buffer;                          ///< The readback buffer, made for it.
+    };
+
+    /// @brief Adds the copy of a requested screenshot's viewport to the end of the frame, if it was drawn.
+    /// @param graph The compiled graph (where it left an offscreen target).
+    /// @param slot  This frame's slot.
+    /// @param lists The frame's lists; a list with the copy is appended.
+    /// @return Nothing, or the error from getting a command list.
+    [[nodiscard]] Result<void> recordScreenshot(const Renderer::RenderGraph& graph, std::uint32_t slot,
+                                                std::vector<Rhi::IRhiCommandList*>& lists);
+
+    /// @brief Reads a screenshot copied in this frame slot into m_shotResult.
+    /// @param slot The frame slot, whose GPU work has finished.
+    void readScreenshot(std::uint32_t slot);
+
+    std::optional<ViewportId> m_shotRequest;                                            ///< Asked for, not drawn yet.
+    std::array<std::optional<ShotInFlight>, Rhi::c_maxFramesInFlight> m_shotInFlight{}; ///< Copied per slot.
+    std::optional<ViewportImage> m_shotResult;                                          ///< Come back, not taken yet.
 };
 } // namespace Meow2::Editor

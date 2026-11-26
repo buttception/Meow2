@@ -1,6 +1,6 @@
 # Editor
 
-Meow2Editor is a **Qt** application: a main window with an **editor viewport** in the middle and a **game viewport** dock, both drawn by the engine's renderer, plus a log console dock, a settings window, menus and a toolbar. **Every editor action is a command** with a JSON parameter schema, run through one registry with one undo history (techstack.md §20), so the MCP server (M7 PR 6) can drive everything the UI can. Like the Player and Renderer, it remembers its window size, position, maximized state and fullscreen mode in its [config file](Config.md).
+Meow2Editor is a **Qt** application: a main window with an **editor viewport** in the middle and a **game viewport** dock, both drawn by the engine's renderer, plus a log console dock, a settings window, menus and a toolbar. **Every editor action is a command** with a JSON parameter schema, run through one registry with one undo history (techstack.md §20), so the [MCP server](Mcp.md) drives everything the UI can. Like the Player and Renderer, it remembers its window size, position, maximized state and fullscreen mode in its [config file](Config.md).
 
 - Code:
   - `Meow2Editor/src/`: `EditorMainWindow`, `ViewportWidget`, `WindowPlacement`, `EditorTheme`, `main.cpp`;
@@ -9,7 +9,7 @@ Meow2Editor is a **Qt** application: a main window with an **editor viewport** i
   - `Meow2Editor/src/Viewports/`: `ViewportController`, `EditorRenderer`, `DebugTools` (the debug tools' commands), `CaptureTools` (the frame capture's);
   - built as the `Meow2EditorCore` library plus the exe, so the tests use the same code.
 - Requirements: Qt ≥ 6.8 (Widgets), tested with 6.12.0. Installing Qt and pointing CMake at it is on the [Building → Qt](Building.md#qt) page.
-- Status: 🟨 M7. Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222); the Hierarchy and Inspector docks and the edit commands (#224); picking and the selection outline (#226); gizmos, scene settings and projects (#228); the Debug and Stats docks (#230); camera icons (#231); the frame capture and its render graph (#232).
+- Status: ✅ M7 (0.8.0). Main window and window settings (#58); commands and undo, console, settings window, toolbar (#210); the two viewports, camera rigs and Qt input (#214); the project folder, opening and saving scenes, the Assets dock (#222); the Hierarchy and Inspector docks and the edit commands (#224); picking and the selection outline (#226); gizmos, scene settings and projects (#228); the Debug and Stats docks (#230); camera icons (#231); the frame capture and its render graph (#232); the MCP server, headless mode and screenshots (#234).
 - **Window size:** in logical units like every app ([Window](Window.md#settings)): 80 % of the screen the first time, and shrunk to fit when a saved size is too big for the screen (Qt sizes follow display scaling, so 1920 × 1080 at 150 % would be 2880 × 1620 real pixels).
 
 ## Settings
@@ -73,10 +73,12 @@ commands.execute(u"scene.rename", {{u"entity"_s, id}, {u"name"_s, u"Lamp"_s}});
 | `settings.list` | query | — | Every setting with its value, default, range and whether it needs a restart. |
 | `history.get` | query | — | The undo and redo labels (next first) and whether the history is clean. |
 | `log.lines` | query | `since`, `levels`, `text`, `limit` | Recent log lines, oldest first, and `next`, the `since` for the next call. |
+| `app.quit` | action | — | Closes the editor a moment later (its caller gets its answer first). Unsaved changes are lost. |
+| `mcp.copySetup` | action | — | Copies the line that connects Claude Code to the MCP server (Help menu); enabled only while it runs. Registered by `main()`, not offered as a tool. |
 
 ## Menus and toolbar
 
-- **File:** New scene, Open scene…, Open recent, Save, Save as…, Open project folder…, Import model… ([Project and scenes](#project-and-scenes)), Settings… (Ctrl+,). **Edit:** Undo (Ctrl+Z), Redo (Ctrl+Y). **Window:** Console, Game view, Assets, Hierarchy, Inspector. **Edit** also has Create entity, Duplicate (Ctrl+D) and Delete (Del).
+- **File:** New scene, Open scene…, Open recent, Save, Save as…, Open project folder…, Import model… ([Project and scenes](#project-and-scenes)), Settings… (Ctrl+,). **Edit:** Undo (Ctrl+Z), Redo (Ctrl+Y). **Window:** Console, Game view, Assets, Hierarchy, Inspector. **Edit** also has Create entity, Duplicate (Ctrl+D) and Delete (Del). **Help:** Copy MCP setup ([MCP](Mcp.md)).
 - **Toolbar:** Save, Undo, Redo, Move (W), Rotate (E), Scale (R), Local axes, Snap, Settings. **View** has the same gizmo items after the camera modes.
 - **Dock tabs** go on top: docks stacked in one place show their tabs above them (`setTabPosition(…, North)`), not below as Qt does by default. A dock that shares its place with others hides its own title bar, since its tab already names it (an empty `titleBarWidget`); it gets the title back when it stands alone or floats. Drag a tab to move or undock it.
 - **The mouse wheel edits a field only while it has focus** (click or Tab into it first). Over an unfocused spin box, drop-down or slider the wheel scrolls the panel instead, so scrolling down the Inspector never changes values on the way (`WheelGuard`, an application event filter: those widgets get `Qt::StrongFocus`, and a wheel event over an unfocused one goes to the scroll area around it).
@@ -320,6 +322,8 @@ The engine's `InputSystem` is fed by `QtInputSource`, an event filter on both vi
 | `viewport.setRenderScale` | action | `percent` (25–100) | The game view's render scale; saved as `editor.gameRenderScale`. |
 | `viewport.setGizmo` | action | `mode` (`translate`, `rotate`, `scale`), `space` (`world`, `local`), `snap` (each optional) | The gizmo's mode, axes and snapping (toolbar, W/E/R). |
 | `viewport.info` | query | — | Each viewport's size, visibility, whether it drew, its scene size; the camera mode and position; the render scale; the gizmo's mode, space and snapping. |
+| `viewport.screenshot` | query | `viewport` (`editor`, `game`), `maxSize` (16–4096, 1024) | A PNG of what the viewport shows, scaled down. Deferred: it answers with `viewport.screenshotResult {serial}` to poll, which says `{waiting: true}` until the picture is back; over MCP the call waits for it ([MCP](Mcp.md)). |
+| `viewport.screenshotResult` | query | `serial` | The picture: `viewport`, `width`, `height`, `png` (base64). |
 
 None is recorded in the undo history: they change how the scene is *viewed*, not the scene. `view.showPanel` also takes `game` now.
 
@@ -420,12 +424,13 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.CameraIcons.ShapeAroundTheCamera`, `SelectedShowsItsViewInOrange`, `ClickPicksTheNearest`: the camera icon keeps its size on screen, opens wider for a wider lens, shows its view volume in orange when selected, nothing behind the viewer; a click finds the nearest. `Editor.EntityIconsTest.EveryCameraGetsOneAndKindsCanBeAdded`: every camera of a scene gets one (the main one emphasised, the selected one marked), and a new kind is one `add()`; an entity of two kinds keeps the first's.
 - `Editor.CaptureCommandsTest.WithoutGpu`: without a GPU, capturing and showing fail with a message, info and image say there's nothing. `Editor.CaptureFlowJson.RoundTrips`: the graph survives JSON both ways; an access to a missing resource is dropped. `Editor.RenderGraphDockTest.ShowsAFlowAndPicks` (against stand-in commands): a node per pass, a click on an input pin asks for the texture as the pass before left it, a buffer pin asks for nothing, the pass's reads and writes listed, the picture shown when it comes back. `EditorGpu.EditorRendererTest.CapturesAFrame`: a capture of both viewports has their passes and texture copies, and a picked copy comes back as a picture that isn't black.
 - `EditorGpu.EditorRendererTest.DebugViewOnlyInEditorViewport`: a debug view changes the editor viewport and not one pixel of the game view; Position, Overdraw and Triangles draw with the validation layer quiet; back to shaded, the same image. `GridAndWireframeDraw`: the grid adds lines; wireframe only is edges on black, overlay edges over the scene. `FrozenCullingKeepsFrustum`: from outside, the frozen frustum's lines show, and go when culling is unfrozen.
+- The MCP server, headless mode and screenshots: see [MCP → Tests](Mcp.md#tests). `Editor.CaptureCommandsTest.WithoutGpu` also checks `capture.image {after}` waiting and `viewport.screenshot` failing without a GPU.
 - `Smoke.Editor.Runs` and `Smoke.Editor.OpensWindow`: the app runs 3 frames offscreen and exits 0.
 
 ## Not yet
 
 - Gizmos on several selected entities at once, plane handles (two axes), solid handles, pivot options; picking meshes from the Assets dock by dragging; editing several entities at once in the Inspector.
-- The MCP server (M7 PR 6).
+- MCP resources and prompts (only tools are served), and streaming a call's progress over SSE.
 - Prefabs: a model as one asset whose instances keep their edits when it's re-imported; textures cooked into the project at import.
 - Renaming, moving and deleting assets in the Assets dock (each needs its `.meta` kept with it).
 - Switching the graphics backend in the editor (the viewports would need to be a `RenderDevice` user).

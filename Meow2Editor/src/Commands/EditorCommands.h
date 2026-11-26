@@ -23,6 +23,7 @@ struct EditorCommandsDeps
 
 /// @brief Registers the built-in commands (docs/wiki/Editor.md lists them):
 /// - actions `edit.undo`, `edit.redo` (enabled only when there's a step), `settings.set {key, value}`;
+/// - action `app.quit` (closes the editor a moment later, so its caller gets its answer first);
 /// - queries `settings.list`, `history.get`, `log.lines {since, levels, text, limit}`.
 ///
 /// `settings.set` isn't recorded in the history: a preference isn't part of the document, and Ctrl+Z in a scene

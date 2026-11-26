@@ -8,8 +8,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <QCoreApplication>
 #include <QJsonArray>
 #include <QStringList>
+#include <QTimer>
 #include <string_view>
 #include <vector>
 
@@ -192,11 +194,26 @@ Result<void> addLog(const EditorCommandsDeps& deps)
                                                         {u"missed"_s, static_cast<double>(missed)}}};
         });
 }
+
+/// @brief `app.quit`: closes the editor, as the window's close button does (agents end a headless editor with it).
+Result<void> addApp(const EditorCommandsDeps& deps)
+{
+    return deps.commands.add(
+        {.name = u"app.quit"_s,
+         .description = u"Closes the editor (unsaved changes are lost; save first with scene.save)."_s},
+        [](const QJsonObject&) -> Result<CommandOutcome>
+        {
+            // A moment later, not now: the caller (a menu, or an MCP request waiting for this answer) finishes first.
+            QTimer::singleShot(100, QCoreApplication::instance(), &QCoreApplication::quit);
+            return CommandOutcome{};
+        });
+}
+
 } // namespace
 
 Result<void> registerEditorCommands(const EditorCommandsDeps& deps)
 {
-    for (Result<void> (*add)(const EditorCommandsDeps&) : {addUndoRedo, addSettings, addHistory, addLog})
+    for (Result<void> (*add)(const EditorCommandsDeps&) : {addUndoRedo, addSettings, addHistory, addLog, addApp})
     {
         if (Result<void> added = add(deps); !added)
         {

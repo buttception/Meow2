@@ -42,7 +42,8 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 | Input (keys, mouse, gamepads, events, SDL sources) | [Input](Input.md) | ✅ M2 |
 | File system (virtual paths, mounts) | [FileSystem](FileSystem.md) | ✅ M2 |
 | Window (SDL3, settings in the config) | [Window](Window.md) | ✅ M2 |
-| Editor (Qt main window, viewport, commands and undo, console, settings) | [Editor](Editor.md) | 🟨 M7 (foundation) |
+| Editor (Qt main window, viewports, commands and undo, scenes, editing docks, gizmos, debug tools, frame capture) | [Editor](Editor.md) | ✅ M7 |
+| MCP server: the editor driven by AI agents, headless mode, screenshots | [Mcp](Mcp.md) | ✅ M7 |
 | Error handling (`Result<T>`) | [ErrorHandling](ErrorHandling.md) | ✅ M1 |
 | Events (`EventBus`) | [Events](Events.md) | ✅ M1 |
 | IDs (128-bit, kind tag, lock-free generator) | [Ids](Ids.md) | ✅ M2 |
@@ -69,7 +70,7 @@ See [Building](Building.md) for all presets and [Testing](Testing.md) for runnin
 
 ## Roadmap
 
-M0 (foundation), **M1 (core runtime, `v0.2.x`)**, **M2 (platform & scene foundation, `v0.3.0`)**, **M3 (math, `v0.4.0`)**, **M4 (shaders and assets, `v0.5.0`)**, **M5 (the RHI, `v0.6.0`)** and **M6 (glTF scenes and Meow2Renderer, `v0.7.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers, release zips, the game loop, window and input events, IDs, the scene with command buffers, and the virtual file system, and the math: transforms and their hierarchy, camera and reversed-Z projections, bounding volumes and culling, rays and picking, random numbers, colours, easing and splines, and vertex packing ([Math](Math.md)), [shaders](Shaders.md) and [assets](Assets.md), and the [RHI](Rhi.md): Vulkan and D3D12, bindless and GPU-driven, switchable while running; and [glTF scenes](Gltf.md) drawn with metallic-roughness PBR, a physically based sky and meshlets in [Meow2Renderer](Renderer.md), checked by golden images ([Testing](Testing.md#golden-images)). The Qt editor window (M7) is in too. Next up is **M7**: the editor, with scene files and an MCP server. The full roadmap is in [milestones.md](../../milestones.md).
+M0 (foundation), **M1 (core runtime, `v0.2.x`)**, **M2 (platform & scene foundation, `v0.3.0`)**, **M3 (math, `v0.4.0`)**, **M4 (shaders and assets, `v0.5.0`)**, **M5 (the RHI, `v0.6.0`)** **M6 (glTF scenes and Meow2Renderer, `v0.7.0`)** and **M7 (the editor, `v0.8.0`)** are done: logging, crash dumps, memory tracking, config, events, jobs, Tracy, sanitizers, release zips, the game loop, window and input events, IDs, the scene with command buffers, and the virtual file system, and the math: transforms and their hierarchy, camera and reversed-Z projections, bounding volumes and culling, rays and picking, random numbers, colours, easing and splines, and vertex packing ([Math](Math.md)), [shaders](Shaders.md) and [assets](Assets.md), and the [RHI](Rhi.md): Vulkan and D3D12, bindless and GPU-driven, switchable while running; and [glTF scenes](Gltf.md) drawn with metallic-roughness PBR, a physically based sky and meshlets in [Meow2Renderer](Renderer.md), checked by golden images ([Testing](Testing.md#golden-images)). And the Qt [editor](Editor.md): two viewports, scene files, a Hierarchy and an Inspector, gizmos, the debug tools and frame capture, all driven by commands that AI agents use over [MCP](Mcp.md). Next up is **M8**: physics. The full roadmap is in [milestones.md](../../milestones.md).
 
 ## API reference
 

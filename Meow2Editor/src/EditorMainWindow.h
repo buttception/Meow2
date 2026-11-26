@@ -16,10 +16,12 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <QJsonObject>
 #include <QMainWindow>
 #include <QString>
 #include <QStringList>
+#include <utility>
 #include <vector>
 
 class QAction;
@@ -63,6 +65,8 @@ struct EditorMainWindowDeps
     SceneDocument& document; ///< The project folder and the scene file: titles, recent files, the Assets dock.
     SceneEditor& editor;     ///< The selection and the edit commands: the Hierarchy and Inspector docks.
     EditorRenderer* renderer = nullptr; ///< Draws the viewports; null without a GPU (offscreen platform, tests).
+    /// Headless: the viewports' fixed size in pixels (ViewportControllerDeps::headlessSize); unset with a window.
+    std::optional<std::pair<std::uint32_t, std::uint32_t>> headlessSize = std::nullopt;
 };
 
 /// @brief The editor's main window: the editor viewport in the middle, the game viewport and console docks, menus

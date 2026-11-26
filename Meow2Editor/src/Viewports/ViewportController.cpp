@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <QBuffer>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QWidget>
@@ -55,8 +57,9 @@ ViewportController::ViewportController(const ViewportControllerDeps& deps)
 
 ViewportController::~ViewportController()
 {
-    for (const auto* name : {u"viewport.focus", u"viewport.setCameraMode", u"viewport.setRenderScale", u"viewport.info",
-                             u"viewport.setGizmo", u"viewport.viewFrom"})
+    for (const auto* name :
+         {u"viewport.focus", u"viewport.setCameraMode", u"viewport.setRenderScale", u"viewport.info",
+          u"viewport.setGizmo", u"viewport.viewFrom", u"viewport.screenshot", u"viewport.screenshotResult"})
     {
         m_deps.commands.remove(QStringView{name});
     }
@@ -67,6 +70,16 @@ int ViewportController::renderScalePercent() const
     return static_cast<int>(m_deps.settings.intValue(QString::fromLatin1(c_gameRenderScaleKey)));
 }
 
+std::pair<std::uint32_t, std::uint32_t> ViewportController::sizeOf(const QWidget& widget) const
+{
+    return m_deps.headlessSize ? *m_deps.headlessSize : pixelSize(widget);
+}
+
+bool ViewportController::shown(const QWidget& widget) const
+{
+    return m_deps.headlessSize.has_value() || canBeSeen(widget);
+}
+
 void ViewportController::addViewports()
 {
     if (m_deps.renderer == nullptr)
@@ -75,12 +88,24 @@ void ViewportController::addViewports()
     }
     const auto add = [this](ViewportWidget& widget, const char* name) -> std::optional<ViewportId>
     {
+        if (m_deps.headlessSize)
+        {
+            // No windows to draw into: a texture each, read back only for screenshots.
+            const auto [width, height] = *m_deps.headlessSize;
+            Result<ViewportId> viewport = m_deps.renderer->addOffscreenViewport(width, height, name);
+            if (!viewport)
+            {
+                MEOW2_LOG_ERROR(m_deps.log, "The {} viewport can't draw: {}", name, viewport.error());
+                return std::nullopt;
+            }
+            return *viewport;
+        }
         const Platform::NativeWindowHandle handle = widget.nativeHandle();
         if (handle.type == Platform::NativeWindowType::None)
         {
             return std::nullopt; // the offscreen platform: nothing to draw into
         }
-        const auto [width, height] = pixelSize(widget);
+        const auto [width, height] = sizeOf(widget);
         Result<ViewportId> viewport = m_deps.renderer->addWindowViewport(handle, width, height, name);
         if (!viewport)
         {
@@ -207,7 +232,7 @@ std::vector<PlacedIcon> ViewportController::placedIcons() const
 
 float ViewportController::gameAspect() const
 {
-    const auto [width, height] = pixelSize(m_deps.gameViewport);
+    const auto [width, height] = sizeOf(m_deps.gameViewport);
     return width > 0 && height > 0 ? static_cast<float>(width) / static_cast<float>(height) : 16.0F / 9.0F;
 }
 std::pair<float, float> ViewportController::cursorPixels() const
@@ -236,7 +261,7 @@ std::optional<entt::entity> ViewportController::gizmoTarget() const
 
 std::optional<GizmoView> ViewportController::gizmoView() const
 {
-    const auto [width, height] = pixelSize(m_deps.editorViewport);
+    const auto [width, height] = sizeOf(m_deps.editorViewport);
     if (width == 0 || height == 0)
     {
         return std::nullopt;
@@ -498,15 +523,15 @@ void ViewportController::tick(float deltaSeconds)
         return;
     }
     std::array<std::optional<ViewportCamera>, 2> cameras{};
-    const auto prepare = [renderer](const std::optional<ViewportId>& id, const QWidget& widget)
+    const auto prepare = [this, renderer](const std::optional<ViewportId>& id, const QWidget& widget)
     {
         if (!id)
         {
             return false;
         }
-        const auto [width, height] = pixelSize(widget);
+        const auto [width, height] = sizeOf(widget);
         renderer->resize(*id, width, height);
-        renderer->setVisible(*id, canBeSeen(widget));
+        renderer->setVisible(*id, shown(widget));
         return true;
     };
     if (prepare(m_editorViewport, m_deps.editorViewport))
@@ -534,6 +559,7 @@ void ViewportController::tick(float deltaSeconds)
     m_drew = (m_editorViewport && renderer->wasDrawn(*m_editorViewport)) ||
              (m_gameViewport && renderer->wasDrawn(*m_gameViewport));
     m_captureTools.tick(); // a capture picture that came back with this frame
+    takeScreenshot();      // and a screenshot
 }
 
 void ViewportController::registerCommands()
@@ -686,10 +712,10 @@ void ViewportController::registerCommands()
         {
             const auto describe = [this](const std::optional<ViewportId>& id, const QWidget& widget)
             {
-                const auto [width, height] = pixelSize(widget);
+                const auto [width, height] = sizeOf(widget);
                 QJsonObject viewport{{u"width"_s, static_cast<double>(width)},
                                      {u"height"_s, static_cast<double>(height)},
-                                     {u"visible"_s, canBeSeen(widget)},
+                                     {u"visible"_s, shown(widget)},
                                      {u"drawn"_s, id && m_deps.renderer != nullptr && m_deps.renderer->wasDrawn(*id)}};
                 if (id && m_deps.renderer != nullptr)
                 {
@@ -714,5 +740,105 @@ void ViewportController::registerCommands()
                                  {u"space"_s, m_gizmo.space() == GizmoSpace::Local ? u"local"_s : u"world"_s},
                                  {u"snap"_s, m_snap}}}}};
         });
+
+    QJsonObject which = propertySchema(u"string"_s, u"Which viewport: editor (default) or game."_s);
+    which.insert(u"enum", QJsonArray{u"editor"_s, u"game"_s});
+    QJsonObject maxSize = propertySchema(u"integer"_s, u"The picture's longest side in pixels at most (1024)."_s);
+    maxSize.insert(u"minimum", 16);
+    maxSize.insert(u"maximum", 4096);
+    [[maybe_unused]] const Result<void> screenshot = commands.add(
+        {.name = u"viewport.screenshot"_s,
+         .description = u"A PNG of what a viewport shows (the editor or the game view), scaled down to maxSize. "
+                        u"Its answer comes a frame or two later: over MCP the call waits for it."_s,
+         .kind = CommandKind::Query,
+         .parameters = objectSchema({{.name = u"viewport"_s, .schema = which, .required = false},
+                                     {.name = u"maxSize"_s, .schema = maxSize, .required = false}})},
+        [this](const QJsonObject& parameters) -> Result<CommandOutcome>
+        {
+            if (m_deps.renderer == nullptr)
+            {
+                return fail(ErrorCode::Unsupported, "the editor draws nothing without a GPU, so there's no picture");
+            }
+            const bool game = parameters.value(u"viewport").toString() == u"game";
+            const std::optional<ViewportId> id = game ? m_gameViewport : m_editorViewport;
+            const QWidget& widget = game ? static_cast<const QWidget&>(m_deps.gameViewport) : m_deps.editorViewport;
+            if (!id)
+            {
+                return fail(ErrorCode::Unsupported, "that viewport has nothing to draw into");
+            }
+            if (!shown(widget))
+            {
+                return fail(ErrorCode::InvalidArgument, "that viewport is hidden (its dock is closed or tabbed away)");
+            }
+            if (game && !Scene::findMainCamera(m_deps.world.scene()))
+            {
+                return fail(ErrorCode::InvalidArgument, "the scene has no main camera, so the game view is empty");
+            }
+            // One at a time: the renderer keeps one request, so a second would take the first one's picture.
+            if (!m_deps.renderer->screenshotPending())
+            {
+                m_deps.renderer->requestScreenshot(*id);
+                ++m_shotSerial;
+                m_shotMaxSize = parameters.value(u"maxSize").toInt(1024);
+            }
+            return CommandOutcome{
+                .result = QJsonObject{
+                    {u"deferred"_s,
+                     QJsonObject{{u"query"_s, u"viewport.screenshotResult"_s},
+                                 {u"parameters"_s, QJsonObject{{u"serial"_s, static_cast<double>(m_shotSerial)}}}}}}};
+        });
+
+    [[maybe_unused]] const Result<void> screenshotResult = commands.add(
+        {.name = u"viewport.screenshotResult"_s,
+         .description = u"The picture viewport.screenshot asked for: {viewport, width, height, png (base64)}, or "
+                        u"{waiting: true} until it's back."_s,
+         .kind = CommandKind::Query,
+         .parameters =
+             objectSchema({{.name = u"serial"_s,
+                            .schema = propertySchema(u"integer"_s, u"The serial viewport.screenshot answered with."_s),
+                            .required = true}})},
+        [this](const QJsonObject& parameters) -> Result<CommandOutcome>
+        {
+            const auto serial = static_cast<std::uint64_t>(parameters.value(u"serial").toDouble());
+            if (serial != 0 && serial == m_shotReady)
+            {
+                return CommandOutcome{.result = m_shot};
+            }
+            if (serial == m_shotSerial && m_deps.renderer != nullptr && m_deps.renderer->screenshotPending())
+            {
+                return CommandOutcome{.result = QJsonObject{{u"waiting"_s, true}}};
+            }
+            return fail(ErrorCode::NotFound, "no such screenshot (a newer one replaced it, or none was asked for)");
+        });
+}
+
+void ViewportController::takeScreenshot()
+{
+    std::optional<ViewportImage> image = m_deps.renderer->takeScreenshot();
+    if (!image || image->width == 0 || image->height == 0)
+    {
+        return;
+    }
+    // QImage wraps the bytes without copying; scaled() makes its own, so `image` may go after it.
+    const QImage full(reinterpret_cast<const uchar*>(image->rgba.data()), static_cast<int>(image->width),
+                      static_cast<int>(image->height), static_cast<qsizetype>(image->width) * 4,
+                      QImage::Format_RGBA8888);
+    const auto longest = static_cast<int>(std::max(image->width, image->height));
+    const QImage picture = longest > m_shotMaxSize ? full.scaled(m_shotMaxSize, m_shotMaxSize, Qt::KeepAspectRatio,
+                                                                 Qt::SmoothTransformation)
+                                                   : full.copy();
+    QByteArray png;
+    QBuffer buffer(&png);
+    buffer.open(QIODevice::WriteOnly);
+    if (!picture.save(&buffer, "PNG"))
+    {
+        MEOW2_LOG_ERROR(m_deps.log, "Screenshot not encoded as PNG");
+        return;
+    }
+    m_shot = QJsonObject{{u"viewport"_s, image->viewport == m_gameViewport ? u"game"_s : u"editor"_s},
+                         {u"width"_s, picture.width()},
+                         {u"height"_s, picture.height()},
+                         {u"png"_s, QString::fromLatin1(png.toBase64())}};
+    m_shotReady = m_shotSerial;
 }
 } // namespace Meow2::Editor

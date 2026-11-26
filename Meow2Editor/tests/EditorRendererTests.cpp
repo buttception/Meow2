@@ -578,3 +578,41 @@ TEST_F(EditorRendererTest, CapturesAFrame)
     }
     EXPECT_GT(lit, 0U);
 }
+
+// A screenshot comes back a frame or two later, at the viewport's size, with what the viewport shows.
+TEST_F(EditorRendererTest, TakesAScreenshot)
+{
+    runFrame();
+    EXPECT_FALSE(m_renderer->screenshotPending());
+    m_renderer->requestScreenshot(m_game);
+    EXPECT_TRUE(m_renderer->screenshotPending());
+    std::optional<Meow2::Editor::ViewportImage> image;
+    for (std::uint32_t i = 0; i < Meow2::Rhi::c_maxFramesInFlight + 2 && !image; ++i)
+    {
+        runFrame();
+        image = m_renderer->takeScreenshot();
+    }
+    ASSERT_TRUE(image) << "came back";
+    EXPECT_FALSE(m_renderer->screenshotPending());
+    EXPECT_EQ(image->viewport, m_game);
+    EXPECT_EQ(image->width, c_size);
+    EXPECT_EQ(image->height, c_size);
+    ASSERT_EQ(image->rgba.size(), std::size_t{c_size} * c_size * 4);
+    // The same picture as the offscreen target's own readback of that frame, alpha aside.
+    const std::vector<std::uint8_t> drawn = copyPixels(m_game);
+    std::uint32_t lit = 0;
+    std::uint32_t different = 0;
+    for (std::size_t i = 0; i + 3 < image->rgba.size(); i += 4)
+    {
+        const auto channel = [&](std::size_t c)
+        {
+            return static_cast<std::uint8_t>(image->rgba[i + c]);
+        };
+        lit += (channel(0) + channel(1) + channel(2)) > 0 ? 1U : 0U;
+        different += (channel(0) != drawn[i] || channel(1) != drawn[i + 1] || channel(2) != drawn[i + 2]) ? 1U : 0U;
+        EXPECT_EQ(channel(3), 255) << "opaque";
+    }
+    EXPECT_GT(lit, 0U);
+    EXPECT_EQ(different, 0U) << "nothing moved between the frames, so the last frame looks the same";
+    EXPECT_FALSE(m_renderer->takeScreenshot()) << "handed out once";
+}
