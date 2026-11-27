@@ -622,6 +622,12 @@ Result<BodyId> PhysicsWorld::createBody(const BodyDesc& desc)
     settings.mIsSensor = desc.sensor;
     settings.mAllowSleeping = desc.allowSleep;
     settings.mMotionQuality = desc.continuous ? JPH::EMotionQuality::LinearCast : JPH::EMotionQuality::Discrete;
+    if (desc.motion == MotionType::Dynamic && desc.mass > 0.0F)
+    {
+        // The given mass, with the inertia the shape would have at that mass (its density only sets the proportions).
+        settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
+        settings.mMassPropertiesOverride.mMass = desc.mass;
+    }
     settings.mUserData = desc.userData;
     if (desc.motion != MotionType::Static)
     {

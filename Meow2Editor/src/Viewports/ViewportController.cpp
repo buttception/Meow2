@@ -4,8 +4,10 @@
 #include "Viewports/ViewportController.h"
 
 #include "Commands/CommandSchema.h"
+#include "Editing/ColliderLines.h"
 #include "Viewports/QtInputSource.h"
 
+#include <Meow2/Graphics/Renderer/SceneModel.h>
 #include <Meow2/Scene/Camera.h>
 
 #include <algorithm>
@@ -461,6 +463,24 @@ void ViewportController::updateGizmoLines()
         GizmoShapes icons = iconShapes(*view, placedIcons());
         overlay.lines = std::move(icons.lines);
         overlay.triangles = std::move(icons.triangles);
+        // The selection's colliders, under the gizmo too.
+        std::vector<entt::entity> selected;
+        for (const EntityId& id : m_deps.sceneEditor.selection())
+        {
+            if (const std::optional<entt::entity> entity = m_deps.world.scene().find(id))
+            {
+                selected.push_back(*entity);
+            }
+        }
+        const Scene::Scene& scene = m_deps.world.scene();
+        std::vector<Renderer::DebugLine> colliders =
+            colliderLines(scene, selected, m_deps.world.collisionMeshes(),
+                          [&scene](entt::entity entity) -> std::optional<AssetId>
+                          {
+                              const auto* mesh = scene.registry().try_get<Renderer::MeshRenderer>(entity);
+                              return mesh != nullptr ? std::optional<AssetId>{mesh->mesh} : std::nullopt;
+                          });
+        overlay.lines.insert(overlay.lines.end(), colliders.begin(), colliders.end());
     }
     if (world)
     {

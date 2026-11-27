@@ -11,6 +11,7 @@
 
 #include <Meow2/Core/Log/ConsoleBuffer.h>
 #include <Meow2/Core/Log/Logger.h>
+#include <Meow2/Physics/PhysicsLibrary.h>
 #include <Meow2/Platform/Input/InputSystem.h>
 
 #include <cstdint>
@@ -44,6 +45,7 @@ class RenderGraphDock;
 class SettingsDialog;
 class StatsDock;
 class ViewportController;
+class PlayMode;
 
 /// @brief The answer to "save the changes?": what the window asks before dropping unsaved changes.
 enum class UnsavedAnswer
@@ -67,6 +69,7 @@ struct EditorMainWindowDeps
     EditorRenderer* renderer = nullptr; ///< Draws the viewports; null without a GPU (offscreen platform, tests).
     /// Headless: the viewports' fixed size in pixels (ViewportControllerDeps::headlessSize); unset with a window.
     std::optional<std::pair<std::uint32_t, std::uint32_t>> headlessSize = std::nullopt;
+    Physics::PhysicsLibrary* physics = nullptr; ///< For Play; null: Play is refused (tests without physics).
 };
 
 /// @brief The editor's main window: the editor viewport in the middle, the game viewport and console docks, menus
@@ -118,6 +121,10 @@ public:
     /// @brief The viewports' controller (camera, drawing, `viewport.*` commands).
     /// @return It, owned by this window.
     [[nodiscard]] ViewportController& viewports();
+
+    /// @brief Play and Stop (`play.*`), whose fixedUpdate() the game loop calls.
+    /// @return It, owned by this window.
+    [[nodiscard]] PlayMode& playMode();
 
     /// @brief The viewport in the middle of the window.
     /// @return The viewport, owned by this window.
@@ -240,6 +247,8 @@ private:
     QtInputSource* m_inputSource;     ///< Owned by Qt, never null.
     EditorSettings& m_settings;
     std::unique_ptr<ViewportController> m_viewports;     ///< After the widgets it drives.
+    std::unique_ptr<PlayMode> m_playMode;                ///< Play and Stop; goes before the viewports.
+    QAction* m_playAction = nullptr;                     ///< Play / Stop (Ctrl+P), checked while playing.
     QAction* m_gameAction = nullptr;                     ///< Checked while the game dock is shown.
     QAction* m_orbitAction = nullptr;                    ///< Checked in Orbit mode.
     QAction* m_flyAction = nullptr;                      ///< Checked in Fly mode.

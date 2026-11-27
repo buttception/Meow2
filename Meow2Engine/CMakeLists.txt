@@ -175,7 +175,10 @@ target_sources(Meow2Engine
             include/Meow2/Math/Spline.h
             include/Meow2/Math/Transform.h
             include/Meow2/Math/Types.h
+            include/Meow2/Physics/CollisionMeshes.h
+            include/Meow2/Physics/PhysicsComponents.h
             include/Meow2/Physics/PhysicsLibrary.h
+            include/Meow2/Physics/PhysicsScene.h
             include/Meow2/Physics/PhysicsTypes.h
             include/Meow2/Physics/PhysicsWorld.h
             include/Meow2/Platform/FileSystem/FileSystem.h
@@ -280,6 +283,9 @@ endif()
 # Physics (techstack.md §14): the backend MEOW2_PHYSICS_BACKEND picks (cmake/Meow2External.cmake), behind
 # Meow2/Physics; the checks every backend shares are always built.
 target_sources(Meow2Engine PRIVATE
+    src/Physics/CollisionMeshes.cpp
+    src/Physics/PhysicsComponents.cpp
+    src/Physics/PhysicsScene.cpp
     src/Physics/PhysicsValidation.cpp
     src/Physics/PhysicsValidation.h)
 if(MEOW2_PHYSICS_BACKEND STREQUAL "Jolt")

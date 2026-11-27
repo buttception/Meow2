@@ -4,6 +4,7 @@
 #include "EditorMainWindow.h"
 
 #include "Commands/CommandSchema.h"
+#include "Editing/PlayMode.h"
 #include "Editing/SceneEditor.h"
 #include "Panels/AssetsDock.h"
 #include "Panels/ConsoleDock.h"
@@ -152,6 +153,12 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
                                                                               .gameViewport = m_gameDock->viewport(),
                                                                               .log = deps.log,
                                                                               .headlessSize = deps.headlessSize});
+    m_playMode = std::make_unique<PlayMode>(PlayModeDeps{.commands = deps.commands,
+                                                         .history = deps.commands.history(),
+                                                         .world = deps.world,
+                                                         .jobs = deps.world.jobs(),
+                                                         .physics = deps.physics,
+                                                         .log = deps.log});
     connect(
         &m_gameDock->renderScaleBox(), &QComboBox::activated, this, [this](int index)
         { run(u"viewport.setRenderScale"_s, {{u"percent"_s, m_gameDock->renderScaleBox().itemData(index).toInt()}}); });
@@ -162,6 +169,7 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
 
 EditorMainWindow::~EditorMainWindow()
 {
+    m_playMode.reset();  // stops playing first: the scene goes back as it was
     m_viewports.reset(); // removes its commands while the widgets it uses still exist
     m_commands.remove(u"view.showPanel");
 }
@@ -187,6 +195,11 @@ void EditorMainWindow::saveLayout()
 GameViewportDock& EditorMainWindow::gameDock()
 {
     return *m_gameDock;
+}
+
+PlayMode& EditorMainWindow::playMode()
+{
+    return *m_playMode;
 }
 
 ViewportController& EditorMainWindow::viewports()
@@ -224,6 +237,8 @@ void EditorMainWindow::refreshActions()
     {
         bound.action->setEnabled(m_commands.isEnabled(bound.command));
     }
+    m_playAction->setChecked(m_playMode->playing());
+    m_playAction->setText(m_playMode->playing() ? u"Stop"_s : u"Play"_s);
     m_consoleAction->setChecked(m_console->isVisible());
     m_gameAction->setChecked(m_gameDock->isVisible());
     m_assetsAction->setChecked(m_assetsDock->isVisible());
@@ -533,6 +548,15 @@ void EditorMainWindow::createMenusAndToolbar()
     m_localAction->setToolTip(u"Move and rotate along the entity's own axes instead of the world's"_s);
     connect(m_localAction, &QAction::triggered, this,
             [this](bool local) { run(u"viewport.setGizmo"_s, {{u"space"_s, local ? u"local"_s : u"world"_s}}); });
+    // Play / Stop (Ctrl+P): one button, which runs play.start or play.stop.
+    m_playAction = new QAction(u"Play"_s, this);
+    m_playAction->setCheckable(true);
+    m_playAction->setShortcut(QKeySequence{Qt::CTRL | Qt::Key_P});
+    m_playAction->setToolTip(u"Play the scene's physics; Stop puts the scene back as it was (Ctrl+P)"_s);
+    connect(m_playAction, &QAction::triggered, this,
+            [this] { run(m_playMode->playing() ? u"play.stop"_s : u"play.start"_s, {}); });
+    addAction(m_playAction); // the shortcut works wherever the focus is in the window
+
     m_snapAction = new QAction(u"Snap"_s, this);
     m_snapAction->setCheckable(true);
     m_snapAction->setToolTip(u"Snap to the steps in Settings (or hold Ctrl while dragging)"_s);
@@ -576,6 +600,8 @@ void EditorMainWindow::createMenusAndToolbar()
     captureFrame->setShortcut(QKeySequence{Qt::Key_F9});
     addAction(captureFrame);
     view->addAction(captureFrame);
+    view->addSeparator();
+    view->addAction(m_playAction);
     QMenu* window = menuBar()->addMenu(u"&Window"_s);
     window->addAction(m_consoleAction);
     window->addAction(m_gameAction);
@@ -603,6 +629,9 @@ void EditorMainWindow::createMenusAndToolbar()
     toolbar->addAction(m_scaleAction);
     toolbar->addAction(m_localAction);
     toolbar->addAction(m_snapAction);
+    toolbar->addSeparator();
+    toolbar->addSeparator();
+    toolbar->addAction(m_playAction);
     toolbar->addSeparator();
     toolbar->addAction(settings);
 }

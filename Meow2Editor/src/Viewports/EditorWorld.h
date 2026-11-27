@@ -13,6 +13,7 @@
 #include <Meow2/Graphics/Renderer/GpuScene.h>
 #include <Meow2/Graphics/Renderer/SceneModel.h>
 #include <Meow2/Math/Bounds.h>
+#include <Meow2/Physics/CollisionMeshes.h>
 #include <Meow2/Scene/ComponentRegistry.h>
 #include <Meow2/Scene/Environment.h>
 #include <Meow2/Scene/Scene.h>
@@ -203,6 +204,45 @@ public:
         return *m_hierarchy;
     }
 
+    /// @brief The job system it was made with (the transform update runs on it; so does Play's physics).
+    /// @return It.
+    [[nodiscard]] Jobs::JobSystem& jobs()
+    {
+        return m_deps.jobs;
+    }
+
+    /// @brief The triangles of the scene's meshes, for mesh Colliders (kept whenever a model loads or reloads).
+    /// @return Them.
+    [[nodiscard]] const Physics::CollisionMeshes& collisionMeshes() const
+    {
+        return m_collisionMeshes;
+    }
+
+    /// @brief The scene as `.m2scene` text: Play's snapshot.
+    /// @return The text, or the writer's error.
+    [[nodiscard]] Result<std::string> snapshot() const;
+
+    /// @brief Replaces the scene with a snapshot's (Stop). Unlike openScene(), the loaded meshes stay: the snapshot is
+    ///        this scene from before Play, so it uses the same models.
+    /// @param text From snapshot().
+    /// @return Nothing, or the reader's error (the current scene is kept then).
+    [[nodiscard]] Result<void> restore(std::string_view text);
+
+    /// @brief Whether the scene is being simulated (Play): the scene file commands are off meanwhile, since saving
+    ///        would save the simulation's state.
+    /// @return True between Play and Stop.
+    [[nodiscard]] bool playing() const
+    {
+        return m_playing;
+    }
+
+    /// @brief Marks the scene as being simulated or not; PlayMode sets it.
+    /// @param playing True from Play to Stop.
+    void setPlaying(bool playing)
+    {
+        m_playing = playing;
+    }
+
 private:
     /// @brief A scene with the registry's components and a hierarchy, ready to fill.
     struct Fresh
@@ -221,6 +261,11 @@ private:
     /// @param meshIds Its stable mesh IDs.
     void watchModel(std::string_view source, std::span<const AssetId> meshIds);
 
+    /// @brief Keeps a model's meshes' triangles for mesh Colliders (collisionMeshes()).
+    /// @param model   The imported model.
+    /// @param meshIds Its stable mesh IDs, one per mesh.
+    void keepCollisionMeshes(const Assets::ImportedModel& model, std::span<const AssetId> meshIds);
+
     /// @brief Remembers the names of a model's meshes (meshName()).
     /// @param source  The model's virtual path; its file name prefixes the names.
     /// @param model   The imported model (its meshes' names).
@@ -232,6 +277,8 @@ private:
     std::unique_ptr<Scene::TransformHierarchy> m_hierarchy; ///< Likewise; destroyed before the scene.
     Renderer::RenderMeshes m_meshes;                        ///< Mesh AssetId → GPU mesh and material.
     std::unordered_map<AssetId, std::string> m_meshNames;   ///< meshName().
+    Physics::CollisionMeshes m_collisionMeshes;             ///< collisionMeshes().
+    bool m_playing = false;                                 ///< playing().
     /// @brief A loaded model reloadChangedModels() watches. Plain data.
     struct WatchedModel
     {

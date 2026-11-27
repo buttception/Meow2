@@ -282,13 +282,13 @@ From M7 on, features are tracked as GitHub issues and this file keeps only the m
 
 Owner decisions 2026-11-26: Jolt first, behind an interface a later library (Box3D) can replace; 2D gets its own milestone (M9) with Box2D instead of a 3D world locked to a plane.
 
-- 🟨 **PR 1 Interface and Jolt** — #236 / PR #238
+- ✅ **PR 1 Interface and Jolt** — #236 / PR #238
   - `PhysicsWorld` in `Meow2/Physics`: bodies (static, kinematic, dynamic), shapes (sphere, box, capsule, convex hull, mesh, compound), collision layers, forces and kinematic moves, ray / shape-cast / overlap queries, contact and sensor events; engine types only in the interface
   - Backends (`MEOW2_PHYSICS_BACKEND`): Jolt v5.7.0 (submodule, owner-approved), `None` builds without physics; contract tests every backend passes
   - `PhysicsLibrary` owns the library's process-wide state; its memory under `MemTag::Physics`, its jobs on enkiTS
-- **PR 2 Physics in scenes and the editor**
-  - `RigidBody` and `Collider` components (field descriptors, scene files), synced with the world in `fixedUpdate`
-  - Editor: physics components in the Inspector, play/stop, collision shapes drawn as debug lines, MCP commands
+- ✅ **PR 2 Physics in scenes and the editor** — #244 / PR #PR
+  - `RigidBody` and `Collider` components (field descriptors, scene files), synced with the world in `fixedUpdate`; Unity-style rules (owner decisions 2026-11-27): a Collider without a RigidBody is static, a RigidBody and its descendants' colliders are one compound, world scale scales colliders, mesh colliders are triangles when static and a convex hull on bodies
+  - Editor: physics components in the Inspector, Play/Stop (Stop restores the scene; undo and file commands off while playing), the selection's collision shapes drawn as debug lines, MCP commands
 - Later: joints, height fields, a character controller; double precision with the terrain/streaming work
 
 ## M9 — 2D ⬜
@@ -390,3 +390,4 @@ Owner decisions 2026-11-26: Jolt first, behind an interface a later library (Box
 - 2026-11-26 — M7 PR 5 done: the editor's debug tools and stats (#230 / PR #231), then its frame capture and render graph (#232 / PR #233).
 - 2026-11-26 — M7 done (0.8.0): the MCP server, headless mode and screenshots (#234 / PR #235).
 - 2026-11-26 — M8 PR 1: the physics interface and Jolt (#236 / PR #238). Owner decisions: Jolt first, Box3D possible later; 2D is its own milestone, the new M9 (Box2D, sprites, 2D projects); Scripting, Audio, Game UI, Export, Advanced rendering and Platforms renumbered M10–M15. M14 gains automatic exposure (owner request).
+- 2026-11-27 — M8 PR 2: physics components, Play/Stop and collider lines in the editor (#244 / PR #PR), with the owner's decisions on Stop and colliders.

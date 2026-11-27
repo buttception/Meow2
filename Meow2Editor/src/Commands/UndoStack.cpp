@@ -18,6 +18,10 @@ UndoStack::UndoStack(std::size_t limit)
 void UndoStack::push(UndoStep step)
 {
     MEOW2_ASSERT(step.undo && step.redo, "an undo step needs both closures");
+    if (m_paused)
+    {
+        return; // Play: what happens now is thrown away at Stop, and so are its steps
+    }
     // The redo steps can't be reached any more; if the saved state was among them, neither can it.
     if (m_clean && *m_clean > m_position)
     {
@@ -54,14 +58,20 @@ bool UndoStack::redo()
     return true;
 }
 
+void UndoStack::setPaused(bool paused)
+{
+    m_paused = paused;
+    ++m_revision; // what can be undone changed
+}
+
 bool UndoStack::canUndo() const
 {
-    return m_position > 0;
+    return !m_paused && m_position > 0;
 }
 
 bool UndoStack::canRedo() const
 {
-    return m_position < m_steps.size();
+    return !m_paused && m_position < m_steps.size();
 }
 
 QStringList UndoStack::undoLabels() const

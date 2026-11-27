@@ -40,6 +40,7 @@ void EditorWorld::adopt(Fresh fresh)
     m_scene = std::move(fresh.scene);
     m_meshes = {};
     m_meshNames.clear();
+    m_collisionMeshes.clear();
     m_models.clear();
     m_instances.clear();
     m_bounds = {.center = {0.0F, 0.0F, 0.0F}, .radius = 5.0F};
@@ -205,6 +206,7 @@ Result<Assets::SceneReadReport> EditorWorld::openScene(std::string_view path, co
     {
         const std::optional<Assets::AssetRecord> record = m_deps.assets.find(model.model);
         nameMeshes(record ? record->sourcePath : std::string{}, model.data, model.meshIds);
+        keepCollisionMeshes(model.data, model.meshIds);
         if (record)
         {
             watchModel(record->sourcePath, model.meshIds);
@@ -260,6 +262,7 @@ Result<std::vector<entt::entity>> EditorWorld::importModel(std::string_view sour
         }
     }
     nameMeshes(source, *model, *meshIds);
+    keepCollisionMeshes(*model, *meshIds);
     watchModel(source, *meshIds);
     std::string name{source.substr(source.find_last_of('/') + 1)};
     name = name.substr(0, name.find_last_of('.'));
@@ -306,6 +309,48 @@ void EditorWorld::nameMeshes(std::string_view source, const Assets::ImportedMode
         const std::string part = mesh.empty() ? std::format("mesh {}", i + 1) : mesh;
         m_meshNames[meshIds[i]] = stem.empty() ? part : stem + ": " + part;
     }
+}
+
+void EditorWorld::keepCollisionMeshes(const Assets::ImportedModel& model, std::span<const AssetId> meshIds)
+{
+    // All of a mesh's primitives as one triangle list: a Collider uses the whole mesh, whatever its materials.
+    for (std::size_t i = 0; i < meshIds.size() && i < model.meshes.size(); ++i)
+    {
+        Physics::CollisionMesh mesh;
+        for (const Assets::ImportedPrimitive& primitive : model.meshes[i].primitives)
+        {
+            const auto first = static_cast<std::uint32_t>(mesh.positions.size());
+            mesh.positions.insert(mesh.positions.end(), primitive.positions.begin(), primitive.positions.end());
+            for (const std::uint32_t index : primitive.indices)
+            {
+                mesh.indices.push_back(first + index);
+            }
+        }
+        m_collisionMeshes.add(meshIds[i], std::move(mesh));
+    }
+}
+
+Result<std::string> EditorWorld::snapshot() const
+{
+    return Assets::writeScene(*m_scene, m_deps.components);
+}
+
+Result<void> EditorWorld::restore(std::string_view text)
+{
+    Fresh fresh = makeScene();
+    Result<Assets::SceneReadReport> read =
+        Assets::readScene(text, *fresh.scene, *fresh.hierarchy, m_deps.components, "the scene before Play");
+    if (!read)
+    {
+        return Unexpected<Error>{read.error()};
+    }
+    // Like adopt(), but the meshes, their names and the watched models stay: it's the same scene, from before Play.
+    // The GPU scene keeps its meshes too; the instances are gathered again at the next update().
+    m_hierarchy = std::move(fresh.hierarchy); // the old hierarchy goes before its scene
+    m_scene = std::move(fresh.scene);
+    m_instances.clear();
+    ++m_revision;
+    return {};
 }
 
 std::optional<Math::Sphere> EditorWorld::boundsOf(entt::entity entity) const
@@ -460,6 +505,7 @@ std::size_t EditorWorld::reloadChangedModels(Renderer::GpuScene* gpu, bool now)
             }
         }
         nameMeshes(model.source, *imported, model.meshIds);
+        keepCollisionMeshes(*imported, model.meshIds);
         MEOW2_LOG_INFO(m_deps.log, "Reloaded {} (its file or a texture changed)", model.source);
         ++m_revision;
         ++reloaded;

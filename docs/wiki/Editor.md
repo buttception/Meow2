@@ -80,7 +80,7 @@ commands.execute(u"scene.rename", {{u"entity"_s, id}, {u"name"_s, u"Lamp"_s}});
 ## Menus and toolbar
 
 - **File:** New scene, Open scene…, Open recent, Save, Save as…, Open project folder…, Import model… ([Project and scenes](#project-and-scenes)), Settings… (Ctrl+,). **Edit:** Undo (Ctrl+Z), Redo (Ctrl+Y). **Window:** Console, Game view, Assets, Hierarchy, Inspector. **Edit** also has Create entity, Duplicate (Ctrl+D) and Delete (Del). **Help:** Copy MCP setup ([MCP](Mcp.md)).
-- **Toolbar:** Save, Undo, Redo, Move (W), Rotate (E), Scale (R), Local axes, Snap, Settings. **View** has the same gizmo items after the camera modes.
+- **Toolbar:** Save, Undo, Redo, Move (W), Rotate (E), Scale (R), Local axes, Snap, Play (Ctrl+P), Settings. **View** has the same gizmo items after the camera modes, and Play.
 - **Dock tabs** go on top: docks stacked in one place show their tabs above them (`setTabPosition(…, North)`), not below as Qt does by default. A dock that shares its place with others hides its own title bar, since its tab already names it (an empty `titleBarWidget`); it gets the title back when it stands alone or floats. Drag a tab to move or undock it.
 - **The mouse wheel edits a field only while it has focus** (click or Tab into it first). Over an unfocused spin box, drop-down or slider the wheel scrolls the panel instead, so scrolling down the Inspector never changes values on the way (`WheelGuard`, an application event filter: those widgets get `Qt::StrongFocus`, and a wheel event over an unfocused one goes to the scroll area around it).
 - Each action is bound to a command name. `EditorMainWindow::tick()`, every frame, enables an action exactly when its command exists and is enabled. File actions that may ask first (unsaved changes, a file name) ask, then run their command. Undo and Redo name their step: "Undo Set position".
@@ -353,6 +353,21 @@ The **Stats** dock (a tab beside the console) shows frame time and FPS with a gr
 - **How it works.** The tools moved from Meow2Renderer into the engine (`Renderer::RenderDebug`, `InfiniteGrid`, `DepthPositionView`), so both apps draw them with the same code. `ViewportController` hands `DebugTools`' choices to `EditorRenderer` every frame. Before the editor viewport's passes, `RenderDebug::apply()` sets the scene's debug pipelines and sky; before the game viewport's, `RenderDebug::restore()` sets them back. One `GpuScene` draws both views in one frame, so a pass must pick its pipeline when it's added, not when it records: the Blended pass did the latter, and was fixed ([Rendering](Rendering.md#overlay-passes-picking-and-the-selection-mask)). A debug view is presented without the tone curve, into the swapchain or an offscreen target alike.
 - `view.showPanel` takes `debug` and `stats` too (Window → Debug, Stats).
 
+## Play
+
+The Play button (Ctrl+P) runs the scene's physics in the editor; pressed again (Stop), it puts the scene back exactly as it was (owner decision 2026-11-27, as in Unity and Unreal). Physics components and their rules: [Physics → In scenes](Physics.md#in-scenes-rigidbody-and-collider).
+
+- **Play** writes the scene to text (`EditorWorld::snapshot()`, the same writer as scene files), creates a `PhysicsWorld` and a `PhysicsScene` over the scene, and builds the bodies. The game loop's `fixedUpdate` then steps it at the fixed rate (1/60 s), and both viewports show it moving.
+- **While playing**, the undo history is paused (nothing is recorded or undone: what happens during Play is thrown away) and the scene file commands are off, so a played scene is never saved by accident. Selecting, inspecting, moving the camera and the debug tools still work; edits you make go with the rest at Stop.
+- **Stop** destroys the bodies and the world, then reads the text back into a fresh scene (`EditorWorld::restore()`): the same entity IDs, so the selection and the docks keep pointing at the same things, and the GPU scene just sees changed transforms.
+- **Colliders are drawn** in the editor viewport as green lines for the selected entities and everything under them (only for the selection, as in Unity, so a scene full of colliders stays readable): a box's edges, a sphere's three circles, a capsule's rings, lines and caps, and a mesh collider's bounding box, all sized by the entity's world scale as physics sizes them (`Editing/ColliderLines`).
+
+| Command | Kind | Parameters | What it does |
+|---|---|---|---|
+| `play.start` | action | — | Starts playing; returns `bodies` and `warnings` (what couldn't be simulated). Refused while playing, or in a build without physics. |
+| `play.stop` | action | — | Stops and restores the scene. |
+| `play.state` | query | — | `playing`, `seconds` played, `bodies`, `warnings`. |
+
 ## How it works
 
 - **Startup order.** `main` builds the engine infrastructure first: logging, crash handler, leak check, config. Then it creates the `QApplication`, then the main window, which is placed with `showWithDesc(window, windowDescFromConfig(config, …), log)`.
@@ -427,6 +442,7 @@ The `Editor.*` tests run on Qt's **offscreen** platform, so they need no desktop
 - `Editor.CaptureCommandsTest.WithoutGpu`: without a GPU, capturing and showing fail with a message, info and image say there's nothing. `Editor.CaptureFlowJson.RoundTrips`: the graph survives JSON both ways; an access to a missing resource is dropped. `Editor.RenderGraphDockTest.ShowsAFlowAndPicks` (against stand-in commands): a node per pass, a click on an input pin asks for the texture as the pass before left it, a buffer pin asks for nothing, the pass's reads and writes listed, the picture shown when it comes back. `EditorGpu.EditorRendererTest.CapturesAFrame`: a capture of both viewports has their passes and texture copies, and a picked copy comes back as a picture that isn't black.
 - `EditorGpu.EditorRendererTest.DebugViewOnlyInEditorViewport`: a debug view changes the editor viewport and not one pixel of the game view; Position, Overdraw and Triangles draw with the validation layer quiet; back to shaded, the same image. `GridAndWireframeDraw`: the grid adds lines; wireframe only is edges on black, overlay edges over the scene. `FrozenCullingKeepsFrustum`: from outside, the frozen frustum's lines show, and go when culling is unfrozen.
 - The MCP server, headless mode and screenshots: see [MCP → Tests](Mcp.md#tests). `Editor.CaptureCommandsTest.WithoutGpu` also checks `capture.image {after}` waiting and `viewport.screenshot` failing without a GPU.
+- `Editor.PlayModeTest.PlayStepsAndStopRestores`: Play builds a body per RigidBody and static collider, two seconds of steps land a box on a floor, undo and file saving are off meanwhile, Stop puts the box back where it was with the same IDs, and the edit before Play is still the one undo reverts. `RefusedWithoutPhysics`: no physics library, no Play. `PhysicsComponentsThroughCommands`: RigidBody and Collider are added and set through the commands (shapes by name), and `component.list` offers both. `ColliderLinesForTheSelection`: nothing selected draws nothing; a box collider is its twelve edges, sized by the entity; selecting a parent draws its children's colliders too.
 - `Smoke.Editor.Runs` and `Smoke.Editor.OpensWindow`: the app runs 3 frames offscreen and exits 0.
 
 ## Not yet

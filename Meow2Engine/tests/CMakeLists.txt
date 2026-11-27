@@ -233,7 +233,7 @@ meow2_add_test_suite(
 meow2_add_test_suite(
     TARGET    Meow2EnginePhysicsTests
     MODULE    Physics
-    SOURCES   Physics/PhysicsWorldTests.cpp)
+    SOURCES   Physics/PhysicsSceneTests.cpp Physics/PhysicsWorldTests.cpp)
 
 # Scene (entities and components on EnTT).
 meow2_add_test_suite(
