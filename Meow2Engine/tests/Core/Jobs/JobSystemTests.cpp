@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <format>
 #include <mutex>
@@ -84,22 +85,30 @@ TEST_F(JobSystemTest, ThreadIndexInRange)
     EXPECT_EQ(jobs.threadCount(), 4u);
     EXPECT_EQ(jobs.threadIndex(), 0u) << "the creating thread is job thread 0";
 
+    // Each piece records its thread, then waits until a second thread has run a piece too (at most 10 s). Without the
+    // wait, one thread can run all 64 pieces before the others wake up (it happened on a busy, CPU-pinned CI runner,
+    // #242): more than one thread taking part would be likely, not certain. With it, the first thread is held, so
+    // another must take a piece; the limit only matters if the job system never hands work to a second thread.
     std::mutex mutex;
+    std::condition_variable secondThread;
     std::set<std::uint32_t> seen;
-    const Job job = jobs.parallelFor(64, 1,
-                                     [&](std::uint32_t, std::uint32_t, std::uint32_t threadIndex)
-                                     {
-                                         busyWork();
-                                         EXPECT_EQ(threadIndex, jobs.threadIndex());
-                                         const std::scoped_lock lock{mutex};
-                                         seen.insert(threadIndex);
-                                     });
+    const Job job =
+        jobs.parallelFor(64, 1,
+                         [&](std::uint32_t, std::uint32_t, std::uint32_t threadIndex)
+                         {
+                             busyWork();
+                             EXPECT_EQ(threadIndex, jobs.threadIndex());
+                             std::unique_lock lock{mutex};
+                             seen.insert(threadIndex);
+                             secondThread.notify_all();
+                             secondThread.wait_for(lock, std::chrono::seconds{10}, [&] { return seen.size() > 1; });
+                         });
     jobs.wait(job);
     for (const std::uint32_t index : seen)
     {
         EXPECT_LT(index, jobs.threadCount());
     }
-    EXPECT_GT(seen.size(), 1u) << "with 4 threads and 64 slow pieces, more than one thread takes part";
+    EXPECT_GT(seen.size(), 1u) << "with 4 threads, a piece waiting for a second thread is joined by one";
 
     std::uint32_t foreign = 0;
     std::thread{[&]

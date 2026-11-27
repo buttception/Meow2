@@ -13,6 +13,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ### Fixed
 - Meow2Editor no longer opens with its title bar above the screen, where the window couldn't be moved: a saved position too close to the top is moved down for the title bar, and headless runs (`--headless`) no longer save their hidden window's position and dock layout over yours (#241).
+- A job-system test no longer fails at random on a busy machine: it waits for a second thread to take part instead of hoping one does (#243).
 
 ## [0.8.0] — 2026-11-26
 
