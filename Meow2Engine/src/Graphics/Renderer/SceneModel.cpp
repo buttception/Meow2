@@ -219,7 +219,7 @@ std::optional<Math::Aabb> gatherInstances(Scene::Scene& scene, const RenderMeshe
         {
             continue;
         }
-        // Movable things are drawn into the sun's shadow every frame; the rest into its cache (until M13 infers it,
+        // Movable things are drawn into the sun's shadow every frame; the rest into its cache (until M14 infers it,
         // Auto counts as static).
         const auto* local = registry.try_get<Scene::LocalTransform>(entity);
         const bool movable = local != nullptr && local->mobility == Scene::Mobility::Movable;

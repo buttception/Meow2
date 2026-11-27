@@ -34,7 +34,7 @@ class JobSystem;
 namespace Meow2::Scene
 {
 /// @brief Whether an entity moves at runtime, for caches that treat static things differently (cached shadows, later
-///        ray-tracing structures and baked data). Saved in scene files now; inferred from components later (M13).
+///        ray-tracing structures and baked data). Saved in scene files now; inferred from components later (M14).
 enum class Mobility : std::uint8_t
 {
     Auto,    ///< Decided by the engine (today: static unless something marks it movable).
@@ -49,7 +49,7 @@ struct LocalTransform
 {
     Math::Transform value; ///< Position, rotation and scale relative to the parent.
     /// @brief Whether it moves at runtime. Movable meshes are drawn into the sun's shadow every frame instead of its
-    ///        cache (MEOW2_INSTANCE_MOVABLE); Auto counts as Static until it's inferred from components (M13).
+    ///        cache (MEOW2_INSTANCE_MOVABLE); Auto counts as Static until it's inferred from components (M14).
     Mobility mobility = Mobility::Auto;
 };
 

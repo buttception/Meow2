@@ -175,6 +175,9 @@ target_sources(Meow2Engine
             include/Meow2/Math/Spline.h
             include/Meow2/Math/Transform.h
             include/Meow2/Math/Types.h
+            include/Meow2/Physics/PhysicsLibrary.h
+            include/Meow2/Physics/PhysicsTypes.h
+            include/Meow2/Physics/PhysicsWorld.h
             include/Meow2/Platform/FileSystem/FileSystem.h
             include/Meow2/Platform/Input/InputEvents.h
             include/Meow2/Platform/Input/InputSystem.h
@@ -272,6 +275,22 @@ if(MEOW2_SHADER_TOOLS)
         COMPILE_DEFINITIONS "MEOW2_DXC_VERSION=\"${meow2DxcVersion}\"")
 else()
     target_sources(Meow2Engine PRIVATE src/Graphics/Shader/ShaderCompilerNone.cpp)
+endif()
+
+# Physics (techstack.md §14): the backend MEOW2_PHYSICS_BACKEND picks (cmake/Meow2External.cmake), behind
+# Meow2/Physics; the checks every backend shares are always built.
+target_sources(Meow2Engine PRIVATE
+    src/Physics/PhysicsValidation.cpp
+    src/Physics/PhysicsValidation.h)
+if(MEOW2_PHYSICS_BACKEND STREQUAL "Jolt")
+    target_sources(Meow2Engine PRIVATE
+        src/Physics/Jolt/JoltJobSystem.cpp
+        src/Physics/Jolt/JoltJobSystem.h
+        src/Physics/Jolt/PhysicsLibraryJolt.cpp
+        src/Physics/Jolt/PhysicsWorldJolt.cpp)
+    target_link_libraries(Meow2Engine PRIVATE Jolt)
+else()
+    target_sources(Meow2Engine PRIVATE src/Physics/None/PhysicsNone.cpp)
 endif()
 
 # Meow2Shared.hlsli, the structs shared with HLSL, is included by Meow2/Graphics/Shader/BindlessLayout.h.

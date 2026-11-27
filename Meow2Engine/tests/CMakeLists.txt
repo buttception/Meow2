@@ -229,6 +229,12 @@ meow2_add_test_suite(
         Math/TransformTests.cpp
         Math/TypesTests.cpp)
 
+# Physics: the contract every backend (MEOW2_PHYSICS_BACKEND) must pass; skipped in a build without physics.
+meow2_add_test_suite(
+    TARGET    Meow2EnginePhysicsTests
+    MODULE    Physics
+    SOURCES   Physics/PhysicsWorldTests.cpp)
+
 # Scene (entities and components on EnTT).
 meow2_add_test_suite(
     TARGET    Meow2EngineSceneTests

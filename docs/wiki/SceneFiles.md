@@ -55,7 +55,7 @@ Some things belong to the scene, not to an entity: today the `Environment` (the 
 
 ## Mobility
 
-Whether something moves at runtime is `LocalTransform::mobility` (`auto`, `static`, `movable`): `movable` meshes are drawn into the sun's shadow every frame, the rest into its cache; `auto` counts as static until M13 infers it. `MeshRenderer` had a `movable` flag of its own until version 2; the migration drops it (a migration sees one component, so it can't move the flag to the transform), and Meow2Renderer marks animated nodes `movable` each time it loads them.
+Whether something moves at runtime is `LocalTransform::mobility` (`auto`, `static`, `movable`): `movable` meshes are drawn into the sun's shadow every frame, the rest into its cache; `auto` counts as static until M14 infers it. `MeshRenderer` had a `movable` flag of its own until version 2; the migration drops it (a migration sees one component, so it can't move the flag to the transform), and Meow2Renderer marks animated nodes `movable` each time it loads them.
 
 ## Why it merges
 

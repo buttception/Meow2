@@ -11,7 +11,8 @@ How Meow2 allocates memory. Everything is built on the C++ standard's allocator 
 | Global `operator new`/`delete` tracking, leak report at app exit | ✅ |
 | Allocator hook of SDL (`MemTag::Platform`, see [Window](Window.md)) | ✅ M2 |
 | Allocator hook of enkiTS (`MemTag::Jobs`, see [Jobs](Jobs.md)) | ✅ M1 |
-| Allocator hooks of ImGui, Jolt, VMA/D3D12MA | ⬜ with each library |
+| Allocator hooks of Jolt (`MemTag::Physics`, see [Physics](Physics.md)) | ✅ M8 |
+| Allocator hooks of ImGui, VMA/D3D12MA | ⬜ with each library |
 | `FrameArena`: one arena per frame in flight × thread | ⬜ M5 |
 
 ## Memory tags

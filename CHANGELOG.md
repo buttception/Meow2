@@ -8,8 +8,12 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+- Physics in the engine: rigid bodies on Jolt Physics 5.7 behind the engine's own `PhysicsWorld`, so the library can be swapped later (Box3D) without touching games. Static, kinematic and dynamic bodies with spheres, boxes, capsules, convex hulls, meshes and compound shapes; collision layers; forces, impulses and kinematic moves; ray, shape-cast and overlap queries; and contact and sensor events, one begin and one end per pair of bodies, in the same order on every run. It runs on the engine's job threads, its memory shows up as "Physics", and `MEOW2_PHYSICS_BACKEND=None` builds the engine without it (#238).
+
 ### Changed
 - Meow2Editor: new scenes start in daylight (the sun 55° high behind the main camera, exposure 2.5) instead of looking like dusk; scenes you saved keep their own light (#239).
+- The roadmap gains a 2D milestone (M9: Box2D physics, sprites and tilemaps, 2D projects), so Scripting, Audio, Game UI, Export, Advanced rendering and Platforms move to M10–M15 (#238).
 
 ### Fixed
 - Meow2Editor no longer opens with its title bar above the screen, where the window couldn't be moved: a saved position too close to the top is moved down for the title bar, and headless runs (`--headless`) no longer save their hidden window's position and dock layout over yours (#241).
