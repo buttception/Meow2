@@ -194,6 +194,14 @@ public:
         m_pickSaveAs = std::move(pick);
     }
 
+    /// @brief Replaces how the window reads the mouse buttons held down (QGuiApplication::mouseButtons() by default):
+    ///        dock titles don't change while one is held, so a dock drag isn't cut short. Tests hold one directly.
+    /// @param buttons Returns the buttons held down.
+    void setMouseButtonsSource(std::function<Qt::MouseButtons()> buttons)
+    {
+        m_mouseButtons = std::move(buttons);
+    }
+
 protected:
     /// @brief Asks about unsaved changes before the window closes; Cancel keeps it open.
     /// @param event The close event.
@@ -284,5 +292,6 @@ private:
     QStringList m_recentShown;                        ///< What m_recentMenu lists.
     std::function<UnsavedAnswer()> m_askUnsaved;      ///< setUnsavedPrompt().
     std::function<QString()> m_pickSaveAs;            ///< setSaveAsPrompt().
+    std::function<Qt::MouseButtons()> m_mouseButtons; ///< setMouseButtonsSource(); unset: the real buttons.
 };
 } // namespace Meow2::Editor

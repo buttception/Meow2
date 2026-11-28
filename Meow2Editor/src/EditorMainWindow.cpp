@@ -260,6 +260,13 @@ ViewportController& EditorMainWindow::viewports()
 
 void EditorMainWindow::updateDockTitles()
 {
+    // Never while a mouse button is down: during a drag, Qt floats the dock (or tabs it, to preview a drop), and
+    // swapping its title bar then ends the drag, so docks couldn't be moved anywhere (owner report 2026-11-28). The
+    // titles catch up on the first frame after the button is released.
+    if ((m_mouseButtons ? m_mouseButtons() : QGuiApplication::mouseButtons()) != Qt::NoButton)
+    {
+        return;
+    }
     for (QDockWidget* dock : findChildren<QDockWidget*>(Qt::FindDirectChildrenOnly))
     {
         // Tab mates the user hasn't closed (a dock behind another tab isn't hidden, only not current).
