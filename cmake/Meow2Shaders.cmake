@@ -17,9 +17,12 @@ function(meow2_add_shaders target)
         set(sanitizerEnvironment ${CMAKE_COMMAND} -E env
             "TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:suppressions=${suppressions}")
     endif()
+    # The compiler by its full path: CMake turns a target name into its executable only as a command's first word, and
+    # behind `cmake -E env` it isn't. DEPENDS builds it first, which a target name as the first word did implicitly.
     add_custom_target(${target} ALL
-        COMMAND ${sanitizerEnvironment} Meow2ShaderCompiler --source "${arg_SOURCE_DIR}" --output "${arg_OUTPUT_DIR}"
-                "$<$<CONFIG:Debug>:--debug>"
+        COMMAND ${sanitizerEnvironment} $<TARGET_FILE:Meow2ShaderCompiler> --source "${arg_SOURCE_DIR}"
+                --output "${arg_OUTPUT_DIR}" "$<$<CONFIG:Debug>:--debug>"
+        DEPENDS Meow2ShaderCompiler
         COMMAND_EXPAND_LISTS
         COMMENT "Cooking shaders in ${arg_SOURCE_DIR}"
         VERBATIM)
