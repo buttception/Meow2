@@ -249,6 +249,7 @@ private:
     std::unique_ptr<ViewportController> m_viewports;     ///< After the widgets it drives.
     std::unique_ptr<PlayMode> m_playMode;                ///< Play and Stop; goes before the viewports.
     QAction* m_playAction = nullptr;                     ///< Play / Stop (Ctrl+P), checked while playing.
+    QAction* m_pauseAction = nullptr;                    ///< Pause (Ctrl+Shift+P), checked while paused.
     QAction* m_gameAction = nullptr;                     ///< Checked while the game dock is shown.
     QAction* m_orbitAction = nullptr;                    ///< Checked in Orbit mode.
     QAction* m_flyAction = nullptr;                      ///< Checked in Fly mode.

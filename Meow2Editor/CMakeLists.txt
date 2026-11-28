@@ -91,6 +91,7 @@ add_library(Meow2EditorCore STATIC
     src/Panels/SettingsDialog.h
     src/Panels/StatsDock.cpp
     src/Panels/StatsDock.h
+    src/Panels/TreeBranches.h
     src/Panels/WheelGuard.cpp
     src/Panels/WheelGuard.h
     src/Project/SceneDocument.cpp

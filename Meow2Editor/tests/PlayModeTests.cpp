@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QToolBar>
 
 namespace
 {
@@ -191,4 +192,110 @@ TEST_F(PlayModeTest, ColliderLinesForTheSelection)
     // Selecting the box shows its collider and its child's sphere (three circles).
     const std::vector<entt::entity> parent{entityOf(m_world, scene.box)};
     EXPECT_GT(Meow2::Editor::colliderLines(m_world.scene(), parent, meshes, meshOf).size(), 12U + 3U * 30U);
+}
+
+TEST_F(PlayModeTest, PauseHoldsTheScene)
+{
+    Meow2::Physics::PhysicsLibrary physics{m_log};
+    Meow2::Editor::PlayMode play{{.commands = m_commands,
+                                  .history = m_history,
+                                  .world = m_world,
+                                  .jobs = m_jobs,
+                                  .physics = &physics,
+                                  .log = m_log}};
+    const BoxOnFloor scene = makeBoxOnFloor(m_commands);
+    m_world.update(nullptr);
+    EXPECT_FALSE(m_commands.isEnabled(u"play.pause")) << "only while playing";
+    const Meow2::Result<QJsonValue> started = m_commands.execute(u"play.start");
+    if (!started && started.error().code == Meow2::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << "built without physics (MEOW2_PHYSICS_BACKEND=None)";
+    }
+    ASSERT_TRUE(started) << started.error().message;
+    const entt::entity box = entityOf(m_world, scene.box);
+    const auto height = [&]
+    {
+        return m_world.scene().registry().get<Meow2::Scene::LocalTransform>(box).value.position.y;
+    };
+    for (int i = 0; i < 10; ++i)
+    {
+        play.fixedUpdate(1.0F / 60.0F);
+    }
+    const float falling = height();
+    EXPECT_LT(falling, 3.0F);
+
+    EXPECT_FALSE(m_commands.isEnabled(u"play.resume")) << "not paused";
+    ok(m_commands, u"play.pause");
+    EXPECT_TRUE(play.paused());
+    EXPECT_TRUE(ok(m_commands, u"play.state").value(u"paused").toBool());
+    EXPECT_FALSE(m_commands.isEnabled(u"play.pause")) << "already paused";
+    for (int i = 0; i < 30; ++i)
+    {
+        play.fixedUpdate(1.0F / 60.0F);
+    }
+    EXPECT_FLOAT_EQ(height(), falling) << "nothing moves while paused";
+    EXPECT_NEAR(ok(m_commands, u"play.state").value(u"seconds").toDouble(), 10.0 / 60.0, 1e-4)
+        << "paused time isn't played";
+
+    ok(m_commands, u"play.resume");
+    play.fixedUpdate(1.0F / 60.0F);
+    EXPECT_LT(height(), falling) << "falls again";
+
+    // Stop from a pause restores the scene too, and the next Play starts unpaused.
+    ok(m_commands, u"play.pause");
+    ok(m_commands, u"play.stop");
+    EXPECT_FALSE(play.paused());
+    ok(m_commands, u"play.start");
+    EXPECT_FALSE(play.paused());
+    ok(m_commands, u"play.stop");
+}
+
+TEST_F(PlayModeTest, ToolbarButtons)
+{
+    Meow2::Physics::PhysicsLibrary physics{m_log};
+    Meow2::Editor::EditorMainWindowDeps deps = windowDeps();
+    deps.physics = &physics;
+    Meow2::Editor::EditorMainWindow window{deps};
+    window.tick();
+    auto* toolbar = window.findChild<QToolBar*>(u"MainToolbar"_s);
+    ASSERT_NE(toolbar, nullptr);
+    const auto action = [toolbar](const QString& text) -> QAction*
+    {
+        for (QAction* candidate : toolbar->actions())
+        {
+            if (candidate->text() == text)
+            {
+                return candidate;
+            }
+        }
+        return nullptr;
+    };
+    QAction* play = action(u"Play"_s);
+    QAction* pause = action(u"Pause"_s);
+    ASSERT_NE(play, nullptr);
+    ASSERT_NE(pause, nullptr);
+    EXPECT_FALSE(play->icon().isNull()) << "a play icon, not the word";
+    EXPECT_FALSE(pause->icon().isNull());
+    EXPECT_FALSE(pause->isEnabled()) << "Pause only while playing";
+
+    play->trigger();
+    window.tick();
+    if (!window.playMode().playing())
+    {
+        GTEST_SKIP() << "built without physics (MEOW2_PHYSICS_BACKEND=None)";
+    }
+    EXPECT_TRUE(play->isChecked()) << "shows Stop while playing";
+    EXPECT_EQ(play->text(), u"Stop"_s);
+    EXPECT_TRUE(pause->isEnabled());
+    pause->trigger();
+    window.tick();
+    EXPECT_TRUE(window.playMode().paused());
+    EXPECT_TRUE(pause->isChecked());
+    pause->trigger();
+    window.tick();
+    EXPECT_FALSE(window.playMode().paused());
+    play->trigger();
+    window.tick();
+    EXPECT_FALSE(window.playMode().playing());
+    EXPECT_FALSE(pause->isEnabled());
 }

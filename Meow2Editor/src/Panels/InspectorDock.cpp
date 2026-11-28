@@ -139,7 +139,7 @@ void InspectorDock::build()
     auto* idLabel = new QLabel(id, m_content);
     idLabel->setObjectName(u"EntityId"_s);
     idLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    idLabel->setStyleSheet(u"color: #6E6E76; font-size: 11px;"_s);
+    idLabel->setStyleSheet(u"color: #6E6E76; font-size: 8px;"_s);
     m_layout->addWidget(idLabel);
     m_layout->addSpacing(6);
 

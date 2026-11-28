@@ -90,7 +90,7 @@ StatsDock::StatsDock(EditorCommandRegistry& commands, QWidget* parent)
     auto* content = new QWidget();
     auto* layout = new QVBoxLayout(content);
     layout->setContentsMargins(8, 6, 8, 8);
-    const QFont mono = editorMonospaceFont(10); // figures line up in a fixed-width font
+    const QFont mono = editorMonospaceFont(); // figures line up in a fixed-width font
     const auto label = [content, &mono, layout](const QString& name)
     {
         auto* made = new QLabel(content);

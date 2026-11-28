@@ -3,6 +3,8 @@
 
 #include "Panels/AssetsDock.h"
 
+#include "Panels/TreeBranches.h"
+
 #include <QAbstractFileIconProvider>
 #include <QFileInfo>
 #include <QFileSystemModel>
@@ -87,7 +89,7 @@ private:
 AssetsDock::AssetsDock(QWidget* parent)
     : QDockWidget(u"Assets"_s, parent)
     , m_model(new QFileSystemModel(this)) // Qt parent–child ownership
-    , m_tree(new QTreeView(this))
+    , m_tree(new ArrowTreeView(this))
 {
     setObjectName(u"AssetsDock"_s); // QMainWindow::saveState() keys docks by object name
     m_icons = std::make_unique<AssetIconProvider>();

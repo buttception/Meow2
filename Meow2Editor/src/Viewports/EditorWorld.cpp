@@ -200,8 +200,15 @@ Result<Assets::SceneReadReport> EditorWorld::openScene(std::string_view path, co
     }
     adopt(std::move(fresh));
     Renderer::GpuScene* gpu = freshGpu ? freshGpu() : nullptr; // only now: a file that can't be read keeps the old
+    using Clock = std::chrono::steady_clock;
+    const auto seconds = [](Clock::time_point from)
+    {
+        return std::chrono::duration<double>(Clock::now() - from).count();
+    };
+    const Clock::time_point importStart = Clock::now();
     // The models its MeshRenderers name, found by their stable mesh IDs in the models' .meta files.
-    const Renderer::SceneModels models = Renderer::importSceneModels(*m_scene, m_deps.assets, m_meshes, m_deps.log);
+    const Renderer::SceneModels models =
+        Renderer::importSceneModels(*m_scene, m_deps.assets, m_meshes, m_deps.log, &m_deps.jobs);
     for (const Renderer::SceneModelImport& model : models.models)
     {
         const std::optional<Assets::AssetRecord> record = m_deps.assets.find(model.model);
@@ -212,18 +219,24 @@ Result<Assets::SceneReadReport> EditorWorld::openScene(std::string_view path, co
             watchModel(record->sourcePath, model.meshIds);
         }
     }
+    const double importSeconds = seconds(importStart);
     for (const std::string& warning : models.warnings)
     {
         MEOW2_LOG_WARN(m_deps.log, "{}: {}", path, warning);
     }
+    const Clock::time_point uploadStart = Clock::now();
     if (gpu != nullptr)
     {
-        if (Result<void> uploaded = Renderer::uploadSceneModels(*gpu, models, m_meshes, m_deps.ids, m_deps.log);
+        if (Result<void> uploaded =
+                Renderer::uploadSceneModels(*gpu, models, m_meshes, m_deps.ids, m_deps.log, {.jobs = &m_deps.jobs});
             !uploaded)
         {
             MEOW2_LOG_ERROR(m_deps.log, "{}: its models can't all be drawn: {}", path, uploaded.error());
         }
     }
+    // Where opening a scene's time goes: reading and decoding its models, then preparing and uploading them.
+    MEOW2_LOG_INFO(m_deps.log, "{}: models read in {:.2f} s, uploaded in {:.2f} s", path, importSeconds,
+                   seconds(uploadStart));
     return read;
 }
 
@@ -234,7 +247,7 @@ Result<void> EditorWorld::saveScene(std::string_view path) const
 
 Result<std::vector<entt::entity>> EditorWorld::importModel(std::string_view source, Renderer::GpuScene* gpu)
 {
-    Result<Assets::ImportedModel> model = Assets::importGltf(m_deps.assets.files(), source, m_deps.log);
+    Result<Assets::ImportedModel> model = Assets::importGltf(m_deps.assets.files(), source, m_deps.log, &m_deps.jobs);
     if (!model)
     {
         return Unexpected<Error>{model.error()};
@@ -255,7 +268,7 @@ Result<std::vector<entt::entity>> EditorWorld::importModel(std::string_view sour
     if (gpu != nullptr && !uploaded)
     {
         Result<std::vector<AssetId>> added =
-            Renderer::uploadModel(*gpu, *model, m_deps.ids, m_meshes, m_deps.log, {}, *meshIds);
+            Renderer::uploadModel(*gpu, *model, m_deps.ids, m_meshes, m_deps.log, {.jobs = &m_deps.jobs}, *meshIds);
         if (!added)
         {
             return Unexpected<Error>{added.error()};
@@ -485,7 +498,8 @@ std::size_t EditorWorld::reloadChangedModels(Renderer::GpuScene* gpu, bool now)
             continue;
         }
         model.newest = newest;
-        Result<Assets::ImportedModel> imported = Assets::importGltf(m_deps.assets.files(), model.source, m_deps.log);
+        Result<Assets::ImportedModel> imported =
+            Assets::importGltf(m_deps.assets.files(), model.source, m_deps.log, &m_deps.jobs);
         if (!imported)
         {
             MEOW2_LOG_WARN(m_deps.log, "{} changed but can't be read: {}; the old one stays", model.source,
@@ -496,8 +510,8 @@ std::size_t EditorWorld::reloadChangedModels(Renderer::GpuScene* gpu, bool now)
         {
             // The same mesh IDs: the scene's MeshRenderers point at them, so they draw the new meshes, materials and
             // textures from the next update on.
-            Result<std::vector<AssetId>> uploaded =
-                Renderer::uploadModel(*gpu, *imported, m_deps.ids, m_meshes, m_deps.log, {}, model.meshIds);
+            Result<std::vector<AssetId>> uploaded = Renderer::uploadModel(
+                *gpu, *imported, m_deps.ids, m_meshes, m_deps.log, {.jobs = &m_deps.jobs}, model.meshIds);
             if (!uploaded)
             {
                 MEOW2_LOG_WARN(m_deps.log, "{} changed but can't be uploaded: {}", model.source, uploaded.error());

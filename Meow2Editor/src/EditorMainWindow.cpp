@@ -6,6 +6,7 @@
 #include "Commands/CommandSchema.h"
 #include "Editing/PlayMode.h"
 #include "Editing/SceneEditor.h"
+#include "EditorTheme.h"
 #include "Panels/AssetsDock.h"
 #include "Panels/ConsoleDock.h"
 #include "Panels/DebugDock.h"
@@ -38,6 +39,9 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPixmap>
+#include <QPolygonF>
 #include <QToolBar>
 #include <string>
 #include <string_view>
@@ -49,6 +53,53 @@ using namespace Qt::StringLiterals;
 
 namespace
 {
+/// @brief The shapes on the Play, Stop and Pause buttons.
+enum class TransportShape : std::uint8_t
+{
+    Play,  ///< A triangle pointing right.
+    Stop,  ///< A square.
+    Pause, ///< Two bars.
+};
+
+/// @brief A transport button's picture, drawn here so it needs no image files and follows the theme: light grey,
+///        and red (the theme's accent) for the state that's on (playing shows Stop in red, paused shows Pause in red).
+/// @param off The shape when the action is unchecked.
+/// @param on  The shape when it's checked.
+/// @return The icon, with a pixmap per state at 32 pixels (Qt scales it to the toolbar).
+QIcon transportIcon(TransportShape off, TransportShape on)
+{
+    const auto draw = [](TransportShape shape, QColor colour)
+    {
+        constexpr int c_size = 32;
+        QPixmap pixmap(c_size, c_size);
+        pixmap.fill(Qt::transparent);
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(colour);
+        switch (shape)
+        {
+            case TransportShape::Play:
+                painter.drawPolygon(QPolygonF{{QPointF(10, 7), QPointF(10, 25), QPointF(25, 16)}});
+                break;
+            case TransportShape::Stop:
+                painter.drawRect(QRectF(9, 9, 14, 14));
+                break;
+            case TransportShape::Pause:
+                painter.drawRect(QRectF(9, 8, 5, 16));
+                painter.drawRect(QRectF(18, 8, 5, 16));
+                break;
+        }
+        return pixmap;
+    };
+    const QColor normal(0xE6, 0xE6, 0xE6);
+    QIcon icon;
+    icon.addPixmap(draw(off, normal), QIcon::Normal, QIcon::Off);
+    icon.addPixmap(draw(on, QColor(EditorColors::c_accentBright)), QIcon::Normal, QIcon::On);
+    icon.addPixmap(draw(off, QColor(0x55, 0x55, 0x5A)), QIcon::Disabled, QIcon::Off);
+    return icon;
+}
+
 /// @brief `view.showPanel`'s panel names.
 constexpr QLatin1StringView c_consolePanel{"console"};
 constexpr QLatin1StringView c_settingsPanel{"settings"};
@@ -239,6 +290,10 @@ void EditorMainWindow::refreshActions()
     }
     m_playAction->setChecked(m_playMode->playing());
     m_playAction->setText(m_playMode->playing() ? u"Stop"_s : u"Play"_s);
+    m_playAction->setToolTip(m_playMode->playing() ? u"Stop: put the scene back as it was before Play (Ctrl+P)"_s
+                                                   : u"Play the scene's physics; Stop puts the scene back (Ctrl+P)"_s);
+    m_pauseAction->setEnabled(m_playMode->playing());
+    m_pauseAction->setChecked(m_playMode->paused());
     m_consoleAction->setChecked(m_console->isVisible());
     m_gameAction->setChecked(m_gameDock->isVisible());
     m_assetsAction->setChecked(m_assetsDock->isVisible());
@@ -551,11 +606,21 @@ void EditorMainWindow::createMenusAndToolbar()
     // Play / Stop (Ctrl+P): one button, which runs play.start or play.stop.
     m_playAction = new QAction(u"Play"_s, this);
     m_playAction->setCheckable(true);
+    m_playAction->setIcon(transportIcon(TransportShape::Play, TransportShape::Stop));
     m_playAction->setShortcut(QKeySequence{Qt::CTRL | Qt::Key_P});
     m_playAction->setToolTip(u"Play the scene's physics; Stop puts the scene back as it was (Ctrl+P)"_s);
     connect(m_playAction, &QAction::triggered, this,
             [this] { run(m_playMode->playing() ? u"play.stop"_s : u"play.start"_s, {}); });
     addAction(m_playAction); // the shortcut works wherever the focus is in the window
+    // Pause (Ctrl+Shift+P, as in Unity): checked while paused; only while playing.
+    m_pauseAction = new QAction(u"Pause"_s, this);
+    m_pauseAction->setCheckable(true);
+    m_pauseAction->setIcon(transportIcon(TransportShape::Pause, TransportShape::Pause));
+    m_pauseAction->setShortcut(QKeySequence{Qt::CTRL | Qt::SHIFT | Qt::Key_P});
+    m_pauseAction->setToolTip(u"Pause the scene while it plays; press again to resume (Ctrl+Shift+P)"_s);
+    connect(m_pauseAction, &QAction::triggered, this,
+            [this](bool pause) { run(pause ? u"play.pause"_s : u"play.resume"_s, {}); });
+    addAction(m_pauseAction);
 
     m_snapAction = new QAction(u"Snap"_s, this);
     m_snapAction->setCheckable(true);
@@ -602,6 +667,7 @@ void EditorMainWindow::createMenusAndToolbar()
     view->addAction(captureFrame);
     view->addSeparator();
     view->addAction(m_playAction);
+    view->addAction(m_pauseAction);
     QMenu* window = menuBar()->addMenu(u"&Window"_s);
     window->addAction(m_consoleAction);
     window->addAction(m_gameAction);
@@ -632,6 +698,7 @@ void EditorMainWindow::createMenusAndToolbar()
     toolbar->addSeparator();
     toolbar->addSeparator();
     toolbar->addAction(m_playAction);
+    toolbar->addAction(m_pauseAction);
     toolbar->addSeparator();
     toolbar->addAction(settings);
 }

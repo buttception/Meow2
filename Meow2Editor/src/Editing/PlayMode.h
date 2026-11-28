@@ -38,9 +38,11 @@ struct PlayModeDeps
 /// - **While playing:** the undo history is paused (nothing recorded, nothing undone: whatever happens is thrown
 ///   away), and the scene file commands are off (EditorWorld::playing()). Selecting, moving the camera, inspecting and
 ///   even editing still work; edits are dropped at Stop like everything else.
+/// - **Pause** (`play.pause`, `play.resume`, Ctrl+Shift+P): the physics stops stepping and the scene stays as it is,
+///   still playing, so it can be looked at and inspected; Stop still restores it.
 /// - **Stop** (`play.stop`): the physics goes, and the scene is read back from the snapshot, with the same entity IDs,
 ///   so the selection survives. The GPU keeps its meshes.
-/// - `play.state` (query): whether it's playing, for how long, how many bodies, and what couldn't be built.
+/// - `play.state` (query): whether it's playing and paused, for how long, how many bodies, and what couldn't be built.
 /// @par Thread safety
 /// Not thread-safe; the GUI thread.
 class PlayMode
@@ -71,12 +73,24 @@ public:
         return m_physicsScene != nullptr;
     }
 
-    /// @brief One fixed step of the game while playing (nothing otherwise): steps the physics.
+    /// @brief Whether playing is paused: the scene stays as it is, still playing (Stop still restores it).
+    /// @return True between pause() and resume() or stop().
+    [[nodiscard]] bool paused() const
+    {
+        return playing() && m_paused;
+    }
+
+    /// @brief Pauses or resumes playing.
+    /// @param paused True to pause, false to resume.
+    /// @return Nothing, or why not (not playing).
+    Result<void> setPaused(bool paused);
+
+    /// @brief One fixed step of the game while playing and not paused (nothing otherwise): steps the physics.
     /// @param seconds The step (the game loop's fixed step).
     void fixedUpdate(float seconds);
 
 private:
-    /// @brief Registers `play.start`, `play.stop` and `play.state`.
+    /// @brief Registers `play.start`, `play.stop`, `play.pause`, `play.resume` and `play.state`.
     void registerCommands();
 
     PlayModeDeps m_deps;
@@ -85,5 +99,6 @@ private:
     std::unique_ptr<Physics::PhysicsScene> m_physicsScene; ///< While playing; goes before the world.
     std::vector<std::string> m_warnings;                   ///< From the last build.
     double m_seconds = 0.0;                                ///< Played so far.
+    bool m_paused = false;                                 ///< Paused while playing; cleared by start() and stop().
 };
 } // namespace Meow2::Editor

@@ -53,6 +53,8 @@ TEST_F(EditorThemeTest, AppliesToTheApplication)
     EXPECT_EQ(QApplication::palette().color(QPalette::Highlight), QColor{EditorColors::c_accent});
     EXPECT_FALSE(qApp->styleSheet().isEmpty());
     EXPECT_EQ(QFontInfo{QApplication::font()}.family(), QString::fromLatin1(c_uiFontFamily)) << "the bundled font";
+    EXPECT_DOUBLE_EQ(QApplication::font().pointSizeF(), c_uiPointSize) << "a quarter smaller than Qt's 10 points";
+    EXPECT_DOUBLE_EQ(editorMonospaceFont().pointSizeF(), c_uiPointSize);
     EXPECT_EQ(logText().find("UI font not loaded"), std::string::npos) << logText();
 }
 

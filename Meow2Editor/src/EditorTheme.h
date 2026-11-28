@@ -41,11 +41,15 @@ inline constexpr const char* c_uiFontFamily = "Barlow Semi Condensed";
 /// @return The style sheet text.
 [[nodiscard]] QString editorStyleSheet();
 
+/// @brief The size of the editor's text, in points: 7.5, a quarter smaller than Qt's usual 10 (owner request
+///        2026-11-28: more of a scene's hierarchy and a component's fields fit in the docks).
+inline constexpr double c_uiPointSize = 7.5;
+
 /// @brief The font for console output, logs and numbers: Consolas, or the system's fixed-width font where it's
 ///        missing.
 /// @param pointSize Its size in points.
 /// @return The font.
-[[nodiscard]] QFont editorMonospaceFont(int pointSize = 10);
+[[nodiscard]] QFont editorMonospaceFont(double pointSize = c_uiPointSize);
 
 /// @brief Applies the theme to the whole application: the Fusion style (the same on every platform, and the one that
 ///        honours palettes), the palette, the style sheet, and Barlow Semi Condensed as the default font.

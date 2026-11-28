@@ -3,11 +3,14 @@
 
 #include "Panels/HierarchyDock.h"
 
+#include "Panels/TreeBranches.h"
+
 #include <functional>
 #include <QDropEvent>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QPushButton>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
@@ -37,6 +40,12 @@ protected:
     /// @brief Does nothing: Qt's trees jump to the item whose name starts with a typed letter, so W/E/R or F with
     ///        the Hierarchy focused selected some entity "W…" (owner report). Keys here are for shortcuts.
     void keyboardSearch(const QString&) override {}
+
+    /// @brief Draws a row's selection and fold arrow (TreeBranches.h): the theme's style sheet would draw none.
+    void drawBranches(QPainter* painter, const QRect& rect, const QModelIndex& index) const override
+    {
+        drawTreeBranch(*this, *painter, rect, index);
+    }
 
     void dropEvent(QDropEvent* event) override
     {
@@ -185,6 +194,15 @@ void HierarchyDock::refresh()
     if (m_world.revision() != m_shownRevision)
     {
         m_shownRevision = m_world.revision();
+        // The tree is rebuilt on every scene change; the rows the user folded stay folded (new rows start open).
+        QSet<QString> folded;
+        for (QTreeWidgetItemIterator it{m_tree}; *it != nullptr; ++it)
+        {
+            if ((*it)->childCount() > 0 && !(*it)->isExpanded())
+            {
+                folded.insert((*it)->data(0, c_idRole).toString());
+            }
+        }
         const Result<QJsonValue> tree = m_commands.execute(u"scene.hierarchy");
         m_tree->clear();
         if (tree)
@@ -195,6 +213,13 @@ void HierarchyDock::refresh()
             }
         }
         m_tree->expandAll();
+        for (QTreeWidgetItemIterator it{m_tree}; *it != nullptr; ++it)
+        {
+            if (folded.contains((*it)->data(0, c_idRole).toString()))
+            {
+                (*it)->setExpanded(false);
+            }
+        }
     }
     showSelection(); // the selection can change without the scene (a click in the viewport, an agent)
     m_updating = false;

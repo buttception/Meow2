@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <optional>
 #include <unordered_set>
 #include <utility>
 
@@ -40,6 +41,52 @@ Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::Imported
     // Only images a material uses are uploaded, each once per kind: colour (base colour, emissive) is sRGB, data
     // (metallic-roughness, occlusion) linear, normal maps BC5 when compressed. An image used two ways is cooked twice.
     std::vector<std::array<std::int32_t, 3>> textureOf(model.images.size(), {-1, -1, -1});
+
+    // Cooking (mipmaps, and compression when asked) is most of a big model's upload, and each texture is independent:
+    // with a job system, every texture the materials use is cooked in parallel first. They're still added to the scene
+    // one by one below, in the same order as without jobs, so texture indices don't depend on threads.
+    const auto cookIndex = [](std::int32_t image, Assets::TextureKind kind)
+    {
+        return static_cast<std::size_t>(image) * 3 + static_cast<std::size_t>(kind);
+    };
+    std::vector<std::optional<Result<Assets::CookedTexture>>> precooked(model.images.size() * 3);
+    if (cooking.jobs != nullptr)
+    {
+        std::vector<std::pair<std::int32_t, Assets::TextureKind>> wanted;
+        const auto want = [&](const Assets::ImportedTexture& imported, Assets::TextureKind kind)
+        {
+            const std::int32_t image = imported.image;
+            if (image >= 0 && static_cast<std::size_t>(image) < model.images.size() &&
+                !model.images[static_cast<std::size_t>(image)].pixels.empty() &&
+                std::ranges::find(wanted, std::pair{image, kind}) == wanted.end())
+            {
+                wanted.emplace_back(image, kind);
+            }
+        };
+        for (const Assets::ImportedMaterial& material : model.materials)
+        {
+            want(material.baseColor, Assets::TextureKind::Color);
+            want(material.metallicRoughness, Assets::TextureKind::Data);
+            want(material.normal, Assets::TextureKind::NormalMap);
+            want(material.occlusion, Assets::TextureKind::Data);
+            want(material.emissive, Assets::TextureKind::Color);
+        }
+        const Jobs::Job cookAll = cooking.jobs->parallelFor(
+            static_cast<std::uint32_t>(wanted.size()), 1,
+            [&](std::uint32_t begin, std::uint32_t end, std::uint32_t /*thread*/)
+            {
+                for (std::uint32_t i = begin; i < end; ++i)
+                {
+                    const auto [image, kind] = wanted[i];
+                    const Assets::Image& source = model.images[static_cast<std::size_t>(image)];
+                    precooked[cookIndex(image, kind)] =
+                        cooking.cache != nullptr ? cooking.cache->cook(source, kind, cooking.compress, cooking.jobs)
+                                                 : Assets::cookTexture(source, kind, cooking.compress, cooking.jobs);
+                }
+            });
+        cooking.jobs->wait(cookAll);
+    }
+
     const auto texture = [&](std::int32_t image, Assets::TextureKind kind) -> std::int32_t
     {
         if (image < 0 || static_cast<std::size_t>(image) >= model.images.size())
@@ -50,9 +97,11 @@ Result<std::vector<AssetId>> uploadModel(GpuScene& scene, const Assets::Imported
         if (slot < 0 && !model.images[static_cast<std::size_t>(image)].pixels.empty())
         {
             const Assets::Image& source = model.images[static_cast<std::size_t>(image)];
+            std::optional<Result<Assets::CookedTexture>>& ready = precooked[cookIndex(image, kind)];
             Result<Assets::CookedTexture> cooked =
-                cooking.cache != nullptr ? cooking.cache->cook(source, kind, cooking.compress, cooking.jobs)
-                                         : Assets::cookTexture(source, kind, cooking.compress, cooking.jobs);
+                ready                      ? std::move(*ready)
+                : cooking.cache != nullptr ? cooking.cache->cook(source, kind, cooking.compress, cooking.jobs)
+                                           : Assets::cookTexture(source, kind, cooking.compress, cooking.jobs);
             Result<std::uint32_t> added = cooked ? scene.addTexture(std::move(*cooked), std::format("Image {}", image))
                                                  : Result<std::uint32_t>{Unexpected<Error>{cooked.error()}};
             if (added)
@@ -269,7 +318,7 @@ void registerRenderComponents(Scene::ComponentRegistry& registry)
 }
 
 SceneModels importSceneModels(Scene::Scene& scene, Assets::AssetManager& assets, const RenderMeshes& meshes,
-                              Log::Logger& log)
+                              Log::Logger& log, Jobs::JobSystem* jobs)
 {
     SceneModels report;
     // Which models: every mesh a MeshRenderer names that isn't on the GPU yet, grouped by its model, so a model used
@@ -303,7 +352,7 @@ SceneModels importSceneModels(Scene::Scene& scene, Assets::AssetManager& assets,
             report.warnings.push_back(std::format("model {} isn't registered", modelId.uuid().toString()));
             continue;
         }
-        Result<Assets::ImportedModel> model = Assets::importGltf(assets.files(), record->sourcePath, log);
+        Result<Assets::ImportedModel> model = Assets::importGltf(assets.files(), record->sourcePath, log, jobs);
         if (!model)
         {
             report.warnings.push_back(std::format("{}: {}", record->sourcePath, model.error().message));
@@ -357,7 +406,7 @@ Result<SceneModelsReport> loadSceneModels(GpuScene& gpu, Scene::Scene& scene, As
                                           RenderMeshes& meshes, UuidGenerator& ids, Log::Logger& log,
                                           const TextureCooking& cooking)
 {
-    SceneModels models = importSceneModels(scene, assets, meshes, log);
+    SceneModels models = importSceneModels(scene, assets, meshes, log, cooking.jobs);
     if (Result<void> uploaded = uploadSceneModels(gpu, models, meshes, ids, log, cooking); !uploaded)
     {
         return Unexpected<Error>{uploaded.error()};
