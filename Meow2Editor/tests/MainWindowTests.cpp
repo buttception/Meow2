@@ -203,6 +203,14 @@ TEST_F(MainWindowTest, DockTitlesWaitForTheMouse)
     held = Qt::NoButton; // dropped
     window.tick();
     EXPECT_EQ(console.titleBarWidget(), nullptr) << "alone after the release: its title shows";
+
+    // A tab can be dragged out of its tab bar only with grouped dragging; tabbed docks have no title bar to drag.
+    EXPECT_TRUE(window.dockOptions().testFlag(QMainWindow::GroupedDragging));
+    EXPECT_TRUE(window.dockOptions().testFlag(QMainWindow::AllowTabbedDocks));
+    for (const QDockWidget* dock : window.findChildren<QDockWidget*>())
+    {
+        EXPECT_TRUE(dock->features().testFlag(QDockWidget::DockWidgetMovable)) << dock->objectName().toStdString();
+    }
 }
 
 // Owner requests (#229): the scene's settings in a dock of their own (File → Scene settings…), edited through

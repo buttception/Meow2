@@ -139,6 +139,12 @@ EditorMainWindow::EditorMainWindow(const EditorMainWindowDeps& deps, QWidget* pa
     setCentralWidget(m_viewport);
     // Tabs of docks stacked in one place go on top (owner request), as in most editors; Qt's default is below.
     setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
+    // GroupedDragging: a dock's tab can be dragged out of its tab bar, to another place or to float, and a group's
+    // title bar moves the whole group. Without it Qt only reorders tabs, and a tabbed dock, whose own title bar is
+    // hidden (updateDockTitles()), couldn't be moved at all (owner report 2026-11-28). Nested docks: a dock can go
+    // beside another inside one area, not only along the window's edges.
+    setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowNestedDocks | QMainWindow::AllowTabbedDocks |
+                   QMainWindow::GroupedDragging);
     // Scrolling a panel mustn't edit the fields it passes over (owner request): value widgets take the wheel only when
     // focused. On the application, so dialogs and every dock get it; removed when the window (its parent) goes.
     qApp->installEventFilter(new WheelGuard(this));

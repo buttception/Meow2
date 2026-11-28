@@ -20,7 +20,7 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 - The roadmap gains a 2D milestone (M9: Box2D physics, sprites and tilemaps, 2D projects), so Scripting, Audio, Game UI, Export, Advanced rendering and Platforms move to M10–M15 (#238).
 
 ### Fixed
-- Meow2Editor's docks can be dragged to other places again: tabbing a dock hid its title bar even in the middle of a drag, which cut the drag short (#245).
+- Meow2Editor's docks can be dragged to other places again: a docked panel that shares tabs had no title bar left to drag and its tab couldn't be pulled out, so it couldn't move at all. Now you drag a tab to move that panel, or a title bar to move the whole group (#245).
 - Meow2Editor's Hierarchy and Assets docks show a fold arrow on every row with children (the theme had hidden them, so a folded entity looked like one without children), and rows you fold stay folded when the scene changes instead of opening again (#245).
 - Meow2Editor no longer opens with its title bar above the screen, where the window couldn't be moved: a saved position too close to the top is moved down for the title bar, and headless runs (`--headless`) no longer save their hidden window's position and dock layout over yours (#241).
 - A job-system test no longer fails at random on a busy machine: it waits for a second thread to take part instead of hoping one does (#243).
