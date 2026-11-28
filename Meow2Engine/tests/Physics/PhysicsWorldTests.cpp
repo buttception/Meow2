@@ -337,6 +337,22 @@ TEST_F(PhysicsWorldTest, Determinism)
     EXPECT_EQ(std::memcmp(first.data(), second.data(), first.size() * sizeof(float)), 0) << "bit-identical";
 }
 
+// T1 (#244): a mass override sets the mass whatever the shape's size: a 10 kg body takes 1 m/s from 10 kg·m/s.
+TEST_F(PhysicsWorldTest, MassOverride)
+{
+    for (const float half : {0.1F, 2.0F})
+    {
+        const Result<BodyId> body = m_world->createBody({.shape = BoxShape{Vec3{half, half, half}},
+                                                         .position = Vec3{half * 10.0F, 50.0F, 0.0F},
+                                                         .mass = 10.0F,
+                                                         .gravityScale = 0.0F});
+        ASSERT_TRUE(body) << body.error().message;
+        m_world->addImpulse(*body, Vec3{10.0F, 0.0F, 0.0F});
+        EXPECT_NEAR(m_world->linearVelocity(*body).x, 1.0F, 1e-3F) << "half extent " << half;
+    }
+    EXPECT_FALSE(m_world->createBody({.shape = SphereShape{}, .mass = -1.0F})) << "a negative mass is refused";
+}
+
 // T7: bad input is refused with a message, not an assert or a crash; destroyed ids are refused.
 TEST_F(PhysicsWorldTest, BadInput)
 {

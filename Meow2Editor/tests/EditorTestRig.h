@@ -23,6 +23,7 @@
 #include <Meow2/Core/Memory/GlobalTracking.h>
 #include <Meow2/Core/Platform.h>
 #include <Meow2/Graphics/Renderer/SceneModel.h>
+#include <Meow2/Physics/PhysicsComponents.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
 #include <Meow2/Platform/Input/InputSystem.h>
 #include <Meow2/Scene/ComponentRegistry.h>
@@ -106,6 +107,7 @@ protected:
         Scene::ComponentRegistry registry;
         Scene::registerSceneComponents(registry);
         Renderer::registerRenderComponents(registry);
+        Physics::registerPhysicsComponents(registry);
         return registry;
     }();
     /// @brief Without a GPU: entities and cameras only.

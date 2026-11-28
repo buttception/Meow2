@@ -258,11 +258,11 @@ Result<void> validateBodyDesc(const BodyDesc& desc, std::uint32_t layerCount)
     {
         return invalid("rotation must be a non-zero quaternion");
     }
-    if (!(desc.density > 0.0F) || !(desc.linearDamping >= 0.0F) || !(desc.angularDamping >= 0.0F) ||
-        !(desc.friction >= 0.0F) || !(desc.restitution >= 0.0F && desc.restitution <= 1.0F) ||
-        !std::isfinite(desc.gravityScale))
+    if (!(desc.density > 0.0F) || !(desc.mass >= 0.0F) || !std::isfinite(desc.mass) || !(desc.linearDamping >= 0.0F) ||
+        !(desc.angularDamping >= 0.0F) || !(desc.friction >= 0.0F) ||
+        !(desc.restitution >= 0.0F && desc.restitution <= 1.0F) || !std::isfinite(desc.gravityScale))
     {
-        return invalid("density must be above 0, damping and friction at least 0, restitution 0 to 1");
+        return invalid("density must be above 0, mass and damping and friction at least 0, restitution 0 to 1");
     }
     return {};
 }

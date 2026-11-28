@@ -4,7 +4,21 @@ Rigid bodies for games: things fall, collide, slide and rest; rays and shapes ca
 
 - Code: `Meow2Engine/include/Meow2/Physics/` (`PhysicsTypes.h`, `PhysicsLibrary.h`, `PhysicsWorld.h`); `src/Physics/PhysicsValidation.*` (checks every backend shares); `src/Physics/Jolt/` (the Jolt backend); `src/Physics/None/` (a build without physics).
 - Library: **Jolt Physics v5.7.0** (`external/JoltPhysics`, MIT).
-- Status: 🟨 M8. The interface, the Jolt and None backends and the contract tests are done (#236). Components in scenes, the editor and debug drawing come in M8's next PR; 2D physics (Box2D) is its own milestone, M9.
+- Status: 🟨 M8. The interface, the Jolt and None backends and the contract tests (#236); `RigidBody` and `Collider` components with `PhysicsScene`, and Play in the editor (#244). Joints, height fields and a character controller come later; 2D physics (Box2D) is its own milestone, M9.
+
+## In scenes: RigidBody and Collider
+
+Games and the editor don't create bodies by hand: entities get components, and a `PhysicsScene` turns them into bodies (`PhysicsComponents.h`, `PhysicsScene.h`). The rules are Unity's (owner decision 2026-11-27):
+
+- **`Collider`** gives an entity a shape: `box` (`size`, full lengths), `sphere` (`radius`), `capsule` (`height` overall and `radius`, along the entity's Y) or `mesh` (the triangles of the entity's `MeshRenderer` mesh), offset by `center`, with `friction`, `restitution` and `sensor`.
+- **A Collider without a RigidBody** on it or above it is **static**: the level, the floor, walls.
+- **`RigidBody`** (`motion`: `dynamic` or `kinematic`, `mass` (0: from the volume), damping, `gravityScale`, `continuous`, `allowSleep`) makes the entity a body, and **every Collider on it and on its descendants** (down to the next RigidBody) becomes one compound shape, placed where they are under it.
+- **World scale scales colliders**: a box scaled 2 × 1 × 1 has a collider twice as long; a sphere takes the largest axis; a capsule the largest of X and Z for its radius and Y for its height.
+- **Meshes**: a mesh collider on a static entity is the triangles; on a body it becomes their **convex hull** (Jolt, like every library, can't simulate a moving triangle soup). A body made of several mesh parts uses a hull per part.
+- **Each step** (`PhysicsScene::step()` in `fixedUpdate`): kinematic bodies are moved to their entity's world transform; the world steps; awake dynamic bodies write their pose back into the entity's `LocalTransform` (relative to its parent, its scale kept); then the world transforms are updated.
+- `PhysicsScene::build()` returns what couldn't be simulated (a shape with a size of 0, a mesh with no triangles, a hull from a flat mesh) as warnings, also logged, and leaves those parts out.
+- The component fields are in the scene file like any others (`[entity.RigidBody]`, `[entity.Collider]`), and in the editor's Inspector and MCP commands (`component.add`, `component.setField`).
+- Mesh triangles come from `CollisionMeshes` (positions and indices per mesh `AssetId`), filled by whoever loads models (the editor keeps them when it imports); `PhysicsScene` asks a callback which mesh an entity shows, so the physics module doesn't depend on the renderer.
 
 ## Using it
 
@@ -97,5 +111,17 @@ The contract (`Meow2Engine/tests/Physics/PhysicsWorldTests.cpp`); every backend 
 | `Physics.PhysicsWorldTest.Determinism` | 64 bodies stepped for 3 s twice, on 4 threads: bit-identical positions and rotations. |
 | `Physics.PhysicsWorldTest.BadInput` | Bad shapes and values refused with `InvalidArgument`, nothing half-made left; destroyed ids refused, and not reused. |
 | `Physics.PhysicsMemoryTest.MemoryTagged` | Jolt's memory is counted under `MemTag::Physics` and all of it comes back (Debug and RelWithDebInfo). |
+| `Physics.PhysicsWorldTest.MassOverride` | `BodyDesc::mass` replaces the mass from density, whatever the size (an impulse gives the same speed); a negative mass is refused. |
+
+The scene layer (`Meow2Engine/tests/Physics/PhysicsSceneTests.cpp`):
+
+| Test | What it checks |
+|---|---|
+| `Physics.PhysicsSceneTest.StaticAndDynamic` | A static collider and a dynamic box: the box falls, lands and its `LocalTransform` follows. |
+| `Physics.PhysicsSceneTest.CompoundFromChildren` | A RigidBody's children's colliders become one body (the children have none of their own), which rests on them, the children keeping their places. |
+| `Physics.PhysicsSceneTest.ScaleAndOffset` | World scale and `center` size and place colliders (rays hit inside the scaled box, miss outside it, find the offset shape). |
+| `Physics.PhysicsSceneTest.MeshColliders` | A ball rests on a static mesh's triangles, and a dynamic mesh (made a hull) lands on it, with no warnings. |
+| `Physics.PhysicsSceneTest.KinematicFollowsTransform` | A kinematic body follows its entity and pushes a dynamic one. |
+| `Physics.PhysicsSceneTest.ComponentsRoundTrip` | Both components survive a scene file, enums as text. |
 
 See also: techstack.md §3, §14, §19; [Memory](Memory.md), [Jobs](Jobs.md), [GameLoop](GameLoop.md).

@@ -45,7 +45,8 @@ public:
     /// @param limit The most steps it keeps; at least 1.
     explicit UndoStack(std::size_t limit = c_defaultLimit);
 
-    /// @brief Records a step that was just done. Drops every redo step, then the oldest steps beyond the limit.
+    /// @brief Records a step that was just done. Drops every redo step, then the oldest steps beyond the limit. While
+    ///        paused, the step is dropped instead.
     /// @param step The step; its closures must be set.
     void push(UndoStep step);
 
@@ -56,6 +57,18 @@ public:
     /// @brief Redoes the step after the position and moves the position forward.
     /// @return `false` (and does nothing) when there's nothing to redo.
     bool redo();
+
+    /// @brief Pauses or resumes the history: while paused (the editor's Play), nothing is recorded and nothing can be
+    ///        undone or redone, so the steps from before Play stay as they were for after Stop.
+    /// @param paused True to pause.
+    void setPaused(bool paused);
+
+    /// @brief Whether the history is paused (setPaused()).
+    /// @return True while paused.
+    [[nodiscard]] bool paused() const
+    {
+        return m_paused;
+    }
 
     /// @brief Whether undo() would do something.
     /// @return `true` if a step can be undone.
@@ -111,5 +124,6 @@ private:
     std::size_t m_limit;                    ///< The most steps kept.
     std::optional<std::size_t> m_clean = 0; ///< The position last marked clean; unset once it can't be reached.
     std::uint64_t m_revision = 0;           ///< See revision().
+    bool m_paused = false;                  ///< setPaused().
 };
 } // namespace Meow2::Editor

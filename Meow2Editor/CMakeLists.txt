@@ -48,10 +48,14 @@ add_library(Meow2EditorCore STATIC
     src/Editing/CameraIcons.h
     src/Editing/ClickSelection.cpp
     src/Editing/ClickSelection.h
+    src/Editing/ColliderLines.cpp
+    src/Editing/ColliderLines.h
     src/Editing/EntityIcons.cpp
     src/Editing/EntityIcons.h
     src/Editing/Gizmo.cpp
     src/Editing/Gizmo.h
+    src/Editing/PlayMode.cpp
+    src/Editing/PlayMode.h
     src/Editing/SceneEditor.cpp
     src/Editing/SceneEditor.h
     src/EditorMainWindow.cpp
@@ -87,6 +91,7 @@ add_library(Meow2EditorCore STATIC
     src/Panels/SettingsDialog.h
     src/Panels/StatsDock.cpp
     src/Panels/StatsDock.h
+    src/Panels/TreeBranches.h
     src/Panels/WheelGuard.cpp
     src/Panels/WheelGuard.h
     src/Project/SceneDocument.cpp

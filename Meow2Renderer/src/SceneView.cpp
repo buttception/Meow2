@@ -115,7 +115,7 @@ Result<std::unique_ptr<SceneView>> SceneView::openScene(const SceneViewDeps& dep
         MEOW2_LOG_WARN(deps.log, "{}", warning);
     }
     const Renderer::SceneModels models =
-        Renderer::importSceneModels(*view->m_world, deps.assets, view->m_meshes, deps.log);
+        Renderer::importSceneModels(*view->m_world, deps.assets, view->m_meshes, deps.log, &deps.jobs);
     for (const std::string& warning : models.warnings)
     {
         MEOW2_LOG_WARN(deps.log, "{}: {}", view->m_name, warning);
@@ -210,7 +210,7 @@ Result<std::unique_ptr<SceneView>> SceneView::openModel(const SceneViewDeps& dep
         return Unexpected<Error>{mount.error()};
     }
     const std::string source = *mount + "/" + file.filename().string();
-    Result<Assets::ImportedModel> model = Assets::importGltf(deps.files, source, deps.log);
+    Result<Assets::ImportedModel> model = Assets::importGltf(deps.files, source, deps.log, &deps.jobs);
     if (!model)
     {
         return Unexpected<Error>{model.error()};

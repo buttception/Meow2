@@ -4,3 +4,10 @@
 # libdbus (loaded by SDL_Init/SDL_Quit for IME and screensaver support) takes its own locks in different orders on
 # one thread. It isn't built with TSan, and the cycle is inside the library, so it is reported as a potential deadlock.
 deadlock:libdbus-1.so
+
+# libdxcompiler (DXC, the prebuilt shader compiler, techstack.md §12) isn't built with TSan. Meow2ShaderCompiler cooks
+# shader variants on several job threads, and DXC runs under the compiler's own mutex, but DXC opens, inspects and
+# closes files with file-descriptor numbers our threads used a moment before; TSan can't see the synchronisation
+# inside the uninstrumented library and reports the reused descriptor as a race (seen on PR #245's TSan job, `fstat`
+# from llvm::raw_fd_ostream against our FileSystem::readFile's `fopen`). Only reports with a frame inside DXC match.
+race:libdxcompiler.so

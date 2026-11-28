@@ -323,6 +323,15 @@ void SceneDocument::registerCommands()
 {
     const auto add = [this](CommandInfo info, CommandHandler handler)
     {
+        // While the scene is being simulated (Play), nothing may replace, save or import into it: Stop throws the
+        // simulation away, and a save would keep its state. The queries still answer.
+        if (info.kind == CommandKind::Action)
+        {
+            info.isEnabled = [this, enabled = std::move(info.isEnabled)]
+            {
+                return !m_deps.world.playing() && (!enabled || enabled());
+            };
+        }
         m_commandNames.push_back(info.name);
         [[maybe_unused]] const Result<void> added = m_deps.commands.add(std::move(info), std::move(handler));
         MEOW2_ASSERT(added, "scene commands are registered once, by the one document");

@@ -6,6 +6,7 @@
 #include "Commands/EditorCommands.h"
 #include "Commands/EditorSettings.h"
 #include "Commands/UndoStack.h"
+#include "Editing/PlayMode.h"
 #include "Editing/SceneEditor.h"
 #include "EditorMainWindow.h"
 #include "EditorTheme.h"
@@ -37,6 +38,8 @@
 #include <Meow2/Core/Time/GameLoop.h>
 #include <Meow2/Core/Time/GameLoopConfig.h>
 #include <Meow2/Core/Version.h>
+#include <Meow2/Physics/PhysicsComponents.h>
+#include <Meow2/Physics/PhysicsLibrary.h>
 #include <Meow2/Platform/FileSystem/FileSystem.h>
 #include <Meow2/Platform/Input/InputSystem.h>
 #include <Meow2/Platform/Window/WindowConfig.h>
@@ -199,10 +202,14 @@ int main(int argc, char** argv)
         MEOW2_LOG_WARN(appLog, "No cooked shaders: {}", cooked.error());
     }
     Meow2::Assets::AssetManager assets{files, ids, engineLog};
-    // What scene files save and load in the editor: the engine's and the renderer's components.
+    // What scene files save and load in the editor: the engine's, the renderer's and the physics components.
     Meow2::Scene::ComponentRegistry components;
     Meow2::Scene::registerSceneComponents(components);
     Meow2::Renderer::registerRenderComponents(components);
+    Meow2::Physics::registerPhysicsComponents(components);
+    // The physics library's process-wide state (techstack.md §14), for Play; it outlives the window, whose Play uses
+    // it.
+    Meow2::Physics::PhysicsLibrary physics{engineLog};
     Meow2::Editor::EditorWorld world{
         {.ids = ids, .jobs = jobs, .components = components, .assets = assets, .log = engineLog}};
     std::unique_ptr<Meow2::Editor::EditorRenderer> renderer;
@@ -246,7 +253,8 @@ int main(int argc, char** argv)
                                             .document = document,
                                             .editor = editor,
                                             .renderer = renderer.get(),
-                                            .headlessSize = headlessSize(*arguments, config, renderer.get())}};
+                                            .headlessSize = headlessSize(*arguments, config, renderer.get()),
+                                            .physics = &physics}};
     if (!arguments->headless)
     {
         Meow2::Editor::showWithDesc(
@@ -308,7 +316,10 @@ int main(int argc, char** argv)
     Meow2::Time::GameLoop loop{clock,
                                events,
                                Meow2::Time::gameLoopDescFromConfig(config, engineLog),
-                               {.update = [](double)
+                               {.fixedUpdate = [&window](double seconds)
+                                { window.playMode().fixedUpdate(static_cast<float>(seconds)); }, // Play's physics
+                                .update =
+                                    [](double)
                                 {
                                     MEOW2_PROFILE_MEMORY(Meow2::Memory::globalTracker());
                                 }}}; // memory plots in Tracy

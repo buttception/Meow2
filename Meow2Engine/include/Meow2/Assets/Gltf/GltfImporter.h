@@ -18,6 +18,11 @@
 #include <string_view>
 #include <vector>
 
+namespace Meow2::Jobs
+{
+class JobSystem;
+} // namespace Meow2::Jobs
+
 namespace Meow2::Assets
 {
 /// @brief How a material treats alpha (glTF `alphaMode`).
@@ -191,9 +196,11 @@ struct ImportedModel
 /// @param files The file system to read through.
 /// @param path  Virtual path of the `.gltf` or `.glb` file.
 /// @param log   Receives the warnings too.
+/// @param jobs  Decodes the images in parallel (a big model's PNG and JPEG files are most of its import time); null
+///              decodes them one after another on the calling thread. The result is the same either way.
 /// @return The model; ErrorCode::NotFound for a missing file, ParseError for a broken one, Unsupported for a file that
 ///         requires an extension the engine doesn't have (Draco, Basis Universal, meshopt).
 /// @note Thread-safe; memory is counted under MemTag::Assets.
 [[nodiscard]] Result<ImportedModel> importGltf(const FileSystem::FileSystem& files, std::string_view path,
-                                               Log::Logger& log);
+                                               Log::Logger& log, Jobs::JobSystem* jobs = nullptr);
 } // namespace Meow2::Assets

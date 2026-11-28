@@ -18,6 +18,7 @@
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
 #include <QFrame>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
@@ -88,6 +89,49 @@ TEST_F(HierarchyDockTest, FollowsTheScene)
     window.tick();
     EXPECT_TRUE(itemNamed(window.hierarchyDock().tree(), u"Renamed"_s)->isSelected());
     EXPECT_FALSE(itemNamed(window.hierarchyDock().tree(), u"Parent"_s)->isSelected());
+}
+
+TEST_F(HierarchyDockTest, FoldArrowsAndFoldsKept)
+{
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    const QString parent = create(m_commands, u"Parent"_s);
+    create(m_commands, u"Child"_s, parent);
+    window.tick();
+    QTreeWidget& tree = window.hierarchyDock().tree();
+    tree.resize(320, 240);
+
+    // A row with children has an arrow in its branch area (left of its text); a row without has none.
+    const auto arrowPixels = [&tree](const QString& name)
+    {
+        QTreeWidgetItem* item = itemNamed(tree, name);
+        const QRect row = tree.visualItemRect(item);
+        const QImage image = tree.viewport()->grab().toImage();
+        int count = 0;
+        for (int y = row.top(); y <= row.bottom(); ++y)
+        {
+            for (int x = 0; x < row.left(); ++x)
+            {
+                const QColor pixel = image.pixelColor(x, y);
+                // The arrow's own grey (TreeBranches.h), not the background or the text.
+                count += std::abs(pixel.red() - 0xB4) <= 6 && std::abs(pixel.green() - 0xB4) <= 6 &&
+                                 std::abs(pixel.blue() - 0xBA) <= 6
+                             ? 1
+                             : 0;
+            }
+        }
+        return count;
+    };
+    EXPECT_GT(arrowPixels(u"Parent"_s), 4) << "an arrow shows the row has children";
+    EXPECT_EQ(arrowPixels(u"Main camera"_s), 0) << "no arrow without children";
+
+    // A row the user folds stays folded when the tree is rebuilt for another change; new rows start open.
+    itemNamed(tree, u"Parent"_s)->setExpanded(false);
+    const QString other = create(m_commands, u"Other"_s);
+    create(m_commands, u"Leaf"_s, other);
+    window.tick();
+    EXPECT_FALSE(itemNamed(window.hierarchyDock().tree(), u"Parent"_s)->isExpanded());
+    EXPECT_TRUE(itemNamed(window.hierarchyDock().tree(), u"Other"_s)->isExpanded());
+    EXPECT_GT(arrowPixels(u"Parent"_s), 4) << "folded rows have their arrow too";
 }
 
 TEST_F(InspectorDockTest, EditsIssueCommands)

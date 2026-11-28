@@ -88,7 +88,7 @@ How they're drawn (PBR, normal maps, mips, double-sided, mirrored and blended su
 - glTF's sampler `minFilter` is reduced to "mipmaps or not": every texture has mips, and nearest filtering applies to them too.
 - Scene files: models are imported each run (M7).
 - Skins, morph targets and an animation system (blending, events): M14. Animations are only sampled per node.
-- Images are decoded one after another on one thread; big scenes such as Sponza take a few seconds in Debug.
+- Images are decoded in parallel when `importGltf()` gets a job system (the editor and Meow2Renderer pass theirs), and `uploadModel()` cooks (mipmaps, compresses) every texture a model's materials use in parallel when `TextureCooking::jobs` is set, then adds them to the GPU scene in the same order as without jobs, so texture indices and golden images don't change. Sponza in a Debug editor: 0.2 s to decode its 69 images and 0.4 s to cook them, instead of 1.2 s and 3.4 s on one thread. The editor logs each scene's time (`<scene>: models read in … s, uploaded in … s`).
 
 ## Tests
 

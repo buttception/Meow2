@@ -17,6 +17,7 @@ meow2_add_test_suite(
         GizmoTests.cpp
         MainWindowTests.cpp
         McpTests.cpp
+        PlayModeTests.cpp
         QtInputSourceTests.cpp
         QtTestApplication.h
         SceneDocumentTests.cpp

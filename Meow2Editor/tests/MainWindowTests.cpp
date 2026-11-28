@@ -182,6 +182,37 @@ TEST_F(MainWindowTest, TabbedDocksHideTheirTitle)
     EXPECT_EQ(assets.titleBarWidget(), nullptr);
 }
 
+// Owner report (2026-11-28): docks couldn't be moved, because their title bars were swapped in the middle of a drag.
+// While a mouse button is down the titles stay as they are; they catch up after the release.
+TEST_F(MainWindowTest, DockTitlesWaitForTheMouse)
+{
+    Meow2::Editor::EditorMainWindow window{windowDeps()};
+    Qt::MouseButtons held = Qt::NoButton;
+    window.setMouseButtonsSource([&held] { return held; });
+    QDockWidget& console = window.console();
+    window.tick();
+    ASSERT_NE(console.titleBarWidget(), nullptr) << "a tab beside the Stats and Render graph docks at first";
+    held = Qt::LeftButton; // a drag starts
+
+    // As a drag would: the console's tab mates go, so it stands alone, but its title bar isn't touched yet.
+    window.statsDock().hide();
+    window.renderGraphDock().hide();
+    window.tick();
+    EXPECT_NE(console.titleBarWidget(), nullptr) << "unchanged while the button is down";
+
+    held = Qt::NoButton; // dropped
+    window.tick();
+    EXPECT_EQ(console.titleBarWidget(), nullptr) << "alone after the release: its title shows";
+
+    // A tab can be dragged out of its tab bar only with grouped dragging; tabbed docks have no title bar to drag.
+    EXPECT_TRUE(window.dockOptions().testFlag(QMainWindow::GroupedDragging));
+    EXPECT_TRUE(window.dockOptions().testFlag(QMainWindow::AllowTabbedDocks));
+    for (const QDockWidget* dock : window.findChildren<QDockWidget*>())
+    {
+        EXPECT_TRUE(dock->features().testFlag(QDockWidget::DockWidgetMovable)) << dock->objectName().toStdString();
+    }
+}
+
 // Owner requests (#229): the scene's settings in a dock of their own (File → Scene settings…), edited through
 // scene.setSetting; the Assets dock's icons.
 TEST_F(MainWindowTest, SceneSettingsDockAndAssetIcons)

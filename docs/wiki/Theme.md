@@ -45,7 +45,7 @@ The values live in two places, because the apps share no UI code: `Meow2Renderer
 
 1. **Fusion style**: it draws every widget from the palette, the same way on every platform. The native Windows style ignores much of the palette.
 2. **Palette** (`editorPalette()`): for anything the style sheet doesn't cover.
-3. **Barlow** registered with `QFontDatabase::addApplicationFont` and set as the application font.
+3. **Barlow** registered with `QFontDatabase::addApplicationFont` and set as the application font, at **7.5 points** (`c_uiPointSize`, a quarter smaller than Qt's usual 10; owner request 2026-11-28), as is the Consolas of the console and the Stats dock. Without Barlow, the system font gets the same size.
 4. **Style sheet** (`editorStyleSheet()`): square corners, thin borders, red focus, hover and selection; dock titles with a red left bar; the selected tab underlined in red; thin scroll bars.
 
 `editorMonospaceFont()` is the Consolas font for the console dock (M7). Dock titles are written in capitals by convention, like the Renderer's.
@@ -92,6 +92,6 @@ The editor's window is only the viewport so far, so most of this shows once dock
 | `RendererApp.UiTheme.ScalesSizes` | sizes and fonts follow the display scale, and re-applying doesn't compound |
 | `Editor.EditorTheme.PaletteIsDarkWithRedHighlight` | palette colours; text contrast at least 7:1, dimmed text at least 4.5:1 |
 | `Editor.EditorTheme.ContrastRatioMatchesWcag` | the contrast formula (black on white is 21:1) |
-| `Editor.EditorThemeTest.AppliesToTheApplication` | palette, style sheet and Barlow applied |
+| `Editor.EditorThemeTest.AppliesToTheApplication` | palette, style sheet and Barlow applied, at 7.5 points (Consolas too) |
 | `Editor.EditorThemeTest.MissingFontIsLoggedAndTheRestApplies` | a missing font is logged and the rest still applies |
 | `Editor.EditorThemeTest.ThemedWidgetsDrawBlackAndRed` | a themed layout drawn off-screen is black, with a red selected row |

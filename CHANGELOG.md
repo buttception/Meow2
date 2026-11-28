@@ -10,12 +10,19 @@ All notable changes to Meow2, per released version. The format follows [Keep a C
 
 ### Added
 - Physics in the engine: rigid bodies on Jolt Physics 5.7 behind the engine's own `PhysicsWorld`, so the library can be swapped later (Box3D) without touching games. Static, kinematic and dynamic bodies with spheres, boxes, capsules, convex hulls, meshes and compound shapes; collision layers; forces, impulses and kinematic moves; ray, shape-cast and overlap queries; and contact and sensor events, one begin and one end per pair of bodies, in the same order on every run. It runs on the engine's job threads, its memory shows up as "Physics", and `MEOW2_PHYSICS_BACKEND=None` builds the engine without it (#238).
+- Physics in scenes and the editor: give an entity a `Collider` (box, sphere, capsule or its mesh) and a `RigidBody`, and press Play (Ctrl+P) to watch it fall, roll and stack; Stop puts the scene back exactly as it was. Colliders follow Unity's rules: one without a RigidBody is static, a RigidBody takes its children's colliders as one body, and scaling an entity scales its collider; mesh colliders are exact on static objects and a convex hull on moving ones. Undo and saving are off while playing. The selected entities' colliders are drawn as green lines, both components are in the Inspector and scene files, and agents get `play.start`, `play.stop` and `play.state` over MCP. Bodies can also be given a mass instead of a density (#245).
+- Meow2Editor: Pause (Ctrl+Shift+P) freezes a playing scene so you can look around and inspect it, and press it again to carry on; Play, Stop and Pause are now icon buttons, with Stop and Pause lit red while on. Agents get `play.pause` and `play.resume` (#245).
 
 ### Changed
+- Meow2Editor: the text is a quarter smaller (7.5 points instead of 10), so more of the hierarchy, the Inspector and the console fits on screen (#245).
+- Scenes and models open faster: a model's textures are decoded and mipmapped on every job thread instead of one after another. Sponza opens in about 1 s instead of 5.5 s in a Debug editor; Meow2Renderer gets the same (#245).
 - Meow2Editor: new scenes start in daylight (the sun 55° high behind the main camera, exposure 2.5) instead of looking like dusk; scenes you saved keep their own light (#239).
 - The roadmap gains a 2D milestone (M9: Box2D physics, sprites and tilemaps, 2D projects), so Scripting, Audio, Game UI, Export, Advanced rendering and Platforms move to M10–M15 (#238).
 
 ### Fixed
+- The ThreadSanitizer CI job no longer fails at random while cooking shaders: a false race report from inside the prebuilt DXC library is suppressed, and the cook step now gets the same TSan settings as the tests (#245).
+- Meow2Editor's docks can be dragged to other places again: a docked panel that shares tabs had no title bar left to drag and its tab couldn't be pulled out, so it couldn't move at all. Now you drag a tab to move that panel, or a title bar to move the whole group (#245).
+- Meow2Editor's Hierarchy and Assets docks show a fold arrow on every row with children (the theme had hidden them, so a folded entity looked like one without children), and rows you fold stay folded when the scene changes instead of opening again (#245).
 - Meow2Editor no longer opens with its title bar above the screen, where the window couldn't be moved: a saved position too close to the top is moved down for the title bar, and headless runs (`--headless`) no longer save their hidden window's position and dock layout over yours (#241).
 - A job-system test no longer fails at random on a busy machine: it waits for a second thread to take part instead of hoping one does (#243).
 

@@ -119,9 +119,10 @@ QStatusBar { background: #000000; border-top: 1px solid #34343A; color: #8A8A90;
 )");
 }
 
-QFont editorMonospaceFont(int pointSize)
+QFont editorMonospaceFont(double pointSize)
 {
-    QFont font{QStringLiteral("Consolas"), pointSize};
+    QFont font{QStringLiteral("Consolas")};
+    font.setPointSizeF(pointSize);
     // Where Consolas isn't installed (Linux), Qt falls back to the system's fixed-width font.
     font.setStyleHint(QFont::Monospace, QFont::PreferDefault);
     font.setFixedPitch(true);
@@ -147,12 +148,11 @@ void applyEditorTheme(QApplication& application, const std::filesystem::path& fo
         }
         loaded = loaded || id >= 0;
     }
-    if (loaded)
-    {
-        QFont font{QString::fromLatin1(c_uiFontFamily), 10};
-        font.setStyleStrategy(QFont::PreferAntialias);
-        QApplication::setFont(font);
-    }
+    // The editor's text size, with the bundled font or (if it couldn't be loaded) the system's.
+    QFont font = loaded ? QFont{QString::fromLatin1(c_uiFontFamily)} : QApplication::font();
+    font.setPointSizeF(c_uiPointSize);
+    font.setStyleStrategy(QFont::PreferAntialias);
+    QApplication::setFont(font);
     application.setStyleSheet(editorStyleSheet());
 }
 

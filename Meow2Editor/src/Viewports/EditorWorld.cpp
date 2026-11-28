@@ -40,6 +40,7 @@ void EditorWorld::adopt(Fresh fresh)
     m_scene = std::move(fresh.scene);
     m_meshes = {};
     m_meshNames.clear();
+    m_collisionMeshes.clear();
     m_models.clear();
     m_instances.clear();
     m_bounds = {.center = {0.0F, 0.0F, 0.0F}, .radius = 5.0F};
@@ -199,29 +200,43 @@ Result<Assets::SceneReadReport> EditorWorld::openScene(std::string_view path, co
     }
     adopt(std::move(fresh));
     Renderer::GpuScene* gpu = freshGpu ? freshGpu() : nullptr; // only now: a file that can't be read keeps the old
+    using Clock = std::chrono::steady_clock;
+    const auto seconds = [](Clock::time_point from)
+    {
+        return std::chrono::duration<double>(Clock::now() - from).count();
+    };
+    const Clock::time_point importStart = Clock::now();
     // The models its MeshRenderers name, found by their stable mesh IDs in the models' .meta files.
-    const Renderer::SceneModels models = Renderer::importSceneModels(*m_scene, m_deps.assets, m_meshes, m_deps.log);
+    const Renderer::SceneModels models =
+        Renderer::importSceneModels(*m_scene, m_deps.assets, m_meshes, m_deps.log, &m_deps.jobs);
     for (const Renderer::SceneModelImport& model : models.models)
     {
         const std::optional<Assets::AssetRecord> record = m_deps.assets.find(model.model);
         nameMeshes(record ? record->sourcePath : std::string{}, model.data, model.meshIds);
+        keepCollisionMeshes(model.data, model.meshIds);
         if (record)
         {
             watchModel(record->sourcePath, model.meshIds);
         }
     }
+    const double importSeconds = seconds(importStart);
     for (const std::string& warning : models.warnings)
     {
         MEOW2_LOG_WARN(m_deps.log, "{}: {}", path, warning);
     }
+    const Clock::time_point uploadStart = Clock::now();
     if (gpu != nullptr)
     {
-        if (Result<void> uploaded = Renderer::uploadSceneModels(*gpu, models, m_meshes, m_deps.ids, m_deps.log);
+        if (Result<void> uploaded =
+                Renderer::uploadSceneModels(*gpu, models, m_meshes, m_deps.ids, m_deps.log, {.jobs = &m_deps.jobs});
             !uploaded)
         {
             MEOW2_LOG_ERROR(m_deps.log, "{}: its models can't all be drawn: {}", path, uploaded.error());
         }
     }
+    // Where opening a scene's time goes: reading and decoding its models, then preparing and uploading them.
+    MEOW2_LOG_INFO(m_deps.log, "{}: models read in {:.2f} s, uploaded in {:.2f} s", path, importSeconds,
+                   seconds(uploadStart));
     return read;
 }
 
@@ -232,7 +247,7 @@ Result<void> EditorWorld::saveScene(std::string_view path) const
 
 Result<std::vector<entt::entity>> EditorWorld::importModel(std::string_view source, Renderer::GpuScene* gpu)
 {
-    Result<Assets::ImportedModel> model = Assets::importGltf(m_deps.assets.files(), source, m_deps.log);
+    Result<Assets::ImportedModel> model = Assets::importGltf(m_deps.assets.files(), source, m_deps.log, &m_deps.jobs);
     if (!model)
     {
         return Unexpected<Error>{model.error()};
@@ -253,13 +268,14 @@ Result<std::vector<entt::entity>> EditorWorld::importModel(std::string_view sour
     if (gpu != nullptr && !uploaded)
     {
         Result<std::vector<AssetId>> added =
-            Renderer::uploadModel(*gpu, *model, m_deps.ids, m_meshes, m_deps.log, {}, *meshIds);
+            Renderer::uploadModel(*gpu, *model, m_deps.ids, m_meshes, m_deps.log, {.jobs = &m_deps.jobs}, *meshIds);
         if (!added)
         {
             return Unexpected<Error>{added.error()};
         }
     }
     nameMeshes(source, *model, *meshIds);
+    keepCollisionMeshes(*model, *meshIds);
     watchModel(source, *meshIds);
     std::string name{source.substr(source.find_last_of('/') + 1)};
     name = name.substr(0, name.find_last_of('.'));
@@ -306,6 +322,48 @@ void EditorWorld::nameMeshes(std::string_view source, const Assets::ImportedMode
         const std::string part = mesh.empty() ? std::format("mesh {}", i + 1) : mesh;
         m_meshNames[meshIds[i]] = stem.empty() ? part : stem + ": " + part;
     }
+}
+
+void EditorWorld::keepCollisionMeshes(const Assets::ImportedModel& model, std::span<const AssetId> meshIds)
+{
+    // All of a mesh's primitives as one triangle list: a Collider uses the whole mesh, whatever its materials.
+    for (std::size_t i = 0; i < meshIds.size() && i < model.meshes.size(); ++i)
+    {
+        Physics::CollisionMesh mesh;
+        for (const Assets::ImportedPrimitive& primitive : model.meshes[i].primitives)
+        {
+            const auto first = static_cast<std::uint32_t>(mesh.positions.size());
+            mesh.positions.insert(mesh.positions.end(), primitive.positions.begin(), primitive.positions.end());
+            for (const std::uint32_t index : primitive.indices)
+            {
+                mesh.indices.push_back(first + index);
+            }
+        }
+        m_collisionMeshes.add(meshIds[i], std::move(mesh));
+    }
+}
+
+Result<std::string> EditorWorld::snapshot() const
+{
+    return Assets::writeScene(*m_scene, m_deps.components);
+}
+
+Result<void> EditorWorld::restore(std::string_view text)
+{
+    Fresh fresh = makeScene();
+    Result<Assets::SceneReadReport> read =
+        Assets::readScene(text, *fresh.scene, *fresh.hierarchy, m_deps.components, "the scene before Play");
+    if (!read)
+    {
+        return Unexpected<Error>{read.error()};
+    }
+    // Like adopt(), but the meshes, their names and the watched models stay: it's the same scene, from before Play.
+    // The GPU scene keeps its meshes too; the instances are gathered again at the next update().
+    m_hierarchy = std::move(fresh.hierarchy); // the old hierarchy goes before its scene
+    m_scene = std::move(fresh.scene);
+    m_instances.clear();
+    ++m_revision;
+    return {};
 }
 
 std::optional<Math::Sphere> EditorWorld::boundsOf(entt::entity entity) const
@@ -440,7 +498,8 @@ std::size_t EditorWorld::reloadChangedModels(Renderer::GpuScene* gpu, bool now)
             continue;
         }
         model.newest = newest;
-        Result<Assets::ImportedModel> imported = Assets::importGltf(m_deps.assets.files(), model.source, m_deps.log);
+        Result<Assets::ImportedModel> imported =
+            Assets::importGltf(m_deps.assets.files(), model.source, m_deps.log, &m_deps.jobs);
         if (!imported)
         {
             MEOW2_LOG_WARN(m_deps.log, "{} changed but can't be read: {}; the old one stays", model.source,
@@ -451,8 +510,8 @@ std::size_t EditorWorld::reloadChangedModels(Renderer::GpuScene* gpu, bool now)
         {
             // The same mesh IDs: the scene's MeshRenderers point at them, so they draw the new meshes, materials and
             // textures from the next update on.
-            Result<std::vector<AssetId>> uploaded =
-                Renderer::uploadModel(*gpu, *imported, m_deps.ids, m_meshes, m_deps.log, {}, model.meshIds);
+            Result<std::vector<AssetId>> uploaded = Renderer::uploadModel(
+                *gpu, *imported, m_deps.ids, m_meshes, m_deps.log, {.jobs = &m_deps.jobs}, model.meshIds);
             if (!uploaded)
             {
                 MEOW2_LOG_WARN(m_deps.log, "{} changed but can't be uploaded: {}", model.source, uploaded.error());
@@ -460,6 +519,7 @@ std::size_t EditorWorld::reloadChangedModels(Renderer::GpuScene* gpu, bool now)
             }
         }
         nameMeshes(model.source, *imported, model.meshIds);
+        keepCollisionMeshes(*imported, model.meshIds);
         MEOW2_LOG_INFO(m_deps.log, "Reloaded {} (its file or a texture changed)", model.source);
         ++m_revision;
         ++reloaded;

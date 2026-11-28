@@ -74,7 +74,7 @@ struct TextureCooking
 {
     bool compress = false;                 ///< BC7 for colour and data, BC5 for normal maps; false keeps RGBA8.
     Assets::TextureCache* cache = nullptr; ///< Keeps cooked textures between runs; null cooks every time.
-    Jobs::JobSystem* jobs = nullptr;       ///< Compresses in parallel; null cooks on the calling thread.
+    Jobs::JobSystem* jobs = nullptr;       ///< Cooks the textures in parallel; null cooks them on the calling thread.
 };
 
 /// @brief Uploads a model's meshes, materials and the textures they use to a GpuScene.
@@ -156,9 +156,11 @@ struct SceneModelsReport
 /// @param assets Finds models by mesh ID; their `.meta` files must be registered (AssetManager::scan()).
 /// @param meshes What's on the GPU already.
 /// @param log    Receives import warnings.
+/// @param jobs   Decodes each model's images in parallel (importGltf()); null decodes them on the calling thread.
 /// @return The models.
 [[nodiscard]] SceneModels importSceneModels(Scene::Scene& scene, Assets::AssetManager& assets,
-                                            const RenderMeshes& meshes, Log::Logger& log);
+                                            const RenderMeshes& meshes, Log::Logger& log,
+                                            Jobs::JobSystem* jobs = nullptr);
 
 /// @brief How many GPU instances the scene's MeshRenderers make: the parts of each one's mesh, from `models` or from
 ///        `meshes` (what's uploaded already). For GpuSceneDesc::instanceCapacity.

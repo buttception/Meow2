@@ -121,6 +121,8 @@ struct BodyDesc
     float friction = 0.5F;                   ///< 0 (ice) and up; two bodies use the root of the product of theirs.
     float restitution = 0.0F;                ///< Bounciness, 0 (none) to 1 (keeps all its speed).
     float density = 1000.0F;                 ///< kg/m³ (water: 1000); a dynamic body's mass is its volume times it.
+    float mass = 0.0F;                       ///< kg, for a dynamic body: 0 takes it from the density, above 0 sets it
+                                             ///< (and scales the inertia to match), whatever the shape's size.
     float linearDamping = 0.05F;             ///< Slows its movement down over time (1/s); ≥ 0.
     float angularDamping = 0.05F;            ///< Slows its spin down over time (1/s); ≥ 0.
     float gravityScale = 1.0F;               ///< Multiplies the world's gravity for this body (0: floats).

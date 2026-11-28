@@ -4,6 +4,7 @@
 #include "Meow2/Assets/Gltf/GltfImporter.h"
 
 #include "Assets/LibraryMemory.h"
+#include "Meow2/Core/Jobs/JobSystem.h"
 #include "Meow2/Core/Memory/MemTag.h"
 
 #include <cgltf.h>
@@ -601,7 +602,8 @@ ImportedMaterial importMaterial(const cgltf_material& material, const cgltf_data
 }
 } // namespace
 
-Result<ImportedModel> importGltf(const FileSystem::FileSystem& files, std::string_view path, Log::Logger& log)
+Result<ImportedModel> importGltf(const FileSystem::FileSystem& files, std::string_view path, Log::Logger& log,
+                                 Jobs::JobSystem* jobs)
 {
     const Memory::MemTagScope tag{Memory::MemTag::Assets};
     Result<std::vector<std::byte>> file = files.readFile(path);
@@ -651,6 +653,28 @@ Result<ImportedModel> importGltf(const FileSystem::FileSystem& files, std::strin
     }
 
     const std::string folder = folderOf(path);
+    // Reading and decoding the images is most of a big model's import (Sponza: 69 JPEG and PNG files), and each image
+    // is independent, so they're decoded in parallel when there's a job system; the results are taken in file order.
+    std::vector<Result<Image>> decodedImages(data->images_count, Result<Image>{Unexpected<Error>{Error{}}});
+    const auto decodeRange = [&](std::uint32_t begin, std::uint32_t end, std::uint32_t /*thread*/)
+    {
+        const Memory::MemTagScope imageTag{Memory::MemTag::Assets}; // the tag is per thread
+        for (std::uint32_t i = begin; i < end; ++i)
+        {
+            Result<std::vector<std::byte>> bytes = imageBytes(data->images[i], options, files, folder);
+            decodedImages[i] = bytes ? decodeImage(*bytes) : Result<Image>{Unexpected<Error>{bytes.error()}};
+        }
+    };
+    const auto imageCount = static_cast<std::uint32_t>(data->images_count);
+    if (jobs != nullptr && imageCount > 1)
+    {
+        const Jobs::Job decoding = jobs->parallelFor(imageCount, 1, decodeRange);
+        jobs->wait(decoding);
+    }
+    else
+    {
+        decodeRange(0, imageCount, 0);
+    }
     for (std::size_t i = 0; i < data->images_count; ++i)
     {
         const cgltf_image& image = data->images[i];
@@ -659,8 +683,7 @@ Result<ImportedModel> importGltf(const FileSystem::FileSystem& files, std::strin
                 ? image.name
                 : (image.uri != nullptr && !std::string_view{image.uri}.starts_with("data:") ? image.uri
                                                                                              : std::format("#{}", i));
-        Result<std::vector<std::byte>> bytes = imageBytes(image, options, files, folder);
-        Result<Image> decoded = bytes ? decodeImage(*bytes) : Result<Image>{Unexpected<Error>{bytes.error()}};
+        Result<Image>& decoded = decodedImages[i];
         if (!decoded)
         {
             // A missing texture shouldn't stop the model: it's drawn without it.
